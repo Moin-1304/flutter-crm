@@ -1,0 +1,108 @@
+name: boilerplate
+description: A flutter boilerplate project created using MobX and Provider.
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# Read more about versioning at semver.org.
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.6 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_localizations:
+    sdk: flutter
+
+  # A
+  another_flushbar: ^1.12.29
+  # B
+  # C
+  cupertino_icons: ^1.0.5
+  # D
+  dio: ^5.1.1
+  # E
+  event_bus: ^2.0.0
+  # F
+  flutter_mobx: ^2.0.6+5
+  file_picker: ^10.3.3
+  # G
+  get_it: ^8.2.0
+  google_fonts: ^6.3.1
+  geocoding: ^4.0.0
+  geolocator: ^14.0.2
+  google_maps_flutter: ^2.13.1
+  # H
+  # http removed (unused)
+  # I
+  intl: ^0.20.2
+  # J
+  json_serializable: ^6.6.1
+  json_annotation: ^4.9.0
+  table_calendar: ^3.1.2
+  # K
+  # L
+  # M
+  mobx: ^2.1.4
+  # N
+  # O
+  # P
+  permission_handler: ^11.3.1
+  # path_provider removed (DB removed)
+  # path removed (DB removed)
+  # Q
+  # R
+  flutter_riverpod: ^2.6.1
+  # S
+  shared_preferences: ^2.1.0
+  # T
+  # U
+  url_launcher: ^6.3.1
+  # V
+  # validators removed (unused)
+  # W
+  # X
+  xxtea: ^2.1.0
+  # Y
+  # Z
+  
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The following adds the launcher icon support to your application.
+  # run below mentioned commands to generate launcher icons
+  # flutter packages get
+  # flutter packages pub run flutter_launcher_icons:main
+  flutter_launcher_icons: ^0.14.4
+  mobx_codegen: ^2.2.0
+  build_runner: ^2.3.3
+  analyzer: ^7.7.1
+  flutter_lints: ^5.0.0
+
+flutter_icons:
+  image_path: "assets/icons/ic_launcher.png"
+  android: true
+  ios: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/lang/
+
+  fonts:
+    - family: ProductSans
+      fonts:
+        - asset: assets/fonts/Product-Sans-Regular.ttf
+        - asset: assets/fonts/Product-Sans-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Product-Sans-Bold.ttf
+          weight: 700

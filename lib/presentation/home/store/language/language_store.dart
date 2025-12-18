@@ -1,0 +1,74 @@
+import 'package:boilerplate/core/stores/error/error_store.dart';
+import 'package:boilerplate/domain/entity/language/language.dart';
+import 'package:boilerplate/domain/repository/setting/setting_repository.dart';
+import 'package:mobx/mobx.dart';
+
+part 'language_store.g.dart';
+
+class LanguageStore = _LanguageStore with _$LanguageStore;
+
+abstract class _LanguageStore with Store {
+  // Removed unused TAG constant
+
+  // repository instance
+  final SettingRepository _repository;
+
+  // store for handling errors
+  final ErrorStore errorStore;
+
+  // supported languages
+  List<Language> supportedLanguages = [
+    Language(code: 'US', locale: 'en', language: 'English'),
+    Language(code: 'DK', locale: 'da', language: 'Danish'),
+    Language(code: 'ES', locale: 'es', language: 'España'),
+  ];
+
+  // constructor:---------------------------------------------------------------
+  _LanguageStore(this._repository, this.errorStore) {
+    init();
+  }
+
+  // store variables:-----------------------------------------------------------
+  @observable
+  String _locale = "en";
+
+  @computed
+  String get locale => _locale;
+
+  // actions:-------------------------------------------------------------------
+  @action
+  void changeLanguage(String value) {
+    _locale = value;
+    _repository.changeLanguage(value).then((_) {
+      // write additional logic here
+    });
+  }
+
+  @action
+  String getCode() {
+    if (_locale == 'en') return "US";
+    if (_locale == 'da') return "DK";
+    if (_locale == 'es') return "ES";
+    return "US";
+  }
+
+  @action
+  String? getLanguage() {
+    final index = supportedLanguages
+        .indexWhere((language) => language.locale == _locale);
+    if (index == -1) return null;
+    return supportedLanguages[index].language;
+  }
+
+  // general:-------------------------------------------------------------------
+  void init() async {
+    // getting current language from shared preference
+    if (_repository.currentLanguage != null) {
+      _locale = _repository.currentLanguage!;
+    }
+  }
+
+  // dispose:-------------------------------------------------------------------
+  // Removed incorrect @override; method does not override any super method
+  void dispose() {}
+}

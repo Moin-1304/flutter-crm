@@ -1,0 +1,2 @@
+D:/Cosmostaker/flutter-boilerplate/flutter-boilerplate/android/app/.cxx/Debug/4m8gia4r/armeabi-v7a/CMakeFiles/edit_cache.dir
+D:/Cosmostaker/flutter-boilerplate/flutter-boilerplate/android/app/.cxx/Debug/4m8gia4r/armeabi-v7a/CMakeFiles/rebuild_cache.dir
