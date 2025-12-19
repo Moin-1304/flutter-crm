@@ -140,4 +140,95 @@ class CommonApi {
     final request = CommonGetAutoRequest(commandType: 320, id: id);
     return getAuto(request);
   }
+
+  /// Get Purpose of Visit List (CommandType: 337)
+  /// text should be "ServiceEng PurposeVisit" for Service Engineer or "Salesrep PurposeVisit" for Sales Rep
+  Future<List<CommonDropdownItem>> getPurposeOfVisitList(int userId, String text) async {
+    try {
+      final request = PurposeOfVisitRequest(userId: userId, text: text);
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get purpose of visit list: ${e.toString()}');
+    }
+  }
+
+  /// Get Customer Type List (CommandType: 230)
+  Future<List<CommonDropdownItem>> getCustomerTypeList(int userId, {String type = 'Service Engineer'}) async {
+    try {
+      final request = CustomerTypeRequest(userId: userId, type: type);
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get customer type list: ${e.toString()}');
+    }
+  }
+
+  /// Get Tour Plan Products to Discuss (CommandType: 335)
+  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId) async {
+    try {
+      final request = TourPlanProductsRequest(userId: userId);
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get tour plan products: ${e.toString()}');
+    }
+  }
 }

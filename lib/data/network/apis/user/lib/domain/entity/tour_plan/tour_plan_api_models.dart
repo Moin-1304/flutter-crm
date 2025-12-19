@@ -845,6 +845,7 @@ class GetMappedCustomersByEmployeeIdRequest {
   final List<ClusterIdModel>? clusterIds;
   final int? selectedEmployeeId;
   final String? date; // ISO date string or null
+  final int? customerTypeId;
 
   GetMappedCustomersByEmployeeIdRequest({
     this.searchText,
@@ -872,6 +873,7 @@ class GetMappedCustomersByEmployeeIdRequest {
     this.clusterIds,
     this.selectedEmployeeId,
     this.date,
+    this.customerTypeId,
   });
 
   Map<String, dynamic> toJson() {
@@ -901,6 +903,7 @@ class GetMappedCustomersByEmployeeIdRequest {
       'ClusterIds': clusterIds?.map((e) => e.toJson()).toList(),
       'SelectedEmployeeId': selectedEmployeeId,
       'Date': date,
+      'CustomerTypeId': customerTypeId,
     };
   }
 }

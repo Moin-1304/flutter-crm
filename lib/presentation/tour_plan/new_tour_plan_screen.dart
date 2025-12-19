@@ -43,10 +43,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   List<String> _purposeOptions =  [];
   final Map<String, int> _typeOfWorkNameToId = <String, int>{};
   final Map<int, String> _typeOfWorkIdToName = <int, String>{}; // Reverse mapping for editing
+  
+  // Products options for multi-select dropdown
+  List<String> _productOptions = [];
+  final Map<String, int> _productNameToId = <String, int>{};
   final Map<String, int> _customerNameToId = <String, int>{};
   final Map<int, String> _customerIdToName = <int, String>{}; // Added: reverse mapping id -> name
   final Map<String, String> _customerNameToClusterName = <String, String>{};
   Set<String> _autoSelectedClusters = <String>{};
+  
+  // Customer Type dropdown
+  List<String> _customerTypeOptions = [];
+  final Map<String, int> _customerTypeNameToId = <String, int>{};
+  String? _selectedCustomerType;
+  String? _customerTypeError;
 
   // Dynamic calls list
   final List<_CallData> _calls = <_CallData>[
@@ -58,6 +68,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   
   bool _isLoadingDetails = false; // Flag to track if we're loading tour plan details
   TourPlanItem? _fullTourPlanData; // Store the full tour plan data after fetching
+  bool _isSubmitting = false; // Flag to track if we're submitting the tour plan
 
   @override
   void dispose() {
@@ -87,11 +98,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     _clearCallErrors();
   }
   
-  /// Load basic data (clusters, customers, type of work) for new tour plans
+  /// Load basic data (clusters, customers, type of work, products, customer type) for new tour plans
   Future<void> _loadInitialData() async {
-    // Load clusters and type of work first
-    await _ensureClustersLoaded();
-    await _loadTypeOfWorkList();
+    // Load all data in parallel for faster loading
+    await Future.wait([
+      _ensureClustersLoaded(),
+      _loadTypeOfWorkList(),
+      _loadProductsList(),
+      _loadCustomerTypeList(),
+    ]);
     // Don't load customers until clusters are selected
     // Customers will be loaded when user selects clusters
   }
@@ -184,9 +199,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   
   /// Populate form fields from TourPlanItem data
   Future<void> _populateFormFromTourPlan(TourPlanItem tourPlan) async {
-    // Load basic data first
-    await _ensureClustersLoaded();
-    await _loadTypeOfWorkList();
+    // Load all data in parallel for faster loading
+    await Future.wait([
+      _ensureClustersLoaded(),
+      _loadTypeOfWorkList(),
+      _loadProductsList(),
+      _loadCustomerTypeList(),
+    ]);
     
     // Set tour plan date - use first detail's planDate if available
     if (tourPlan.tourPlanDetails != null && tourPlan.tourPlanDetails!.isNotEmpty) {
@@ -344,9 +363,18 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           print('NewTourPlanScreen: Using fallback customer name (no customerId): $fallbackCustomerName');
         }
         
+        // Parse products from comma-separated string
+        Set<String> parsedProducts = <String>{};
+        if (detail.productsToDiscuss != null && detail.productsToDiscuss!.isNotEmpty) {
+          parsedProducts = detail.productsToDiscuss!
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toSet();
+        }
+        
         final callData = _CallData(
-          productsCtrl: TextEditingController(
-              text: detail.productsToDiscuss ?? ''),
+          products: parsedProducts,
           samplesCtrl: TextEditingController(
               text: detail.samplesToDistribute ?? ''),
           remarksCtrl: TextEditingController(text: detail.remarks ?? ''),
@@ -361,9 +389,18 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       // If no tourPlanDetails but we have customer name, create one call with that customer
       _calls.clear();
       
+      // Parse products from comma-separated string
+      Set<String> parsedProducts = <String>{};
+      if (tourPlan.productsToDiscuss != null && tourPlan.productsToDiscuss!.isNotEmpty) {
+        parsedProducts = tourPlan.productsToDiscuss!
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet();
+      }
+      
       final callData = _CallData(
-        productsCtrl: TextEditingController(
-            text: tourPlan.productsToDiscuss ?? ''),
+        products: parsedProducts,
         samplesCtrl: TextEditingController(
             text: tourPlan.samplesToDistribute ?? ''),
         remarksCtrl: TextEditingController(text: tourPlan.notes ?? ''),
@@ -504,6 +541,27 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 },
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            _Labeled(
+                              label: 'Customer Type',
+                              required: true,
+                              errorText: _customerTypeError,
+                              child: _SingleSelectDropdown(
+                                options: _customerTypeOptions,
+                                value: _selectedCustomerType,
+                                hintText: 'Select customer type',
+                                onChanged: (v) {
+                                  setState(() {
+                                    _selectedCustomerType = v;
+                                    _customerTypeError = null;
+                                  });
+                                  // Reload customers when customer type changes
+                                  if (_selectedClusters.isNotEmpty) {
+                                    _loadMappedCustomers();
+                                  }
+                                },
+                              ),
+                            ),
                             const SizedBox(height: 16),
                             for (int i = 0; i < _calls.length; i++) ...[
                               _CallCard(
@@ -512,6 +570,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 data: _calls[i],
                                 customerOptions: _customerOptions,
                                 purposeOptions: _purposeOptions,
+                                productOptions: _productOptions,
                                 customerError: i < _callErrors.length ? _callErrors[i].customerError : null,
                                 purposeError: i < _callErrors.length ? _callErrors[i].purposeError : null,
                                 onCustomersChanged: (customers) => setState(() {
@@ -530,6 +589,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     updated[i].purposeError = null;
                                     _callErrors = updated;
                                   }
+                                }),
+                                onProductsChanged: (products) => setState(() {
+                                  _calls[i].products = products;
                                 }),
                                 onToggleExpand: () => setState(() {
                                   final bool current = _calls[i].isExpanded ?? true;
@@ -573,7 +635,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: FilledButton(
-                                    onPressed: () async {
+                                    onPressed: _isSubmitting ? null : () async {
                                       if (!_validateForm()) {
                                         return;
                                       }
@@ -587,15 +649,25 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                         borderRadius: BorderRadius.circular(14),
                                       ),
                                       elevation: 2,
+                                      disabledBackgroundColor: const Color(0xFF4db1b3).withOpacity(0.6),
                                     ),
-                                    child: Text(
-                                      widget.tourPlanToEdit != null ? 'Update' : 'Submit',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
+                                    child: _isSubmitting
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : Text(
+                                            widget.tourPlanToEdit != null ? 'Update' : 'Submit',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
                                   ),
                                 ),
                               ],
@@ -612,6 +684,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   }
 
   Future<void> _handleSubmit() async {
+    if (_isSubmitting) return; // Prevent double submission
+    
+    setState(() {
+      _isSubmitting = true;
+    });
+    
     try {
       final bool isEditing = widget.tourPlanToEdit != null;
       print('NewTourPlanScreen: ========== ${isEditing
@@ -651,15 +729,27 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
         // Build customers array with CustomerId and ClusterId pairs
         final List<Map<String, dynamic>> customersArray = <Map<String, dynamic>>[];
-        for (int i = 0; i < call.customers.length; i++) {
-          final customerName = call.customers.elementAt(i);
+        for (int j = 0; j < call.customers.length; j++) {
+          final customerName = call.customers.elementAt(j);
           final customerId = _customerNameToId[customerName] ?? 0;
-          final clusterId = clusterIdsArray.isNotEmpty ? clusterIdsArray[i % clusterIdsArray.length] : resolvedClusterId;
+          final clusterId = clusterIdsArray.isNotEmpty ? clusterIdsArray[j % clusterIdsArray.length] : resolvedClusterId;
           
           customersArray.add({
             'CustomerId': customerId,
             'ClusterId': clusterId,
           });
+        }
+
+        // Build ProductsToBeDiscussed array with ProductId and ProductName
+        final List<Map<String, dynamic>> productsToBeDiscussedArray = <Map<String, dynamic>>[];
+        for (final productName in call.products) {
+          final productId = _productNameToId[productName] ?? 0;
+          if (productId > 0) {
+            productsToBeDiscussedArray.add({
+              'ProductId': productId,
+              'ProductName': null,
+            });
+          }
         }
 
         // If editing, map existing detail id from fetched item by index
@@ -672,34 +762,38 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? widget.tourPlanToEdit!.tourPlanDetails![i].id
                                     : 0);
 
-                            // If customerId could not be resolved from UI, fallback to existing detail
-                            final int fallbackCustomerId = (_fullTourPlanData?.tourPlanDetails != null
-                                    && _fullTourPlanData!.tourPlanDetails!.length > i)
-                                ? _fullTourPlanData!.tourPlanDetails![i].customerId
-                                : ((widget.tourPlanToEdit?.tourPlanDetails != null
-                                        && widget.tourPlanToEdit!.tourPlanDetails!.length > i)
-                                    ? widget.tourPlanToEdit!.tourPlanDetails![i].customerId
-                                    : 0);
+        // If customerId could not be resolved from UI, fallback to existing detail
+        final int fallbackCustomerId = (_fullTourPlanData?.tourPlanDetails != null
+                && _fullTourPlanData!.tourPlanDetails!.length > i)
+            ? _fullTourPlanData!.tourPlanDetails![i].customerId
+            : ((widget.tourPlanToEdit?.tourPlanDetails != null
+                    && widget.tourPlanToEdit!.tourPlanDetails!.length > i)
+                ? widget.tourPlanToEdit!.tourPlanDetails![i].customerId
+                : 0);
 
-                            final String clusterNameForDetail = _selectedClusters.isNotEmpty ? _selectedClusters.first : '';
-                            final String locationFromCustomer = call.customers.isNotEmpty
-                                ? ' - ${call.customers.first}'
-                                : '';
-                            details.add({
-                              'Id': existingDetailId, // Detail Id must be the "id" from list item
-                              'PlanDate': planDateStr,
-                              'TypeOfWorkId': typeOfWorkId,
-                              'ClusterId': clusterIdsArray.isEmpty ? resolvedClusterId : clusterIdsArray.first,
-                              'CustomerId': customerIdsArray.isEmpty ? fallbackCustomerId : customerIdsArray.first,
-                              'Status': 1,
-                              'Remarks': call.remarksCtrl.text.trim(),
-                              'Location': locationFromCustomer,
-                              'ProductsToDiscuss': call.productsCtrl.text.trim(),
-                              'SamplesToDistribute': call.samplesCtrl.text.trim(),
-                              'ClusterNames': clusterNameForDetail,
-                              'Customers': customersArray,
-                            });
-                          }
+        final String clusterNameForDetail = _selectedClusters.isNotEmpty ? _selectedClusters.first : '';
+        final String locationFromCustomer = call.customers.isNotEmpty
+            ? ' - ${call.customers.first}'
+            : ' - ';
+        details.add({
+          'Id': existingDetailId, // Detail Id must be the "id" from list item
+          'PlanDate': '${planDateStr}T06:30:00.000',
+          'TypeOfWorkId': typeOfWorkId,
+          'ClusterId': clusterIdsArray.isEmpty ? 0 : clusterIdsArray.first,
+          'CustomerId': customerIdsArray.isEmpty ? 0 : customerIdsArray.first,
+          'Status': 1,
+          'Remarks': call.remarksCtrl.text.trim(),
+          'Location': locationFromCustomer,
+          'Latitude': null,
+          'Longitude': null,
+          'SamplesToDistribute': call.samplesCtrl.text.trim(),
+          'ProductsToDiscuss': '',
+          'ClusterNames': null,
+          'Customers': customersArray,
+          'ProductsToBeDiscussed': productsToBeDiscussedArray,
+          'MappedInstruments': [],
+        });
+      }
 
                           // Build header TourPlanType as array of all selected purposes
                           final Set<String> purposesAll = <String>{};
@@ -714,16 +808,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
                           // Aggregate samples and products from all calls for header level
                           final List<String> allSamples = <String>[];
-                          final List<String> allProducts = <String>[];
+                          final Set<String> allProducts = <String>{};
                           for (final _CallData call in _calls) {
                             final String samples = call.samplesCtrl.text.trim();
-                            final String products = call.productsCtrl.text.trim();
                             if (samples.isNotEmpty) {
                               allSamples.add(samples);
                             }
-                            if (products.isNotEmpty) {
-                              allProducts.add(products);
-                            }
+                            allProducts.addAll(call.products);
                           }
                           final String aggregatedSamples = allSamples.join(', ');
                           final String aggregatedProducts = allProducts.join(', ');
@@ -734,28 +825,35 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                           final String employee = userStore.userDetail?.employeeName ?? "";
 
                           // For updates: Header Id must be TourPlanId from the list item
-                          final int headerId = (widget.tourPlanToEdit?.tourPlanId != null && widget.tourPlanToEdit!.tourPlanId != 0)
-                              ? widget.tourPlanToEdit!.tourPlanId
-                              : (widget.tourPlanToEdit?.id ?? 0);
+                          final bool isNewTourPlan = widget.tourPlanToEdit == null;
                           final String headerClusterName = _selectedClusters.isNotEmpty ? _selectedClusters.first : "";
+                          
+                          // Get customer type ID
+                          final int? customerTypeId = _selectedCustomerType != null && _customerTypeNameToId.containsKey(_selectedCustomerType!)
+                              ? _customerTypeNameToId[_selectedCustomerType!]
+                              : null;
+                          print('NewTourPlanScreen: [DEBUG] _selectedCustomerType: $_selectedCustomerType');
+                          print('NewTourPlanScreen: [DEBUG] _customerTypeNameToId: $_customerTypeNameToId');
+                          print('NewTourPlanScreen: [DEBUG] customerTypeId: $customerTypeId');
+                          
                           final Map<String, dynamic> body = {
-                            'Id': headerId,
-                            'CreatedBy': widget.tourPlanToEdit?.createdBy ??
-                                userId,
+                            'Id': isNewTourPlan ? null : (widget.tourPlanToEdit!.tourPlanId != 0 ? widget.tourPlanToEdit!.tourPlanId : widget.tourPlanToEdit!.id),
+                            'TourPlanId': isNewTourPlan ? null : widget.tourPlanToEdit!.tourPlanId,
+                            'CreatedBy': widget.tourPlanToEdit?.createdBy ?? userId,
                             'Status': 1,
                             'SbuId': sbuId,
-                            'Employee': employeeId, // Changed from employee name to employee ID
+                            'Employee': employeeId,
                             'Month': selectedPlanDate.month,
                             'Year': selectedPlanDate.year,
                             'StatusId': 0,
                             'SubmittedDate': null,
                             'Remarks': null,
-                            'Active': true,
+                            'Active': false,
                             'UserId': userId,
                             'EmployeeId': employeeId,
-                            'Date': planDateStr,
+                            'Date': '${planDateStr}T06:30:00.000',
                             'Territory': "",
-                            'Cluster': headerClusterName,
+                            'Cluster': "",
                             'ClusterId': null,
                             'TourPlanType': tourPlanTypeArray.isNotEmpty ? tourPlanTypeArray.first : 'General',
                             'Objective': null,
@@ -763,15 +861,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                             'TourPlanHeaderStatus': null,
                             'Summary': null,
                             'TourPlanDetails': details,
-                            'CreatedAt': widget.tourPlanToEdit?.createdAt
-                                ?.toIso8601String()
-                                .split('T')
-                                .first ?? DateTime
-                                .now()
-                                .toIso8601String()
-                                .split('T')
-                                .first,
-                            'UpdatedAt': DateTime.now().toIso8601String().split('T').first,
                             'SubmittedAt': null,
                             'ApprovedAt': null,
                             'RejectedAt': null,
@@ -779,19 +868,29 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                             'ManagerComments': null,
                             'ActionComments': null,
                             'Comments': [],
-                            'Bizunit': 1,
+                            'Bizunit': sbuId,
                             'IsSelected': false,
-                            'EmployeeName': employee,
+                            'EmployeeName': "",
                             'Designation': "",
                             'StatusText': "",
-                            'PlanDate': planDateStr,
+                            'PlanDate': '0001-01-01T00:00:00.000',
                             'CustomerId': 0,
                             'CustomerName': "",
                             'Clusters': "",
-                            'SamplesToDistribute': aggregatedSamples.isEmpty ? null : aggregatedSamples,
-                            'ProductsToDiscuss': aggregatedProducts.isEmpty ? null : aggregatedProducts,
+                            'SamplesToDistribute': null,
+                            'ProductsToDiscuss': null,
                             'Notes': null,
                             'FromDeviation': null,
+                            'TotalCustomers': null,
+                            'PlannedMonth': null,
+                            'PlannedPercentage': null,
+                            'VisitedMonth': null,
+                            'VisitedPercentage': null,
+                            'PendingMonth': null,
+                            'PlannedToday': null,
+                            'VisitedToday': null,
+                            'RepType': null,
+                            'CustomerType': customerTypeId,
                           };
                           
                           // Print Request Data
@@ -808,6 +907,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                           print('NewTourPlanScreen: Selected Clusters: $_selectedClusters');
                           print('NewTourPlanScreen: Cluster IDs: $clusterIdsArray');
                           print('NewTourPlanScreen: Tour Plan Type: $tourPlanTypeArray');
+                          print('NewTourPlanScreen: Selected Customer Type: $_selectedCustomerType');
+                          print('NewTourPlanScreen: Customer Type ID: ${_selectedCustomerType != null ? _customerTypeNameToId[_selectedCustomerType!] : null}');
+                          print('NewTourPlanScreen: Customer Type Map: $_customerTypeNameToId');
                           print('NewTourPlanScreen: Number of Calls: ${_calls.length}');
 
                           for (int i = 0; i < _calls.length; i++) {
@@ -845,16 +947,37 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                           if (!mounted) return;
                           
                           // Show success/error toast
-                          final bool isSuccess = res != null;
+                          // Error case: store sets status: false (boolean) when there's an error
+                          // Success case: API returns tour plan object with status: 0 (integer)
+                          bool isSuccess = false;
                           String errorMessage = '';
-                          if (!isSuccess && res != null) {
-                            errorMessage = res['errorMessage'] ?? res['error'] ?? res['msg'] ?? 'Unknown error occurred';
+                          
+                          if (res != null) {
+                            // Check for explicit error set by store (boolean false)
+                            final hasStoreError = res['status'] == false;
+                            
+                            // Check for error message fields
+                            final hasErrorMessage = res['error'] != null || 
+                                                   res['errorMessage'] != null ||
+                                                   (res['msg']?.toString().toLowerCase().contains('error') == true);
+                            
+                            if (hasStoreError || hasErrorMessage) {
+                              // It's an error
+                              isSuccess = false;
+                              errorMessage = res['errorMessage']?.toString() ?? 
+                                           res['error']?.toString() ?? 
+                                           res['msg']?.toString() ?? 
+                                           'Unknown error occurred';
+                            } else {
+                              // No error indicators - consider it success
+                              isSuccess = true;
+                            }
                           }
                           ToastMessage.show(
                             context,
                             message: isSuccess
                                 ? 'Success: Tour plan ${isEditing ? 'updated' : 'submitted'} successfully'
-                                : 'Failed: ${errorMessage.isNotEmpty ? errorMessage : (res?['msg'] ?? 'No response received from server.')}',
+                                : 'Failed: ${errorMessage.isNotEmpty ? errorMessage : 'No response received from server.'}',
                             type: isSuccess ? ToastType.success : ToastType.error,
                             duration: Duration(seconds: isSuccess ? 3 : 4),
                           );
@@ -937,6 +1060,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                               ),
                             ),
                           );
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _isSubmitting = false;
+                            });
+                          }
                         }
   }
 
@@ -1139,6 +1268,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       isValid = false;
     }
 
+    String? customerTypeError;
+    if (_selectedCustomerType == null || _selectedCustomerType!.isEmpty) {
+      customerTypeError = 'Please select a customer type';
+      firstMessage ??= 'Select a customer type';
+      isValid = false;
+    }
+
     if (_calls.isEmpty) {
       firstMessage ??= 'Add at least one call';
       isValid = false;
@@ -1165,6 +1301,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     setState(() {
       _dateError = dateError;
       _clusterError = clusterError;
+      _customerTypeError = customerTypeError;
       _callErrors = callErrors;
     });
 
@@ -1287,14 +1424,52 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final List<CommonDropdownItem> items = await repo.getTypeOfWorkList();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        
+        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+          print('NewTourPlanScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
+        }
+        
+        int? userId = userStore?.userDetail?.id;
+        String? serviceArea = userStore?.userDetail?.serviceArea;
+        
+        print('NewTourPlanScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea"');
+        
+        if (userId == null || userId <= 0) {
+          print('NewTourPlanScreen: [PurposeOfVisit] userId invalid, skipping');
+          return;
+        }
+        
+        // Determine the text parameter based on serviceArea
+        // Only "Service Engineer" gets "ServiceEng PurposeVisit"
+        // All others (including null/empty serviceArea) get "Salesrep PurposeVisit"
+        String purposeText;
+        final String serviceAreaTrimmed = (serviceArea ?? '').trim();
+        
+        if (serviceAreaTrimmed == 'Service Engineer') {
+          purposeText = 'ServiceEng PurposeVisit';
+        } else {
+          // All other users (Sales, Manager, Field Coordinator, empty, null, etc.)
+          purposeText = 'Salesrep PurposeVisit';
+        }
+        
+        print('NewTourPlanScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
+        final List<CommonDropdownItem> items = await repo.getPurposeOfVisitList(userId, purposeText);
+        print('NewTourPlanScreen: [PurposeOfVisit] API returned ${items.length} items');
+        
         final works = items
             .map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim())
             .where((s) => s.isNotEmpty)
             .toSet();
         if (works.isNotEmpty) {
           setState(() {
-            _purposeOptions = {..._purposeOptions, ...works}.toList();
+            _purposeOptions = works.toList();
+            _typeOfWorkNameToId.clear();
+            _typeOfWorkIdToName.clear();
             // map names to ids for submit
             for (final item in items) {
               final String key = (item.text.isNotEmpty ? item.text : item.typeText).trim();
@@ -1333,13 +1508,99 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             }
           });
           
-          // After resolving purpose names, force a refresh
-          // so dropdown reflects the updated value
-          setState(() {});
+          print('NewTourPlanScreen: [PurposeOfVisit] Loaded ${_purposeOptions.length} options');
         }
       }
     } catch (e) {
-      // Silent fail
+      print('NewTourPlanScreen: [PurposeOfVisit] Error: $e');
+    }
+  }
+
+  Future<void> _loadProductsList() async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        
+        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+        }
+        
+        int? userId = userStore?.userDetail?.id;
+        if (userId == null || userId <= 0) {
+          print('NewTourPlanScreen: [Products] userId is still null/0, skipping products load');
+          return;
+        }
+        
+        print('NewTourPlanScreen: [Products] Loading products with userId: $userId');
+        final List<CommonDropdownItem> items = await repo.getTourPlanProductsList(userId);
+        if (items.isNotEmpty) {
+          setState(() {
+            _productOptions.clear();
+            _productNameToId.clear();
+            for (final item in items) {
+              final String productName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              if (productName.isNotEmpty) {
+                _productOptions.add(productName);
+                _productNameToId[productName] = item.id;
+              }
+            }
+          });
+          print('NewTourPlanScreen: [Products] Loaded ${_productOptions.length} products');
+        }
+      }
+    } catch (e) {
+      print('NewTourPlanScreen: [Products] Error loading products: $e');
+    }
+  }
+
+  Future<void> _loadCustomerTypeList() async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        
+        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+        }
+        
+        int? userId = userStore?.userDetail?.id;
+        String? serviceArea = userStore?.userDetail?.serviceArea;
+        if (userId == null || userId <= 0) {
+          print('NewTourPlanScreen: [CustomerType] userId is still null/0, skipping');
+          return;
+        }
+        
+        // Use serviceArea directly as the Type parameter (pass empty string if null)
+        final String typeParam = serviceArea ?? '';
+        print('NewTourPlanScreen: [CustomerType] Loading customer types with userId: $userId, type: "$typeParam"');
+        final List<CommonDropdownItem> items = await repo.getCustomerTypeList(userId, type: typeParam);
+        print('NewTourPlanScreen: [CustomerType] API returned ${items.length} items');
+        if (items.isNotEmpty) {
+          setState(() {
+            _customerTypeOptions.clear();
+            _customerTypeNameToId.clear();
+            for (final item in items) {
+              final String typeName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              if (typeName.isNotEmpty) {
+                _customerTypeOptions.add(typeName);
+                _customerTypeNameToId[typeName] = item.id;
+                print('NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
+              }
+            }
+          });
+          print('NewTourPlanScreen: [CustomerType] Loaded ${_customerTypeOptions.length} customer types');
+          print('NewTourPlanScreen: [CustomerType] Map: $_customerTypeNameToId');
+        }
+      }
+    } catch (e) {
+      print('NewTourPlanScreen: [CustomerType] Error loading customer types: $e');
     }
   }
 
@@ -1368,16 +1629,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: [Customers] Selected clusters: $_selectedClusters');
       print('NewTourPlanScreen: [Customers] Cluster IDs: ${selectedClusterIds.map((c) => c.clusterId).toList()}');
 
-      // If no clusters are selected, clear all customers and customer selections
-      if (selectedClusterIds.isEmpty) {
-        print('NewTourPlanScreen: [Customers] No clusters selected - clearing all customers');
+      // Get selected customer type ID
+      final int? customerTypeId = _selectedCustomerType != null && _customerTypeNameToId.containsKey(_selectedCustomerType!)
+          ? _customerTypeNameToId[_selectedCustomerType!]
+          : null;
+
+      // If no clusters are selected OR no customer type is selected, clear all customers
+      if (selectedClusterIds.isEmpty || customerTypeId == null) {
+        print('NewTourPlanScreen: [Customers] Cluster or CustomerType not selected - clearing customers');
+        print('NewTourPlanScreen: [Customers] Clusters empty: ${selectedClusterIds.isEmpty}, CustomerTypeId: $customerTypeId');
         setState(() {
           _customerOptions = [];
           _customerNameToId.clear();
           _customerIdToName.clear();
           _customerNameToClusterName.clear();
           _autoSelectedClusters.clear();
-          // Clear all customer selections when no clusters are selected
+          // Clear all customer selections when requirements not met
           for (final call in _calls) {
             call.customers = {};
           }
@@ -1391,7 +1658,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       // Use current plan date (yyyy-MM-dd)
       final String dateStr = _tourPlanDate.toIso8601String().split('T').first;
-
+      
       final req = GetMappedCustomersByEmployeeIdRequest(
         searchText: null,
         pageNumber: 0,
@@ -1418,6 +1685,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         clusterIds: selectedClusterIds,
         selectedEmployeeId: null,
         date: dateStr,
+        customerTypeId: customerTypeId,
       );
       print('NewTourPlanScreen: [Customers] Request body => ${req.toJson()}');
       final res = await repo.getMappedCustomersByEmployeeId(req);
@@ -1431,7 +1699,21 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }).toList();
         print('NewTourPlanScreen: [Customers] Sample => $sample');
       }
-      if (res.customers.isEmpty) return;
+      
+      // If API returns 0 customers, clear the list
+      if (res.customers.isEmpty) {
+        print('NewTourPlanScreen: [Customers] No customers returned - clearing list');
+        setState(() {
+          _customerOptions.clear();
+          _customerNameToId.clear();
+          _customerIdToName.clear();
+          _customerNameToClusterName.clear();
+          for (final call in _calls) {
+            call.customers = {};
+          }
+        });
+        return;
+      }
 
       setState(() {
         // Clear any old data so only new API values appear
@@ -1638,23 +1920,22 @@ class _CallData {
     bool? isExpanded,
     Set<String>? customers,
     String? purpose,
-    TextEditingController? productsCtrl,
+    Set<String>? products,
     TextEditingController? samplesCtrl,
     TextEditingController? remarksCtrl,
   })  : isExpanded = isExpanded ?? true,
         customers = customers ?? <String>{},
         purpose = purpose,
-        productsCtrl = productsCtrl ?? TextEditingController(),
+        products = products ?? <String>{},
         samplesCtrl = samplesCtrl ?? TextEditingController(),
         remarksCtrl = remarksCtrl ?? TextEditingController();
   bool? isExpanded;
   Set<String> customers = <String>{};
   String? purpose;
-  late final TextEditingController productsCtrl;
+  Set<String> products = <String>{};
   late final TextEditingController samplesCtrl;
   late final TextEditingController remarksCtrl;
   void dispose() {
-    productsCtrl.dispose();
     samplesCtrl.dispose();
     remarksCtrl.dispose();
   }
@@ -1680,10 +1961,12 @@ class _CallCard extends StatelessWidget {
     required this.data,
     required this.customerOptions,
     required this.purposeOptions,
+    required this.productOptions,
     this.customerError,
     this.purposeError,
     this.onCustomersChanged,
     this.onPurposeChanged,
+    this.onProductsChanged,
     this.onRemove,
     this.onToggleExpand,
   });
@@ -1692,10 +1975,12 @@ class _CallCard extends StatelessWidget {
   final _CallData data;
   final List<String> customerOptions;
   final List<String> purposeOptions;
+  final List<String> productOptions;
   final String? customerError;
   final String? purposeError;
   final ValueChanged<Set<String>>? onCustomersChanged;
   final ValueChanged<String?>? onPurposeChanged;
+  final ValueChanged<Set<String>>? onProductsChanged;
   final VoidCallback? onRemove;
   final VoidCallback? onToggleExpand;
 
@@ -1825,14 +2110,18 @@ class _CallCard extends StatelessWidget {
             const SizedBox(height: 12),
             _Labeled(
               label: 'Products to Discuss',
-              child: TextFormField(
-                controller: data.productsCtrl,
-                maxLines: 3,
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.black87,
-                ),
+              child: _MultiSelectDropdown(
+                options: productOptions,
+                selectedValues: data.products,
+                hintText: 'Select products',
+                emptyMessage: 'No products found',
+                onChanged: (set) {
+                  if (onProductsChanged != null) {
+                    onProductsChanged!(set);
+                  } else {
+                    data.products = set;
+                  }
+                },
               ),
             ),
             const SizedBox(height: 12),
@@ -1905,7 +2194,7 @@ class _CollapsedSummary extends StatelessWidget {
     final theme = Theme.of(context);
     String customers = data.customers.isEmpty ? 'No customer' : data.customers.join(', ');
     String purpose = data.purpose ?? 'No purpose';
-    final String products = data.productsCtrl.text.trim();
+    final String products = data.products.join(', ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
