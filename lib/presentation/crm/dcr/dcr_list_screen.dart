@@ -29,7 +29,8 @@ class DcrListScreen extends StatefulWidget {
 }
 
 class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  DateTime _date = DateTime.now();
+  // Initialize to first day of current month for month-wise filtering
+  DateTime _date = DateTime(DateTime.now().year, DateTime.now().month, 1);
   String? _status;
   String? _employee; // managers only
   List<UnifiedDcrItem> _unifiedItems = const [];
@@ -151,8 +152,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
         return;
       }
 
-      final DateTime start = DateTime(_date.year, _date.month, _date.day);
-      final DateTime end = start;
+      // Calculate first and last day of the selected month
+      final DateTime start = DateTime(_date.year, _date.month, 1); // First day of month
+      final DateTime end = DateTime(_date.year, _date.month + 1, 0); // Last day of month
       final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
 
       if (dcrRepo == null) {
@@ -322,7 +324,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       _status = null;
       _selectedTransactionTypes = {'DCR', 'Expense'}; // Reset to both selected
       // Preserve employee filter selection even when clearing
-      _date = DateTime.now(); // Reset date to today
+      final now = DateTime.now();
+      _date = DateTime(now.year, now.month, 1); // Reset to first day of current month
     });
     await _load();
     _showToast(
@@ -334,10 +337,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
 
   // Check if any filters are active
   bool _hasActiveFilters() {
-    final DateTime today = DateTime.now();
-    final bool isDateFiltered = !(_date.year == today.year && 
-                                 _date.month == today.month && 
-                                 _date.day == today.day);
+    final DateTime now = DateTime.now();
+    final bool isDateFiltered = !(_date.year == now.year && _date.month == now.month);
     final bool isTransactionTypeFiltered = _selectedTransactionTypes.length != 2;
     return _status != null || _employee != null || isDateFiltered || isTransactionTypeFiltered;
   }
@@ -1171,33 +1172,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                   label: _formatDate(_tempDate),
                                   isActive: !_isToday(_tempDate),
                                   onTap: () async {
-                                    final DateTime? picked = await showDatePicker(
-                                      context: context,
-                                      initialDate: _tempDate,
-                                      firstDate: DateTime(2020, 1, 1),
-                                      lastDate: DateTime(2035, 12, 31),
-                                      builder: (context, child) {
-                                        final ThemeData base = Theme.of(context);
-                                        return Theme(
-                                          data: base.copyWith(
-                                            colorScheme: ColorScheme.light(
-                                              primary: tealGreen,
-                                              onPrimary: Colors.white,
-                                              onSurface: Colors.grey.shade900,
-                                            ),
-                                            textButtonTheme: TextButtonThemeData(
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: tealGreen,
-                                              ),
-                                            ),
-                                          ),
-                                          child: child!,
-                                        );
-                                      },
-                                    );
+                                    // Show month/year picker
+                                    final DateTime? picked = await _showMonthYearPicker(context, _tempDate, tealGreen);
                                     if (picked != null) {
                                       setModalState(() {
-                                        _tempDate = DateTime(picked.year, picked.month, picked.day);
+                                        // Set to first day of selected month
+                                        _tempDate = DateTime(picked.year, picked.month, 1);
                                       });
                                     }
                                   },
@@ -1370,12 +1350,196 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
 
   static String _formatDate(DateTime d) {
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
+    return '${months[d.month - 1]} ${d.year}'; // Month and year only
   }
 
   static bool _isToday(DateTime d) {
     final DateTime now = DateTime.now();
-    return now.year == d.year && now.month == d.month && now.day == d.day;
+    return now.year == d.year && now.month == d.month; // Check month only
+  }
+
+  // Show month/year picker
+  Future<DateTime?> _showMonthYearPicker(BuildContext context, DateTime initialDate, Color tealGreen) async {
+    int selectedYear = initialDate.year;
+    int selectedMonth = initialDate.month;
+    
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+    final bool isTablet = MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width < 1024;
+    
+    return showModalBottomSheet<DateTime>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    isMobile ? 20 : 24,
+                    8,
+                    isMobile ? 20 : 24,
+                    isMobile ? 20 : 24,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8),
+                      // Year selector
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                selectedYear--;
+                              });
+                            },
+                            icon: Icon(
+                              Icons.chevron_left,
+                              color: tealGreen,
+                              size: isMobile ? 24 : 28,
+                            ),
+                            padding: EdgeInsets.all(isMobile ? 8 : 12),
+                            constraints: const BoxConstraints(),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            '$selectedYear',
+                            style: GoogleFonts.inter(
+                              fontSize: isMobile ? 20 : 24,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey[900],
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                selectedYear++;
+                              });
+                            },
+                            icon: Icon(
+                              Icons.chevron_right,
+                              color: tealGreen,
+                              size: isMobile ? 24 : 28,
+                            ),
+                            padding: EdgeInsets.all(isMobile ? 8 : 12),
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: isMobile ? 20 : 24),
+                      // Month grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double spacing = isMobile ? 10 : 12;
+                          final double crossAxisSpacing = spacing;
+                          final double mainAxisSpacing = spacing;
+                          final int crossAxisCount = 3;
+                          final double availableWidth = constraints.maxWidth;
+                          final double itemWidth = (availableWidth - (crossAxisSpacing * (crossAxisCount - 1))) / crossAxisCount;
+                          final double itemHeight = isMobile ? 48 : 56;
+                          
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: crossAxisSpacing,
+                              mainAxisSpacing: mainAxisSpacing,
+                              childAspectRatio: itemWidth / itemHeight,
+                            ),
+                            itemCount: 12,
+                            itemBuilder: (context, index) {
+                              final month = index + 1;
+                              final isSelected = selectedMonth == month;
+                              return OutlinedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    selectedMonth = month;
+                                  });
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(
+                                    color: isSelected ? tealGreen : Colors.grey.shade300,
+                                    width: isSelected ? 1.5 : 1,
+                                  ),
+                                  backgroundColor: isSelected ? tealGreen.withOpacity(0.1) : Colors.white,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isMobile ? 8 : 12,
+                                    vertical: isMobile ? 12 : 16,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index],
+                                    style: GoogleFonts.inter(
+                                      fontSize: isMobile ? 14 : 16,
+                                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                      color: isSelected ? tealGreen : Colors.grey[900],
+                                      letterSpacing: 0.2,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      SizedBox(height: isMobile ? 24 : 28),
+                      // Confirm button
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () {
+                            Navigator.of(context).pop(DateTime(selectedYear, selectedMonth, 1));
+                          },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: tealGreen,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              vertical: isMobile ? 16 : 18,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            'Select',
+                            style: GoogleFonts.inter(
+                              fontSize: isMobile ? 16 : 18,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   // Helper method to show toast message at the top

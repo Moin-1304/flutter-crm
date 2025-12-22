@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:boilerplate/core/widgets/app_buttons.dart';
 import 'package:boilerplate/core/widgets/app_form_fields.dart';
 import 'package:boilerplate/core/widgets/app_dropdowns.dart';
@@ -64,9 +65,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   int? _loadedTypeOfWorkId; // Store typeOfWorkId from loaded DCR entry for editing
   
   final TextEditingController _durationCtrl = TextEditingController();
-  final TextEditingController _productsCtrl = TextEditingController();
   final TextEditingController _samplesCtrl = TextEditingController();
   final TextEditingController _discussionCtrl = TextEditingController();
+  
+  // Products to Discuss - Multi-select dropdown
+  List<String> _productOptions = [];
+  final Map<String, int> _productNameToId = <String, int>{};
+  Set<String> _selectedProducts = <String>{};
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now(); // Initialize to current time
   Position? _position;
@@ -74,6 +79,20 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   String? _customerErrorText;
   String? _purposeErrorText;
   String? _durationErrorText;
+  String? _productsErrorText;
+  
+  // Service Engineer specific fields
+  bool _isServiceEngineer = false;
+  List<String> _instrumentOptions = [];
+  final Map<String, int> _instrumentNameToId = <String, int>{};
+  Set<String> _selectedInstruments = <String>{};
+  String? _instrumentsErrorText;
+  final TextEditingController _complaintCtrl = TextEditingController();
+  final TextEditingController _actionTakenCtrl = TextEditingController();
+  final TextEditingController _resultCtrl = TextEditingController();
+  String? _complaintStatus; // "Resolved" or "Not Resolved"
+  DateTime? _complaintDate;
+  final TextEditingController _complaintRemarksCtrl = TextEditingController();
   
   // Store loaded entry for preserving detailId and clusterId during updates
   DcrEntry? _loadedEntry;
@@ -105,7 +124,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         _purpose = e.purposeOfVisit.trim().isNotEmpty ? e.purposeOfVisit : null;
       }
       _durationCtrl.text = e.callDurationMinutes.toString();
-      _productsCtrl.text = e.productsDiscussed;
+      // Parse products from comma-separated string (if any)
+      if (e.productsDiscussed.trim().isNotEmpty) {
+        _selectedProducts = e.productsDiscussed.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty).toSet();
+      }
       _samplesCtrl.text = e.samplesDistributed;
       _discussionCtrl.text = e.keyDiscussionPoints;
       _date = e.date;
@@ -126,6 +148,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       }
     }
 
+    // Check if user is Service Engineer
+    _checkServiceEngineer();
+    
     // Load lists first so when details arrive we can map reliably
     // IMPORTANT: Load typeOfWork list FIRST if we have initialTypeOfWorkId to resolve purpose immediately
     if (widget.initialTypeOfWorkId != null && widget.initialTypeOfWorkId! > 0) {
@@ -134,6 +159,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         // Then load other lists in parallel
         Future.wait([
           _loadClusterList(),
+          _loadProductsList(),
           _initLocation(),
         ]).whenComplete(() {
           // Load customers after clusters are loaded (if cluster is already selected)
@@ -148,6 +174,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       Future.wait([
         _loadClusterList(),
         _loadTypeOfWorkList(),
+        _loadProductsList(),
         _initLocation(),
       ]).whenComplete(() {
         // Load customers after clusters are loaded (if cluster is already selected)
@@ -155,6 +182,77 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
           _loadMappedCustomers();
         }
         _loadDcrDetails();
+      });
+    }
+  }
+  
+  void _checkServiceEngineer() {
+    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final String? serviceArea = userStore?.userDetail?.serviceArea;
+    _isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    print('DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
+  }
+  
+  Future<void> _loadInstrumentsList() async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        
+        // Wait for user to be loaded
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+        }
+        
+        int? userId = userStore?.userDetail?.id;
+        if (userId == null || userId <= 0) {
+          print('DcrEntryScreen: [Instruments] userId is null/0, skipping instruments load');
+          return;
+        }
+        
+        // Get selected customer ID - instruments are loaded based on selected customer
+        int? customerId = _customerNameToId[_customer];
+        if (customerId == null || customerId <= 0) {
+          print('DcrEntryScreen: [Instruments] customerId is null/0, skipping instruments load');
+          setState(() {
+            _instrumentOptions.clear();
+            _instrumentNameToId.clear();
+          });
+          return;
+        }
+        
+        print('DcrEntryScreen: [Instruments] Loading instruments with userId: $userId, customerId: $customerId');
+        final List<CommonDropdownItem> items = await repo.getMappedInstrumentsList(userId, customerId);
+        
+        if (items.isNotEmpty) {
+          setState(() {
+            _instrumentOptions.clear();
+            _instrumentNameToId.clear();
+            for (final item in items) {
+              final String instrumentName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              if (instrumentName.isNotEmpty) {
+                _instrumentOptions.add(instrumentName);
+                _instrumentNameToId[instrumentName] = item.id;
+              }
+            }
+            _instrumentOptions.sort();
+            print('DcrEntryScreen: [Instruments] Loaded ${_instrumentOptions.length} instruments');
+          });
+        } else {
+          print('DcrEntryScreen: [Instruments] No instruments returned from API');
+          setState(() {
+            _instrumentOptions.clear();
+            _instrumentNameToId.clear();
+          });
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [Instruments] Error loading instruments: $e');
+      setState(() {
+        _instrumentOptions.clear();
+        _instrumentNameToId.clear();
       });
     }
   }
@@ -203,6 +301,69 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       }
     } catch (e) {
       // Silent fail
+    }
+  }
+
+  Future<void> _loadProductsList() async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        
+        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+        }
+        
+        int? userId = userStore?.userDetail?.id;
+        int? employeeId = userStore?.userDetail?.employeeId;
+        String? serviceArea = userStore?.userDetail?.serviceArea;
+        
+        if (userId == null || userId <= 0) {
+          print('DcrEntryScreen: [Products] userId is still null/0, skipping products load');
+          return;
+        }
+        
+        // For Service Engineer: use employeeId as UserId
+        // For others: use userId as UserId
+        int? actualUserId = userId;
+        
+        if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+          if (employeeId != null && employeeId > 0) {
+            actualUserId = employeeId;
+            print('DcrEntryScreen: [Products] Service Engineer detected - using employeeId: $actualUserId as UserId');
+          } else {
+            print('DcrEntryScreen: [Products] Service Engineer but employeeId is null/0, using userId: $actualUserId');
+          }
+        } else {
+          print('DcrEntryScreen: [Products] Non-Service Engineer - using userId: $actualUserId');
+        }
+        
+        // IsFromAMCUser is always 0 in the request, only UserId is dynamic
+        print('DcrEntryScreen: [Products] Loading products with UserId: $actualUserId');
+        final List<CommonDropdownItem> items = await repo.getDcrProductsList(actualUserId);
+        if (items.isNotEmpty) {
+          setState(() {
+            _productOptions.clear();
+            _productNameToId.clear();
+            for (final item in items) {
+              final String productName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              if (productName.isNotEmpty) {
+                _productOptions.add(productName);
+                _productNameToId[productName] = item.id;
+              }
+            }
+            _productOptions.sort();
+            print('DcrEntryScreen: [Products] Loaded ${_productOptions.length} products');
+          });
+        } else {
+          print('DcrEntryScreen: [Products] No products returned from API');
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [Products] Error loading products: $e');
     }
   }
 
@@ -388,20 +549,55 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final List<CommonDropdownItem> items = await repo.getTypeOfWorkList();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        
+        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+          print('DcrEntryScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
+        }
+        
+        int? userId = userStore?.userDetail?.id;
+        String? serviceArea = userStore?.userDetail?.serviceArea;
+        
+        print('DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea"');
+        
+        if (userId == null || userId <= 0) {
+          print('DcrEntryScreen: [PurposeOfVisit] userId invalid, skipping');
+          return;
+        }
+        
+        // Determine the text parameter based on serviceArea
+        // Only "Service Engineer" gets "ServiceEng PurposeVisit"
+        // All others (including null/empty serviceArea) get "Salesrep PurposeVisit"
+        String purposeText;
+        final String serviceAreaTrimmed = (serviceArea ?? '').trim();
+        
+        if (serviceAreaTrimmed == 'Service Engineer') {
+          purposeText = 'ServiceEng PurposeVisit';
+        } else {
+          // All other users (Sales, Manager, Field Coordinator, empty, null, etc.)
+          purposeText = 'Salesrep PurposeVisit';
+        }
+        
+        print('DcrEntryScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
+        final List<CommonDropdownItem> items = await repo.getPurposeOfVisitList(userId, purposeText);
+        print('DcrEntryScreen: [PurposeOfVisit] API returned ${items.length} items');
         final works = items
             .map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim())
             .where((s) => s.isNotEmpty)
             .toSet();
         if (works.isNotEmpty) {
           setState(() {
-            _purposeOptions = {..._purposeOptions, ...works}.toList();
+            _purposeOptions = works.toList();
             // map names to ids for submit (same logic as tour plan form - line 828-833)
             for (final item in items) {
               final String key = (item.text.isNotEmpty ? item.text : item.typeText).trim();
               if (key.isNotEmpty) {
                 _typeOfWorkNameToId[key] = item.id;
-                _typeOfWorkIdToName[item.id] = key; // Reverse mapping for pre-filling (same as tour plan form line 832)
+                _typeOfWorkIdToName[item.id] = key; // Reverse mapping for pre-filling
               }
             }
             
@@ -435,13 +631,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
             print('DcrEntryScreen: Purpose options count: ${_purposeOptions.length}');
             print('DcrEntryScreen: Purpose is in options: ${_purpose != null && _purposeOptions.contains(_purpose)}');
           });
-          
-          // Force a rebuild after resolving purpose to ensure UI updates
-          // The setState is already called above, but we increment _purposeVersion to force dropdown rebuild
+        } else {
+          print('DcrEntryScreen: [PurposeOfVisit] No purpose options returned from API');
         }
       }
     } catch (e) {
-      print('DcrEntryScreen: Error in _loadTypeOfWorkList: $e');
+      print('DcrEntryScreen: [PurposeOfVisit] Error loading purpose of visit: $e');
       // Silent fail
     }
   }
@@ -508,7 +703,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
               _purpose = dcrEntry.purposeOfVisit.isNotEmpty ? dcrEntry.purposeOfVisit : _purpose;
             }
             _durationCtrl.text = dcrEntry.callDurationMinutes.toString();
-            _productsCtrl.text = dcrEntry.productsDiscussed;
+            // Parse products from comma-separated string
+            if (dcrEntry.productsDiscussed.trim().isNotEmpty) {
+              _selectedProducts = dcrEntry.productsDiscussed.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty).toSet();
+            } else {
+              _selectedProducts.clear();
+            }
             _samplesCtrl.text = dcrEntry.samplesDistributed;
             _discussionCtrl.text = dcrEntry.keyDiscussionPoints;
             _date = dcrEntry.date;
@@ -595,7 +795,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
           print('  _customer: $_customer');
           print('  _purpose: $_purpose');
           print('  _durationCtrl.text: ${_durationCtrl.text}');
-          print('  _productsCtrl.text: ${_productsCtrl.text}');
+          print('  Selected products: $_selectedProducts');
           print('  _samplesCtrl.text: ${_samplesCtrl.text}');
           print('  _discussionCtrl.text: ${_discussionCtrl.text}');
           print('  _date: $_date');
@@ -743,65 +943,46 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              'DCR Details',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade800,
-                                fontSize: MediaQuery.of(context).size.width < 600 ? 20 : null,
+                            // 1. Date
+                            _LabeledField(
+                              label: 'Date',
+                              child: _DateField(
+                                initialDate: _date,
+                                onChanged: (d) => setState(() => _date = d),
                               ),
-                            ),
-                            const SizedBox(height: 20),
-                            
-                            // Date and Time row
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final bool stack = constraints.maxWidth < 500;
-                                final dateField = _LabeledField(
-                                  label: 'DCR Date',
-                                  child: _DateField(
-                                    initialDate: _date,
-                                    onChanged: (d) => setState(() => _date = d),
-                                  ),
-                                );
-                                final timeField = _LabeledField(
-                                  label: 'Time of Visit',
-                                  child: _TimeField(
-                                    initial: _time,
-                                    onChanged: (t) => setState(() => _time = t),
-                                  ),
-                                );
-                                
-                                if (stack) {
-                                  return Column(
-                                    children: [
-                                      dateField,
-                                      const SizedBox(height: 16),
-                                      timeField,
-                                    ],
-                                  );
-                                }
-                                return Row(
-                                  children: [
-                                    Expanded(child: dateField),
-                                    const SizedBox(width: 16),
-                                    Expanded(child: timeField),
-                                  ],
-                                );
-                              },
                             ),
                             
                             const SizedBox(height: 16),
                             
-                            // Cluster/Locality
+                            // 2. Employee (read-only)
                             _LabeledField(
-                              label: 'Cluster/city',
+                              label: 'Employee',
+                              child: Builder(
+                                builder: (context) {
+                                  final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+                                  final String employeeName = userStore?.userDetail?.employeeName ?? '';
+                                  return TextFormField(
+                                    readOnly: true,
+                                    initialValue: employeeName,
+                                    decoration: const InputDecoration(
+                                      hintText: 'Employee name',
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 16),
+                            
+                            // 3. Cluster / City *
+                            _LabeledField(
+                              label: 'Cluster / City',
                               required: true,
                               errorText: _clusterErrorText,
                               child: SearchableDropdown(
                                 options: _clusters,
                                 value: _cluster,
-                                hintText: 'Select cluster',
+                                hintText: 'Type to search cluster/city...',
                                 searchHintText: 'Search cluster...',
                                 hasError: _clusterErrorText != null,
                                 onChanged: (v) {
@@ -820,7 +1001,30 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                             
                             const SizedBox(height: 16),
                             
-                            // Customer
+                            // 4. Time of Visit
+                            _LabeledField(
+                              label: 'Time of Visit',
+                              child: _TimeField(
+                                initial: _time,
+                                onChanged: (t) => setState(() => _time = t),
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 24),
+                            
+                            // 5. Actual Call Details (section header)
+                            Text(
+                              'Actual Call Details',
+                              style: GoogleFonts.inter(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF4db1b3),
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 20),
+                            
+                            // 6. Customer *
                             _LabeledField(
                               label: 'Customer',
                               required: true,
@@ -828,119 +1032,250 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                               child: SearchableDropdown(
                                 options: _customerOptions,
                                 value: _customer,
-                                hintText: 'Select customer',
+                                hintText: '-- Select Customer --',
                                 searchHintText: 'Search customer...',
                                 hasError: _customerErrorText != null,
-                                onChanged: (v) => setState(() {
-                                  _customer = v;
-                                  _customerErrorText = null;
-                                }),
+                                onChanged: (v) {
+                                  setState(() {
+                                    _customer = v;
+                                    _customerErrorText = null;
+                                    // Clear instruments when customer changes
+                                    if (_isServiceEngineer) {
+                                      _selectedInstruments.clear();
+                                      _instrumentOptions.clear();
+                                      _instrumentNameToId.clear();
+                                    }
+                                  });
+                                  // Load instruments for selected customer (Service Engineer only)
+                                  if (_isServiceEngineer && v != null && v.trim().isNotEmpty) {
+                                    _loadInstrumentsList();
+                                  }
+                                },
                               ),
                             ),
                             
                             const SizedBox(height: 16),
                             
-                            // Purpose and Duration row
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final bool stack = constraints.maxWidth < 500;
-                                final purpose = _LabeledField(
-                                  label: 'Purpose of Visit',
-                                  required: true,
-                                  errorText: _purposeErrorText,
-                                  child: SearchableDropdown(
-                                    key: ValueKey('purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'), // Force rebuild when purpose, options, or version changes
-                                    options: _purposeOptions,
-                                    value: _purpose,
-                                    hintText: 'Select purpose',
-                                    searchHintText: 'Search purpose...',
-                                    hasError: _purposeErrorText != null,
-                                    onChanged: (v) {
-                                      print('DcrEntryScreen: Purpose changed to: "$v"');
+                            // 7. Type of Visit *
+                            _LabeledField(
+                              label: 'Type of Visit',
+                              required: true,
+                              errorText: _purposeErrorText,
+                              child: SearchableDropdown(
+                                key: ValueKey('purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
+                                options: _purposeOptions,
+                                value: _purpose,
+                                hintText: '-- Select Visit Type --',
+                                searchHintText: 'Search purpose...',
+                                hasError: _purposeErrorText != null,
+                                onChanged: (v) {
+                                  setState(() {
+                                    _purpose = v;
+                                    _purposeErrorText = null;
+                                  });
+                                },
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 16),
+                            
+                            // 8. Products Discussed *
+                            _LabeledField(
+                              label: 'Products Discussed',
+                              required: true,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _MultiSelectDropdown(
+                                    options: _productOptions,
+                                    selectedValues: _selectedProducts,
+                                    hintText: 'Select Products',
+                                    onChanged: (Set<String> selected) {
                                       setState(() {
-                                        _purpose = v;
-                                        _purposeErrorText = null;
-                                        print('DcrEntryScreen: Purpose updated in state: "$_purpose"');
+                                        _selectedProducts = selected;
+                                        if (selected.isNotEmpty) {
+                                          _productsErrorText = null;
+                                        }
                                       });
                                     },
                                   ),
-                                );
-                                final duration = _LabeledField(
-                                  label: 'Call Duration (minutes) (optional)',
-                                  errorText: _durationErrorText,
-                                  child: TextFormField(
-                                    controller: _durationCtrl,
-                                    keyboardType: TextInputType.number,
-                                    decoration: InputDecoration(
-                                      hintText: 'e.g. 15',
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: BorderSide(color: _durationErrorText != null ? Colors.red.shade400 : Colors.grey.shade300, width: 1),
+                                  if (_productsErrorText != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _productsErrorText!,
+                                      style: TextStyle(
+                                        color: Colors.red[700],
+                                        fontSize: 12,
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: BorderSide(color: _durationErrorText != null ? Colors.red.shade400 : const Color(0xFF4db1b3), width: 2),
-                                      ),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                                     ),
-                                    onChanged: (_) => setState(() => _durationErrorText = null),
-                                  ),
-                                );
-                                
-                                if (stack) {
-                                  return Column(
-                                    children: [
-                                      purpose,
-                                      const SizedBox(height: 16),
-                                      duration,
-                                    ],
-                                  );
-                                }
-                                return Row(
-                                  children: [
-                                    Expanded(child: purpose),
-                                    const SizedBox(width: 16),
-                                    Expanded(child: duration),
                                   ],
-                                );
-                              },
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // Products Discussed
-                            _LabeledField(
-                              label: 'Products to Discuss (optional)',
-                              child: TextFormField(
-                                controller: _productsCtrl,
-                                maxLines: 4,
-                                decoration: const InputDecoration(
-                                  hintText: 'Type Product details',
-                                ),
+                                ],
                               ),
                             ),
                             
+                            // 9. Mapped Instruments * (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Mapped Instruments',
+                                required: true,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _MultiSelectDropdown(
+                                      options: _instrumentOptions,
+                                      selectedValues: _selectedInstruments,
+                                      hintText: 'Mapped Instruments',
+                                      onChanged: (Set<String> selected) {
+                                        setState(() {
+                                          _selectedInstruments = selected;
+                                          if (selected.isNotEmpty) {
+                                            _instrumentsErrorText = null;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    if (_instrumentsErrorText != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _instrumentsErrorText!,
+                                        style: TextStyle(
+                                          color: Colors.red[700],
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                            
                             const SizedBox(height: 16),
                             
-                            // Samples Distributed
+                            // 10. Call Duration (minutes)
                             _LabeledField(
-                              label: 'Samples to Distribute (optional)',
+                              label: 'Call Duration (minutes)',
+                              errorText: _durationErrorText,
                               child: TextFormField(
-                                controller: _samplesCtrl,
-                                maxLines: 4,
-                                decoration: const InputDecoration(
-                                  hintText: 'Type sample details',
+                                controller: _durationCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  hintText: 'Enter duration in minutes',
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(color: _durationErrorText != null ? Colors.red.shade400 : Colors.grey.shade300, width: 1),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(color: _durationErrorText != null ? Colors.red.shade400 : const Color(0xFF4db1b3), width: 2),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                                 ),
+                                onChanged: (_) => setState(() => _durationErrorText = null),
                               ),
                             ),
                             
+                            // 11. Complaint (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Complaint',
+                                child: TextFormField(
+                                  controller: _complaintCtrl,
+                                  maxLines: 4,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Enter complaint details',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            
+                            // 12. Action Taken (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Action Taken',
+                                child: TextFormField(
+                                  controller: _actionTakenCtrl,
+                                  maxLines: 4,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Enter action taken',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            
+                            // 13. Result (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Result',
+                                child: TextFormField(
+                                  controller: _resultCtrl,
+                                  maxLines: 4,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Enter result',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            
+                            // 14. Complaint Status (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Complaint Status',
+                                child: SingleSelectDropdown(
+                                  options: const ['Resolved', 'Not Resolved'],
+                                  value: _complaintStatus,
+                                  hintText: '-- Select Status --',
+                                  onChanged: (String? value) {
+                                    setState(() {
+                                      _complaintStatus = value;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                            
+                            // 15. Complaint Date (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Complaint Date',
+                                child: _DateField(
+                                  initialDate: _complaintDate ?? DateTime.now(),
+                                  onChanged: (DateTime date) {
+                                    setState(() {
+                                      _complaintDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                            
+                            // 16. Complaint Remarks (Service Engineer only)
+                            if (_isServiceEngineer) ...[
+                              const SizedBox(height: 16),
+                              _LabeledField(
+                                label: 'Complaint Remarks',
+                                child: TextFormField(
+                                  controller: _complaintRemarksCtrl,
+                                  maxLines: 4,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Enter complaint remarks',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            
                             const SizedBox(height: 16),
                             
-                            // Key Discussion Points
+                            // 17. Key Discussion Points
                             _LabeledField(
-                              label: 'Notes/Remarks (optional)',
+                              label: 'Key Discussion Points',
                               child: TextFormField(
                                 controller: _discussionCtrl,
                                 maxLines: 4,
@@ -950,9 +1285,35 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                               ),
                             ),
                             
+                            const SizedBox(height: 16),
+                            
+                            // 18. Co-Visit
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: _coVisit,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _coVisit = value ?? false;
+                                    });
+                                  },
+                                  activeColor: const Color(0xFF4db1b3),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Co-Visit',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: Colors.grey[900],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            
                             const SizedBox(height: 20),
-
-                            // Location picker (moved to bottom) - responsive layout
+                            
+                            // Location picker - responsive layout
                             _LabeledField(
                               label: 'Location (optional)',
                               child: LayoutBuilder(
@@ -1089,19 +1450,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                               ),
                             ),
                             
-                            // Co Visit checkbox
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: _coVisit,
-                                  onChanged: (value) => setState(() => _coVisit = value ?? false),
-                                  activeColor: tealGreen,
-                                ),
-                                const Text('Co Visit'),
-                              ],
-                            ),
-                            
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 20),
                             
                             // Action buttons - show in one row
                             Row(
@@ -1459,6 +1808,21 @@ extension on _DcrEntryScreenState {
       }
     }
 
+    String? productsError;
+    if (_selectedProducts.isEmpty) {
+      productsError = 'Please select at least one product to discuss';
+      isValid = false;
+      firstMessage ??= 'Select at least one product to discuss';
+    }
+
+    // Service Engineer specific validation
+    String? instrumentsError;
+    if (_isServiceEngineer && _selectedInstruments.isEmpty) {
+      instrumentsError = 'Please select at least one mapped instrument';
+      isValid = false;
+      firstMessage ??= 'Select at least one mapped instrument';
+    }
+
     if (forSubmit && !_atLocation) {
       isValid = false;
       firstMessage ??= 'Mark your visit as "At location" before submitting';
@@ -1469,6 +1833,8 @@ extension on _DcrEntryScreenState {
       _customerErrorText = customerError;
       _purposeErrorText = purposeError;
       _durationErrorText = durationError;
+      _productsErrorText = productsError;
+      _instrumentsErrorText = instrumentsError;
     });
 
     if (!isValid) {
@@ -1565,7 +1931,7 @@ extension on _DcrEntryScreenState {
         customer: _customer!,
         purposeOfVisit: _purpose!,
         callDurationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 0,
-        productsDiscussed: _productsCtrl.text.trim(),
+        productsDiscussed: _selectedProducts.join(', '),
         samplesDistributed: _samplesCtrl.text.trim(),
         keyDiscussionPoints: _discussionCtrl.text.trim(),
         linkedTourPlanId: widget.initialEntry?.linkedTourPlanId,
@@ -1581,6 +1947,14 @@ extension on _DcrEntryScreenState {
         bizunit: userDetail.sbuId,
         latitude: _position?.latitude,
         longitude: _position?.longitude,
+        // Service Engineer specific fields
+        mappedInstruments: _isServiceEngineer ? _selectedInstruments.join(', ') : null,
+        complaint: _isServiceEngineer ? _complaintCtrl.text.trim() : null,
+        actionTaken: _isServiceEngineer ? _actionTakenCtrl.text.trim() : null,
+        result: _isServiceEngineer ? _resultCtrl.text.trim() : null,
+        complaintStatus: _isServiceEngineer ? _complaintStatus : null,
+        complaintDate: _isServiceEngineer ? _complaintDate : null,
+        complaintRemarks: _isServiceEngineer ? _complaintRemarksCtrl.text.trim() : null,
       );
       
       print('Creating DCR: ${submit ? "Submit" : "Draft"}');
@@ -1601,7 +1975,7 @@ extension on _DcrEntryScreenState {
           customer: _customer!,
           purposeOfVisit: _purpose!,
           callDurationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 0,
-          productsDiscussed: _productsCtrl.text.trim(),
+          productsDiscussed: _selectedProducts.join(', '),
           samplesDistributed: _samplesCtrl.text.trim(),
           keyDiscussionPoints: _discussionCtrl.text.trim(),
           status: submit ? DcrStatus.submitted : DcrStatus.draft,
@@ -1708,6 +2082,475 @@ extension on _DcrEntryScreenState {
         duration: const Duration(seconds: 3),
       );
     });
+  }
+}
+
+// Multi-select dropdown widget for Products to Discuss
+class _MultiSelectDropdown extends StatefulWidget {
+  const _MultiSelectDropdown({
+    required this.options,
+    required this.selectedValues,
+    required this.onChanged,
+    this.hintText,
+    this.isLoading = false,
+    this.onBeforeOpen,
+    this.emptyMessage,
+  });
+  final List<String> options;
+  final Set<String> selectedValues;
+  final ValueChanged<Set<String>> onChanged;
+  final String? hintText;
+  final bool isLoading;
+  final Future<void> Function()? onBeforeOpen;
+  final String? emptyMessage;
+
+  @override
+  State<_MultiSelectDropdown> createState() => _MultiSelectDropdownState();
+}
+
+// Shared static set to track all open dropdown overlays across all dropdown instances
+final Set<OverlayEntry> _dcrSharedOpenOverlays = {};
+
+class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
+  final LayerLink _link = LayerLink();
+  final FocusNode _displayFocusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode();
+  OverlayEntry? _entry;
+  Set<String> _selected = <String>{};
+  String _query = '';
+  final TextEditingController _searchCtrl = TextEditingController();
+  final TextEditingController _displayController = TextEditingController();
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    _searchCtrl.dispose();
+    _displayController.dispose();
+    _displayFocusNode.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = {...widget.selectedValues};
+    _updateDisplayText();
+    _displayFocusNode.canRequestFocus = false;
+    _searchFocusNode.unfocus();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MultiSelectDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!setEquals(_selected, widget.selectedValues)) {
+      _selected = {...widget.selectedValues};
+    }
+    _updateDisplayText();
+  }
+
+  void _updateDisplayText() {
+    final Set<String> currentValues = setEquals(_selected, widget.selectedValues) 
+        ? _selected 
+        : widget.selectedValues;
+    final String display = _summary(currentValues);
+    if (_displayController.text != display) {
+      _displayController.text = display;
+      _displayController.selection = TextSelection.collapsed(offset: display.length);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!setEquals(_selected, widget.selectedValues)) {
+      _selected = {...widget.selectedValues};
+    }
+    
+    final String display = _summary(widget.selectedValues);
+    if (_displayController.text != display) {
+      _displayController.text = display;
+      _displayController.selection = TextSelection.collapsed(offset: display.length);
+    }
+    
+    return CompositedTransformTarget(
+      link: _link,
+      child: GestureDetector(
+        onTap: () async => _toggleOverlay(),
+        behavior: HitTestBehavior.opaque,
+        child: AbsorbPointer(
+          child: TextFormField(
+            readOnly: true,
+            controller: _displayController,
+            focusNode: _displayFocusNode,
+            enableInteractiveSelection: false,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: Colors.black87,
+            ),
+            decoration: InputDecoration(
+              hintText: display.isEmpty
+                  ? (widget.isLoading ? 'Loading...' : (widget.hintText ?? 'Select'))
+                  : null,
+              hintStyle: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey[500],
+              ),
+              suffixIcon: widget.isLoading
+                  ? Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    )
+                  : const Icon(Icons.expand_more),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleOverlay() async {
+    _displayFocusNode.unfocus();
+    _searchFocusNode.unfocus();
+    FocusScope.of(context).unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    
+    if (_entry == null) {
+      if (widget.onBeforeOpen != null) {
+        await widget.onBeforeOpen!();
+      }
+      if (!mounted) return;
+      if (widget.isLoading) {
+        return;
+      }
+      _showOverlay();
+    } else {
+      _removeOverlay();
+    }
+  }
+
+  void _showOverlay() {
+    for (final overlay in _dcrSharedOpenOverlays.toList()) {
+      overlay.remove();
+    }
+    _dcrSharedOpenOverlays.clear();
+    
+    _displayFocusNode.unfocus();
+    _searchFocusNode.unfocus();
+    FocusScope.of(context).unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    
+    _selected = {...widget.selectedValues};
+    _updateDisplayText();
+    final RenderBox box = context.findRenderObject() as RenderBox;
+    final Size size = box.size;
+    _entry = OverlayEntry(
+      builder: (context) {
+        final theme = Theme.of(context);
+        final bool isMobile = MediaQuery.of(context).size.width < 600;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(onTap: _removeOverlay, behavior: HitTestBehavior.translucent),
+            ),
+            CompositedTransformFollower(
+              link: _link,
+              showWhenUnlinked: false,
+              offset: Offset(0, size.height + 8),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: size.width,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 18, offset: const Offset(0, 6)),
+                    ],
+                    border: Border.all(color: Colors.black.withOpacity(.06)),
+                  ),
+                  child: Theme(
+                    data: theme.copyWith(
+                      checkboxTheme: CheckboxThemeData(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        side: BorderSide(color: Colors.black.withOpacity(.35), width: 1.4),
+                        fillColor: WidgetStateProperty.resolveWith((states) => const Color(0xFF4db1b3)),
+                      ),
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 360),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              isMobile ? 12 : 12, 
+                              isMobile ? 12 : 10, 
+                              isMobile ? 12 : 12, 
+                              isMobile ? 10 : 8
+                            ),
+                            child: TextField(
+                              controller: _searchCtrl,
+                              focusNode: _searchFocusNode,
+                              autofocus: false,
+                              style: GoogleFonts.inter(
+                                color: Colors.black87,
+                                fontSize: isMobile ? 14 : 13,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Search...',
+                                hintStyle: GoogleFonts.inter(
+                                  color: Colors.grey[500],
+                                  fontSize: isMobile ? 14 : 13,
+                                ),
+                                prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                                suffixIcon: (_query.isNotEmpty)
+                                    ? IconButton(
+                                        icon: Icon(Icons.close, color: Colors.grey[600]),
+                                        tooltip: 'Clear',
+                                        onPressed: () {
+                                          _searchCtrl.clear();
+                                          _query = '';
+                                          _entry?.markNeedsBuild();
+                                        },
+                                      )
+                                    : null,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: isMobile ? 16 : 12, 
+                                  vertical: isMobile ? 16 : 10
+                                ),
+                                filled: true,
+                                fillColor: const Color(0xFFF5F6F8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.black.withOpacity(.10)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.black.withOpacity(.10)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                                ),
+                              ),
+                              onChanged: (q) {
+                                _query = q.trim().toLowerCase();
+                                _entry?.markNeedsBuild();
+                              },
+                              onTap: () {
+                                _searchFocusNode.requestFocus();
+                              },
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          Expanded(
+                            child: Builder(
+                              builder: (context) {
+                                if (widget.isLoading) {
+                                  return Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          widget.emptyMessage ?? 'Loading...',
+                                          style: GoogleFonts.inter(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                if (widget.options.isEmpty) {
+                                  return Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: 20,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          widget.emptyMessage ?? 'No data found',
+                                          style: GoogleFonts.inter(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                
+                                final filtered = _query.isEmpty
+                                    ? widget.options
+                                    : widget.options
+                                        .where((o) => o.toLowerCase().contains(_query))
+                                        .toList(growable: false);
+                                
+                                if (filtered.isEmpty) {
+                                  return Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: 20,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'No matching results',
+                                          style: GoogleFonts.inter(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                
+                                return ListView.separated(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                  itemCount: filtered.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 12),
+                                  itemBuilder: (context, i) {
+                                    final opt = filtered[i];
+                                    final selected = _selected.contains(opt);
+                                    return InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () => _toggle(opt),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 10),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 22,
+                                              height: 22,
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                    color: selected
+                                                        ? const Color(0xFF4db1b3)
+                                                        : Colors.black
+                                                            .withOpacity(.42),
+                                                    width: 1.6),
+                                                color: selected
+                                                    ? const Color(0xFF4db1b3)
+                                                    : Colors.transparent,
+                                              ),
+                                              child: selected
+                                                  ? const Icon(Icons.check,
+                                                      size: 16,
+                                                      color: Colors.white)
+                                                  : null,
+                                            ),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Text(
+                                                opt,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: Colors.grey[700],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    Overlay.of(context).insert(_entry!);
+    _dcrSharedOpenOverlays.add(_entry!);
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.unfocus();
+        _displayFocusNode.unfocus();
+        FocusScope.of(context).unfocus();
+        FocusManager.instance.primaryFocus?.unfocus();
+      }
+    });
+  }
+
+  void _removeOverlay() {
+    if (_entry != null) {
+      _entry!.remove();
+      _dcrSharedOpenOverlays.remove(_entry);
+      _entry = null;
+    }
+    _searchFocusNode.unfocus();
+  }
+
+  void _toggle(String opt) {
+    if (_selected.contains(opt)) {
+      _selected.remove(opt);
+    } else {
+      _selected.add(opt);
+    }
+    final String display = _summary(_selected);
+    _displayController.text = display;
+    _displayController.selection = TextSelection.collapsed(offset: display.length);
+    
+    widget.onChanged({..._selected});
+    _entry?.markNeedsBuild();
+    setState(() {});
+  }
+
+  String _summary(Set<String> values) {
+    if (values.isEmpty) return '';
+    if (values.length <= 2) return values.join(', ');
+    final firstTwo = values.take(2).join(', ');
+    return '$firstTwo +${values.length - 2}';
   }
 }
 

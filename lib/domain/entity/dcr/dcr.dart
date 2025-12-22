@@ -131,6 +131,14 @@ class CreateDcrParams {
     this.bizunit,
     this.latitude,
     this.longitude,
+    // Service Engineer specific fields
+    this.mappedInstruments,
+    this.complaint,
+    this.actionTaken,
+    this.result,
+    this.complaintStatus,
+    this.complaintDate,
+    this.complaintRemarks,
   });
 
   final DateTime date;
@@ -154,6 +162,14 @@ class CreateDcrParams {
   final int? bizunit;
   final double? latitude;
   final double? longitude;
+  // Service Engineer specific fields
+  final String? mappedInstruments;
+  final String? complaint;
+  final String? actionTaken;
+  final String? result;
+  final String? complaintStatus;
+  final DateTime? complaintDate;
+  final String? complaintRemarks;
 }
 
 

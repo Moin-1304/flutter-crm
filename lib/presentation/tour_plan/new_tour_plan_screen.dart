@@ -1530,13 +1530,34 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
         
         int? userId = userStore?.userDetail?.id;
+        int? employeeId = userStore?.userDetail?.employeeId;
+        String? serviceArea = userStore?.userDetail?.serviceArea;
+        
         if (userId == null || userId <= 0) {
           print('NewTourPlanScreen: [Products] userId is still null/0, skipping products load');
           return;
         }
         
-        print('NewTourPlanScreen: [Products] Loading products with userId: $userId');
-        final List<CommonDropdownItem> items = await repo.getTourPlanProductsList(userId);
+        // For Service Engineers: use employeeId as userId and set IsFromAMCUser = 0
+        // For others: use userId and set IsFromAMCUser = null
+        int? actualUserId = userId;
+        int? isFromAMCUser;
+        
+        if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+          if (employeeId != null && employeeId > 0) {
+            actualUserId = employeeId;
+            isFromAMCUser = 0;
+            print('NewTourPlanScreen: [Products] Service Engineer detected - using employeeId: $actualUserId, IsFromAMCUser: $isFromAMCUser');
+          } else {
+            print('NewTourPlanScreen: [Products] Service Engineer but employeeId is null/0, using userId: $actualUserId');
+          }
+        } else {
+          isFromAMCUser = null;
+          print('NewTourPlanScreen: [Products] Non-Service Engineer - using userId: $actualUserId, IsFromAMCUser: null');
+        }
+        
+        print('NewTourPlanScreen: [Products] Loading products with userId: $actualUserId, isFromAMCUser: $isFromAMCUser');
+        final List<CommonDropdownItem> items = await repo.getTourPlanProductsList(actualUserId, isFromAMCUser: isFromAMCUser);
         if (items.isNotEmpty) {
           setState(() {
             _productOptions.clear();
@@ -2287,6 +2308,9 @@ class _MultiSelectDropdown extends StatefulWidget {
   State<_MultiSelectDropdown> createState() => _MultiSelectDropdownState();
 }
 
+// Shared static set to track all open dropdown overlays across all dropdown instances
+final Set<OverlayEntry> _sharedOpenOverlays = {};
+
 class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
   final LayerLink _link = LayerLink();
   final FocusNode _displayFocusNode = FocusNode();
@@ -2425,6 +2449,12 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
   }
 
   void _showOverlay() {
+    // Close all other open overlays first to prevent overlap
+    for (final overlay in _sharedOpenOverlays.toList()) {
+      overlay.remove();
+    }
+    _sharedOpenOverlays.clear();
+    
     // Dismiss keyboard and unfocus everything before showing overlay
     _displayFocusNode.unfocus();
     _searchFocusNode.unfocus();
@@ -2699,6 +2729,7 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
       },
     );
     Overlay.of(context).insert(_entry!);
+    _sharedOpenOverlays.add(_entry!);
     
     // Ensure search field is not focused after overlay is shown
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2712,8 +2743,11 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
   }
 
   void _removeOverlay() {
-    _entry?.remove();
-    _entry = null;
+    if (_entry != null) {
+      _entry!.remove();
+      _sharedOpenOverlays.remove(_entry);
+      _entry = null;
+    }
     // Unfocus search field when overlay is removed
     _searchFocusNode.unfocus();
   }
@@ -2834,6 +2868,12 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
   }
 
   void _showOverlay() {
+    // Close all other open overlays first to prevent overlap
+    for (final overlay in _sharedOpenOverlays.toList()) {
+      overlay.remove();
+    }
+    _sharedOpenOverlays.clear();
+    
     // Dismiss keyboard and unfocus everything
     _focusNode.unfocus();
     FocusScope.of(context).unfocus();
@@ -2950,6 +2990,7 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
       },
     );
     Overlay.of(context).insert(_entry!);
+    _sharedOpenOverlays.add(_entry!);
     
     // Ensure nothing is focused after overlay is shown
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2962,8 +3003,11 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
   }
 
   void _removeOverlay() {
-    _entry?.remove();
-    _entry = null;
+    if (_entry != null) {
+      _entry!.remove();
+      _sharedOpenOverlays.remove(_entry);
+      _entry = null;
+    }
     _focusNode.unfocus();
   }
 }

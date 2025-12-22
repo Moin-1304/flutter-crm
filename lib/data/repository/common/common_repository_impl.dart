@@ -241,16 +241,50 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
-  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId) async {
+  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId, {int? isFromAMCUser}) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
         
-        final response = await commonApi.getTourPlanProductsList(userId);
+        final response = await commonApi.getTourPlanProductsList(userId, isFromAMCUser: isFromAMCUser);
         return response;
       }
     } catch (e) {
       // API get tour plan products list failed
+    }
+    
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getDcrProductsList(int userId) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        
+        final response = await commonApi.getDcrProductsList(userId);
+        return response;
+      }
+    } catch (e) {
+      // API get DCR products list failed
+    }
+    
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getMappedInstrumentsList(int userId, int customerId) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        
+        final response = await commonApi.getMappedInstrumentsList(userId, customerId);
+        return response;
+      }
+    } catch (e) {
+      // API get mapped instruments list failed
     }
     
     // Fallback to empty list if API fails

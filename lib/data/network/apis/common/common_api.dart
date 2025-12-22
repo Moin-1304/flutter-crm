@@ -203,9 +203,9 @@ class CommonApi {
   }
 
   /// Get Tour Plan Products to Discuss (CommandType: 335)
-  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId) async {
+  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId, {int? isFromAMCUser}) async {
     try {
-      final request = TourPlanProductsRequest(userId: userId);
+      final request = TourPlanProductsRequest(userId: userId, isFromAMCUser: isFromAMCUser);
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: request.toJson(),
@@ -229,6 +229,68 @@ class CommonApi {
       }
     } catch (e) {
       throw Exception('Failed to get tour plan products: ${e.toString()}');
+    }
+  }
+
+  /// Get DCR Products to Discuss (CommandType: 335)
+  /// Only UserId is dynamic, IsFromAMCUser is always 0
+  Future<List<CommonDropdownItem>> getDcrProductsList(int userId) async {
+    try {
+      final request = DcrProductsRequest(userId: userId);
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get DCR products: ${e.toString()}');
+    }
+  }
+
+  /// Get Mapped Instruments (CommandType: 335)
+  /// UserId is dynamic, IsFromAMCUser is always 1, CustomerSelectedList contains customerId
+  Future<List<CommonDropdownItem>> getMappedInstrumentsList(int userId, int customerId) async {
+    try {
+      final request = MappedInstrumentsRequest(userId: userId, customerId: customerId);
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get mapped instruments: ${e.toString()}');
     }
   }
 }

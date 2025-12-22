@@ -13,6 +13,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../attendance/punch_home_screen.dart';
 import '../tour_plan/tour_plan_screen.dart';
 import 'package:boilerplate/presentation/crm/crm_shell.dart';
+import '../crm/customer_issue/customer_issue_list_screen.dart';
 
 class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key});
@@ -34,7 +35,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     TourPlanScreen(key: UniqueKey()),
     CRMShell(key: UniqueKey(), initialIndex: 0, showBottomNav: false), // DCR
     CRMShell(key: UniqueKey(), initialIndex: 1, showBottomNav: false), // Deviations
-    CRMShell(key: UniqueKey(), initialIndex: 3, showBottomNav: false), // Contracts
+    CustomerIssueListScreen(key: UniqueKey()), // Customer Issue (Index 4)
   ];
 
   @override
@@ -200,6 +201,11 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         icon: Icon(Icons.report_gmailerrorred_outlined),
         selectedIcon: Icon(Icons.report_gmailerrorred),
         label: 'Deviations',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.error_outline),
+        selectedIcon: Icon(Icons.error),
+        label: 'Customer Issue',
       ),
     ];
 
@@ -554,6 +560,15 @@ class _SideMenu extends StatelessWidget {
                     label: 'Deviations',
                     selected: selected == 3,
                     onTap: () => onSelect(3),
+                    isTablet: isTablet,
+                  ),
+                  SizedBox(height: isTablet ? 8 : 6),
+                  _ModernDrawerItem(
+                    icon: Icons.error_outline,
+                    selectedIcon: Icons.error,
+                    label: 'Customer Issue',
+                    selected: selected == 4,
+                    onTap: () => onSelect(4),
                     isTablet: isTablet,
                   ),
 

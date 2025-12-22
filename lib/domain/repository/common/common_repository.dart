@@ -19,7 +19,9 @@ abstract class CommonRepository {
     required int bizUnit,
     required String date,
   });
-  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId);
+  Future<List<CommonDropdownItem>> getTourPlanProductsList(int userId, {int? isFromAMCUser});
+  Future<List<CommonDropdownItem>> getDcrProductsList(int userId);
+  Future<List<CommonDropdownItem>> getMappedInstrumentsList(int userId, int customerId);
   Future<List<CommonDropdownItem>> getCustomerTypeList(int userId, {String type = 'Service Engineer'});
   Future<List<CommonDropdownItem>> getPurposeOfVisitList(int userId, String text);
 }

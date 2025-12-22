@@ -359,20 +359,28 @@ class DcrRepositoryImpl implements DcrRepository {
         final user = await sharedPrefHelper.getUser();
         
         if (user != null) {
+          // Format dates with full ISO8601 format (with time)
+          final String fromDateStr = DateTime(start.year, start.month, start.day, 0, 0, 0, 0)
+              .toIso8601String()
+              .replaceAll(RegExp(r'\.\d{6}'), '.000'); // Ensure .000 format
+          final String toDateStr = DateTime(end.year, end.month, end.day, 23, 59, 59, 999)
+              .toIso8601String()
+              .replaceAll(RegExp(r'\.\d{6}'), '.000'); // Ensure .000 format
+          
           final request = DcrListRequest(
             pageNumber: 1,
             pageSize: 1000,
             sortOrder: 0, // 0 for asc
             sortDir: 0, // 0 for asc
             sortField: 'DCRDate',
-            fromDate: start.toIso8601String().split('T')[0],
-            toDate: end.toIso8601String().split('T')[0],
+            fromDate: fromDateStr,
+            toDate: toDateStr,
             userId: user.userId ?? user.id,
             bizunit: user.sbuId,
             status: statusId,
             employeeId: employeeId != null ? int.tryParse(employeeId) ?? 0 : 0,
             transactionType: transactionType ?? '', // Use provided transactionType or empty string for both
-            dcrDate: start.toIso8601String().split('T')[0], // Required parameter
+            dcrDate: null, // Set to null as per requirement
           );
           
           final response = await dcrApi.getDcrList(request);

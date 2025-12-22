@@ -21,7 +21,7 @@ class DcrListRequest {
   final int? expenceType; // server field name is ExpenceType
   final double? expenseAmount;
   final String? remarks;
-  final String dcrDate; // ISO yyyy-MM-dd
+  final String? dcrDate; // ISO yyyy-MM-dd or null
   final int managerId; // 0 default
 
   DcrListRequest({
@@ -46,7 +46,7 @@ class DcrListRequest {
     this.expenceType,
     this.expenseAmount,
     this.remarks,
-    required this.dcrDate,
+    this.dcrDate,
     this.managerId = 0,
   });
 
