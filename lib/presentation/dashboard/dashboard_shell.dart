@@ -7,8 +7,10 @@ import 'package:boilerplate/data/sharedpref/constants/preferences.dart';
 import 'package:boilerplate/presentation/dashboard/store/menu_store.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:boilerplate/di/service_locator.dart';
 
 import '../attendance/punch_home_screen.dart';
 import '../tour_plan/tour_plan_screen.dart';
@@ -22,7 +24,8 @@ class DashboardShell extends StatefulWidget {
   State<DashboardShell> createState() => _DashboardShellState();
 }
 
-class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObserver {
+class _DashboardShellState extends State<DashboardShell>
+    with WidgetsBindingObserver {
   int _selected = 0;
   final MenuStore _menuStore = getIt<MenuStore>();
   final UserStore _userStore = getIt<UserStore>();
@@ -34,7 +37,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     PunchHomeScreen(key: UniqueKey()),
     TourPlanScreen(key: UniqueKey()),
     CRMShell(key: UniqueKey(), initialIndex: 0, showBottomNav: false), // DCR
-    CRMShell(key: UniqueKey(), initialIndex: 1, showBottomNav: false), // Deviations
+    CRMShell(
+        key: UniqueKey(), initialIndex: 1, showBottomNav: false), // Deviations
     CustomerIssueListScreen(key: UniqueKey()), // Customer Issue (Index 4)
   ];
 
@@ -42,10 +46,11 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Load menu and user details in parallel without blocking UI
+    // Load menu, user details, and validate user in parallel without blocking UI
     Future.wait([
       _loadMenu(),
       _loadUserDetails(),
+      _validateUser(),
     ]);
   }
 
@@ -86,7 +91,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         print('Auth Token: ${_userStore.currentUser!.token}');
         // Set the auth token first
         _userDetailStore.setAuthToken(_userStore.currentUser!.token);
-        
+
         // Then fetch user details
         await _userDetailStore.fetchUserById(_userStore.currentUser!.id);
 
@@ -111,6 +116,22 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     }
   }
 
+  Future<void> _validateUser() async {
+    if (_userStore.currentUser != null) {
+      try {
+        if (getIt.isRegistered<UserValidationStore>()) {
+          final validationStore = getIt<UserValidationStore>();
+          final userId =
+              _userStore.currentUser!.userId ?? _userStore.currentUser!.id;
+          await validationStore.validateUser(userId);
+          print('User validation result: ${validationStore.isUserValid}');
+        }
+      } catch (e) {
+        print('User validation error: $e');
+      }
+    }
+  }
+
   void _onNavSelect(int i) {
     if (_selected != i) {
       setState(() {
@@ -122,13 +143,15 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   // Modern teal-green color matching login screen
   static const Color tealGreen = Color(0xFF4db1b3);
 
-  Widget _buildModernBottomNav(BuildContext context, int selected, ValueChanged<int> onSelect, List<NavigationDestination> destinations) {
+  Widget _buildModernBottomNav(BuildContext context, int selected,
+      ValueChanged<int> onSelect, List<NavigationDestination> destinations) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final safeBottom = MediaQuery.of(context).padding.bottom;
     final isMobile = MediaQuery.of(context).size.width < 600;
     final baseBottomPadding = isTablet ? 12.0 : 10.0;
-    final bottomSpacing = safeBottom > 0 ? baseBottomPadding + 8 : baseBottomPadding;
-    
+    final bottomSpacing =
+        safeBottom > 0 ? baseBottomPadding + 8 : baseBottomPadding;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -158,9 +181,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
           children: List.generate(destinations.length, (index) {
             final dest = destinations[index];
             final isSelected = selected == index;
-            final iconWidget = isSelected 
-              ? (dest.selectedIcon ?? dest.icon ?? const Icon(Icons.circle))
-              : (dest.icon ?? const Icon(Icons.circle));
+            final iconWidget = isSelected
+                ? (dest.selectedIcon ?? dest.icon ?? const Icon(Icons.circle))
+                : (dest.icon ?? const Icon(Icons.circle));
             return Expanded(
               child: _EnhancedNavItem(
                 icon: iconWidget,
@@ -187,7 +210,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         selectedIcon: Icon(Icons.home),
         label: 'Home',
       ),
-     NavigationDestination(
+      NavigationDestination(
         icon: Icon(Icons.route_outlined),
         selectedIcon: Icon(Icons.route),
         label: 'Tour Plan',
@@ -237,7 +260,10 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         userStore: _userStore,
       ),
       userDetailStore: _userDetailStore,
-      bottomNav: _isKeyboardVisible ? null : _buildModernBottomNav(context, _selected, _onNavSelect, destinations),
+      bottomNav: _isKeyboardVisible
+          ? null
+          : _buildModernBottomNav(
+              context, _selected, _onNavSelect, destinations),
       child: _pages[_selected],
     );
   }
@@ -248,7 +274,11 @@ class _ShellScaffold extends StatelessWidget {
   final Widget child;
   final Widget? bottomNav;
   final UserDetailStore userDetailStore;
-  const _ShellScaffold({required this.drawer, required this.child, this.bottomNav, required this.userDetailStore});
+  const _ShellScaffold(
+      {required this.drawer,
+      required this.child,
+      this.bottomNav,
+      required this.userDetailStore});
 
   // Modern teal-green color matching login screen
   static const Color tealGreen = Color(0xFF4db1b3);
@@ -258,7 +288,7 @@ class _ShellScaffold extends StatelessWidget {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final isMobile = MediaQuery.of(context).size.width < 600;
     final bool isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       drawer: Drawer(
@@ -280,7 +310,8 @@ class _ShellScaffold extends StatelessWidget {
     );
   }
 
-  PreferredSizeWidget _buildModernAppBar(BuildContext context, bool isTablet, bool isMobile) {
+  PreferredSizeWidget _buildModernAppBar(
+      BuildContext context, bool isTablet, bool isMobile) {
     return AppBar(
       automaticallyImplyLeading: false,
       centerTitle: false,
@@ -339,10 +370,10 @@ class _ShellScaffold extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        userDetailStore.userDisplayName.isNotEmpty 
-                          ? userDetailStore.userDisplayName 
-                          : 'Loading...', 
-                        overflow: TextOverflow.ellipsis, 
+                        userDetailStore.userDisplayName.isNotEmpty
+                            ? userDetailStore.userDisplayName
+                            : 'Loading...',
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.inter(
                           fontSize: isTablet ? 18 : 16,
                           fontWeight: FontWeight.w700,
@@ -408,7 +439,12 @@ class _SideMenu extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final UserDetailStore userDetailStore;
   final UserStore userStore;
-  const _SideMenu({required this.selected, required this.onSelect, this.extended = false, required this.userDetailStore, required this.userStore});
+  const _SideMenu(
+      {required this.selected,
+      required this.onSelect,
+      this.extended = false,
+      required this.userDetailStore,
+      required this.userStore});
 
   // Modern teal-green color matching login screen
   static const Color tealGreen = Color(0xFF4db1b3);
@@ -490,9 +526,9 @@ class _SideMenu extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              userDetailStore.userDisplayName.isNotEmpty 
-                                ? userDetailStore.userDisplayName 
-                                : 'Loading...',
+                              userDetailStore.userDisplayName.isNotEmpty
+                                  ? userDetailStore.userDisplayName
+                                  : 'Loading...',
                               style: GoogleFonts.inter(
                                 fontSize: isTablet ? 18 : 16,
                                 fontWeight: FontWeight.w700,
@@ -572,43 +608,43 @@ class _SideMenu extends StatelessWidget {
                     isTablet: isTablet,
                   ),
 
-        //  _DrawerItem(
-        //           icon: Icons.sell,
-        //           label: 'Sales List',
-        //           selected: false,
-        //           onTap: () => {
-        //             Navigator.pushNamed(context, Routes.saleList)
-        //           },
-        //         ),
-                // const Divider(indent: 16, endIndent: 16),
-                // Padding(
-                //   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                //   child: Text('CRM Pages', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
-                // ),
-                // _DrawerItem(
-                //   icon: Icons.assignment_outlined,
-                //   label: 'DCR',
-                //   selected: selected == 1,
-                //   onTap: () => onSelect(1),
-                // ),
-                // _DrawerItem(
-                //   icon: Icons.report_gmailerrorred_outlined,
-                //   label: 'Deviations',
-                //   selected: selected == 2,
-                //   onTap: () => onSelect(2),
-                // ),
-                // _DrawerItem(
-                //   icon: Icons.route_outlined,
-                //   label: 'Tour Plan',
-                //   selected: selected == 0,
-                //   onTap: () => onSelect(0),
-                // ),
-                // _DrawerItem(
-                //   icon: Icons.description_outlined,
-                //   label: 'Contracts',
-                //   selected: selected == 3,
-                //   onTap: () => onSelect(3),
-                // ),
+                  //  _DrawerItem(
+                  //           icon: Icons.sell,
+                  //           label: 'Sales List',
+                  //           selected: false,
+                  //           onTap: () => {
+                  //             Navigator.pushNamed(context, Routes.saleList)
+                  //           },
+                  //         ),
+                  // const Divider(indent: 16, endIndent: 16),
+                  // Padding(
+                  //   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  //   child: Text('CRM Pages', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  // ),
+                  // _DrawerItem(
+                  //   icon: Icons.assignment_outlined,
+                  //   label: 'DCR',
+                  //   selected: selected == 1,
+                  //   onTap: () => onSelect(1),
+                  // ),
+                  // _DrawerItem(
+                  //   icon: Icons.report_gmailerrorred_outlined,
+                  //   label: 'Deviations',
+                  //   selected: selected == 2,
+                  //   onTap: () => onSelect(2),
+                  // ),
+                  // _DrawerItem(
+                  //   icon: Icons.route_outlined,
+                  //   label: 'Tour Plan',
+                  //   selected: selected == 0,
+                  //   onTap: () => onSelect(0),
+                  // ),
+                  // _DrawerItem(
+                  //   icon: Icons.description_outlined,
+                  //   label: 'Contracts',
+                  //   selected: selected == 3,
+                  //   onTap: () => onSelect(3),
+                  // ),
                 ],
               ),
             ),
@@ -636,7 +672,8 @@ class _SideMenu extends StatelessWidget {
                   await PunchHomeScreen.punchOutIfNeeded();
                   // Call logout to clear user data from SharedPreferences
                   await userStore.logout();
-                  if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+                  if (Navigator.of(context).canPop())
+                    Navigator.of(context).pop();
                   Navigator.of(context).pushReplacementNamed(Routes.login);
                 },
                 isTablet: isTablet,
@@ -658,9 +695,9 @@ class _ModernDrawerItem extends StatelessWidget {
   final VoidCallback onTap;
   final bool isTablet;
   final bool isLogout;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   const _ModernDrawerItem({
     required this.icon,
     this.selectedIcon,
@@ -684,16 +721,14 @@ class _ModernDrawerItem extends StatelessWidget {
             vertical: isTablet ? 16 : 14,
           ),
           decoration: BoxDecoration(
-            color: selected 
-              ? tealGreen.withOpacity(0.12)
-              : Colors.transparent,
+            color: selected ? tealGreen.withOpacity(0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
             border: selected
-              ? Border.all(
-                  color: tealGreen.withOpacity(0.3),
-                  width: 1.5,
-                )
-              : null,
+                ? Border.all(
+                    color: tealGreen.withOpacity(0.3),
+                    width: 1.5,
+                  )
+                : null,
           ),
           child: Row(
             children: [
@@ -701,19 +736,15 @@ class _ModernDrawerItem extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: selected
-                    ? tealGreen
-                    : (isLogout 
-                        ? Colors.red[50]
-                        : Colors.grey[100]),
+                      ? tealGreen
+                      : (isLogout ? Colors.red[50] : Colors.grey[100]),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   selected && selectedIcon != null ? selectedIcon : icon,
                   color: selected
-                    ? Colors.white
-                    : (isLogout
-                        ? Colors.red[600]
-                        : Colors.grey[700]),
+                      ? Colors.white
+                      : (isLogout ? Colors.red[600] : Colors.grey[700]),
                   size: isTablet ? 24 : 22,
                 ),
               ),
@@ -725,10 +756,8 @@ class _ModernDrawerItem extends StatelessWidget {
                     fontSize: isTablet ? 16 : 14,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                     color: selected
-                      ? tealGreen
-                      : (isLogout
-                          ? Colors.red[600]
-                          : Colors.grey[900]),
+                        ? tealGreen
+                        : (isLogout ? Colors.red[600] : Colors.grey[900]),
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -754,9 +783,9 @@ class _EnhancedNavItem extends StatelessWidget {
   final VoidCallback onTap;
   final bool isTablet;
   final bool isMobile;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   const _EnhancedNavItem({
     required this.icon,
     required this.label,
@@ -781,16 +810,15 @@ class _EnhancedNavItem extends StatelessWidget {
             vertical: isTablet ? 10 : 8,
           ),
           decoration: BoxDecoration(
-            color: isSelected
-              ? tealGreen.withOpacity(0.15)
-              : Colors.transparent,
+            color:
+                isSelected ? tealGreen.withOpacity(0.15) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: isSelected
-              ? Border.all(
-                  color: tealGreen.withOpacity(0.2),
-                  width: 1,
-                )
-              : null,
+                ? Border.all(
+                    color: tealGreen.withOpacity(0.2),
+                    width: 1,
+                  )
+                : null,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -801,19 +829,17 @@ class _EnhancedNavItem extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(isTablet ? 8 : (isMobile ? 6 : 7)),
                 decoration: BoxDecoration(
-                  color: isSelected
-                    ? tealGreen
-                    : Colors.transparent,
+                  color: isSelected ? tealGreen : Colors.transparent,
                   borderRadius: BorderRadius.circular(isTablet ? 14 : 12),
                   boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: tealGreen.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
+                      ? [
+                          BoxShadow(
+                            color: tealGreen.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: IconTheme(
                   data: IconThemeData(

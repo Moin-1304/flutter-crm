@@ -37,7 +37,7 @@ class DcrApi {
   Future<DcrSaveResponse> saveDcr(DcrSaveRequest request) async {
     try {
       final response = await _dioClient.dio.post(
-       Endpoints.dcrSave,
+        Endpoints.dcrSave,
         data: request.toJson(),
         options: Options(
           headers: {
@@ -87,10 +87,11 @@ class DcrApi {
         if (response.data is String && (response.data as String).isEmpty) {
           return DcrSaveResponse(
             success: true,
-            message: 'DCR updated successfully (server returned 500 but data is valid)',
+            message:
+                'DCR updated successfully (server returned 500 but data is valid)',
           );
         }
-        
+
         // If we have valid JSON data, treat it as success despite 500 status
         try {
           return DcrSaveResponse.fromJson(response.data);
@@ -98,7 +99,8 @@ class DcrApi {
           // If parsing fails, still treat as success since server returned data
           return DcrSaveResponse(
             success: true,
-            message: 'DCR updated successfully (server returned 500 but operation completed)',
+            message:
+                'DCR updated successfully (server returned 500 but operation completed)',
           );
         }
       }
@@ -112,7 +114,7 @@ class DcrApi {
             message: 'DCR updated successfully',
           );
         }
-        
+
         return DcrSaveResponse.fromJson(response.data);
       } else {
         throw Exception('No response data received');
@@ -255,9 +257,9 @@ class DcrApi {
     }
   }
 
-
   /// Bulk approve DCRs
-  Future<DcrActionResponse> bulkApproveDcr(DcrBulkApproveRequest request) async {
+  Future<DcrActionResponse> bulkApproveDcr(
+      DcrBulkApproveRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.dcrBulkApprove,
@@ -280,7 +282,8 @@ class DcrApi {
   }
 
   /// Bulk send back DCRs
-  Future<DcrActionResponse> bulkSendBackDcr(DcrBulkSendBackRequest request) async {
+  Future<DcrActionResponse> bulkSendBackDcr(
+      DcrBulkSendBackRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.dcrBulkSendBack,
@@ -333,10 +336,11 @@ class DcrApi {
         if (response.data is String && (response.data as String).isEmpty) {
           return ExpenseSaveResponse(
             success: true,
-            message: 'Expense saved successfully (server returned 500 but data is valid)',
+            message:
+                'Expense saved successfully (server returned 500 but data is valid)',
           );
         }
-        
+
         // If we have valid JSON data, treat it as success despite 500 status
         try {
           return ExpenseSaveResponse.fromJson(response.data);
@@ -344,7 +348,8 @@ class DcrApi {
           // If parsing fails, still treat as success since server returned data
           return ExpenseSaveResponse(
             success: true,
-            message: 'Expense saved successfully (server returned 500 but operation completed)',
+            message:
+                'Expense saved successfully (server returned 500 but operation completed)',
           );
         }
       }
@@ -358,13 +363,49 @@ class DcrApi {
             message: 'Expense saved successfully',
           );
         }
-        
+
         return ExpenseSaveResponse.fromJson(response.data);
       } else {
         throw Exception('No response data received');
       }
     } catch (e) {
       throw Exception('Failed to save expense: ${e.toString()}');
+    }
+  }
+
+  /// Validate user - returns true/false
+  Future<DcrValidateUserResponse> validateUser(
+      DcrValidateUserRequest request) async {
+    try {
+      print('🔍 [DcrApi] validateUser API Call:');
+      print('   URL: ${Endpoints.dcrValidateUser}');
+      print('   Request: ${request.toJson()}');
+
+      final response = await _dioClient.dio.post(
+        Endpoints.dcrValidateUser,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'accept': 'text/plain',
+          },
+        ),
+      );
+
+      print('✅ [DcrApi] validateUser API Response:');
+      print('   Status Code: ${response.statusCode}');
+      print('   Response Data: ${response.data}');
+
+      if (response.data != null) {
+        final result = DcrValidateUserResponse.fromJson(response.data);
+        print('   Parsed Result - isValid: ${result.isValid}');
+        return result;
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      print('❌ [DcrApi] validateUser API Error: ${e.toString()}');
+      throw Exception('Failed to validate user: ${e.toString()}');
     }
   }
 }

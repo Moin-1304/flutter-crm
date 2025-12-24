@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:async';
 import 'dcr_entry_screen.dart' show DcrEntryScreen;
-import '../expenses/expense_entry_screen.dart' show ExpenseEntryScreen; // kept if needed elsewhere
+import '../expenses/expense_entry_screen.dart'
+    show ExpenseEntryScreen; // kept if needed elsewhere
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
 import 'package:boilerplate/domain/repository/expense/expense_repository.dart';
 import 'package:boilerplate/di/service_locator.dart';
@@ -15,6 +16,8 @@ import '../deviation/deviation_entry_screen.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
+import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 
@@ -28,7 +31,8 @@ class DcrListScreen extends StatefulWidget {
   State<DcrListScreen> createState() => _DcrListScreenState();
 }
 
-class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+class _DcrListScreenState extends State<DcrListScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   // Initialize to first day of current month for month-wise filtering
   DateTime _date = DateTime(DateTime.now().year, DateTime.now().month, 1);
   String? _status;
@@ -36,19 +40,19 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   List<UnifiedDcrItem> _unifiedItems = const [];
   Position? _currentPosition;
   double _geoFenceRadiusMeters = 5000; // 5 km in meters
-  
+
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = {};
-  
+
   // Status options loaded from API
   List<String> _statusOptions = [];
   final Map<String, int> _statusNameToId = {};
-  
+
   // Auto-refresh support
   Timer? _autoRefreshTimer;
   bool _isAppInForeground = true;
   bool _isRefreshing = false;
-  
+
   // Filter modal state
   bool _showFilterModal = false;
   late AnimationController _filterModalController;
@@ -56,10 +60,13 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   final ScrollController _filterScrollController = ScrollController();
   final GlobalKey _statusFilterSectionKey = GlobalKey();
   final GlobalKey _employeeFilterSectionKey = GlobalKey();
-  
+
   // Transaction type filter (DCR, Expense)
-  Set<String> _selectedTransactionTypes = {'DCR', 'Expense'}; // Default: both selected
-  
+  Set<String> _selectedTransactionTypes = {
+    'DCR',
+    'Expense'
+  }; // Default: both selected
+
   // Temp apply hook for modal (commits temp selections before Apply Filters)
   VoidCallback? _pendingFilterApply;
 
@@ -69,11 +76,14 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       if (context == null || !_filterScrollController.hasClients) return;
       final RenderObject? renderObject = context.findRenderObject();
       if (renderObject == null || !renderObject.attached) return;
-      final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
+      final RenderAbstractViewport? viewport =
+          RenderAbstractViewport.of(renderObject);
       if (viewport == null) return;
-      final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
+      final double target =
+          viewport.getOffsetToReveal(renderObject, 0.05).offset;
       final position = _filterScrollController.position;
-      final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+      final double clamped =
+          target.clamp(position.minScrollExtent, position.maxScrollExtent);
       _filterScrollController.animateTo(
         clamped,
         duration: const Duration(milliseconds: 350),
@@ -81,13 +91,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       );
     });
   }
-  
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     // Initialize filter modal animation
     _filterModalController = AnimationController(
       vsync: this,
@@ -97,12 +106,36 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       parent: _filterModalController,
       curve: Curves.easeOut,
     );
-    
+
     _load();
     _getEmployeeList(); // Load employee list for filter
     _getDcrDetailStatusList(); // Load status list for filter
     _initLocation();
     _startAutoRefresh();
+
+    // Validate user when screen opens
+    _validateUserOnScreenOpen();
+  }
+
+  /// Validate user when DCR screen opens
+  Future<void> _validateUserOnScreenOpen() async {
+    try {
+      if (getIt.isRegistered<UserValidationStore>()) {
+        final validationStore = getIt<UserValidationStore>();
+        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+        final user = await sharedPrefHelper.getUser();
+        if (user != null && (user.userId != null || user.id != null)) {
+          final userId = user.userId ?? user.id;
+          print(
+              '📱 [DcrListScreen] Validating user on screen open - userId: $userId');
+          await validationStore.validateUser(userId!);
+        } else {
+          print('⚠️ [DcrListScreen] User not available for validation');
+        }
+      }
+    } catch (e) {
+      print('❌ [DcrListScreen] Error validating user: $e');
+    }
   }
 
   @override
@@ -120,7 +153,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     setState(() {
       _isAppInForeground = state == AppLifecycleState.resumed;
     });
-    
+
     if (_isAppInForeground) {
       // App came to foreground, refresh data and restart timer
       _load();
@@ -133,18 +166,21 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
 
   Future<void> _load() async {
     if (_isRefreshing) return; // Prevent multiple simultaneous refreshes
-    
+
     setState(() {
       _isRefreshing = true;
     });
-    
+
     try {
       // Get employee ID from UserDetailStore
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
       final int? employeeId = userStore?.userDetail?.employeeId;
-      
+
       if (employeeId == null) {
-        print('Error: Employee ID not available. Please ensure user is logged in.');
+        print(
+            'Error: Employee ID not available. Please ensure user is logged in.');
         if (!mounted) return;
         setState(() {
           _unifiedItems = [];
@@ -153,9 +189,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       }
 
       // Calculate first and last day of the selected month
-      final DateTime start = DateTime(_date.year, _date.month, 1); // First day of month
-      final DateTime end = DateTime(_date.year, _date.month + 1, 0); // Last day of month
-      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+      final DateTime start =
+          DateTime(_date.year, _date.month, 1); // First day of month
+      final DateTime end =
+          DateTime(_date.year, _date.month + 1, 0); // Last day of month
+      final DcrRepository? dcrRepo =
+          getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
 
       if (dcrRepo == null) {
         print('Error: DCR Repository not registered');
@@ -169,7 +208,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       // Use selected employee if provided, else current user
       final int effectiveEmployeeId = _selectedEmployeeId() ?? employeeId;
       final int? selectedStatusId = _statusIdFromText(_status);
-      
+
       // Load unified DCR list (includes both DCR and Expense items)
       final List<DcrApiItem> apiItems = await dcrRepo.getDcrListUnified(
         start: start,
@@ -177,14 +216,14 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
         employeeId: effectiveEmployeeId.toString(),
         statusId: selectedStatusId,
       );
-      
+
       // Convert API items to unified items
       final List<UnifiedDcrItem> unifiedItems = apiItems
           .map<UnifiedDcrItem>((item) => UnifiedDcrItem.fromDcrApiItem(item))
           .toList();
-      
+
       if (!mounted) return;
-      
+
       setState(() {
         _unifiedItems = unifiedItems;
       });
@@ -207,14 +246,14 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
-      
+
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) return;
       }
       if (permission == LocationPermission.deniedForever) return;
-      
+
       Position? pos;
       try {
         pos = await Geolocator.getCurrentPosition(
@@ -230,7 +269,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       setState(() {
         _currentPosition = pos;
       });
-      
+
       // Recompute proximity when location available
       if (!mounted) return;
       if (_unifiedItems.isNotEmpty) {
@@ -247,7 +286,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   /// Start auto-refresh timer
   void _startAutoRefresh() {
     _autoRefreshTimer?.cancel(); // Cancel any existing timer
-    
+
     // Refresh every 30 seconds when app is in foreground
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (_isAppInForeground && mounted) {
@@ -289,7 +328,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
 
   DcrEntry _withProximity(DcrEntry entry) {
     // If we lack coordinates (either user or entry), consider it in range for now
-    if (_currentPosition == null || entry.customerLatitude == null || entry.customerLongitude == null) {
+    if (_currentPosition == null ||
+        entry.customerLatitude == null ||
+        entry.customerLongitude == null) {
       return entry.copyWith(geoProximity: GeoProximity.at);
     }
     final double distanceMeters = Geolocator.distanceBetween(
@@ -307,7 +348,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   }
 
   String? _distanceKmText(DcrEntry entry) {
-    if (_currentPosition == null || entry.customerLatitude == null || entry.customerLongitude == null) return null;
+    if (_currentPosition == null ||
+        entry.customerLatitude == null ||
+        entry.customerLongitude == null) return null;
     final double meters = Geolocator.distanceBetween(
       _currentPosition!.latitude,
       _currentPosition!.longitude,
@@ -315,7 +358,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       entry.customerLongitude!,
     );
     final double km = meters / 1000.0;
-    return km < 0.1 ? '${meters.toStringAsFixed(0)} m' : '${km.toStringAsFixed(2)} km';
+    return km < 0.1
+        ? '${meters.toStringAsFixed(0)} m'
+        : '${km.toStringAsFixed(2)} km';
   }
 
   // Method to clear all filters and reload data
@@ -325,7 +370,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       _selectedTransactionTypes = {'DCR', 'Expense'}; // Reset to both selected
       // Preserve employee filter selection even when clearing
       final now = DateTime.now();
-      _date = DateTime(now.year, now.month, 1); // Reset to first day of current month
+      _date = DateTime(
+          now.year, now.month, 1); // Reset to first day of current month
     });
     await _load();
     _showToast(
@@ -338,14 +384,20 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   // Check if any filters are active
   bool _hasActiveFilters() {
     final DateTime now = DateTime.now();
-    final bool isDateFiltered = !(_date.year == now.year && _date.month == now.month);
-    final bool isTransactionTypeFiltered = _selectedTransactionTypes.length != 2;
-    return _status != null || _employee != null || isDateFiltered || isTransactionTypeFiltered;
+    final bool isDateFiltered =
+        !(_date.year == now.year && _date.month == now.month);
+    final bool isTransactionTypeFiltered =
+        _selectedTransactionTypes.length != 2;
+    return _status != null ||
+        _employee != null ||
+        isDateFiltered ||
+        isTransactionTypeFiltered;
   }
 
   // Check if employee filter should be disabled (when roleCategory === 3)
   bool _shouldDisableEmployeeFilter() {
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     return userStore?.userDetail?.roleCategory == 3;
   }
 
@@ -371,7 +423,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // Title
           Text(
             'No DCR Data Found',
@@ -383,7 +435,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
             ),
           ),
           const SizedBox(height: 8),
-          
+
           // Description
           Text(
             _hasActiveFilters()
@@ -397,7 +449,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
             ),
           ),
           const SizedBox(height: 32),
-          
+
           // Action buttons - Responsive (side-by-side on all sizes)
           LayoutBuilder(builder: (context, constraints) {
             final double w = constraints.maxWidth;
@@ -408,26 +460,74 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const DcrEntryScreen()),
-                        );
-                        if (context.mounted) { await _load(); }
-                      },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: Text(
-                        'Create New DCR',
-                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: tealGreen,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 2,
-                      ),
-                    ),
+                    child: getIt.isRegistered<UserValidationStore>()
+                        ? ListenableBuilder(
+                            listenable: getIt<UserValidationStore>(),
+                            builder: (context, _) {
+                              final validationStore =
+                                  getIt<UserValidationStore>();
+                              final isEnabled = validationStore.canCreateDcr;
+                              return FilledButton.icon(
+                                onPressed: isEnabled
+                                    ? () async {
+                                        await Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const DcrEntryScreen()),
+                                        );
+                                        if (context.mounted) {
+                                          await _load();
+                                        }
+                                      }
+                                    : null,
+                                icon: const Icon(Icons.add, size: 18),
+                                label: Text(
+                                  'Create New DCR',
+                                  style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      isEnabled ? tealGreen : Colors.grey,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: Colors.grey.shade300,
+                                  disabledForegroundColor: Colors.grey.shade600,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 18, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                  elevation: isEnabled ? 2 : 0,
+                                ),
+                              );
+                            },
+                          )
+                        : FilledButton.icon(
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const DcrEntryScreen()),
+                              );
+                              if (context.mounted) {
+                                await _load();
+                              }
+                            },
+                            icon: const Icon(Icons.add, size: 18),
+                            label: Text(
+                              'Create New DCR',
+                              style: GoogleFonts.inter(
+                                  fontSize: 14, fontWeight: FontWeight.w700),
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: tealGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 18, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              elevation: 2,
+                            ),
+                          ),
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -437,12 +537,17 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                       icon: Icon(Icons.refresh, size: 18, color: tealGreen),
                       label: Text(
                         'Clear Filters',
-                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: tealGreen),
+                        style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: tealGreen),
                       ),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: tealGreen, width: 1.5),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),
@@ -454,26 +559,74 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const DcrEntryScreen()),
-                        );
-                        if (context.mounted) { await _load(); }
-                      },
-                      icon: const Icon(Icons.add, size: 20),
-                      label: Text(
-                        'Create New DCR',
-                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: tealGreen,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 2,
-                      ),
-                    ),
+                    child: getIt.isRegistered<UserValidationStore>()
+                        ? ListenableBuilder(
+                            listenable: getIt<UserValidationStore>(),
+                            builder: (context, _) {
+                              final validationStore =
+                                  getIt<UserValidationStore>();
+                              final isEnabled = validationStore.canCreateDcr;
+                              return FilledButton.icon(
+                                onPressed: isEnabled
+                                    ? () async {
+                                        await Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const DcrEntryScreen()),
+                                        );
+                                        if (context.mounted) {
+                                          await _load();
+                                        }
+                                      }
+                                    : null,
+                                icon: const Icon(Icons.add, size: 20),
+                                label: Text(
+                                  'Create New DCR',
+                                  style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      isEnabled ? tealGreen : Colors.grey,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: Colors.grey.shade300,
+                                  disabledForegroundColor: Colors.grey.shade600,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                  elevation: isEnabled ? 2 : 0,
+                                ),
+                              );
+                            },
+                          )
+                        : FilledButton.icon(
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const DcrEntryScreen()),
+                              );
+                              if (context.mounted) {
+                                await _load();
+                              }
+                            },
+                            icon: const Icon(Icons.add, size: 20),
+                            label: Text(
+                              'Create New DCR',
+                              style: GoogleFonts.inter(
+                                  fontSize: 14, fontWeight: FontWeight.w700),
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: tealGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              elevation: 2,
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -482,12 +635,17 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                       icon: Icon(Icons.refresh, size: 20, color: tealGreen),
                       label: Text(
                         'Clear Filters',
-                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: tealGreen),
+                        style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: tealGreen),
                       ),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: tealGreen, width: 1.5),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),
@@ -501,14 +659,14 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   }
 
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth >= 768;
     final isMobile = screenWidth < 600;
-    
+
     return Stack(
       children: [
         RefreshIndicator(
@@ -523,7 +681,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                 shrinkWrap: false,
                 padding: EdgeInsets.fromLTRB(
                   isMobile ? 12 : 16,
-                  isMobile ? 8 : 12,   // reduce top gap
+                  isMobile ? 8 : 12, // reduce top gap
                   isMobile ? 12 : 16,
                   isMobile ? 12 : 16,
                 ),
@@ -531,122 +689,153 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                   // Header Section
                   _buildHeader(isMobile, isTablet, tealGreen),
                   SizedBox(height: isMobile ? 12 : 14),
-                  
+
                   // Action Buttons Section
                   _buildActionButtonsSection(isMobile, isTablet, tealGreen),
                   SizedBox(height: isMobile ? 12 : 14),
-                  
+
                   // Summary Cards Section
                   _buildSummaryCards(isMobile, isTablet, tealGreen),
                   SizedBox(height: isMobile ? 12 : 14),
-                  
+
                   // Filter tags removed as per design; use Clear in modal footer instead
 
-        SizedBox(height: isMobile ? 12 : 14),
+                  SizedBox(height: isMobile ? 12 : 14),
 
-        // Cards list (grouped by cluster/city or Ad-hoc) or empty state
-        if (_unifiedItems.isEmpty) ...[
-          _buildEmptyState(),
-        ] else ...[
-          for (final e in _groupedByClusterOrAdhoc()) ...[  
-            _SectionCard(
-              title: '${e.cluster} • ${e.items.length} items',
-              actionText: _groupInRangeText(e),
-              child: Column(
-                children: [
-                  for (final item in e.items) ...[
-                    // Debug logging for each item
-                    if (item.isDcr) ...[
-                      Builder(
-                        builder: (context) {
-                          print('DCR Item Debug:');
-                          print('  - Customer: ${item.customerName}');
-                          print('  - isDcr: ${item.isDcr}');
-                          print('  - tourPlanId: ${item.tourPlanId}');
-                          print('  - transactionType: ${item.transactionType}');
-                          print('  - Should show deviation icon: ${item.isDcr && !_isDcrSentBack(item)}');
-                          return const SizedBox.shrink();
-                        },
+                  // Cards list (grouped by cluster/city or Ad-hoc) or empty state
+                  if (_unifiedItems.isEmpty) ...[
+                    _buildEmptyState(),
+                  ] else ...[
+                    for (final e in _groupedByClusterOrAdhoc()) ...[
+                      _SectionCard(
+                        title: '${e.cluster} • ${e.items.length} items',
+                        actionText: _groupInRangeText(e),
+                        child: Column(
+                          children: [
+                            for (final item in e.items) ...[
+                              // Debug logging for each item
+                              if (item.isDcr) ...[
+                                Builder(
+                                  builder: (context) {
+                                    print('DCR Item Debug:');
+                                    print('  - Customer: ${item.customerName}');
+                                    print('  - isDcr: ${item.isDcr}');
+                                    print('  - tourPlanId: ${item.tourPlanId}');
+                                    print(
+                                        '  - transactionType: ${item.transactionType}');
+                                    print(
+                                        '  - Should show deviation icon: ${item.isDcr && !_isDcrSentBack(item)}');
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+                              ],
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 14),
+                                child: _UnifiedItemCard(
+                                  item: item,
+                                  currentPosition: _currentPosition,
+                                  geoFenceRadiusMeters: _geoFenceRadiusMeters,
+                                  isEditable: _isDcrEditable(item),
+                                  onCreateDeviation:
+                                      item.isDcr && !_isDcrSentBack(item)
+                                          ? () {
+                                              print('Deviation Icon Debug:');
+                                              print(
+                                                  '  - item.isDcr: ${item.isDcr}');
+                                              print(
+                                                  '  - item.tourPlanId: ${item.tourPlanId}');
+                                              print(
+                                                  '  - item.dcrId: ${item.dcrId}');
+                                              print(
+                                                  '  - item.transactionType: ${item.transactionType}');
+                                              print(
+                                                  '  - StatusText: ${item.statusText}');
+                                              print(
+                                                  '  - dcrStatusId: ${item.dcrStatusId}');
+                                              print(
+                                                  '  - Should show deviation: ${item.isDcr && !_isDcrSentBack(item)}');
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      DeviationEntryScreen(
+                                                    dcrId: item.dcrId,
+                                                    tourPlanId: item.tourPlanId,
+                                                    initialDate: _date,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          : null,
+                                  onViewDetails: () => _showDcrDetails(item),
+                                  onEdit: _isDcrEditable(item)
+                                      ? () async {
+                                          if (getIt.isRegistered<
+                                              UserValidationStore>()) {
+                                            final validationStore =
+                                                getIt<UserValidationStore>();
+                                            if (!validationStore.canUpdateDcr) {
+                                              return; // Button disabled
+                                            }
+                                          }
+                                          print(
+                                              'Edit button clicked - TransactionType: ${item.transactionType}, ID: ${item.id}, DCRId: ${item.dcrId}');
+                                          if (item.isDcr) {
+                                            print(
+                                                'Navigating to DCR edit screen');
+                                            // Edit DCR - pass both id and dcrId
+                                            await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      DcrEntryScreen(
+                                                        id: item.id.toString(),
+                                                        dcrId: item.dcrId
+                                                            .toString(),
+                                                      )),
+                                            );
+                                          } else if (item.isExpense) {
+                                            print(
+                                                'Navigating to Expense edit screen');
+                                            // Edit Expense - pass both id and dcrId
+                                            await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      ExpenseEntryScreen(
+                                                        id: item.id.toString(),
+                                                        dcrId: item.dcrId
+                                                            .toString(),
+                                                      )),
+                                            );
+                                          } else {
+                                            print(
+                                                'Unknown transaction type: ${item.transactionType}');
+                                          }
+                                          if (context.mounted) {
+                                            await _load();
+                                          }
+                                        }
+                                      : null,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(height: 14),
                     ],
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _UnifiedItemCard(
-                        item: item,
-                        currentPosition: _currentPosition,
-                        geoFenceRadiusMeters: _geoFenceRadiusMeters,
-                        isEditable: _isDcrEditable(item),
-                        onCreateDeviation: item.isDcr && !_isDcrSentBack(item)
-                            ? () {
-                                print('Deviation Icon Debug:');
-                                print('  - item.isDcr: ${item.isDcr}');
-                                print('  - item.tourPlanId: ${item.tourPlanId}');
-                                print('  - item.dcrId: ${item.dcrId}');
-                                print('  - item.transactionType: ${item.transactionType}');
-                                print('  - StatusText: ${item.statusText}');
-                                print('  - dcrStatusId: ${item.dcrStatusId}');
-                                print('  - Should show deviation: ${item.isDcr && !_isDcrSentBack(item)}');
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => DeviationEntryScreen(
-                                      dcrId: item.dcrId,
-                                      tourPlanId: item.tourPlanId,
-                                      initialDate: _date,
-                                    ),
-                                  ),
-                                );
-                              }
-                            : null,
-                        onViewDetails: () => _showDcrDetails(item),
-                        onEdit: _isDcrEditable(item)
-                            ? () async {
-                                print('Edit button clicked - TransactionType: ${item.transactionType}, ID: ${item.id}, DCRId: ${item.dcrId}');
-                                if (item.isDcr) {
-                                  print('Navigating to DCR edit screen');
-                                  // Edit DCR - pass both id and dcrId
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => DcrEntryScreen(
-                                      id: item.id.toString(),
-                                      dcrId: item.dcrId.toString(),
-                                    )),
-                                  );
-                                } else if (item.isExpense) {
-                                  print('Navigating to Expense edit screen');
-                                  // Edit Expense - pass both id and dcrId
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => ExpenseEntryScreen(
-                                      id: item.id.toString(),
-                                      dcrId: item.dcrId.toString(),
-                                    )),
-                                  );
-                                } else {
-                                  print('Unknown transaction type: ${item.transactionType}');
-                                }
-                                if (context.mounted) { await _load(); }
-                              }
-                            : null,
-                      ),
-                    ),
                   ],
+                  const SizedBox(height: 16),
                 ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-        ],
-        const SizedBox(height: 16),
-      ],
-      );
+              );
             },
-      ),
+          ),
         ),
-        
+
         // Filter Modal
         if (_showFilterModal) _buildFilterModal(isMobile, isTablet, tealGreen),
       ],
     );
   }
-  
+
   // Build Header Section
   Widget _buildHeader(bool isMobile, bool isTablet, Color tealGreen) {
     return Container(
@@ -660,26 +849,26 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                                Text(
-                                  'My DCR',
-                                  style: GoogleFonts.inter(
-                                    fontSize: isTablet ? 20 : 18,
-                                    fontWeight: FontWeight.normal,
-                                    color: Colors.grey[900],
-                                    letterSpacing: -0.8,
-                                  ),
-                                ),
-                                SizedBox(height: isTablet ? 6 : 4),
-                                Text(
-                                  'Today\'s Reports',
-                                  style: GoogleFonts.inter(
-                                    fontSize: isTablet ? 13 : 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey[600],
-                                    letterSpacing: 0.2,
-                                  ),
-                                ),
-                              ],
+                Text(
+                  'My DCR',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 20 : 18,
+                    fontWeight: FontWeight.normal,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.8,
+                  ),
+                ),
+                SizedBox(height: isTablet ? 6 : 4),
+                Text(
+                  'Today\'s Reports',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 13 : 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
             ),
           ),
           // Filter Icon with Badge
@@ -751,9 +940,10 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ),
     );
   }
-  
+
   // Build Action Buttons Section
-  Widget _buildActionButtonsSection(bool isMobile, bool isTablet, Color tealGreen) {
+  Widget _buildActionButtonsSection(
+      bool isMobile, bool isTablet, Color tealGreen) {
     return Row(
       children: [
         Expanded(
@@ -766,7 +956,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
               await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const DcrEntryScreen()),
               );
-              if (context.mounted) { await _load(); }
+              if (context.mounted) {
+                await _load();
+              }
             },
           ),
         ),
@@ -781,34 +973,39 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
               await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ExpenseEntryScreen()),
               );
-              if (context.mounted) { await _load(); }
+              if (context.mounted) {
+                await _load();
+              }
             },
           ),
         ),
       ],
     );
   }
-  
+
   // Build Action Button
   Widget _buildActionButton({
     required IconData icon,
     required String label,
     required Color color,
     required bool isMobile,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
   }) {
+    final isEnabled = onTap != null;
     return Container(
       height: isMobile ? 44 : 48,
       decoration: BoxDecoration(
-        color: color,
+        color: isEnabled ? color : Colors.grey,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: isEnabled
+            ? [
+                BoxShadow(
+                  color: color.withOpacity(0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -835,12 +1032,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ),
     );
   }
-  
+
   // Build Summary Cards
   Widget _buildSummaryCards(bool isMobile, bool isTablet, Color tealGreen) {
     final dcrCount = _getDcrCount();
     final expenseCount = _getExpenseCount();
-    
+
     return Row(
       children: [
         Expanded(
@@ -863,7 +1060,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ],
     );
   }
-  
+
   // Build Summary Card
   Widget _buildSummaryCard({
     required int count,
@@ -912,35 +1109,37 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ),
     );
   }
-  
+
   // Build Filter Tags
   Widget _buildFilterTags(bool isMobile, Color tealGreen) {
     final tags = <Widget>[];
-    
+
     if (_selectedTransactionTypes.length != 2) {
       for (final type in _selectedTransactionTypes) {
         tags.add(_buildFilterTag(type, isMobile, tealGreen));
       }
     }
-    
+
     if (_status != null) {
       tags.add(_buildFilterTag(_status!, isMobile, tealGreen));
     }
-    
+
     // Employee tag
     if (_employee != null && _employee!.isNotEmpty) {
       tags.add(_buildFilterTag(_employee!, isMobile, tealGreen));
     }
-    
+
     // Date tag if not today
     final DateTime today = DateTime.now();
-    final bool isDateFiltered = !(_date.year == today.year && _date.month == today.month && _date.day == today.day);
+    final bool isDateFiltered = !(_date.year == today.year &&
+        _date.month == today.month &&
+        _date.day == today.day);
     if (isDateFiltered) {
       tags.add(_buildFilterTag(_formatDate(_date), isMobile, tealGreen));
     }
-    
+
     if (tags.isEmpty) return const SizedBox.shrink();
-    
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -949,7 +1148,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
         TextButton(
           onPressed: _clearAllFilters,
           style: TextButton.styleFrom(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 8),
+            padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 12 : 16, vertical: 8),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
@@ -965,11 +1165,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ],
     );
   }
-  
+
   // Build Filter Tag
   Widget _buildFilterTag(String label, bool isMobile, Color tealGreen) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 8),
+      padding:
+          EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 8),
       decoration: BoxDecoration(
         color: tealGreen.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
@@ -988,7 +1189,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ),
     );
   }
-  
+
   // Build Filter Modal
   Widget _buildFilterModal(bool isMobile, bool isTablet, Color tealGreen) {
     // Temp selections that live for the lifetime of the modal (StatefulBuilder rebuilds won't reset these)
@@ -1048,11 +1249,11 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                           Text(
                             'Filters',
                             style: GoogleFonts.inter(
-                                  fontSize: isMobile ? 18 : 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.grey[900],
-                                  letterSpacing: -0.5,
-                                ),
+                              fontSize: isMobile ? 18 : 20,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.grey[900],
+                              letterSpacing: -0.5,
+                            ),
                           ),
                           const Spacer(),
                           IconButton(
@@ -1074,7 +1275,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                         ],
                       ),
                     ),
-                    
+
                     // Modal Content (StatefulBuilder to keep filters local until Apply)
                     StatefulBuilder(
                       builder: (context, setModalState) {
@@ -1085,7 +1286,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                               isMobile ? 16 : 20,
                               isMobile ? 16 : 20,
                               isMobile ? 16 : 20,
-                              MediaQuery.of(context).viewInsets.bottom + (isMobile ? 16 : 20),
+                              MediaQuery.of(context).viewInsets.bottom +
+                                  (isMobile ? 16 : 20),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1112,7 +1314,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                             if (value == true) {
                                               _tempTransactionTypes.add('DCR');
                                             } else {
-                                              _tempTransactionTypes.remove('DCR');
+                                              _tempTransactionTypes
+                                                  .remove('DCR');
                                             }
                                           });
                                         },
@@ -1123,13 +1326,16 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                     Expanded(
                                       child: _buildCheckboxOption(
                                         'Expense',
-                                        _tempTransactionTypes.contains('Expense'),
+                                        _tempTransactionTypes
+                                            .contains('Expense'),
                                         (value) {
                                           setModalState(() {
                                             if (value == true) {
-                                              _tempTransactionTypes.add('Expense');
+                                              _tempTransactionTypes
+                                                  .add('Expense');
                                             } else {
-                                              _tempTransactionTypes.remove('Expense');
+                                              _tempTransactionTypes
+                                                  .remove('Expense');
                                             }
                                           });
                                         },
@@ -1138,7 +1344,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                     ),
                                   ],
                                 ),
-                                
+
                                 const SizedBox(height: 24),
                                 // Status Section (Searchable)
                                 _SearchableFilterDropdown(
@@ -1153,9 +1359,11 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                     });
                                   },
                                   isTablet: isTablet,
-                                  onExpanded: () => _scrollFilterSectionIntoView(_statusFilterSectionKey),
+                                  onExpanded: () =>
+                                      _scrollFilterSectionIntoView(
+                                          _statusFilterSectionKey),
                                 ),
-                                
+
                                 const SizedBox(height: 24),
                                 // Date Section
                                 Text(
@@ -1173,22 +1381,27 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                   isActive: !_isToday(_tempDate),
                                   onTap: () async {
                                     // Show month/year picker
-                                    final DateTime? picked = await _showMonthYearPicker(context, _tempDate, tealGreen);
+                                    final DateTime? picked =
+                                        await _showMonthYearPicker(
+                                            context, _tempDate, tealGreen);
                                     if (picked != null) {
                                       setModalState(() {
                                         // Set to first day of selected month
-                                        _tempDate = DateTime(picked.year, picked.month, 1);
+                                        _tempDate = DateTime(
+                                            picked.year, picked.month, 1);
                                       });
                                     }
                                   },
                                 ),
-                                
+
                                 const SizedBox(height: 24),
                                 // Employee Section (Searchable)
                                 AbsorbPointer(
                                   absorbing: _shouldDisableEmployeeFilter(),
                                   child: Opacity(
-                                    opacity: _shouldDisableEmployeeFilter() ? 0.6 : 1.0,
+                                    opacity: _shouldDisableEmployeeFilter()
+                                        ? 0.6
+                                        : 1.0,
                                     child: _SearchableFilterDropdown(
                                       key: _employeeFilterSectionKey,
                                       title: 'Employee',
@@ -1201,11 +1414,13 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                         });
                                       },
                                       isTablet: isTablet,
-                                      onExpanded: () => _scrollFilterSectionIntoView(_employeeFilterSectionKey),
+                                      onExpanded: () =>
+                                          _scrollFilterSectionIntoView(
+                                              _employeeFilterSectionKey),
                                     ),
                                   ),
                                 ),
-                                
+
                                 const SizedBox(height: 8),
                                 // Apply changes to outer state when pressing footer button
                                 // Footer handled below; values captured here
@@ -1229,7 +1444,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                         );
                       },
                     ),
-                    
+
                     // Modal Footer Buttons
                     Container(
                       padding: EdgeInsets.all(isMobile ? 16 : 20),
@@ -1250,7 +1465,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                 _closeFilterModal();
                               },
                               style: OutlinedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(vertical: isMobile ? 14 : 16),
+                                padding: EdgeInsets.symmetric(
+                                    vertical: isMobile ? 14 : 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -1277,7 +1493,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                               style: FilledButton.styleFrom(
                                 backgroundColor: tealGreen,
                                 foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(vertical: isMobile ? 14 : 16),
+                                padding: EdgeInsets.symmetric(
+                                    vertical: isMobile ? 14 : 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -1305,7 +1522,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       ),
     );
   }
-  
+
   // Build Checkbox Option
   Widget _buildCheckboxOption(
     String label,
@@ -1349,7 +1566,20 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   }
 
   static String _formatDate(DateTime d) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${months[d.month - 1]} ${d.year}'; // Month and year only
   }
 
@@ -1359,13 +1589,15 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   }
 
   // Show month/year picker
-  Future<DateTime?> _showMonthYearPicker(BuildContext context, DateTime initialDate, Color tealGreen) async {
+  Future<DateTime?> _showMonthYearPicker(
+      BuildContext context, DateTime initialDate, Color tealGreen) async {
     int selectedYear = initialDate.year;
     int selectedMonth = initialDate.month;
-    
+
     final bool isMobile = MediaQuery.of(context).size.width < 600;
-    final bool isTablet = MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width < 1024;
-    
+    final bool isTablet = MediaQuery.of(context).size.width >= 600 &&
+        MediaQuery.of(context).size.width < 1024;
+
     return showModalBottomSheet<DateTime>(
       context: context,
       showDragHandle: true,
@@ -1377,7 +1609,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
             return Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: SafeArea(
                 child: Padding(
@@ -1445,13 +1678,16 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                           final double mainAxisSpacing = spacing;
                           final int crossAxisCount = 3;
                           final double availableWidth = constraints.maxWidth;
-                          final double itemWidth = (availableWidth - (crossAxisSpacing * (crossAxisCount - 1))) / crossAxisCount;
+                          final double itemWidth = (availableWidth -
+                                  (crossAxisSpacing * (crossAxisCount - 1))) /
+                              crossAxisCount;
                           final double itemHeight = isMobile ? 48 : 56;
-                          
+
                           return GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: crossAxisCount,
                               crossAxisSpacing: crossAxisSpacing,
                               mainAxisSpacing: mainAxisSpacing,
@@ -1469,10 +1705,14 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                 },
                                 style: OutlinedButton.styleFrom(
                                   side: BorderSide(
-                                    color: isSelected ? tealGreen : Colors.grey.shade300,
+                                    color: isSelected
+                                        ? tealGreen
+                                        : Colors.grey.shade300,
                                     width: isSelected ? 1.5 : 1,
                                   ),
-                                  backgroundColor: isSelected ? tealGreen.withOpacity(0.1) : Colors.white,
+                                  backgroundColor: isSelected
+                                      ? tealGreen.withOpacity(0.1)
+                                      : Colors.white,
                                   padding: EdgeInsets.symmetric(
                                     horizontal: isMobile ? 8 : 12,
                                     vertical: isMobile ? 12 : 16,
@@ -1481,16 +1721,34 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: Text(
-                                    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index],
+                                    [
+                                      'Jan',
+                                      'Feb',
+                                      'Mar',
+                                      'Apr',
+                                      'May',
+                                      'Jun',
+                                      'Jul',
+                                      'Aug',
+                                      'Sep',
+                                      'Oct',
+                                      'Nov',
+                                      'Dec'
+                                    ][index],
                                     style: GoogleFonts.inter(
                                       fontSize: isMobile ? 14 : 16,
-                                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                                      color: isSelected ? tealGreen : Colors.grey[900],
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                      color: isSelected
+                                          ? tealGreen
+                                          : Colors.grey[900],
                                       letterSpacing: 0.2,
                                     ),
                                     textAlign: TextAlign.center,
@@ -1507,7 +1765,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                         width: double.infinity,
                         child: FilledButton(
                           onPressed: () {
-                            Navigator.of(context).pop(DateTime(selectedYear, selectedMonth, 1));
+                            Navigator.of(context)
+                                .pop(DateTime(selectedYear, selectedMonth, 1));
                           },
                           style: FilledButton.styleFrom(
                             backgroundColor: tealGreen,
@@ -1530,7 +1789,10 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                           ),
                         ),
                       ),
-                      SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0),
+                      SizedBox(
+                          height: MediaQuery.of(context).padding.bottom > 0
+                              ? 8
+                              : 0),
                     ],
                   ),
                 ),
@@ -1543,7 +1805,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   }
 
   // Helper method to show toast message at the top
-  void _showToast(String message, {ToastType type = ToastType.info, IconData? icon}) {
+  void _showToast(String message,
+      {ToastType type = ToastType.info, IconData? icon}) {
     if (!mounted) return;
     ToastMessage.show(
       context,
@@ -1557,10 +1820,13 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
 
   bool _canCreateDcr() {
     // Allow when user position exists and there is at least one in-range customer group
-    if (_currentPosition == null) return true; // fallback: allow if no location yet
+    if (_currentPosition == null)
+      return true; // fallback: allow if no location yet
     final groups = _groupedByClusterOrAdhoc();
-    return groups.any((g) => g.items.any((item) => 
-      item.isDcr && item.customerLatitude != null && item.customerLongitude != null));
+    return groups.any((g) => g.items.any((item) =>
+        item.isDcr &&
+        item.customerLatitude != null &&
+        item.customerLongitude != null));
   }
 
   // DCR Related Common API Methods
@@ -1568,9 +1834,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        
+
         final employees = await commonRepo.getEmployeesReportingTo(id);
-        
+
         if (mounted) {
           _showToast(
             'Found ${employees.length} employees reporting to ID: $id',
@@ -1592,9 +1858,9 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        
+
         final types = await commonRepo.getExpenseTypeList();
-        
+
         if (mounted) {
           _showToast(
             'Found ${types.length} expense types',
@@ -1612,13 +1878,15 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     }
   }
 
-  Future<void> _getDcrListForEmployee(int userId, int employeeId, int bizUnit) async {
+  Future<void> _getDcrListForEmployee(
+      int userId, int employeeId, int bizUnit) async {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        
-        final dcrs = await commonRepo.getDcrListForEmployee(userId, employeeId, bizUnit);
-        
+
+        final dcrs =
+            await commonRepo.getDcrListForEmployee(userId, employeeId, bizUnit);
+
         if (mounted) {
           _showToast(
             'Found ${dcrs.length} DCRs for employee: $employeeId',
@@ -1644,20 +1912,30 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
         // Get employeeId from user store if not provided
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        final int? finalEmployeeId = employeeId ?? userStore?.userDetail?.employeeId;
-        
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? finalEmployeeId =
+            employeeId ?? userStore?.userDetail?.employeeId;
+
         // Use same API call as tour plan manager review (CommandType 106 or 276 if employeeId provided)
-        final List<CommonDropdownItem> items = await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
-        final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
-        
+        final List<CommonDropdownItem> items =
+            await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
+        final names = items
+            .map((e) =>
+                (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+
         if (names.isNotEmpty && mounted) {
           setState(() {
             _employeeOptions = {..._employeeOptions, ...names}.toList();
             // map names to ids for potential employee ID mapping
             String? selectedEmployeeName;
             for (final item in items) {
-              final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+              final String key =
+                  (item.employeeName.isNotEmpty ? item.employeeName : item.text)
+                      .trim();
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
                 // If this employee's id matches the employeeId used in API call, auto-select it
@@ -1670,10 +1948,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
             // Update even if _employee is already set to ensure it's correct
             if (selectedEmployeeName != null) {
               _employee = selectedEmployeeName;
-              print('DcrListScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
+              print(
+                  'DcrListScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
             }
           });
-          print('DcrListScreen: Loaded ${_employeeOptions.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
+          print(
+              'DcrListScreen: Loaded ${_employeeOptions.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
         }
       }
     } catch (e) {
@@ -1686,9 +1966,11 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        final List<CommonDropdownItem> items = await commonRepo.getDcrDetailStatusList();
-        final statuses = items.map((e) => e.text.trim()).where((s) => s.isNotEmpty).toSet();
-        
+        final List<CommonDropdownItem> items =
+            await commonRepo.getDcrDetailStatusList();
+        final statuses =
+            items.map((e) => e.text.trim()).where((s) => s.isNotEmpty).toSet();
+
         if (statuses.isNotEmpty && mounted) {
           setState(() {
             _statusOptions = {..._statusOptions, ...statuses}.toList();
@@ -1698,7 +1980,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
               if (key.isNotEmpty) _statusNameToId[key] = item.id;
             }
           });
-          print('DcrListScreen: Loaded ${_statusOptions.length} statuses for filter');
+          print(
+              'DcrListScreen: Loaded ${_statusOptions.length} statuses for filter');
         }
       }
     } catch (e) {
@@ -1709,12 +1992,12 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
   /// Helper method to check if an item is approved
   bool _isItemApproved(UnifiedDcrItem item) {
     final statusText = item.statusText.trim().toLowerCase();
-    
+
     // Check statusText first - if it explicitly contains "approved", it's approved
     if (statusText.contains('approved')) {
       return true;
     }
-    
+
     // Check dcrStatusId as fallback/primary method
     if (item.isExpense) {
       // For Expense items: dcrStatusId == 5 means Approved
@@ -1727,7 +2010,7 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
         return true;
       }
     }
-    
+
     return false;
   }
 
@@ -1737,16 +2020,18 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
     if (item.isDcr) {
       // Check statusText first
       final statusText = item.statusText.trim().toLowerCase();
-      if (statusText.contains('draft') || statusText.contains('sent back') || statusText.contains('sentback')) {
+      if (statusText.contains('draft') ||
+          statusText.contains('sent back') ||
+          statusText.contains('sentback')) {
         return true;
       }
-      
+
       // Check dcrStatusId as fallback
       // Draft: 0 or 1, Pending: 7, Sent Back: 6
-      return item.dcrStatusId == 0 || 
-             item.dcrStatusId == 1 || 
-             item.dcrStatusId == 6 ||
-             item.dcrStatusId == 7;
+      return item.dcrStatusId == 0 ||
+          item.dcrStatusId == 1 ||
+          item.dcrStatusId == 6 ||
+          item.dcrStatusId == 7;
     }
     // For non-DCR items (expenses), editable only in draft or sent back states
     final statusText = item.statusText.trim().toLowerCase();
@@ -1795,7 +2080,8 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
       builder: (context) => Container(
         constraints: BoxConstraints(
           maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
+          maxHeight:
+              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
         ),
         margin: isTablet
             ? EdgeInsets.symmetric(
@@ -1824,216 +2110,243 @@ class _DcrListScreenState extends State<DcrListScreen> with WidgetsBindingObserv
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEAF7F7),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF4db1b3).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          item.isDcr ? Icons.assignment_outlined : Icons.account_balance_wallet_outlined,
-                          color: const Color(0xFF4db1b3),
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.isDcr ? 'DCR Details' : 'Expense Details',
-                                style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.grey[900],
-                                  fontSize: isTablet ? 16 : 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            _getStatusChipForItem(item),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                        color: Colors.grey[700],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // Content
-            Flexible(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  20,
-                  20,
-                  MediaQuery.of(context).padding.bottom + 20,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _DetailRow('Transaction Type', item.transactionType),
-                    const SizedBox(height: 12),
-                    _DetailRow('Date', _formatDate(item.parsedDate ?? DateTime.now())),
-                    const SizedBox(height: 12),
-                    _DetailRow('Employee', item.employeeName),
-                    const SizedBox(height: 12),
-                    if (item.designation.isNotEmpty) ...[
-                      _DetailRow('Designation', item.designation),
-                      const SizedBox(height: 12),
-                    ],
-                    _DetailRow('Cluster', item.clusterDisplayName),
-                    const SizedBox(height: 12),
-                    _DetailRow('Status', item.statusText),
-                    if (item.isDcr) ...[
-                      const SizedBox(height: 20),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 20),
-                      _DetailRow('Customer', item.customerName),
-                      const SizedBox(height: 12),
-                      _DetailRow('Purpose', item.typeOfWork),
-                      const SizedBox(height: 12),
-                      if (item.samplesToDistribute != null && item.samplesToDistribute!.isNotEmpty) ...[
-                        _DetailRow('Samples to Distribute', item.samplesToDistribute!),
-                        const SizedBox(height: 12),
-                      ],
-                      if (item.productsToDiscuss != null && item.productsToDiscuss!.isNotEmpty) ...[
-                        _DetailRow('Products to Discuss', item.productsToDiscuss!),
-                        const SizedBox(height: 12),
-                      ],
-                    ] else ...[
-                      const SizedBox(height: 20),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 20),
-                      _DetailRow('Expense Type', item.expenseType ?? 'Unknown'),
-                      const SizedBox(height: 12),
-                      _DetailRow('Amount', item.expenseAmount != null ? 'Rs. ${item.expenseAmount!.toStringAsFixed(2)}' : 'Unknown'),
-                    ],
-                    if (item.remarks.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 20),
-                      _DetailRow('Remarks', item.remarks, isMultiline: true),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            // Footer actions (Tour Plan-like wide pill buttons)
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  MediaQuery.of(context).padding.bottom + 16,
-                ),
-                child: Row(
-                  children: [
-                    if (_isDcrEditable(item)) ...[
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () async {
-                            Navigator.of(context).pop();
-                            if (item.isDcr) {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => DcrEntryScreen(
-                                    id: item.id.toString(),
-                                    dcrId: item.dcrId.toString(),
-                                  ),
-                                ),
-                              );
-                            } else if (item.isExpense) {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ExpenseEntryScreen(
-                                    id: item.id.toString(),
-                                    dcrId: item.dcrId.toString(),
-                                  ),
-                                ),
-                              );
-                            }
-                            if (mounted) { await _load(); }
-                          },
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text('Edit'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF4db1b3),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(44),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4db1b3).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            item.isDcr
+                                ? Icons.assignment_outlined
+                                : Icons.account_balance_wallet_outlined,
+                            color: const Color(0xFF4db1b3),
+                            size: 24,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    if (item.isDcr && !_isDcrSentBack(item))
-                      Expanded(
-                        child: Builder(
-                          builder: (context) {
-                            final bool showFilled = !_isDcrEditable(item); // if it's the only action, make it primary
-                            final onPressed = () {
-                              Navigator.of(context).pop();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => DeviationEntryScreen(
-                                    dcrId: item.dcrId,
-                                    tourPlanId: item.tourPlanId,
-                                    initialDate: _date,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.isDcr
+                                      ? 'DCR Details'
+                                      : 'Expense Details',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.grey[900],
+                                    fontSize: isTablet ? 16 : 14,
                                   ),
                                 ),
-                              );
-                            };
-                            if (showFilled) {
-                              return FilledButton.icon(
-                                onPressed: onPressed,
-                                icon: const Icon(Icons.alt_route, size: 18),
-                                label: const Text('Deviation'),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF4db1b3),
-                                  foregroundColor: Colors.white,
-                                  minimumSize: const Size.fromHeight(44),
-                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                ),
-                              );
-                            }
-                            return OutlinedButton.icon(
-                              onPressed: onPressed,
-                              icon: const Icon(Icons.alt_route, size: 18, color: Color(0xFF4db1b3)),
-                              label: const Text('Deviation'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF4db1b3),
-                                minimumSize: const Size.fromHeight(44),
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
                               ),
-                            );
-                          },
+                              const SizedBox(width: 8),
+                              _getStatusChipForItem(item),
+                            ],
+                          ),
                         ),
-                      ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Close',
+                          color: Colors.grey[700],
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    MediaQuery.of(context).padding.bottom + 20,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DetailRow('Transaction Type', item.transactionType),
+                      const SizedBox(height: 12),
+                      _DetailRow('Date',
+                          _formatDate(item.parsedDate ?? DateTime.now())),
+                      const SizedBox(height: 12),
+                      _DetailRow('Employee', item.employeeName),
+                      const SizedBox(height: 12),
+                      if (item.designation.isNotEmpty) ...[
+                        _DetailRow('Designation', item.designation),
+                        const SizedBox(height: 12),
+                      ],
+                      _DetailRow('Cluster', item.clusterDisplayName),
+                      const SizedBox(height: 12),
+                      _DetailRow('Status', item.statusText),
+                      if (item.isDcr) ...[
+                        const SizedBox(height: 20),
+                        Divider(height: 1, color: Colors.grey.shade300),
+                        const SizedBox(height: 20),
+                        _DetailRow('Customer', item.customerName),
+                        const SizedBox(height: 12),
+                        _DetailRow('Purpose', item.typeOfWork),
+                        const SizedBox(height: 12),
+                        if (item.samplesToDistribute != null &&
+                            item.samplesToDistribute!.isNotEmpty) ...[
+                          _DetailRow('Samples to Distribute',
+                              item.samplesToDistribute!),
+                          const SizedBox(height: 12),
+                        ],
+                        if (item.productsToDiscuss != null &&
+                            item.productsToDiscuss!.isNotEmpty) ...[
+                          _DetailRow(
+                              'Products to Discuss', item.productsToDiscuss!),
+                          const SizedBox(height: 12),
+                        ],
+                      ] else ...[
+                        const SizedBox(height: 20),
+                        Divider(height: 1, color: Colors.grey.shade300),
+                        const SizedBox(height: 20),
+                        _DetailRow(
+                            'Expense Type', item.expenseType ?? 'Unknown'),
+                        const SizedBox(height: 12),
+                        _DetailRow(
+                            'Amount',
+                            item.expenseAmount != null
+                                ? 'Rs. ${item.expenseAmount!.toStringAsFixed(2)}'
+                                : 'Unknown'),
+                      ],
+                      if (item.remarks.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Divider(height: 1, color: Colors.grey.shade300),
+                        const SizedBox(height: 20),
+                        _DetailRow('Remarks', item.remarks, isMultiline: true),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              // Footer actions (Tour Plan-like wide pill buttons)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    MediaQuery.of(context).padding.bottom + 16,
+                  ),
+                  child: Row(
+                    children: [
+                      if (_isDcrEditable(item)) ...[
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              if (item.isDcr) {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => DcrEntryScreen(
+                                      id: item.id.toString(),
+                                      dcrId: item.dcrId.toString(),
+                                    ),
+                                  ),
+                                );
+                              } else if (item.isExpense) {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ExpenseEntryScreen(
+                                      id: item.id.toString(),
+                                      dcrId: item.dcrId.toString(),
+                                    ),
+                                  ),
+                                );
+                              }
+                              if (mounted) {
+                                await _load();
+                              }
+                            },
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            label: const Text('Edit'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF4db1b3),
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(44),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 18, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      if (item.isDcr && !_isDcrSentBack(item))
+                        Expanded(
+                          child: Builder(
+                            builder: (context) {
+                              final bool showFilled = !_isDcrEditable(
+                                  item); // if it's the only action, make it primary
+                              final onPressed = () {
+                                Navigator.of(context).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => DeviationEntryScreen(
+                                      dcrId: item.dcrId,
+                                      tourPlanId: item.tourPlanId,
+                                      initialDate: _date,
+                                    ),
+                                  ),
+                                );
+                              };
+                              if (showFilled) {
+                                return FilledButton.icon(
+                                  onPressed: onPressed,
+                                  icon: const Icon(Icons.alt_route, size: 18),
+                                  label: const Text('Deviation'),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF4db1b3),
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size.fromHeight(44),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 18, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14)),
+                                  ),
+                                );
+                              }
+                              return OutlinedButton.icon(
+                                onPressed: onPressed,
+                                icon: const Icon(Icons.alt_route,
+                                    size: 18, color: Color(0xFF4db1b3)),
+                                label: const Text('Deviation'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF4db1b3),
+                                  minimumSize: const Size.fromHeight(44),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 18, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                  side: const BorderSide(
+                                      color: Color(0xFF4db1b3), width: 1.5),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -2049,15 +2362,16 @@ class DcrManagerReviewList extends StatelessWidget {
   Widget build(BuildContext context) {
     final DateTime today = DateTime.now();
     final DateTime d = DateTime(today.year, today.month, today.day);
-    
+
     return FutureBuilder<List<DcrEntry>>(
       future: _loadDcrList(d),
       initialData: const [],
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && snap.data?.isEmpty == true) {
+        if (snap.connectionState == ConnectionState.waiting &&
+            snap.data?.isEmpty == true) {
           return const Center(child: CircularProgressIndicator());
         }
-        
+
         if (snap.hasError) {
           return Center(
             child: Padding(
@@ -2066,9 +2380,11 @@ class DcrManagerReviewList extends StatelessWidget {
             ),
           );
         }
-        
+
         final items = (snap.data ?? [])
-            .where((e) => e.status == DcrStatus.submitted || e.status == DcrStatus.sentBack)
+            .where((e) =>
+                e.status == DcrStatus.submitted ||
+                e.status == DcrStatus.sentBack)
             .toList();
         return _ManagerReviewBody(initialItems: items);
       },
@@ -2078,25 +2394,25 @@ class DcrManagerReviewList extends StatelessWidget {
   Future<List<DcrEntry>> _loadDcrList(DateTime date) async {
     try {
       // Get employee ID from UserDetailStore
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
       final int? employeeId = userStore?.userDetail?.employeeId;
-      
+
       if (employeeId == null) {
         print('Error: Employee ID not available for manager review');
         return [];
       }
 
-      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+      final DcrRepository? dcrRepo =
+          getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
       if (dcrRepo == null) {
         print('Error: DCR Repository not registered');
         return [];
       }
 
       return await dcrRepo.listByDateRange(
-        start: date, 
-        end: date,
-        employeeId: employeeId.toString()
-      );
+          start: date, end: date, employeeId: employeeId.toString());
     } catch (e) {
       print('Error loading DCR list for manager: $e');
       return [];
@@ -2115,7 +2431,8 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
   late List<DcrEntry> _items = widget.initialItems;
   final Set<String> _selected = <String>{};
 
-  void _showToast(String message, {ToastType type = ToastType.info, IconData? icon}) {
+  void _showToast(String message,
+      {ToastType type = ToastType.info, IconData? icon}) {
     if (!mounted) return;
     ToastMessage.show(
       context,
@@ -2164,28 +2481,28 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // Title
           Text(
             'No DCRs Pending Review',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
-            ),
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
           ),
           const SizedBox(height: 8),
-          
+
           // Description
           Text(
             'All DCRs have been reviewed or there are no submitted DCRs\nfor the selected date.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade600,
-              height: 1.4,
-            ),
+                  color: Colors.grey.shade600,
+                  height: 1.4,
+                ),
           ),
           const SizedBox(height: 32),
-          
+
           // Action button
           ElevatedButton.icon(
             onPressed: () {
@@ -2222,7 +2539,9 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              Text('Pending: ${_items.length}', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              Text('Pending: ${_items.length}',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
               const Spacer(),
               InkWell(
                 onTap: () {
@@ -2238,15 +2557,24 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
                 },
                 borderRadius: BorderRadius.circular(24),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(children: [
                     Icon(
-                      _selected.length == _items.length ? Icons.check_box : Icons.check_box_outline_blank,
+                      _selected.length == _items.length
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
                       size: 20,
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(width: 6),
-                    Text(_selected.length == _items.length ? 'Unselect All' : 'Select All', style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w700)),
+                    Text(
+                        _selected.length == _items.length
+                            ? 'Unselect All'
+                            : 'Select All',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700)),
                   ]),
                 ),
               ),
@@ -2266,11 +2594,14 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
                   : theme.colorScheme.primary;
               return Card(
                 elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    border: Border(left: BorderSide(color: statusColor.withOpacity(.6), width: 4)),
+                    border: Border(
+                        left: BorderSide(
+                            color: statusColor.withOpacity(.6), width: 4)),
                   ),
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -2283,7 +2614,11 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
                             value: sel,
                             onChanged: (v) {
                               setState(() {
-                                if (v == true) { _selected.add(e.id); } else { _selected.remove(e.id); }
+                                if (v == true) {
+                                  _selected.add(e.id);
+                                } else {
+                                  _selected.remove(e.id);
+                                }
                               });
                             },
                           ),
@@ -2292,11 +2627,18 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('${e.customer} • ${e.purposeOfVisit}', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                                Text('${e.customer} • ${e.purposeOfVisit}',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                            fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 4),
                                 Wrap(spacing: 8, runSpacing: 6, children: [
-                                  _MiniChip(icon: Icons.person, label: e.employeeName),
-                                  _MiniChip(icon: Icons.location_on, label: e.cluster),
+                                  _MiniChip(
+                                      icon: Icons.person,
+                                      label: e.employeeName),
+                                  _MiniChip(
+                                      icon: Icons.location_on,
+                                      label: e.cluster),
                                   _statusChipForManager(e.status),
                                 ]),
                               ],
@@ -2322,7 +2664,10 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.black.withOpacity(.06)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(
+                      color: Colors.black.withOpacity(.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4)),
                 ],
               ),
               padding: const EdgeInsets.all(8),
@@ -2331,44 +2676,57 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
                   Expanded(
                     child: FilledButton.icon(
                       icon: const Icon(Icons.check),
-                      label: Text('Approve (${_selected.length})', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      label: Text('Approve (${_selected.length})',
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.green.shade600,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 44),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _selected.isEmpty ? null : () => _approve(_selected.toList()),
+                      onPressed: _selected.isEmpty
+                          ? null
+                          : () => _approve(_selected.toList()),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton.tonalIcon(
                       icon: const Icon(Icons.undo),
-                      label: const Text('Revert', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      label: const Text('Revert',
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                       style: FilledButton.styleFrom(
                         foregroundColor: Colors.white,
                         minimumSize: const Size(0, 44),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _selected.isEmpty ? null : () => _sendBack(_selected.toList()),
+                      onPressed: _selected.isEmpty
+                          ? null
+                          : () => _sendBack(_selected.toList()),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.cancel, color: Colors.redAccent),
-                      label: const Text('Reject', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      label: const Text('Reject',
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(0, 44),
-                            foregroundColor: Colors.red,
+                        foregroundColor: Colors.red,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                        side: BorderSide(color: Colors.redAccent.withOpacity(.7), width: 1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(
+                            color: Colors.redAccent.withOpacity(.7), width: 1),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _selected.isEmpty ? null : () => _reject(_selected.toList()),
+                      onPressed: _selected.isEmpty
+                          ? null
+                          : () => _reject(_selected.toList()),
                     ),
                   ),
                 ],
@@ -2386,7 +2744,10 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
       await getIt<DcrRepository>().approve(ids);
     }
     setState(() {
-      _items = _items.map((e) => ids.contains(e.id) ? e.copyWith(status: DcrStatus.approved) : e).toList();
+      _items = _items
+          .map((e) =>
+              ids.contains(e.id) ? e.copyWith(status: DcrStatus.approved) : e)
+          .toList();
       _selected.removeWhere((id) => ids.contains(id));
     });
     print('DCR List Screen: DCRs approved successfully');
@@ -2398,7 +2759,10 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
       await getIt<DcrRepository>().sendBack(ids, comment: '');
     }
     setState(() {
-      _items = _items.map((e) => ids.contains(e.id) ? e.copyWith(status: DcrStatus.sentBack) : e).toList();
+      _items = _items
+          .map((e) =>
+              ids.contains(e.id) ? e.copyWith(status: DcrStatus.sentBack) : e)
+          .toList();
       _selected.removeWhere((id) => ids.contains(id));
     });
     print('DCR List Screen: DCRs sent back successfully');
@@ -2409,17 +2773,22 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
       await getIt<DcrRepository>().reject(ids, comment: '');
     }
     setState(() {
-      _items = _items.map((e) => ids.contains(e.id) ? e.copyWith(status: DcrStatus.rejected) : e).toList();
+      _items = _items
+          .map((e) =>
+              ids.contains(e.id) ? e.copyWith(status: DcrStatus.rejected) : e)
+          .toList();
       _selected.removeWhere((id) => ids.contains(id));
     });
   }
 
   // Expense approval methods
-  Future<void> _approveExpenseSingle(int expenseId, {String comment = ''}) async {
+  Future<void> _approveExpenseSingle(int expenseId,
+      {String comment = ''}) async {
     print('DCR List Screen: Approving expense - ID: $expenseId');
     try {
       if (getIt.isRegistered<ExpenseRepository>()) {
-        final result = await getIt<ExpenseRepository>().approveExpenseSingle(expenseId, comment: comment);
+        final result = await getIt<ExpenseRepository>()
+            .approveExpenseSingle(expenseId, comment: comment);
         print('Expense approved: $result');
         if (mounted) {
           _showToast(
@@ -2439,11 +2808,13 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
     }
   }
 
-  Future<void> _sendBackExpenseSingle(int expenseId, {String comment = ''}) async {
+  Future<void> _sendBackExpenseSingle(int expenseId,
+      {String comment = ''}) async {
     print('DCR List Screen: Sending back expense - ID: $expenseId');
     try {
       if (getIt.isRegistered<ExpenseRepository>()) {
-        final result = await getIt<ExpenseRepository>().sendBackExpenseSingle(expenseId, comment: comment);
+        final result = await getIt<ExpenseRepository>()
+            .sendBackExpenseSingle(expenseId, comment: comment);
         print('Expense sent back: $result');
         if (mounted) {
           _showToast(
@@ -2467,7 +2838,7 @@ class _ManagerReviewBodyState extends State<_ManagerReviewBody> {
 // Helper widget for detail rows in the popup
 class _DetailRow extends StatelessWidget {
   const _DetailRow(this.label, this.value, {this.isMultiline = false});
-  
+
   final String label;
   final String value;
   final bool isMultiline;
@@ -2475,9 +2846,10 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     return Row(
-      crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      crossAxisAlignment:
+          isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
           width: isMobile ? 100 : 120,
@@ -2500,7 +2872,8 @@ class _DetailRow extends StatelessWidget {
               fontSize: isMobile ? 12 : 13,
             ),
             maxLines: isMultiline ? null : 3,
-            overflow: isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
+            overflow:
+                isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -2508,16 +2881,16 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-
 // ---------- UI helpers to match screenshot styling ----------
 
 _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
   // Clean and normalize the status text
   final statusText = item.statusText.trim().toLowerCase();
-  
+
   // Debug print to see what status we're getting
-  print('DCR Status Debug: Raw statusText="${item.statusText}", normalized="$statusText", dcrStatusId=${item.dcrStatusId}');
-  
+  print(
+      'DCR Status Debug: Raw statusText="${item.statusText}", normalized="$statusText", dcrStatusId=${item.dcrStatusId}');
+
   if (item.isDcr) {
     // Map status text to DCR status with more flexible matching
     if (statusText.contains('draft')) {
@@ -2528,12 +2901,14 @@ _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
       return const _StatusChip.approved('Approved');
     } else if (statusText.contains('rejected')) {
       return const _StatusChip.rejected('Rejected');
-    } else if (statusText.contains('sent back') || statusText.contains('sentback')) {
+    } else if (statusText.contains('sent back') ||
+        statusText.contains('sentback')) {
       return const _StatusChip.pending('Sent Back');
     } else {
       // If we don't recognize the status, try to map based on dcrStatusId
-      print('Unknown DCR status: "$statusText", trying dcrStatusId=${item.dcrStatusId}');
-      
+      print(
+          'Unknown DCR status: "$statusText", trying dcrStatusId=${item.dcrStatusId}');
+
       // Map based on dcrStatusId as fallback
       switch (item.dcrStatusId) {
         case 0:
@@ -2551,7 +2926,8 @@ _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
         case 6:
           return const _StatusChip.pending('Sent Back');
         default:
-          return _StatusChip.pending(item.statusText.isNotEmpty ? item.statusText : 'Unknown');
+          return _StatusChip.pending(
+              item.statusText.isNotEmpty ? item.statusText : 'Unknown');
       }
     }
   } else {
@@ -2564,7 +2940,8 @@ _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
       return const _StatusChip.approved('Approved');
     } else if (statusText.contains('rejected')) {
       return const _StatusChip.rejected('Rejected');
-    } else if (statusText.contains('sent back') || statusText.contains('sentback')) {
+    } else if (statusText.contains('sent back') ||
+        statusText.contains('sentback')) {
       return const _StatusChip.pending('Sent Back');
     } else if (statusText.contains('expense')) {
       // For expenses, if statusText is "Expense", try to use dcrStatusId to determine actual status
@@ -2587,7 +2964,8 @@ _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
       }
     } else {
       print('Unknown Expense status: "$statusText"');
-      return _StatusChip.pending(item.statusText.isNotEmpty ? item.statusText : 'Unknown');
+      return _StatusChip.pending(
+          item.statusText.isNotEmpty ? item.statusText : 'Unknown');
     }
   }
 }
@@ -2602,7 +2980,7 @@ class _UnifiedItemCard extends StatelessWidget {
     this.currentPosition,
     this.geoFenceRadiusMeters,
   });
-  
+
   final UnifiedDcrItem item;
   final VoidCallback? onCreateDeviation;
   final VoidCallback? onEdit;
@@ -2614,15 +2992,21 @@ class _UnifiedItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallMobile = screenWidth < 360;
     final isMobile = screenWidth < 600;
     final isTablet = screenWidth >= 600;
-    
-    final TextStyle label = GoogleFonts.inter(color: Colors.black54, fontWeight: FontWeight.w600, fontSize: isMobile ? 13 : 14);
-    final TextStyle value = GoogleFonts.inter(color: const Color(0xFF1F2937), fontWeight: FontWeight.w600, fontSize: isMobile ? 14 : 15);
-    
+
+    final TextStyle label = GoogleFonts.inter(
+        color: Colors.black54,
+        fontWeight: FontWeight.w600,
+        fontSize: isMobile ? 13 : 14);
+    final TextStyle value = GoogleFonts.inter(
+        color: const Color(0xFF1F2937),
+        fontWeight: FontWeight.w600,
+        fontSize: isMobile ? 14 : 15);
+
     final String headerTitle = (item.displayTitle ?? '').isNotEmpty
         ? item.displayTitle!
         : (item.isExpense ? 'Expense' : 'DCR');
@@ -2634,138 +3018,149 @@ class _UnifiedItemCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.black.withOpacity(.06), width: 1),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(.03), blurRadius: 8, offset: const Offset(0, 2))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2))
+          ],
         ),
         padding: EdgeInsets.all(isSmallMobile ? 10 : (isMobile ? 12 : 14)),
         margin: EdgeInsets.only(bottom: isMobile ? 8 : 10),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row: Icon + Title + View
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: isTablet ? 40 : 36,
-                height: isTablet ? 40 : 36,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7F7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  item.isExpense ? Icons.account_balance_wallet_outlined : Icons.description_outlined,
-                  color: const Color(0xFF4db1b3),
-                  size: isTablet ? 20 : 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  headerTitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: isTablet ? 13 : 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
-              // View Button - Right side (visual only, card is clickable)
-              if (onViewDetails != null)
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row: Icon + Title + View
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
                 Container(
-                  width: isTablet ? 36 : 32,
-                  height: isTablet ? 36 : 32,
+                  width: isTablet ? 40 : 36,
+                  height: isTablet ? 40 : 36,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                    color: const Color(0xFFEAF7F7),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.visibility_outlined, size: isTablet ? 16 : 14, color: Colors.grey.shade700),
+                  child: Icon(
+                    item.isExpense
+                        ? Icons.account_balance_wallet_outlined
+                        : Icons.description_outlined,
+                    color: const Color(0xFF4db1b3),
+                    size: isTablet ? 20 : 18,
+                  ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Employee and Date row
-          Row(
-            children: [
-              Icon(
-                Icons.person_outline,
-                size: isTablet ? 13 : 12,
-                color: Colors.grey[600],
-              ),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  item.employeeName.isNotEmpty ? item.employeeName : 'Unknown',
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    headerTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 13 : 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                // View Button - Right side (visual only, card is clickable)
+                if (onViewDetails != null)
+                  Container(
+                    width: isTablet ? 36 : 32,
+                    height: isTablet ? 36 : 32,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                    child: Icon(Icons.visibility_outlined,
+                        size: isTablet ? 16 : 14, color: Colors.grey.shade700),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Employee and Date row
+            Row(
+              children: [
+                Icon(
+                  Icons.person_outline,
+                  size: isTablet ? 13 : 12,
+                  color: Colors.grey[600],
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    item.employeeName.isNotEmpty
+                        ? item.employeeName
+                        : 'Unknown',
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 11 : 10,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: isTablet ? 13 : 12,
+                  color: Colors.grey[600],
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  _formatItemDate(item),
                   style: GoogleFonts.inter(
                     fontSize: isTablet ? 11 : 10,
                     fontWeight: FontWeight.w500,
                     color: Colors.grey[700],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Icon(
-                Icons.calendar_today_outlined,
-                size: isTablet ? 13 : 12,
-                color: Colors.grey[600],
-              ),
-              const SizedBox(width: 5),
-              Text(
-                _formatItemDate(item),
-                style: GoogleFonts.inter(
-                  fontSize: isTablet ? 11 : 10,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Status and distance row (simplified)
-          Row(
-            children: [
-              _getStatusChipForItem(item),
-              const Spacer(),
-              // Geo proximity + distance (DCR only)
-              if (item.isDcr) ...[
-                _ProximityDot(inRange: _isInRange(item)),
-                const SizedBox(width: 5),
-                if (_getDistanceText(item) != null)
-                  Text(
-                    _getDistanceText(item)!,
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 11 : 10,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-              ] else if (item.expenseAmount != null) ...[
-                Text(
-                  'Rs. ${item.expenseAmount!.toStringAsFixed(0)}',
-                  style: GoogleFonts.inter(
-                    fontSize: isTablet ? 12 : 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
                 ),
               ],
-            ],
-          ),
-        ],
-      ),
+            ),
+            const SizedBox(height: 8),
+            // Status and distance row (simplified)
+            Row(
+              children: [
+                _getStatusChipForItem(item),
+                const Spacer(),
+                // Geo proximity + distance (DCR only)
+                if (item.isDcr) ...[
+                  _ProximityDot(inRange: _isInRange(item)),
+                  const SizedBox(width: 5),
+                  if (_getDistanceText(item) != null)
+                    Text(
+                      _getDistanceText(item)!,
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 11 : 10,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                ] else if (item.expenseAmount != null) ...[
+                  Text(
+                    'Rs. ${item.expenseAmount!.toStringAsFixed(0)}',
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 12 : 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  static Widget _kvRow(BuildContext context, String label, String valueText, TextStyle? lStyle, TextStyle? vStyle) {
+  static Widget _kvRow(BuildContext context, String label, String valueText,
+      TextStyle? lStyle, TextStyle? vStyle) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     final bool isSmallMobile = MediaQuery.of(context).size.width < 360;
-    
+
     return Padding(
       padding: EdgeInsets.symmetric(vertical: isSmallMobile ? 3 : 5),
       child: Row(
@@ -2774,7 +3169,7 @@ class _UnifiedItemCard extends StatelessWidget {
           Expanded(
             flex: isMobile ? 2 : 1,
             child: Text(
-              label, 
+              label,
               style: GoogleFonts.inter(
                   color: Colors.black54,
                   fontWeight: FontWeight.w600,
@@ -2788,13 +3183,13 @@ class _UnifiedItemCard extends StatelessWidget {
           Expanded(
             flex: isMobile ? 3 : 2,
             child: Text(
-              valueText, 
+              valueText,
               style: GoogleFonts.inter(
                   color: const Color(0xFF1F1F1F),
                   fontWeight: FontWeight.w500,
                   fontSize: isSmallMobile ? 12 : (isMobile ? 13 : 14),
-                  letterSpacing: -0.1), 
-              textAlign: TextAlign.right, 
+                  letterSpacing: -0.1),
+              textAlign: TextAlign.right,
               overflow: TextOverflow.visible,
               maxLines: isMobile ? (isSmallMobile ? 4 : 3) : 2,
               softWrap: true,
@@ -2806,7 +3201,8 @@ class _UnifiedItemCard extends StatelessWidget {
   }
 
   // Icon + key/value row to match compact list design
-  static Widget _iconKvRow(BuildContext context, IconData icon, String label, String valueText) {
+  static Widget _iconKvRow(
+      BuildContext context, IconData icon, String label, String valueText) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     final bool isSmallMobile = MediaQuery.of(context).size.width < 360;
     return Row(
@@ -2849,14 +3245,14 @@ class _UnifiedItemCard extends StatelessWidget {
     if (currentPosition == null) {
       return false;
     }
-    
-    if (item.customerLatitude == null || 
+
+    if (item.customerLatitude == null ||
         item.customerLongitude == null ||
-        item.customerLatitude == 0.0 || 
+        item.customerLatitude == 0.0 ||
         item.customerLongitude == 0.0) {
       return false;
     }
-    
+
     // Calculate distance between user and customer
     final double distanceMeters = Geolocator.distanceBetween(
       currentPosition!.latitude,
@@ -2864,7 +3260,7 @@ class _UnifiedItemCard extends StatelessWidget {
       item.customerLatitude!,
       item.customerLongitude!,
     );
-    
+
     // Check if within geofence radius (default to 20km if not provided)
     final double radius = geoFenceRadiusMeters ?? 20000;
     return distanceMeters <= radius;
@@ -2875,22 +3271,23 @@ class _UnifiedItemCard extends StatelessWidget {
     if (!item.isDcr) {
       return null;
     }
-    
+
     if (currentPosition == null) {
       return null;
     }
     // Ignore invalid device coordinates (0,0)
-    if (currentPosition!.latitude.abs() < 0.0001 && currentPosition!.longitude.abs() < 0.0001) {
+    if (currentPosition!.latitude.abs() < 0.0001 &&
+        currentPosition!.longitude.abs() < 0.0001) {
       return null;
     }
-    
-    if (item.customerLatitude == null || 
+
+    if (item.customerLatitude == null ||
         item.customerLongitude == null ||
-        item.customerLatitude == 0.0 || 
+        item.customerLatitude == 0.0 ||
         item.customerLongitude == 0.0) {
       return null;
     }
-    
+
     // Calculate distance between user and customer
     final double distanceMeters = Geolocator.distanceBetween(
       currentPosition!.latitude,
@@ -2898,7 +3295,7 @@ class _UnifiedItemCard extends StatelessWidget {
       item.customerLatitude!,
       item.customerLongitude!,
     );
-    
+
     // Format distance text
     // Treat < 50m as "At location" to avoid confusing "0 m"
     if (distanceMeters < 50) {
@@ -2949,7 +3346,10 @@ class _ActionPill extends StatelessWidget {
               children: [
                 Icon(icon, size: 18),
                 const SizedBox(width: 8),
-                Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelLarge)),
+                Flexible(
+                    child: Text(label,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge)),
               ],
             ),
           ),
@@ -2980,7 +3380,10 @@ class _DatePill extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelLarge)),
+                Flexible(
+                    child: Text(label,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge)),
                 const SizedBox(width: 8),
                 const Icon(Icons.expand_more, size: 18),
               ],
@@ -2993,7 +3396,10 @@ class _DatePill extends StatelessWidget {
 }
 
 class _SegmentedPills extends StatelessWidget {
-  const _SegmentedPills({required this.options, required this.selectedIndex, required this.onChanged});
+  const _SegmentedPills(
+      {required this.options,
+      required this.selectedIndex,
+      required this.onChanged});
   final List<String> options;
   final int selectedIndex;
   final ValueChanged<int> onChanged;
@@ -3006,7 +3412,10 @@ class _SegmentedPills extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(.06), blurRadius: 12, offset: const Offset(0, 6)),
+          BoxShadow(
+              color: Colors.black.withOpacity(.06),
+              blurRadius: 12,
+              offset: const Offset(0, 6)),
         ],
         border: Border.all(color: Colors.black.withOpacity(.06)),
       ),
@@ -3029,7 +3438,11 @@ class _SegmentedPills extends StatelessWidget {
 }
 
 class _SelectablePill extends StatelessWidget {
-  const _SelectablePill({required this.label, required this.selected, required this.onTap, required this.selectedColor});
+  const _SelectablePill(
+      {required this.label,
+      required this.selected,
+      required this.onTap,
+      required this.selectedColor});
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -3037,7 +3450,8 @@ class _SelectablePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle style = Theme.of(context).textTheme.titleMedium ?? const TextStyle(fontSize: 16);
+    final TextStyle style = Theme.of(context).textTheme.titleMedium ??
+        const TextStyle(fontSize: 16);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(28),
@@ -3047,7 +3461,8 @@ class _SelectablePill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
           gradient: selected
-              ? LinearGradient(colors: [selectedColor.withOpacity(.75), selectedColor])
+              ? LinearGradient(
+                  colors: [selectedColor.withOpacity(.75), selectedColor])
               : null,
           color: selected ? selectedColor : Colors.transparent,
           borderRadius: BorderRadius.circular(28),
@@ -3057,7 +3472,8 @@ class _SelectablePill extends StatelessWidget {
           label,
           style: selected
               ? style.copyWith(color: Colors.white, fontWeight: FontWeight.w700)
-              : style.copyWith(color: Colors.black87, fontWeight: FontWeight.w600),
+              : style.copyWith(
+                  color: Colors.black87, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -3065,7 +3481,8 @@ class _SelectablePill extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.actionText, required this.child});
+  const _SectionCard(
+      {required this.title, required this.actionText, required this.child});
   final String title;
   final String actionText;
   final Widget child;
@@ -3074,14 +3491,18 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isInRange = actionText.toLowerCase().contains('in-range');
-    final statusColor = isInRange ? const Color(0xFF2DBE64) : const Color(0xFFE53935);
-    
+    final statusColor =
+        isInRange ? const Color(0xFF2DBE64) : const Color(0xFFE53935);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(
+              color: Colors.black.withOpacity(.05),
+              blurRadius: 12,
+              offset: const Offset(0, 4)),
         ],
         border: Border.all(color: Colors.black.withOpacity(.06), width: 1),
       ),
@@ -3112,7 +3533,8 @@ class _SectionCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: statusColor,
                         shape: BoxShape.circle,
-                        border: Border.all(color: statusColor.withOpacity(.25), width: 2),
+                        border: Border.all(
+                            color: statusColor.withOpacity(.25), width: 2),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -3121,7 +3543,7 @@ class _SectionCard extends StatelessWidget {
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: statusColor,
                         fontWeight: FontWeight.w700,
-                      fontSize: 12,
+                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -3147,7 +3569,16 @@ class _SectionCard extends StatelessWidget {
 }
 
 class _DcrDetails extends StatelessWidget {
-  const _DcrDetails({required this.cluster, required this.customer, required this.purpose, required this.status, this.geo, this.hasTourPlan = false, this.distanceText, this.onCreateDeviation, this.onEdit});
+  const _DcrDetails(
+      {required this.cluster,
+      required this.customer,
+      required this.purpose,
+      required this.status,
+      this.geo,
+      this.hasTourPlan = false,
+      this.distanceText,
+      this.onCreateDeviation,
+      this.onEdit});
   final String cluster;
   final String customer;
   final String purpose;
@@ -3160,8 +3591,14 @@ class _DcrDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle? label = Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
-    final TextStyle? value = Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final TextStyle? label = Theme.of(context)
+        .textTheme
+        .bodyMedium
+        ?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
+    final TextStyle? value = Theme.of(context)
+        .textTheme
+        .bodyLarge
+        ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3175,7 +3612,11 @@ class _DcrDetails extends StatelessWidget {
                 else
                   _MiniChip(icon: Icons.bolt, label: 'Ad-hoc'),
                 const SizedBox(width: 6),
-                Flexible(child: Text(cluster, style: value, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+                Flexible(
+                    child: Text(cluster,
+                        style: value,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis)),
               ]),
             ),
           ],
@@ -3184,14 +3625,23 @@ class _DcrDetails extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text('Customer', style: label)),
-            Expanded(child: Text(customer, style: value, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, maxLines: 2)),
+            Expanded(
+                child: Text(customer,
+                    style: value,
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2)),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(child: Text('Purpose', style: label)),
-            Expanded(child: Text(purpose, style: value, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+            Expanded(
+                child: Text(purpose,
+                    style: value,
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.ellipsis)),
           ],
         ),
         const SizedBox(height: 12),
@@ -3208,7 +3658,8 @@ class _DcrDetails extends StatelessWidget {
             children: [
               _ProximityDot(inRange: geo == GeoProximity.at),
               const SizedBox(width: 8),
-              if (distanceText != null) _MiniChip(icon: Icons.straighten, label: distanceText!),
+              if (distanceText != null)
+                _MiniChip(icon: Icons.straighten, label: distanceText!),
               const Spacer(),
               if (onEdit != null)
                 Expanded(
@@ -3221,7 +3672,8 @@ class _DcrDetails extends StatelessWidget {
                     ),
                     style: FilledButton.styleFrom(
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
                       minimumSize: const Size(0, 36),
                     ),
                   ),
@@ -3231,7 +3683,8 @@ class _DcrDetails extends StatelessWidget {
                 Expanded(
                   child: FilledButton.tonalIcon(
                     onPressed: onCreateDeviation,
-                    icon: const Icon(Icons.alt_route, size: 16, color: Colors.white),
+                    icon: const Icon(Icons.alt_route,
+                        size: 16, color: Colors.white),
                     label: const Text(
                       'Create Dev',
                       style: TextStyle(color: Colors.white, fontSize: 12),
@@ -3239,7 +3692,8 @@ class _DcrDetails extends StatelessWidget {
                     ),
                     style: FilledButton.styleFrom(
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
                       minimumSize: const Size(0, 36),
                     ),
                   ),
@@ -3262,7 +3716,11 @@ class _DcrDetails extends StatelessWidget {
 }
 
 class _ExpenseDetails extends StatelessWidget {
-  const _ExpenseDetails({required this.cluster, required this.expenseTitle, required this.amountText, required this.status});
+  const _ExpenseDetails(
+      {required this.cluster,
+      required this.expenseTitle,
+      required this.amountText,
+      required this.status});
   final String cluster;
   final String expenseTitle;
   final String amountText;
@@ -3270,9 +3728,18 @@ class _ExpenseDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle? label = Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
-    final TextStyle? value = Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
-    final TextStyle? amountStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final TextStyle? label = Theme.of(context)
+        .textTheme
+        .bodyMedium
+        ?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
+    final TextStyle? value = Theme.of(context)
+        .textTheme
+        .bodyLarge
+        ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final TextStyle? amountStyle = Theme.of(context)
+        .textTheme
+        .bodyLarge
+        ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3283,7 +3750,9 @@ class _ExpenseDetails extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text('Purpose', style: label)),
-            Expanded(child: Text(amountText, style: amountStyle, textAlign: TextAlign.right)),
+            Expanded(
+                child: Text(amountText,
+                    style: amountStyle, textAlign: TextAlign.right)),
           ],
         ),
         const SizedBox(height: 12),
@@ -3333,15 +3802,22 @@ class _DcrCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final TextStyle? label = theme.textTheme.bodyMedium?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
-    final TextStyle? value = theme.textTheme.bodyLarge?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final TextStyle? label = theme.textTheme.bodyMedium
+        ?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
+    final TextStyle? value = theme.textTheme.bodyLarge
+        ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
     final bool inRange = geo == GeoProximity.at;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.black.withOpacity(.06)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(.04), blurRadius: 12, offset: const Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(.04),
+              blurRadius: 12,
+              offset: const Offset(0, 6))
+        ],
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -3359,7 +3835,9 @@ class _DcrCompactCard extends StatelessWidget {
                   runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    _MiniChip(icon: isAdhoc ? Icons.bolt : Icons.event_available, label: isAdhoc ? 'Ad-hoc' : 'Planned'),
+                    _MiniChip(
+                        icon: isAdhoc ? Icons.bolt : Icons.event_available,
+                        label: isAdhoc ? 'Ad-hoc' : 'Planned'),
                     statusChip,
                   ],
                 ),
@@ -3379,7 +3857,8 @@ class _DcrCompactCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(.06)),
+          Divider(
+              height: 1, thickness: 1, color: Colors.black.withOpacity(.06)),
           const SizedBox(height: 12),
           const SizedBox(height: 12),
           _kvRow('Cluster', cluster, label, value),
@@ -3392,25 +3871,36 @@ class _DcrCompactCard extends StatelessWidget {
     );
   }
 
-  Widget _kvRow(String label, String valueText, TextStyle? lStyle, TextStyle? vStyle) {
+  Widget _kvRow(
+      String label, String valueText, TextStyle? lStyle, TextStyle? vStyle) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: Text(label, style: lStyle)),
-        Expanded(child: Text(valueText, style: vStyle, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, maxLines: 2)),
+        Expanded(
+            child: Text(valueText,
+                style: vStyle,
+                textAlign: TextAlign.right,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2)),
       ],
     );
   }
 }
 
-Future<String?> _pickFromList(BuildContext context, {required String title, required List<String> options, String? selected, bool searchable = false}) async {
+Future<String?> _pickFromList(BuildContext context,
+    {required String title,
+    required List<String> options,
+    String? selected,
+    bool searchable = false}) async {
   // If searchable is true or options list is large, use searchable version
   final bool useSearch = searchable || options.length > 10;
-  
+
   if (useSearch) {
-    return _pickFromListSearchable(context, title: title, options: options, selected: selected);
+    return _pickFromListSearchable(context,
+        title: title, options: options, selected: selected);
   }
-  
+
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -3422,8 +3912,15 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Row(
               children: [
-                Expanded(child: Text(title, style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500))),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
+                Expanded(
+                    child: Text(title,
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w500))),
+                IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx))
               ],
             ),
           ),
@@ -3434,7 +3931,9 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               itemBuilder: (c, i) => ListTile(
                 title: Text(options[i]),
-                trailing: options[i] == selected ? const Icon(Icons.check, color: Colors.green) : null,
+                trailing: options[i] == selected
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
                 onTap: () => Navigator.pop(ctx, options[i]),
               ),
               separatorBuilder: (_, __) => const Divider(height: 1),
@@ -3447,7 +3946,10 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
   );
 }
 
-Future<String?> _pickFromListSearchable(BuildContext context, {required String title, required List<String> options, String? selected}) async {
+Future<String?> _pickFromListSearchable(BuildContext context,
+    {required String title,
+    required List<String> options,
+    String? selected}) async {
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -3472,10 +3974,12 @@ class _SearchableListBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<_SearchableListBottomSheet> createState() => _SearchableListBottomSheetState();
+  State<_SearchableListBottomSheet> createState() =>
+      _SearchableListBottomSheetState();
 }
 
-class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> {
+class _SearchableListBottomSheetState
+    extends State<_SearchableListBottomSheet> {
   late List<String> _filteredOptions;
   late TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode();
@@ -3512,9 +4016,9 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
       if (query.isEmpty) {
         _filteredOptions = widget.options;
       } else {
-        _filteredOptions = widget.options.where((option) =>
-          option.toLowerCase().contains(query)
-        ).toList();
+        _filteredOptions = widget.options
+            .where((option) => option.toLowerCase().contains(query))
+            .toList();
       }
     });
   }
@@ -3536,7 +4040,10 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w500),
                     ),
                   ),
                   IconButton(
@@ -3572,7 +4079,8 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                       ),
                       filled: true,
                       fillColor: Colors.grey.shade50,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
                     onTap: () {
                       // Request focus when user explicitly taps on search field
@@ -3589,18 +4097,23 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                       padding: const EdgeInsets.all(32.0),
                       child: Text(
                         'No results found',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.grey),
                       ),
                     )
                   : ListView.separated(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
                       itemBuilder: (c, i) => ListTile(
                         title: Text(_filteredOptions[i]),
                         trailing: _filteredOptions[i] == widget.selected
                             ? const Icon(Icons.check, color: Colors.green)
                             : null,
-                        onTap: () => Navigator.pop(context, _filteredOptions[i]),
+                        onTap: () =>
+                            Navigator.pop(context, _filteredOptions[i]),
                       ),
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemCount: _filteredOptions.length,
@@ -3615,10 +4128,14 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
 
 class _StatusChip extends StatelessWidget {
   const _StatusChip._(this.text, this.color);
-  const _StatusChip.approved(String text) : this._(text, const Color(0xFF2DBE64));
-  const _StatusChip.pending(String text) : this._(text, const Color(0xFFFFC54D));
-  const _StatusChip.expense(String text) : this._(text, const Color(0xFF00C4DE));
-  const _StatusChip.rejected(String text) : this._(text, const Color(0xFFE53935));
+  const _StatusChip.approved(String text)
+      : this._(text, const Color(0xFF2DBE64));
+  const _StatusChip.pending(String text)
+      : this._(text, const Color(0xFFFFC54D));
+  const _StatusChip.expense(String text)
+      : this._(text, const Color(0xFF00C4DE));
+  const _StatusChip.rejected(String text)
+      : this._(text, const Color(0xFFE53935));
 
   final String text;
   final Color color;
@@ -3627,7 +4144,8 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 9, vertical: isMobile ? 3 : 4),
+      padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 8 : 9, vertical: isMobile ? 3 : 4),
       decoration: BoxDecoration(
         color: color.withOpacity(.12),
         borderRadius: BorderRadius.circular(12),
@@ -3651,12 +4169,12 @@ class _StatusChip extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: isMobile ? 10 : 11,
-                letterSpacing: 0.1,
-                height: 1.2,
-              ),
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: isMobile ? 10 : 11,
+                    letterSpacing: 0.1,
+                    height: 1.2,
+                  ),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
@@ -3669,7 +4187,8 @@ class _StatusChip extends StatelessWidget {
 
 class _MiniChip extends StatelessWidget {
   const _MiniChip({required this.icon, required this.label});
-  final IconData icon; final String label;
+  final IconData icon;
+  final String label;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3688,7 +4207,8 @@ class _MiniChip extends StatelessWidget {
           Flexible(
             child: Text(
               label,
-              style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
@@ -3704,7 +4224,8 @@ class _ProximityDot extends StatelessWidget {
   final bool inRange;
   @override
   Widget build(BuildContext context) {
-    final Color color = inRange ? const Color(0xFF2DBE64) : const Color(0xFFFFC54D);
+    final Color color =
+        inRange ? const Color(0xFF2DBE64) : const Color(0xFFFFC54D);
     return Container(
       width: 20,
       height: 20,
@@ -3719,14 +4240,14 @@ class _ProximityDot extends StatelessWidget {
 
 class _ClusterGroup {
   _ClusterGroup({required this.cluster, required this.items});
-  final String cluster; 
+  final String cluster;
   final List<UnifiedDcrItem> items;
 }
 
 extension _Grouping on _DcrListScreenState {
   List<_ClusterGroup> _groupedByClusterOrAdhoc() {
     final Map<String, List<UnifiedDcrItem>> itemsByCluster = {};
-    
+
     for (final item in _applyFilters(_unifiedItems)) {
       String group;
       if (item.isDcr) {
@@ -3736,7 +4257,7 @@ extension _Grouping on _DcrListScreenState {
       }
       (itemsByCluster[group] ??= []).add(item);
     }
-    
+
     return itemsByCluster.entries
         .map((entry) => _ClusterGroup(cluster: entry.key, items: entry.value))
         .toList();
@@ -3746,42 +4267,45 @@ extension _Grouping on _DcrListScreenState {
     return list.where((item) {
       // Transaction type filter
       final String transactionType = item.isDcr ? 'DCR' : 'Expense';
-      final byTransactionType = _selectedTransactionTypes.contains(transactionType);
-      
+      final byTransactionType =
+          _selectedTransactionTypes.contains(transactionType);
+
       // Status filter
-      final byStatus = _status == null || _getStatusChipForItem(item).text == _status;
-      
+      final byStatus =
+          _status == null || _getStatusChipForItem(item).text == _status;
+
       return byTransactionType && byStatus;
     }).toList();
   }
-  
+
   // Get filter count (number of active filters)
   int _getFilterCount() {
     int count = 0;
     if (_status != null) count++;
-    if (_selectedTransactionTypes.length != 2) count++; // If not both selected, it's a filter
+    if (_selectedTransactionTypes.length != 2)
+      count++; // If not both selected, it's a filter
     // Count employee only if the filter is enabled (not MR role)
     if (_employee != null && !_shouldDisableEmployeeFilter()) count++;
     // Count date if not today
     if (!_DcrListScreenState._isToday(_date)) count++;
     return count;
   }
-  
+
   // Get filtered records count
   int _getFilteredRecordsCount() {
     return _applyFilters(_unifiedItems).length;
   }
-  
+
   // Get DCR count
   int _getDcrCount() {
     return _unifiedItems.where((item) => item.isDcr).length;
   }
-  
+
   // Get Expense count
   int _getExpenseCount() {
     return _unifiedItems.where((item) => item.isExpense).length;
   }
-  
+
   // Open filter modal
   void _openFilterModal() {
     setState(() {
@@ -3789,7 +4313,7 @@ extension _Grouping on _DcrListScreenState {
     });
     _filterModalController.forward();
   }
-  
+
   // Close filter modal
   void _closeFilterModal() {
     _filterModalController.reverse().then((_) {
@@ -3800,7 +4324,7 @@ extension _Grouping on _DcrListScreenState {
       }
     });
   }
-  
+
   // Apply filters from modal
   void _applyFiltersFromModal() {
     _closeFilterModal();
@@ -3848,7 +4372,8 @@ extension _Grouping on _DcrListScreenState {
     return _employeeNameToId[_employee!];
   }
 
-  int? _statusIdFromText(String? text) => text == null ? null : _statusNameToId[text];
+  int? _statusIdFromText(String? text) =>
+      text == null ? null : _statusNameToId[text];
 
   String _groupInRangeText(_ClusterGroup g) {
     // Consider only DCR items for geo stats
@@ -3856,15 +4381,16 @@ extension _Grouping on _DcrListScreenState {
     final int totalGeo = dcrItems.length;
     if (totalGeo == 0) return 'Out-of-range 0/0';
     // If device location is unavailable/invalid, avoid misleading out-of-range label
-    if (_currentPosition == null || 
-        (_currentPosition!.latitude.abs() < 0.0001 && _currentPosition!.longitude.abs() < 0.0001)) {
+    if (_currentPosition == null ||
+        (_currentPosition!.latitude.abs() < 0.0001 &&
+            _currentPosition!.longitude.abs() < 0.0001)) {
       return 'Geo off 0/$totalGeo';
     }
     final int inRange = dcrItems.where((item) {
-      if (_currentPosition == null || 
-          item.customerLatitude == null || 
+      if (_currentPosition == null ||
+          item.customerLatitude == null ||
           item.customerLongitude == null ||
-          item.customerLatitude == 0.0 || 
+          item.customerLatitude == 0.0 ||
           item.customerLongitude == 0.0) {
         return false;
       }
@@ -3876,7 +4402,9 @@ extension _Grouping on _DcrListScreenState {
       );
       return distanceMeters <= _geoFenceRadiusMeters;
     }).length;
-    return inRange > 0 ? 'In-range $inRange/$totalGeo' : 'Out-of-range 0/$totalGeo';
+    return inRange > 0
+        ? 'In-range $inRange/$totalGeo'
+        : 'Out-of-range 0/$totalGeo';
   }
 }
 
@@ -3897,15 +4425,20 @@ class _EnhancedActionPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final Color backgroundColor = isActive ? Colors.blue.shade50 : Colors.white;
-    final Color iconColor = isActive ? Colors.blue.shade600 : theme.colorScheme.primary;
-    final Color textColor = isActive ? Colors.blue.shade700 : Colors.grey.shade700;
-    final Color borderColor = isActive ? Colors.blue.shade200 : Colors.grey.shade200;
-    
+    final Color iconColor =
+        isActive ? Colors.blue.shade600 : theme.colorScheme.primary;
+    final Color textColor =
+        isActive ? Colors.blue.shade700 : Colors.grey.shade700;
+    final Color borderColor =
+        isActive ? Colors.blue.shade200 : Colors.grey.shade200;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(12),
       elevation: isActive ? 3 : 2,
-      shadowColor: isActive ? Colors.blue.withOpacity(0.2) : Colors.black.withOpacity(0.1),
+      shadowColor: isActive
+          ? Colors.blue.withOpacity(0.2)
+          : Colors.black.withOpacity(0.1),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -3957,10 +4490,13 @@ class _ClearFiltersButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bool isMobile = MediaQuery.of(context).size.width < 600;
-    final Color backgroundColor = isActive ? Colors.red.shade50 : Colors.grey.shade100;
-    final Color iconColor = isActive ? Colors.red.shade600 : Colors.grey.shade600;
-    final Color textColor = isActive ? Colors.red.shade700 : Colors.grey.shade600;
-    
+    final Color backgroundColor =
+        isActive ? Colors.red.shade50 : Colors.grey.shade100;
+    final Color iconColor =
+        isActive ? Colors.red.shade600 : Colors.grey.shade600;
+    final Color textColor =
+        isActive ? Colors.red.shade700 : Colors.grey.shade600;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(12),
@@ -4014,7 +4550,7 @@ class _SearchableFilterDropdown extends StatefulWidget {
   final ValueChanged<String?> onChanged;
   final bool isTablet;
   final VoidCallback? onExpanded;
-  
+
   const _SearchableFilterDropdown({
     super.key,
     required this.title,
@@ -4025,16 +4561,17 @@ class _SearchableFilterDropdown extends StatefulWidget {
     required this.isTablet,
     this.onExpanded,
   });
-  
+
   @override
-  State<_SearchableFilterDropdown> createState() => _SearchableFilterDropdownState();
+  State<_SearchableFilterDropdown> createState() =>
+      _SearchableFilterDropdownState();
 }
 
 class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   late TextEditingController _searchController;
   late List<String> _filteredOptions;
   bool _isExpanded = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -4042,14 +4579,14 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
     _filteredOptions = widget.options;
     _searchController.addListener(_onSearchChanged);
   }
-  
+
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
   }
-  
+
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -4058,7 +4595,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
           .toList();
     });
   }
-  
+
   void _toggleExpanded() {
     setState(() {
       _isExpanded = !_isExpanded;
@@ -4073,7 +4610,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
       });
     }
   }
-  
+
   void _selectOption(String? option) {
     widget.onChanged(option);
     setState(() {
@@ -4082,7 +4619,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
       _filteredOptions = widget.options;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -4134,8 +4671,12 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                       widget.selectedValue ?? 'Select ${widget.title}',
                       style: GoogleFonts.inter(
                         fontSize: widget.isTablet ? 14 : 13,
-                        fontWeight: widget.selectedValue != null ? FontWeight.w600 : FontWeight.w500,
-                        color: widget.selectedValue != null ? _DcrListScreenState.tealGreen : Colors.grey[600],
+                        fontWeight: widget.selectedValue != null
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: widget.selectedValue != null
+                            ? _DcrListScreenState.tealGreen
+                            : Colors.grey[600],
                       ),
                     ),
                   ),
@@ -4149,7 +4690,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           borderRadius: BorderRadius.circular(12),
                           child: const Padding(
                             padding: EdgeInsets.all(4),
-                            child: Icon(Icons.close_rounded, size: 16, color: _DcrListScreenState.tealGreen),
+                            child: Icon(Icons.close_rounded,
+                                size: 16, color: _DcrListScreenState.tealGreen),
                           ),
                         ),
                       ),
@@ -4233,15 +4775,18 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           fillColor: Colors.grey[50],
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
+                            borderSide:
+                                BorderSide(color: Colors.grey[200]!, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
+                            borderSide:
+                                BorderSide(color: Colors.grey[200]!, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: _DcrListScreenState.tealGreen, width: 2),
+                            borderSide: const BorderSide(
+                                color: _DcrListScreenState.tealGreen, width: 2),
                           ),
                           contentPadding: EdgeInsets.symmetric(
                             horizontal: widget.isTablet ? 14 : 12,
@@ -4271,7 +4816,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                             vertical: widget.isTablet ? 8 : 6,
                           ),
                           itemCount: _filteredOptions.length,
-                          separatorBuilder: (_, __) => SizedBox(height: widget.isTablet ? 6 : 4),
+                          separatorBuilder: (_, __) =>
+                              SizedBox(height: widget.isTablet ? 6 : 4),
                           itemBuilder: (context, index) {
                             final option = _filteredOptions[index];
                             final isSelected = widget.selectedValue == option;
@@ -4281,12 +4827,19 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                 onTap: () => _selectOption(option),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  padding: EdgeInsets.all(widget.isTablet ? 12 : 10),
+                                  padding:
+                                      EdgeInsets.all(widget.isTablet ? 12 : 10),
                                   decoration: BoxDecoration(
-                                    color: isSelected ? _DcrListScreenState.tealGreen.withOpacity(0.1) : Colors.transparent,
+                                    color: isSelected
+                                        ? _DcrListScreenState.tealGreen
+                                            .withOpacity(0.1)
+                                        : Colors.transparent,
                                     borderRadius: BorderRadius.circular(12),
                                     border: isSelected
-                                        ? Border.all(color: _DcrListScreenState.tealGreen.withOpacity(0.3), width: 1)
+                                        ? Border.all(
+                                            color: _DcrListScreenState.tealGreen
+                                                .withOpacity(0.3),
+                                            width: 1)
                                         : null,
                                   ),
                                   child: Row(
@@ -4295,25 +4848,36 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                         width: widget.isTablet ? 18 : 16,
                                         height: widget.isTablet ? 18 : 16,
                                         decoration: BoxDecoration(
-                                          color: isSelected ? _DcrListScreenState.tealGreen : Colors.white,
-                                          borderRadius: BorderRadius.circular(4),
+                                          color: isSelected
+                                              ? _DcrListScreenState.tealGreen
+                                              : Colors.white,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                           border: Border.all(
-                                            color: isSelected ? _DcrListScreenState.tealGreen : Colors.grey[400]!,
+                                            color: isSelected
+                                                ? _DcrListScreenState.tealGreen
+                                                : Colors.grey[400]!,
                                             width: 2,
                                           ),
                                         ),
                                         child: isSelected
-                                            ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                                            ? const Icon(Icons.check_rounded,
+                                                size: 12, color: Colors.white)
                                             : null,
                                       ),
-                                      SizedBox(width: widget.isTablet ? 12 : 10),
+                                      SizedBox(
+                                          width: widget.isTablet ? 12 : 10),
                                       Expanded(
                                         child: Text(
                                           option,
                                           style: GoogleFonts.inter(
                                             fontSize: widget.isTablet ? 14 : 13,
-                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                            color: isSelected ? _DcrListScreenState.tealGreen : Colors.grey[700],
+                                            fontWeight: isSelected
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: isSelected
+                                                ? _DcrListScreenState.tealGreen
+                                                : Colors.grey[700],
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -4361,7 +4925,7 @@ class _EnhancedActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(isMobile ? 8 : 12),
         child: Container(
           padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 12 : 16, 
+            horizontal: isMobile ? 12 : 16,
             vertical: isMobile ? 10 : 14,
           ),
           child: Row(
@@ -4371,11 +4935,11 @@ class _EnhancedActionButton extends StatelessWidget {
               SizedBox(width: isMobile ? 6 : 8),
               Flexible(
                 child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                  ),
+                  label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -4391,7 +4955,7 @@ class _EnhancedActionButton extends StatelessWidget {
 // Enhanced Date Selector
 class _EnhancedDateSelector extends StatelessWidget {
   const _EnhancedDateSelector({
-    required this.label, 
+    required this.label,
     this.onTap,
     this.isActive = false,
   });
@@ -4403,16 +4967,19 @@ class _EnhancedDateSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     // Use app teal theme for consistency with Tour Plan design
     final Color primary = _DcrListScreenState.tealGreen;
-    final Color backgroundColor = isActive ? primary.withOpacity(0.10) : Colors.grey.shade50;
+    final Color backgroundColor =
+        isActive ? primary.withOpacity(0.10) : Colors.grey.shade50;
     final Color iconColor = isActive ? primary : Colors.grey.shade600;
     final Color textColor = isActive ? primary : Colors.grey.shade700;
-    final Color borderColor = isActive ? primary.withOpacity(0.30) : Colors.grey.shade200;
-    
+    final Color borderColor =
+        isActive ? primary.withOpacity(0.30) : Colors.grey.shade200;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(12),
       elevation: isActive ? 3 : 2,
-      shadowColor: isActive ? primary.withOpacity(0.2) : Colors.black.withOpacity(0.1),
+      shadowColor:
+          isActive ? primary.withOpacity(0.2) : Colors.black.withOpacity(0.1),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -4430,8 +4997,8 @@ class _EnhancedDateSelector extends StatelessWidget {
                 child: Text(
                   label,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: textColor,
-                  ),
+                        color: textColor,
+                      ),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -4449,4 +5016,3 @@ class _EnhancedDateSelector extends StatelessWidget {
     );
   }
 }
-

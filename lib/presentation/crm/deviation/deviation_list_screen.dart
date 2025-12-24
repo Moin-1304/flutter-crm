@@ -13,6 +13,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 
 import '../../user/store/user_store.dart';
+import '../../user/store/user_validation_store.dart';
 
 class DeviationListScreen extends StatefulWidget {
   const DeviationListScreen({super.key});
@@ -22,14 +23,15 @@ class DeviationListScreen extends StatefulWidget {
 
   @override
   State<DeviationListScreen> createState() => _DeviationListScreenState();
-  
+
   // Static method to refresh from external sources
   static void refreshCurrentInstance() {
     _currentInstance?.refreshData();
   }
 }
 
-class _DeviationListScreenState extends State<DeviationListScreen> with SingleTickerProviderStateMixin {
+class _DeviationListScreenState extends State<DeviationListScreen>
+    with SingleTickerProviderStateMixin {
   String? _employee;
   String? _status;
   String? _customer;
@@ -50,7 +52,7 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
   Timer? _searchDebounce;
   bool _isManager = false; // Track if user is a manager
   final ScrollController _listScrollController = ScrollController();
-  
+
   // Filter modal state
   AnimationController? _filterModalController;
   Animation<Offset>? _filterModalAnimation;
@@ -75,11 +77,14 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
       if (context == null || !_filterScrollController.hasClients) return;
       final RenderObject? renderObject = context.findRenderObject();
       if (renderObject == null || !renderObject.attached) return;
-      final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
+      final RenderAbstractViewport? viewport =
+          RenderAbstractViewport.of(renderObject);
       if (viewport == null) return;
-      final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
+      final double target =
+          viewport.getOffsetToReveal(renderObject, 0.05).offset;
       final position = _filterScrollController.position;
-      final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+      final double clamped =
+          target.clamp(position.minScrollExtent, position.maxScrollExtent);
       _filterScrollController.animateTo(
         clamped,
         duration: const Duration(milliseconds: 350),
@@ -116,6 +121,30 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
     _getEmployeeList();
     _loadCustomerList();
     _hasLoadedInitialData = true;
+
+    // Validate user when screen opens
+    _validateUserOnScreenOpen();
+  }
+
+  /// Validate user when Deviation screen opens
+  Future<void> _validateUserOnScreenOpen() async {
+    try {
+      if (getIt.isRegistered<UserValidationStore>()) {
+        final validationStore = getIt<UserValidationStore>();
+        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+        final user = await sharedPrefHelper.getUser();
+        if (user != null && (user.userId != null || user.id != null)) {
+          final userId = user.userId ?? user.id;
+          print(
+              '📱 [DeviationListScreen] Validating user on screen open - userId: $userId');
+          await validationStore.validateUser(userId!);
+        } else {
+          print('⚠️ [DeviationListScreen] User not available for validation');
+        }
+      }
+    } catch (e) {
+      print('❌ [DeviationListScreen] Error validating user: $e');
+    }
   }
 
   @override
@@ -142,13 +171,15 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
 
   Future<void> _loadDeviations() async {
     setState(() => _isLoading = true);
-    
+
     try {
       if (getIt.isRegistered<DeviationRepository>()) {
         final deviationRepo = getIt<DeviationRepository>();
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
 
         if (user != null && employeeId != null) {
@@ -164,9 +195,10 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
           } else {
             print('Showing all employees (current user: $employeeId)');
           }
-          
-          print('Loading deviations with filters - Employee: $filterEmployeeId, Status: $_status');
-          
+
+          print(
+              'Loading deviations with filters - Employee: $filterEmployeeId, Status: $_status');
+
           final response = await deviationRepo.getDeviationList(
             searchText: _search,
             pageNumber: 1,
@@ -175,19 +207,21 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
             bizUnit: user.sbuId,
             employeeId: filterEmployeeId ?? employeeId,
           );
-          
+
           if (mounted) {
-            print('DeviationListScreen: Received ${response.items.length} deviations from API');
+            print(
+                'DeviationListScreen: Received ${response.items.length} deviations from API');
             setState(() {
               _deviations = response.items;
             });
             _applyStatusAndCustomerFilter(); // Apply client-side filters
-            
+
             // Debug: Show sample data
             if (_deviations.isNotEmpty) {
               print('Sample deviation data:');
               for (var deviation in _deviations.take(3)) {
-                print('  - Employee: ${deviation.employeeName}, Status: ${deviation.deviationStatus}, Customer: ${deviation.clusterName}');
+                print(
+                    '  - Employee: ${deviation.employeeName}, Status: ${deviation.deviationStatus}, Customer: ${deviation.clusterName}');
               }
             }
           }
@@ -221,7 +255,8 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
 
   // Method to refresh data when returning from deviation entry screen
   Future<void> refreshData() async {
-    print('DeviationListScreen: Refreshing data after returning from deviation entry...');
+    print(
+        'DeviationListScreen: Refreshing data after returning from deviation entry...');
     // Add a small delay to ensure the deviation entry screen has completed its save operation
     await Future.delayed(const Duration(milliseconds: 500));
     await _loadDeviations();
@@ -245,14 +280,17 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
   // Check if current user is a manager
   Future<void> _checkManagerStatus() async {
     try {
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
       final userDetail = userStore?.userDetail;
-      
+
       if (userDetail != null) {
         // Check if user has manager role or permissions
         // This is a simplified check - you may need to adjust based on your role system
         setState(() {
-          _isManager = userDetail.roleText?.toLowerCase().contains('manager') ?? false;
+          _isManager =
+              userDetail.roleText?.toLowerCase().contains('manager') ?? false;
         });
       }
     } catch (e) {
@@ -262,7 +300,7 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
 
   void _applyStatusAndCustomerFilter() {
     setState(() {
-        // Apply client-side filtering for status and customer
+      // Apply client-side filtering for status and customer
       _filteredDeviations = _deviations.where((e) {
         // Status matching - handle variations (case-insensitive, handle hyphens/spaces)
         bool statusMatch = true;
@@ -270,19 +308,25 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
           final apiStatus = (e.deviationStatus ?? '').trim().toLowerCase();
           final filterStatus = _status!.trim().toLowerCase();
           // Normalize both strings (remove hyphens, extra spaces)
-          final normalizedApiStatus = apiStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
-          final normalizedFilterStatus = filterStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+          final normalizedApiStatus =
+              apiStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+          final normalizedFilterStatus =
+              filterStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
           statusMatch = normalizedApiStatus == normalizedFilterStatus;
         }
-        
+
         // Customer matching
-        final customerMatch = _customer == null || (e.clusterName ?? '').toLowerCase().contains(_customer!.toLowerCase());
-        
-          return statusMatch && customerMatch;
-        }).toList();
-        
-        print('Status filter: $_status, Customer filter: $_customer');
-      print('Filtered deviations: ${_filteredDeviations.length} out of ${_deviations.length}');
+        final customerMatch = _customer == null ||
+            (e.clusterName ?? '')
+                .toLowerCase()
+                .contains(_customer!.toLowerCase());
+
+        return statusMatch && customerMatch;
+      }).toList();
+
+      print('Status filter: $_status, Customer filter: $_customer');
+      print(
+          'Filtered deviations: ${_filteredDeviations.length} out of ${_deviations.length}');
     });
     _scrollResultsToTop();
   }
@@ -299,18 +343,21 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
 
   Future<void> _clearAllFilters() async {
     // Get logged-in employee to set as default
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final int? employeeId = userStore?.userDetail?.employeeId;
-    
+
     // Find the employee name from the options
     String? employeeName;
-    if (employeeId != null && _employeeNameToId.isNotEmpty && !_shouldDisableEmployeeFilter()) {
+    if (employeeId != null &&
+        _employeeNameToId.isNotEmpty &&
+        !_shouldDisableEmployeeFilter()) {
       _employeeNameToId.forEach((name, id) {
         if (id == employeeId) {
           employeeName = name;
-      }
-    });
-  }
+        }
+      });
+    }
 
     setState(() {
       // Set to logged-in employee instead of null (unless roleCategory === 3)
@@ -327,12 +374,16 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
 
   // Check if employee filter should be disabled (when roleCategory === 3)
   bool _shouldDisableEmployeeFilter() {
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     return userStore?.userDetail?.roleCategory == 3;
   }
 
   bool _hasActiveFilters() {
-    return _employee != null || _status != null || _customer != null || _search.isNotEmpty;
+    return _employee != null ||
+        _status != null ||
+        _customer != null ||
+        _search.isNotEmpty;
   }
 
   // Get filter count (number of active filters)
@@ -381,16 +432,27 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
       // You can implement this method in CommonRepository if needed
       if (mounted) {
         setState(() {
-          _customerList = ['Apollo Hospital', 'Fortis Healthcare', 'Medanta Clinic', 'Max Hospital', 'AIIMS'];
+          _customerList = [
+            'Apollo Hospital',
+            'Fortis Healthcare',
+            'Medanta Clinic',
+            'Max Hospital',
+            'AIIMS'
+          ];
         });
       }
-      print('DeviationListScreen: Loaded ${_customerList.length} customers for filter');
+      print(
+          'DeviationListScreen: Loaded ${_customerList.length} customers for filter');
     } catch (e) {
       print('DeviationListScreen: Error getting customer list: $e');
       // Fallback to default customers
       if (mounted) {
         setState(() {
-          _customerList = ['Apollo Hospital', 'Fortis Healthcare', 'Medanta Clinic'];
+          _customerList = [
+            'Apollo Hospital',
+            'Fortis Healthcare',
+            'Medanta Clinic'
+          ];
         });
       }
     }
@@ -405,66 +467,68 @@ class _DeviationListScreenState extends State<DeviationListScreen> with SingleTi
   }
 
   List<DeviationApiItem> _convertMockToApiItems() {
-    return _mockItems.map((mock) => DeviationApiItem(
-      id: mock.id,
-      createdBy: 0,
-      status: 1,
-      sbuId: 0,
-      bizUnit: 1,
-      tourPlanDetailId: 0,
-      dcrDetailId: 0,
-      dateOfDeviation: mock.dateLabel ?? '',
-      typeOfDeviation: 0,
-      description: mock.description ?? '',
-      customerId: 0,
-      clusterId: 0,
-      impact: '',
-      deviationType: mock.type ?? '',
-      deviationStatus: mock.status ?? '',
-      commentCount: 0,
-      clusterName: mock.city ?? '',
-      employeeId: 0,
-      employeeName: mock.employeeName ?? '',
-      employeeCode: '',
-      tourPlanName: '',
-      createdDate: '',
-      modifiedBy: 0,
-      modifiedDate: '',
-    )).toList();
+    return _mockItems
+        .map((mock) => DeviationApiItem(
+              id: mock.id,
+              createdBy: 0,
+              status: 1,
+              sbuId: 0,
+              bizUnit: 1,
+              tourPlanDetailId: 0,
+              dcrDetailId: 0,
+              dateOfDeviation: mock.dateLabel ?? '',
+              typeOfDeviation: 0,
+              description: mock.description ?? '',
+              customerId: 0,
+              clusterId: 0,
+              impact: '',
+              deviationType: mock.type ?? '',
+              deviationStatus: mock.status ?? '',
+              commentCount: 0,
+              clusterName: mock.city ?? '',
+              employeeId: 0,
+              employeeName: mock.employeeName ?? '',
+              employeeCode: '',
+              tourPlanName: '',
+              createdDate: '',
+              modifiedBy: 0,
+              modifiedDate: '',
+            ))
+        .toList();
   }
 
-String _formatDeviationDateLabel(String dateString) {
-  final parsed = DateTime.tryParse(dateString);
-  if (parsed == null) {
-    return dateString;
+  String _formatDeviationDateLabel(String dateString) {
+    final parsed = DateTime.tryParse(dateString);
+    if (parsed == null) {
+      return dateString;
+    }
+    final day = parsed.day.toString().padLeft(2, '0');
+    final month = parsed.month.toString().padLeft(2, '0');
+    return '$day-$month-${parsed.year}';
   }
-  final day = parsed.day.toString().padLeft(2, '0');
-  final month = parsed.month.toString().padLeft(2, '0');
-  return '$day-$month-${parsed.year}';
-}
 
-_DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
-  return _DeviationItem(
-    id: apiItem.id,
-    dateLabel: apiItem.dateOfDeviation.isNotEmpty 
-        ? _formatDeviationDateLabel(apiItem.dateOfDeviation)
-        : '',
-    employeeName: apiItem.employeeName,
-    city: apiItem.clusterName,
-    type: apiItem.deviationType,
-    description: apiItem.description,
-    status: apiItem.deviationStatus,
-  );
-}
-
-
+  _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
+    return _DeviationItem(
+      id: apiItem.id,
+      dateLabel: apiItem.dateOfDeviation.isNotEmpty
+          ? _formatDeviationDateLabel(apiItem.dateOfDeviation)
+          : '',
+      employeeName: apiItem.employeeName,
+      city: apiItem.clusterName,
+      type: apiItem.deviationType,
+      description: apiItem.description,
+      status: apiItem.deviationStatus,
+    );
+  }
 
   /// Get deviation comments list from API
-  Future<List<DeviationComment>> _getDeviationCommentsList(int deviationId) async {
+  Future<List<DeviationComment>> _getDeviationCommentsList(
+      int deviationId) async {
     try {
       if (getIt.isRegistered<DeviationRepository>()) {
         final deviationRepo = getIt<DeviationRepository>();
-        final comments = await deviationRepo.getDeviationComments(id: deviationId);
+        final comments =
+            await deviationRepo.getDeviationComments(id: deviationId);
         return comments;
       }
     } catch (e) {
@@ -483,19 +547,23 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
         final deviationRepo = getIt<DeviationRepository>();
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
-        
+
         if (user != null && employeeId != null) {
           final response = await deviationRepo.addManagerComment(
             createdBy: employeeId,
             deviationId: deviationId,
             comment: comment,
           );
-          
-          print('DeviationListScreen: Comment saved successfully: ${response.id}');
+
+          print(
+              'DeviationListScreen: Comment saved successfully: ${response.id}');
         } else {
-          throw Exception('User information not available. Please login again.');
+          throw Exception(
+              'User information not available. Please login again.');
         }
       }
     } catch (e) {
@@ -505,16 +573,18 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
   }
 
   /// Open comprehensive comment dialog with previous comments and add comment section
-  Future<void> _openDeviationCommentsDialog(BuildContext context, {required int deviationId}) async {
+  Future<void> _openDeviationCommentsDialog(BuildContext context,
+      {required int deviationId}) async {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     if (isMobile) {
       // Use bottom sheet on mobile (same as tour plan)
       await showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        useRootNavigator: false, // Don't use root navigator so it doesn't close bottom sheets
+        useRootNavigator:
+            false, // Don't use root navigator so it doesn't close bottom sheets
         builder: (dialogContext) => _DeviationCommentsDialog(
           deviationId: deviationId,
           onGetComments: _getDeviationCommentsList,
@@ -528,7 +598,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
       // Use dialog on tablet/desktop
       await showDialog(
         context: context,
-        useRootNavigator: false, // Don't use root navigator so it doesn't close bottom sheets
+        useRootNavigator:
+            false, // Don't use root navigator so it doesn't close bottom sheets
         barrierColor: Colors.black.withOpacity(0.5),
         builder: (dialogContext) => _DeviationCommentsDialog(
           deviationId: deviationId,
@@ -545,10 +616,12 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
   /// Show deviation details modal
   void _showDeviationDetails(BuildContext context, DeviationApiItem data) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    final String typeLabel = data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
-    final String statusLabel = data.deviationStatus.isNotEmpty ? data.deviationStatus : 'Status';
+    final String typeLabel =
+        data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
+    final String statusLabel =
+        data.deviationStatus.isNotEmpty ? data.deviationStatus : 'Status';
     final bool isApproved = statusLabel.toLowerCase().contains('approved');
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -556,7 +629,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
       builder: (context) => Container(
         constraints: BoxConstraints(
           maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
+          maxHeight:
+              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
         ),
         margin: isTablet
             ? EdgeInsets.symmetric(
@@ -585,7 +659,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEAF7F7),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Column(
                   children: [
@@ -620,7 +695,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _EnhancedDeviationCard._getStatusChipForDeviation(statusLabel),
+                              _EnhancedDeviationCard._getStatusChipForDeviation(
+                                  statusLabel),
                             ],
                           ),
                         ),
@@ -649,9 +725,15 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                     children: [
                       _DetailRow('Deviation Type', typeLabel),
                       const SizedBox(height: 12),
-                      _DetailRow('Date', _EnhancedDeviationCard._formatDate(data.dateOfDeviation)),
+                      _DetailRow(
+                          'Date',
+                          _EnhancedDeviationCard._formatDate(
+                              data.dateOfDeviation)),
                       const SizedBox(height: 12),
-                      _DetailRow('Employee', _EnhancedDeviationCard._valueOrPlaceholder(data.employeeName)),
+                      _DetailRow(
+                          'Employee',
+                          _EnhancedDeviationCard._valueOrPlaceholder(
+                              data.employeeName)),
                       if (data.employeeCode.trim().isNotEmpty) ...[
                         const SizedBox(height: 12),
                         _DetailRow('Employee Code', data.employeeCode),
@@ -660,17 +742,36 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                       Divider(height: 1, color: Colors.grey.shade300),
                       const SizedBox(height: 20),
                       // Show cluster only for "UnPlanned Visit"
-                      if (typeLabel.toLowerCase().contains('unplanned visit')) ...[
-                        _DetailRow('Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
+                      if (typeLabel
+                          .toLowerCase()
+                          .contains('unplanned visit')) ...[
+                        _DetailRow(
+                            'Cluster',
+                            _EnhancedDeviationCard._valueOrPlaceholder(
+                                data.clusterName,
+                                placeholder: 'Not Assigned')),
                         const SizedBox(height: 12),
                       ],
-                      _DetailRow('Tour Plan', _EnhancedDeviationCard._valueOrPlaceholder(data.tourPlanName, placeholder: 'Not Linked')),
+                      _DetailRow(
+                          'Tour Plan',
+                          _EnhancedDeviationCard._valueOrPlaceholder(
+                              data.tourPlanName,
+                              placeholder: 'Not Linked')),
                       const SizedBox(height: 20),
                       Divider(height: 1, color: Colors.grey.shade300),
                       const SizedBox(height: 20),
-                      _DetailRow('Impact', _EnhancedDeviationCard._valueOrPlaceholder(data.impact, placeholder: 'Not Provided')),
+                      _DetailRow(
+                          'Impact',
+                          _EnhancedDeviationCard._valueOrPlaceholder(
+                              data.impact,
+                              placeholder: 'Not Provided')),
                       const SizedBox(height: 12),
-                      _DetailRow('Description', _EnhancedDeviationCard._valueOrPlaceholder(data.description, placeholder: 'No description provided'), isMultiline: true),
+                      _DetailRow(
+                          'Description',
+                          _EnhancedDeviationCard._valueOrPlaceholder(
+                              data.description,
+                              placeholder: 'No description provided'),
+                          isMultiline: true),
                       // if (data.modifiedDate.trim().isNotEmpty) ...[
                       //   const SizedBox(height: 20),
                       //   Divider(height: 1, color: Colors.grey.shade300),
@@ -695,7 +796,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                               Navigator.of(context).pop();
                               final result = await Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => DeviationEntryScreen(deviationId: data.id),
+                                  builder: (_) => DeviationEntryScreen(
+                                      deviationId: data.id),
                                 ),
                               );
                               // Always refresh to ensure list is up to date
@@ -712,8 +814,10 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                               backgroundColor: const Color(0xFF4db1b3),
                               foregroundColor: Colors.white,
                               minimumSize: const Size.fromHeight(44),
-                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 18, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
                             ),
                           ),
                         ),
@@ -722,16 +826,20 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                       Expanded(
                         child: FilledButton.icon(
                           onPressed: () async {
-                            await _openDeviationCommentsDialog(context, deviationId: data.id);
+                            await _openDeviationCommentsDialog(context,
+                                deviationId: data.id);
                           },
-                          icon: const Icon(Icons.mode_comment_outlined, size: 18),
+                          icon:
+                              const Icon(Icons.mode_comment_outlined, size: 18),
                           label: const Text('Comment'),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF4db1b3),
                             foregroundColor: Colors.white,
                             minimumSize: const Size.fromHeight(44),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
                         ),
                       ),
@@ -760,424 +868,525 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
         color: tealGreen,
         child: Stack(
           children: [
-          CustomScrollView(
-        controller: _listScrollController,
-        slivers: [
-              // Header with filter icon
-          SliverToBoxAdapter(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final bool isMobile = constraints.maxWidth < 600;
-                    return Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        isMobile ? 12 : 16,
-                        8,
-                        isMobile ? 12 : 16,
-                        16,
-                      ),
-                      child: Column(
-                        children: [
-                          // Header with filter icon
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Deviations',
-                                      style: GoogleFonts.inter(
-                                        fontSize: isTablet ? 20 : 18,
-                                        fontWeight: FontWeight.normal,
-                                        color: Colors.grey[900],
-                                        letterSpacing: -0.8,
+            CustomScrollView(
+              controller: _listScrollController,
+              slivers: [
+                // Header with filter icon
+                SliverToBoxAdapter(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool isMobile = constraints.maxWidth < 600;
+                      return Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          isMobile ? 12 : 16,
+                          8,
+                          isMobile ? 12 : 16,
+                          16,
+                        ),
+                        child: Column(
+                          children: [
+                            // Header with filter icon
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Deviations',
+                                        style: GoogleFonts.inter(
+                                          fontSize: isTablet ? 20 : 18,
+                                          fontWeight: FontWeight.normal,
+                                          color: Colors.grey[900],
+                                          letterSpacing: -0.8,
+                                        ),
                                       ),
-                                    ),
-                                    SizedBox(height: isTablet ? 6 : 4),
-                                    Text(
-                                      'View and manage deviations',
-                                      style: GoogleFonts.inter(
-                                        fontSize: isTablet ? 13 : 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.grey[600],
-                                        letterSpacing: 0.2,
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                      Text(
+                                        'View and manage deviations',
+                                        style: GoogleFonts.inter(
+                                          fontSize: isTablet ? 13 : 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey[600],
+                                          letterSpacing: 0.2,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              // Filter Icon with Badge
-                              Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Container(
-                                    width: isMobile ? 48 : 56,
-                                    height: isMobile ? 48 : 56,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: Colors.grey.withOpacity(0.2),
-                                        width: 1,
-                                      ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                                          blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-                                    child: Material(
-                                      color: Colors.transparent,
-                                      child: InkWell(
-                                        onTap: _openFilterModal,
+                                // Filter Icon with Badge
+                                Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Container(
+                                      width: isMobile ? 48 : 56,
+                                      height: isMobile ? 48 : 56,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
                                         borderRadius: BorderRadius.circular(12),
-                                        child: Icon(
-                                          Icons.filter_alt,
-                                          color: tealGreen,
-                                          size: isMobile ? 24 : 28,
+                                        border: Border.all(
+                                          color: Colors.grey.withOpacity(0.2),
+                                          width: 1,
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                  if (_getFilterCount() > 0)
-                                    Positioned(
-                                      top: 6,
-                                      right: 6,
-                                      child: Container(
-                                        padding: EdgeInsets.all(isMobile ? 3 : 4),
-                                        decoration: BoxDecoration(
-                                          color: tealGreen,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: Colors.white, width: 2),
-                                        ),
-                                        constraints: BoxConstraints(
-                                          minWidth: isMobile ? 18 : 20,
-                                          minHeight: isMobile ? 18 : 20,
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            _getFilterCount().toString(),
-                                            style: TextStyle(
-                                              fontSize: isMobile ? 9 : 10,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // Search Bar
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final bool isMobile = constraints.maxWidth < 600;
-                              final bool isFocused = _searchFocusNode.hasFocus;
-                              final double searchFontSize = isMobile ? 13 : 15;
-                              final double searchVerticalPadding = isMobile ? 10 : 14;
-                              return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isFocused ? tealGreen : Colors.grey.shade200,
-                                    width: isFocused ? 2 : 1,
-                                  ),
-                                  boxShadow: isFocused
-                                      ? [
+                                        boxShadow: [
                                           BoxShadow(
-                                            color: tealGreen.withOpacity(0.1),
+                                            color:
+                                                Colors.black.withOpacity(0.05),
                                             blurRadius: 8,
                                             offset: const Offset(0, 2),
                                           ),
-                                        ]
-                                      : null,
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: TextField(
-                          controller: _searchController,
-                                    focusNode: _searchFocusNode,
-                          onChanged: _onSearchChanged,
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: searchFontSize,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          decoration: InputDecoration(
-                                      filled: true,
-                                      fillColor: Colors.transparent,
-                            hintText: 'Search deviations, employees, or types...',
-                            hintStyle: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: searchFontSize,
-                            ),
-                                      prefixIcon: Icon(
-                                        Icons.search,
-                                        size: isMobile ? 18 : 22,
-                                        color: isFocused ? tealGreen : Colors.grey.shade600,
+                                        ],
                                       ),
-                            suffixIcon: _search.isNotEmpty
-                                ? IconButton(
-                                    icon: Icon(Icons.clear, color: Colors.grey.shade600),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      _onSearchChanged('');
-                                                _searchFocusNode.unfocus();
-                                    },
-                                  )
-                                : null,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: _openFilterModal,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          child: Icon(
+                                            Icons.filter_alt,
+                                            color: tealGreen,
+                                            size: isMobile ? 24 : 28,
+                                          ),
+                                        ),
                                       ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: searchVerticalPadding,
-                                      ),
-                                      isDense: true,
                                     ),
+                                    if (_getFilterCount() > 0)
+                                      Positioned(
+                                        top: 6,
+                                        right: 6,
+                                        child: Container(
+                                          padding:
+                                              EdgeInsets.all(isMobile ? 3 : 4),
+                                          decoration: BoxDecoration(
+                                            color: tealGreen,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                                color: Colors.white, width: 2),
+                                          ),
+                                          constraints: BoxConstraints(
+                                            minWidth: isMobile ? 18 : 20,
+                                            minHeight: isMobile ? 18 : 20,
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              _getFilterCount().toString(),
+                                              style: TextStyle(
+                                                fontSize: isMobile ? 9 : 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // Search Bar
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final bool isMobile =
+                                    constraints.maxWidth < 600;
+                                final bool isFocused =
+                                    _searchFocusNode.hasFocus;
+                                final double searchFontSize =
+                                    isMobile ? 13 : 15;
+                                final double searchVerticalPadding =
+                                    isMobile ? 10 : 14;
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isFocused
+                                          ? tealGreen
+                                          : Colors.grey.shade200,
+                                      width: isFocused ? 2 : 1,
+                                    ),
+                                    boxShadow: isFocused
+                                        ? [
+                                            BoxShadow(
+                                              color: tealGreen.withOpacity(0.1),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: TextField(
+                                      controller: _searchController,
+                                      focusNode: _searchFocusNode,
+                                      onChanged: _onSearchChanged,
+                                      style: TextStyle(
+                                        color: Colors.black87,
+                                        fontSize: searchFontSize,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      decoration: InputDecoration(
+                                        filled: true,
+                                        fillColor: Colors.transparent,
+                                        hintText:
+                                            'Search deviations, employees, or types...',
+                                        hintStyle: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: searchFontSize,
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.search,
+                                          size: isMobile ? 18 : 22,
+                                          color: isFocused
+                                              ? tealGreen
+                                              : Colors.grey.shade600,
+                                        ),
+                                        suffixIcon: _search.isNotEmpty
+                                            ? IconButton(
+                                                icon: Icon(Icons.clear,
+                                                    color:
+                                                        Colors.grey.shade600),
+                                                onPressed: () {
+                                                  _searchController.clear();
+                                                  _onSearchChanged('');
+                                                  _searchFocusNode.unfocus();
+                                                },
+                                              )
+                                            : null,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: searchVerticalPadding,
+                                        ),
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            // New Deviation Button and Filter Count in one row
+                            Row(
+                              children: [
+                                // New Deviation Button
+                                Expanded(
+                                  flex: 1,
+                                  child: SizedBox(
+                                    height: actionHeight,
+                                    child: getIt
+                                            .isRegistered<UserValidationStore>()
+                                        ? ListenableBuilder(
+                                            listenable:
+                                                getIt<UserValidationStore>(),
+                                            builder: (context, _) {
+                                              final validationStore =
+                                                  getIt<UserValidationStore>();
+                                              final isEnabled = validationStore
+                                                  .canCreateDeviation;
+                                              return FilledButton.icon(
+                                                onPressed: isEnabled
+                                                    ? () async {
+                                                        _dismissKeyboard();
+                                                        final result =
+                                                            await Navigator.of(
+                                                                    context)
+                                                                .push(
+                                                          MaterialPageRoute(
+                                                              builder: (_) =>
+                                                                  const DeviationEntryScreen()),
+                                                        );
+                                                        if (result == true) {
+                                                          await refreshData();
+                                                        } else {
+                                                          await refreshData();
+                                                        }
+                                                      }
+                                                    : null,
+                                                icon: const Icon(Icons.add,
+                                                    size: 20),
+                                                label: const Text(
+                                                  'New Deviation',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  softWrap: false,
+                                                ),
+                                                style: FilledButton.styleFrom(
+                                                  backgroundColor: isEnabled
+                                                      ? tealGreen
+                                                      : Colors.grey,
+                                                  foregroundColor: Colors.white,
+                                                  disabledBackgroundColor:
+                                                      Colors.grey.shade300,
+                                                  disabledForegroundColor:
+                                                      Colors.grey.shade600,
+                                                  padding: EdgeInsets.symmetric(
+                                                    horizontal:
+                                                        isTablet ? 20 : 16,
+                                                  ),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            14),
+                                                  ),
+                                                  elevation: isEnabled ? 2 : 0,
+                                                  minimumSize: Size.fromHeight(
+                                                      actionHeight),
+                                                ),
+                                              );
+                                            },
+                                          )
+                                        : FilledButton.icon(
+                                            onPressed: () async {
+                                              _dismissKeyboard();
+                                              final result =
+                                                  await Navigator.of(context)
+                                                      .push(
+                                                MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        const DeviationEntryScreen()),
+                                              );
+                                              if (result == true) {
+                                                await refreshData();
+                                              } else {
+                                                await refreshData();
+                                              }
+                                            },
+                                            icon:
+                                                const Icon(Icons.add, size: 20),
+                                            label: const Text(
+                                              'New Deviation',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              softWrap: false,
+                                            ),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: tealGreen,
+                                              foregroundColor: Colors.white,
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isTablet ? 20 : 16,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                              ),
+                                              elevation: 2,
+                                              minimumSize:
+                                                  Size.fromHeight(actionHeight),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                SizedBox(width: isTablet ? 12 : 10),
+                                // Filter Count Display
+                                Expanded(
+                                  flex: 1,
+                                  child: SizedBox(
+                                    height: actionHeight,
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isTablet ? 16 : 14,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: tealGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: tealGreen.withOpacity(0.2),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.filter_alt_rounded,
+                                            color: tealGreen,
+                                            size: isTablet ? 18 : 16,
+                                          ),
+                                          SizedBox(width: isTablet ? 8 : 6),
+                                          Flexible(
+                                            child: Text(
+                                              _filteredDeviations.isEmpty
+                                                  ? 'No records'
+                                                  : _filteredDeviations
+                                                              .length ==
+                                                          1
+                                                      ? '1 record'
+                                                      : '${_filteredDeviations.length} records',
+                                              style: GoogleFonts.inter(
+                                                fontSize: isTablet ? 14 : 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: tealGreen,
+                                                letterSpacing: -0.1,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Results Section
+                SliverToBoxAdapter(
+                  child: Builder(
+                    builder: (context) {
+                      if (_isLoading) {
+                        return Container(
+                          height: 200,
+                          margin: const EdgeInsets.all(16),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                CircularProgressIndicator(
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                          Color(0xFF4db1b3)),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Loading deviations...',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
-                      },
-                    ),
-                          const SizedBox(height: 12),
-                          // New Deviation Button and Filter Count in one row
-                          Row(
+                      }
+
+                      // Use the pre-filtered list
+                      final filtered =
+                          List<DeviationApiItem>.from(_filteredDeviations);
+
+                      print(
+                          'Client-side filtering - Status: $_status, Customer: $_customer');
+                      print(
+                          'Filtered deviations count: ${filtered.length} out of ${_deviations.length}');
+
+                      // Sort by date (newest first) for date-wise view
+                      filtered.sort((a, b) {
+                        try {
+                          final dateA = DateTime.tryParse(a.dateOfDeviation) ??
+                              DateTime(1970);
+                          final dateB = DateTime.tryParse(b.dateOfDeviation) ??
+                              DateTime(1970);
+                          return dateB.compareTo(dateA);
+                        } catch (e) {
+                          return 0;
+                        }
+                      });
+
+                      if (filtered.isEmpty) {
+                        return Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(vertical: 48),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              // New Deviation Button
-                              Expanded(
-                                flex: 1,
-                                child: SizedBox(
-                                  height: actionHeight,
-                                  child: FilledButton.icon(
-                                    onPressed: () async {
-                                        _dismissKeyboard();
-                                      final result = await Navigator.of(context).push(
-                                        MaterialPageRoute(builder: (_) => const DeviationEntryScreen()),
-                                      );
-                                      // Always refresh to ensure list is up to date
-                                      if (result == true) {
-                                        await refreshData();
-                                      } else {
-                                        // Also refresh even if no explicit result
-                                        await refreshData();
-                                      }
-                                    },
-                                    icon: const Icon(Icons.add, size: 20),
-                                    label: const Text(
-                                      'New Deviation',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      softWrap: false,
-                                    ),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: tealGreen,
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isTablet ? 20 : 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      elevation: 2,
-                                      minimumSize: Size.fromHeight(actionHeight),
-                                    ),
-                                  ),
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.inbox_outlined,
+                                  size: 48,
+                                  color: Colors.grey.shade400,
                                 ),
                               ),
-                              SizedBox(width: isTablet ? 12 : 10),
-                              // Filter Count Display
-                              Expanded(
-                                flex: 1,
-                                child: SizedBox(
-                                  height: actionHeight,
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: isTablet ? 16 : 14,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: tealGreen.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: tealGreen.withOpacity(0.2),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.filter_alt_rounded,
-                                          color: tealGreen,
-                                          size: isTablet ? 18 : 16,
-                                        ),
-                                        SizedBox(width: isTablet ? 8 : 6),
-                                        Flexible(
-                                          child: Text(
-                                            _filteredDeviations.isEmpty
-                                                ? 'No records'
-                                                : _filteredDeviations.length == 1
-                                                    ? '1 record'
-                                                    : '${_filteredDeviations.length} records',
-                                            style: GoogleFonts.inter(
-                                              fontSize: isTablet ? 14 : 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: tealGreen,
-                                              letterSpacing: -0.1,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No deviations found',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Try adjusting your search or filter criteria',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: Colors.grey.shade500,
                                 ),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                        );
+                      }
+
+                      // Always use single column layout for My Deviations page (stacked vertically)
+                      return Column(
+                        children: filtered
+                            .map((e) => Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                  child: _EnhancedDeviationCard(
+                                    item: _convertApiItemToDeviationItem(e),
+                                    deviationId: e.id,
+                                    onRefresh: refreshData,
+                                    apiItem: e,
+                                    onViewDetails: () =>
+                                        _showDeviationDetails(context, e),
+                                    onOpenCommentsDialog: (deviationId) =>
+                                        _openDeviationCommentsDialog(context,
+                                            deviationId: deviationId),
+                                  ),
+                                ))
+                            .toList(),
+                      );
+                    },
+                  ),
                 ),
-              ),
-          // Results Section
-          SliverToBoxAdapter(
-            child: Builder(
-                builder: (context) {
-                  if (_isLoading) {
-                    return Container(
-                      height: 200,
-                      margin: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4db1b3)),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Loading deviations...',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-        ],
-        ),
-                      ),
-                    );
-                  }
-
-                  // Use the pre-filtered list
-                  final filtered = List<DeviationApiItem>.from(_filteredDeviations);
-                      
-                  print('Client-side filtering - Status: $_status, Customer: $_customer');
-                  print('Filtered deviations count: ${filtered.length} out of ${_deviations.length}');
-
-                  // Sort by date (newest first) for date-wise view
-                  filtered.sort((a, b) {
-                    try {
-                      final dateA = DateTime.tryParse(a.dateOfDeviation) ?? DateTime(1970);
-                      final dateB = DateTime.tryParse(b.dateOfDeviation) ?? DateTime(1970);
-                      return dateB.compareTo(dateA);
-                    } catch (e) {
-                      return 0;
-                    }
-                  });
-
-                  if (filtered.isEmpty) {
-                    return Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.symmetric(vertical: 48),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.inbox_outlined,
-                              size: 48,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No deviations found',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Try adjusting your search or filter criteria',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // Always use single column layout for My Deviations page (stacked vertically)
-                        return Column(
-                          children: filtered
-                              .map((e) => Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                    child: _EnhancedDeviationCard(
-                                      item: _convertApiItemToDeviationItem(e),
-                                      deviationId: e.id,
-                                      onRefresh: refreshData,
-                                      apiItem: e,
-                                      onViewDetails: () => _showDeviationDetails(context, e),
-                                      onOpenCommentsDialog: (deviationId) => _openDeviationCommentsDialog(context, deviationId: deviationId),
-                                    ),
-                                  ))
-                              .toList(),
-                  );
-                },
-              ),
+              ],
             ),
+            // Filter Modal overlay
+            if (_showFilterModal) _buildFilterModal(isTablet, tealGreen),
           ],
         ),
-          // Filter Modal overlay
-          if (_showFilterModal) _buildFilterModal(isTablet, tealGreen),
-        ],
       ),
-    ),
-  );
+    );
   }
 
   // Build filter modal
@@ -1192,7 +1401,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
       child: Container(
         color: Colors.black.withOpacity(0.4),
         child: SlideTransition(
-          position: _filterModalAnimation ?? const AlwaysStoppedAnimation(Offset.zero),
+          position: _filterModalAnimation ??
+              const AlwaysStoppedAnimation(Offset.zero),
           child: GestureDetector(
             onTap: () {},
             child: Align(
@@ -1224,19 +1434,20 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                       padding: EdgeInsets.all(isMobile ? 16 : 20),
                       decoration: BoxDecoration(
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
+                          bottom: BorderSide(
+                              color: Colors.grey.withOpacity(0.1), width: 1),
                         ),
                       ),
                       child: Row(
                         children: [
                           Text(
                             'Filters',
-                           style: GoogleFonts.inter(
-                                  fontSize: isMobile ? 18 : 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.grey[900],
-                                  letterSpacing: -0.5,
-                                ),
+                            style: GoogleFonts.inter(
+                              fontSize: isMobile ? 18 : 20,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.grey[900],
+                              letterSpacing: -0.5,
+                            ),
                           ),
                           const Spacer(),
                           IconButton(
@@ -1248,7 +1459,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                                 color: Colors.grey.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.close, size: 18, color: Colors.grey[700]),
+                              child: Icon(Icons.close,
+                                  size: 18, color: Colors.grey[700]),
                             ),
                           ),
                         ],
@@ -1264,7 +1476,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                               isMobile ? 16 : 20,
                               isMobile ? 16 : 20,
                               isMobile ? 16 : 20,
-                              MediaQuery.of(context).viewInsets.bottom + (isMobile ? 16 : 20),
+                              MediaQuery.of(context).viewInsets.bottom +
+                                  (isMobile ? 16 : 20),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1276,9 +1489,12 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                                   icon: Icons.verified_outlined,
                                   selectedValue: _tempStatus,
                                   options: _statusList,
-                                  onChanged: (v) => setModalState(() => _tempStatus = v),
+                                  onChanged: (v) =>
+                                      setModalState(() => _tempStatus = v),
                                   isTablet: isTablet,
-                                  onExpanded: () => _scrollFilterSectionIntoView(_statusFilterSectionKey),
+                                  onExpanded: () =>
+                                      _scrollFilterSectionIntoView(
+                                          _statusFilterSectionKey),
                                 ),
                                 const SizedBox(height: 24),
                                 // Employee
@@ -1289,11 +1505,15 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                                     icon: Icons.badge_outlined,
                                     selectedValue: _tempEmployee,
                                     options: _employeeList,
-                                    onChanged: (v) => setModalState(() => _tempEmployee = v),
+                                    onChanged: (v) =>
+                                        setModalState(() => _tempEmployee = v),
                                     isTablet: isTablet,
-                                    onExpanded: () => _scrollFilterSectionIntoView(_employeeFilterSectionKey),
+                                    onExpanded: () =>
+                                        _scrollFilterSectionIntoView(
+                                            _employeeFilterSectionKey),
                                   ),
-                                if (!_shouldDisableEmployeeFilter()) const SizedBox(height: 24),
+                                if (!_shouldDisableEmployeeFilter())
+                                  const SizedBox(height: 24),
                                 // Customer (only for managers)
                                 if (_isManager) ...[
                                   _SearchableFilterDropdown(
@@ -1302,9 +1522,12 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                                     icon: Icons.business_outlined,
                                     selectedValue: _tempCustomer,
                                     options: _customerList,
-                                    onChanged: (v) => setModalState(() => _tempCustomer = v),
+                                    onChanged: (v) =>
+                                        setModalState(() => _tempCustomer = v),
                                     isTablet: isTablet,
-                                    onExpanded: () => _scrollFilterSectionIntoView(_customerFilterSectionKey),
+                                    onExpanded: () =>
+                                        _scrollFilterSectionIntoView(
+                                            _customerFilterSectionKey),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -1332,7 +1555,8 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                       padding: EdgeInsets.all(isMobile ? 16 : 20),
                       decoration: BoxDecoration(
                         border: Border(
-                          top: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
+                          top: BorderSide(
+                              color: Colors.grey.withOpacity(0.1), width: 1),
                         ),
                       ),
                       child: Row(
@@ -1345,7 +1569,11 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                               },
                               style: OutlinedButton.styleFrom(
                                 padding: EdgeInsets.symmetric(
-                                  vertical: isMobile ? 14 : isTablet ? 16 : 18,
+                                  vertical: isMobile
+                                      ? 14
+                                      : isTablet
+                                          ? 16
+                                          : 18,
                                   horizontal: isMobile ? 12 : 16,
                                 ),
                                 shape: RoundedRectangleBorder(
@@ -1376,7 +1604,11 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                                 backgroundColor: tealGreen,
                                 foregroundColor: Colors.white,
                                 padding: EdgeInsets.symmetric(
-                                  vertical: isMobile ? 14 : isTablet ? 16 : 18,
+                                  vertical: isMobile
+                                      ? 14
+                                      : isTablet
+                                          ? 16
+                                          : 18,
                                   horizontal: isMobile ? 12 : 16,
                                 ),
                                 shape: RoundedRectangleBorder(
@@ -1413,24 +1645,27 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
         final commonRepo = getIt<CommonRepository>();
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
-        
+
         if (user != null && employeeId != null) {
-          print('Loading deviation status list for bizUnit: ${user.sbuId} and employeeId: $employeeId');
+          print(
+              'Loading deviation status list for bizUnit: ${user.sbuId} and employeeId: $employeeId');
           final statuses = await commonRepo.getDeviationStatusList(user.sbuId);
           print('API returned ${statuses.length} statuses: $statuses');
-          
+
           // Log each status object to see its structure
           for (int i = 0; i < statuses.length; i++) {
             print('Status $i name: "${statuses[i].text}"');
           }
-          
+
           if (mounted) {
             // Build status name list and ID mapping
             final statusNames = <String>[];
             _statusNameToId.clear();
-            
+
             // Check if "Open" status (ID 0) exists, if not add it
             bool hasOpenStatus = false;
             for (final status in statuses) {
@@ -1443,14 +1678,14 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
                 }
               }
             }
-            
+
             // If "Open" status (ID 0) is not in the API response, add it manually
             if (!hasOpenStatus) {
               statusNames.insert(0, 'Open'); // Add at the beginning
               _statusNameToId['Open'] = 0;
               print('Added "Open" status (ID: 0) to status list');
             }
-            
+
             print('Status names extracted: $statusNames');
             print('Status ID mappings: $_statusNameToId');
             setState(() {
@@ -1482,20 +1717,30 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
         // Get employeeId from user store if not provided
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        final int? finalEmployeeId = employeeId ?? userStore?.userDetail?.employeeId;
-        
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? finalEmployeeId =
+            employeeId ?? userStore?.userDetail?.employeeId;
+
         // Use same API call as DCR screen (CommandType 106 or 276 if employeeId provided)
-        final List<CommonDropdownItem> items = await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
-        final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
-        
+        final List<CommonDropdownItem> items =
+            await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
+        final names = items
+            .map((e) =>
+                (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+
         if (names.isNotEmpty && mounted) {
           setState(() {
             _employeeList = {..._employeeList, ...names}.toList();
             // map names to ids for potential employee ID mapping
             String? selectedEmployeeName;
             for (final item in items) {
-              final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+              final String key =
+                  (item.employeeName.isNotEmpty ? item.employeeName : item.text)
+                      .trim();
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
                 // If this employee's id matches the employeeId used in API call, auto-select it
@@ -1508,10 +1753,12 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
             // Update even if _employee is already set to ensure it's correct
             if (selectedEmployeeName != null) {
               _employee = selectedEmployeeName;
-              print('DeviationListScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
+              print(
+                  'DeviationListScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
             }
           });
-          print('DeviationListScreen: Loaded ${_employeeList.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
+          print(
+              'DeviationListScreen: Loaded ${_employeeList.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
         }
       }
     } catch (e) {
@@ -1525,25 +1772,25 @@ _DeviationItem _convertApiItemToDeviationItem(DeviationApiItem apiItem) {
     }
   }
 
-
   Future<void> _getDeviationEmployeesReportingTo(int id) async {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        
+
         final employees = await commonRepo.getDeviationEmployeesReportingTo(id);
-        
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              ToastMessage.show(
-                context,
-                message: 'Found ${employees.length} deviation employees reporting to ID: $id',
-                type: ToastType.success,
-                useRootNavigator: true,
-                duration: const Duration(seconds: 3),
-              );
-            }
-          });
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ToastMessage.show(
+              context,
+              message:
+                  'Found ${employees.length} deviation employees reporting to ID: $id',
+              type: ToastType.success,
+              useRootNavigator: true,
+              duration: const Duration(seconds: 3),
+            );
+          }
+        });
       }
     } catch (e) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1565,10 +1812,12 @@ class DeviationManagerReviewList extends StatefulWidget {
   const DeviationManagerReviewList({super.key});
 
   @override
-  State<DeviationManagerReviewList> createState() => _DeviationManagerReviewListState();
+  State<DeviationManagerReviewList> createState() =>
+      _DeviationManagerReviewListState();
 }
 
-class _DeviationManagerReviewListState extends State<DeviationManagerReviewList> {
+class _DeviationManagerReviewListState
+    extends State<DeviationManagerReviewList> {
   final Set<int> _selected = <int>{};
   String _employee = 'All Employees';
   String _status = 'Pending';
@@ -1585,11 +1834,13 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
   }
 
   /// Get deviation comments list from API
-  Future<List<DeviationComment>> _getDeviationCommentsList(int deviationId) async {
+  Future<List<DeviationComment>> _getDeviationCommentsList(
+      int deviationId) async {
     try {
       if (getIt.isRegistered<DeviationRepository>()) {
         final deviationRepo = getIt<DeviationRepository>();
-        final comments = await deviationRepo.getDeviationComments(id: deviationId);
+        final comments =
+            await deviationRepo.getDeviationComments(id: deviationId);
         return comments;
       }
     } catch (e) {
@@ -1608,19 +1859,23 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
         final deviationRepo = getIt<DeviationRepository>();
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
-        
+
         if (user != null && employeeId != null) {
           final response = await deviationRepo.addManagerComment(
             createdBy: employeeId,
             deviationId: deviationId,
             comment: comment,
           );
-          
-          print('DeviationManagerReviewList: Comment saved successfully: ${response.id}');
+
+          print(
+              'DeviationManagerReviewList: Comment saved successfully: ${response.id}');
         } else {
-          throw Exception('User information not available. Please login again.');
+          throw Exception(
+              'User information not available. Please login again.');
         }
       }
     } catch (e) {
@@ -1630,7 +1885,8 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
   }
 
   /// Open comprehensive comment dialog with previous comments and add comment section
-  Future<void> _openDeviationCommentsDialog(BuildContext context, {required int deviationId}) async {
+  Future<void> _openDeviationCommentsDialog(BuildContext context,
+      {required int deviationId}) async {
     await showDialog(
       context: context,
       builder: (dialogContext) => _DeviationCommentsDialog(
@@ -1651,14 +1907,16 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
     // Note: This would typically filter actual deviation data from API
     // For now using mock data for demonstration
     final items = _mockItems
-        .where((e) => _employee == 'All Employees' || (e.employeeName ?? '') == _employee)
+        .where((e) =>
+            _employee == 'All Employees' || (e.employeeName ?? '') == _employee)
         .where((e) => _status == 'All Statuses' || (e.status ?? '') == _status)
         .where((e) {
-          if (_search.isEmpty) return true;
-          final q = _search.toLowerCase();
-          return (e.description ?? '').toLowerCase().contains(q) || (e.city ?? '').toLowerCase().contains(q) || (e.type ?? '').toLowerCase().contains(q);
-        })
-        .toList();
+      if (_search.isEmpty) return true;
+      final q = _search.toLowerCase();
+      return (e.description ?? '').toLowerCase().contains(q) ||
+          (e.city ?? '').toLowerCase().contains(q) ||
+          (e.type ?? '').toLowerCase().contains(q);
+    }).toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1670,9 +1928,14 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
             prefixIcon: const Icon(Icons.search),
             filled: true,
             fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: border)),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide(color: border)),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide(color: border)),
           ),
         ),
         const SizedBox(height: 12),
@@ -1692,7 +1955,11 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
                       icon: Icons.person_outline,
                       label: _employee,
                       onTap: () async {
-                        final v = await _pickFromList(context, title: 'Select Employee', options: _employeeList, selected: _employee, searchable: true);
+                        final v = await _pickFromList(context,
+                            title: 'Select Employee',
+                            options: _employeeList,
+                            selected: _employee,
+                            searchable: true);
                         if (v != null) setState(() => _employee = v);
                       },
                     ),
@@ -1703,7 +1970,10 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
                       icon: Icons.verified_outlined,
                       label: _status,
                       onTap: () async {
-                        final v = await _pickFromList(context, title: 'Select Status', options: _statusList, selected: _status);
+                        final v = await _pickFromList(context,
+                            title: 'Select Status',
+                            options: _statusList,
+                            selected: _status);
                         if (v != null) setState(() => _status = v);
                       },
                     ),
@@ -1717,7 +1987,11 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
                   icon: Icons.person_outline,
                   label: _employee,
                   onTap: () async {
-                    final v = await _pickFromList(context, title: 'Select Employee', options: _employeeList, selected: _employee, searchable: true);
+                    final v = await _pickFromList(context,
+                        title: 'Select Employee',
+                        options: _employeeList,
+                        selected: _employee,
+                        searchable: true);
                     if (v != null) setState(() => _employee = v);
                   },
                 ),
@@ -1726,7 +2000,10 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
                   icon: Icons.verified_outlined,
                   label: _status,
                   onTap: () async {
-                    final v = await _pickFromList(context, title: 'Select Status', options: _statusList, selected: _status);
+                    final v = await _pickFromList(context,
+                        title: 'Select Status',
+                        options: _statusList,
+                        selected: _status);
                     if (v != null) setState(() => _status = v);
                   },
                 ),
@@ -1741,17 +2018,22 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
           spacing: 8,
           children: [
             OutlinedButton.icon(
-              onPressed: _selected.isEmpty ? null : () => _bulkAction(context, 'Approve'),
+              onPressed: _selected.isEmpty
+                  ? null
+                  : () => _bulkAction(context, 'Approve'),
               icon: const Icon(Icons.check_circle),
               label: Text('Approve (${_selected.length})'),
             ),
             OutlinedButton.icon(
-              onPressed: _selected.isEmpty ? null : () => _bulkAction(context, 'Reject', askComment: true),
+              onPressed: _selected.isEmpty
+                  ? null
+                  : () => _bulkAction(context, 'Reject', askComment: true),
               icon: const Icon(Icons.cancel, color: Colors.redAccent),
               label: const Text('Reject'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red,
-                side: BorderSide(color: Colors.redAccent.withOpacity(.7), width: 1),
+                side: BorderSide(
+                    color: Colors.redAccent.withOpacity(.7), width: 1),
               ),
             ),
           ],
@@ -1766,10 +2048,14 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
                       item: e,
                       selectable: true,
                       selected: _selected.contains(e.id),
-                      onSelectedChanged: (sel) => setState(() => sel ? _selected.add(e.id) : _selected.remove(e.id)),
-                      onRefresh: null, // No refresh needed for manager review list
+                      onSelectedChanged: (sel) => setState(() =>
+                          sel ? _selected.add(e.id) : _selected.remove(e.id)),
+                      onRefresh:
+                          null, // No refresh needed for manager review list
                       deviationId: e.id,
-                      onOpenCommentsDialog: (deviationId) => _openDeviationCommentsDialog(context, deviationId: deviationId),
+                      onOpenCommentsDialog: (deviationId) =>
+                          _openDeviationCommentsDialog(context,
+                              deviationId: deviationId),
                     ),
                   ))
               .toList(),
@@ -1778,19 +2064,21 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
     );
   }
 
-  Future<void> _bulkAction(BuildContext context, String action, {bool askComment = false}) async {
+  Future<void> _bulkAction(BuildContext context, String action,
+      {bool askComment = false}) async {
     String? comment;
     if (askComment) {
       comment = await _openCommentDialog(context, title: '$action - Comment');
       if (comment == null) return;
     }
     if (!mounted) return;
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ToastMessage.show(
           context,
-          message: '$action ${_selected.length} deviation(s)${comment == null ? '' : ' • "$comment"'}',
+          message:
+              '$action ${_selected.length} deviation(s)${comment == null ? '' : ' • "$comment"'}',
           type: ToastType.success,
           useRootNavigator: true,
           duration: const Duration(seconds: 3),
@@ -1806,20 +2094,30 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
         // Get employeeId from user store if not provided
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        final int? finalEmployeeId = employeeId ?? userStore?.userDetail?.employeeId;
-        
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? finalEmployeeId =
+            employeeId ?? userStore?.userDetail?.employeeId;
+
         // Use same API call as DCR screen (CommandType 106 or 276 if employeeId provided)
-        final List<CommonDropdownItem> items = await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
-        final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
-        
+        final List<CommonDropdownItem> items =
+            await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
+        final names = items
+            .map((e) =>
+                (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+
         if (names.isNotEmpty && mounted) {
           setState(() {
             _employeeList = ['All Employees', ...names];
             // map names to ids for potential employee ID mapping
             String? selectedEmployeeName;
             for (final item in items) {
-              final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+              final String key =
+                  (item.employeeName.isNotEmpty ? item.employeeName : item.text)
+                      .trim();
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
                 // If this employee's id matches the employeeId used in API call, auto-select it
@@ -1832,10 +2130,12 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
             // Update even if _employee is already set to ensure it's correct
             if (selectedEmployeeName != null) {
               _employee = selectedEmployeeName;
-              print('DeviationManagerReviewList: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
+              print(
+                  'DeviationManagerReviewList: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
             }
           });
-          print('DeviationManagerReviewList: Loaded ${_employeeList.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
+          print(
+              'DeviationManagerReviewList: Loaded ${_employeeList.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
         }
       }
     } catch (e) {
@@ -1843,7 +2143,12 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
       // Fallback to default employees
       if (mounted) {
         setState(() {
-          _employeeList = ['All Employees', 'MR. John Doe', 'Ms. Alice', 'Mr. Bob'];
+          _employeeList = [
+            'All Employees',
+            'MR. John Doe',
+            'Ms. Alice',
+            'Mr. Bob'
+          ];
         });
       }
     }
@@ -1856,24 +2161,29 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
         final commonRepo = getIt<CommonRepository>();
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
-        
+
         if (user != null && employeeId != null) {
-          print('DeviationManagerReviewList: Loading deviation status list for bizUnit: ${user.sbuId} and employeeId: $employeeId');
+          print(
+              'DeviationManagerReviewList: Loading deviation status list for bizUnit: ${user.sbuId} and employeeId: $employeeId');
           final statuses = await commonRepo.getDeviationStatusList(user.sbuId);
-          
+
           if (mounted) {
             final statusNames = statuses.map((s) => s.text).toList();
             setState(() {
               _statusList = ['All Statuses', ...statusNames];
             });
-            print('DeviationManagerReviewList: Loaded ${_statusList.length} statuses for filter');
+            print(
+                'DeviationManagerReviewList: Loaded ${_statusList.length} statuses for filter');
           }
         }
       }
     } catch (e) {
-      print('DeviationManagerReviewList: Error loading deviation status list: $e');
+      print(
+          'DeviationManagerReviewList: Error loading deviation status list: $e');
       // Fallback to default statuses
       if (mounted) {
         setState(() {
@@ -1884,13 +2194,12 @@ class _DeviationManagerReviewListState extends State<DeviationManagerReviewList>
   }
 }
 
-
 class _DeviationTable extends StatelessWidget {
   const _DeviationTable({
-    required this.items, 
-    required this.selectable, 
-    this.selected, 
-    this.onSelectToggle, 
+    required this.items,
+    required this.selectable,
+    this.selected,
+    this.onSelectToggle,
     this.trailingBuilder,
     this.onRefresh,
     this.onOpenCommentsDialog,
@@ -1917,17 +2226,42 @@ class _DeviationTable extends StatelessWidget {
             children: [
               // Header row
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.dividerColor.withOpacity(.4)))),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                    border: Border(
+                        bottom: BorderSide(
+                            color: theme.dividerColor.withOpacity(.4)))),
                 child: Row(
                   children: [
-                    SizedBox(width: 120, child: Text('Date', style: Theme.of(context).textTheme.titleMedium)),
-                    SizedBox(width: 160, child: Text('Employee', style: Theme.of(context).textTheme.titleMedium)),
-                    SizedBox(width: 220, child: Text('Cluster / City', style: Theme.of(context).textTheme.titleMedium)),
-                    SizedBox(width: 160, child: Text('Type', style: Theme.of(context).textTheme.titleMedium)),
-                    SizedBox(width: 360, child: Text('Description', style: Theme.of(context).textTheme.titleMedium)),
-                    SizedBox(width: 120, child: Text('Status', style: Theme.of(context).textTheme.titleMedium)),
-                    SizedBox(width: 80, child: Text('Actions', style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 120,
+                        child: Text('Date',
+                            style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 160,
+                        child: Text('Employee',
+                            style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 220,
+                        child: Text('Cluster / City',
+                            style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 160,
+                        child: Text('Type',
+                            style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 360,
+                        child: Text('Description',
+                            style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 120,
+                        child: Text('Status',
+                            style: Theme.of(context).textTheme.titleMedium)),
+                    SizedBox(
+                        width: 80,
+                        child: Text('Actions',
+                            style: Theme.of(context).textTheme.titleMedium)),
                   ],
                 ),
               ),
@@ -1950,10 +2284,10 @@ class _DeviationTable extends StatelessWidget {
 
 class _DeviationRow extends StatelessWidget {
   const _DeviationRow({
-    required this.item, 
-    this.selectable = false, 
-    this.selected = false, 
-    this.onSelectToggle, 
+    required this.item,
+    this.selectable = false,
+    this.selected = false,
+    this.onSelectToggle,
     this.trailing,
     this.onRefresh,
     this.onOpenCommentsDialog,
@@ -1971,26 +2305,60 @@ class _DeviationRow extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.dividerColor.withOpacity(.1)))),
+      decoration: BoxDecoration(
+          border: Border(
+              bottom: BorderSide(color: theme.dividerColor.withOpacity(.1)))),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
             width: 120,
-            child: Row(children: [if (selectable) Checkbox(value: selected, onChanged: (v) => onSelectToggle?.call(v ?? false)), Flexible(child: Text(item.dateLabel ?? '-', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w300), overflow: TextOverflow.ellipsis))]),
+            child: Row(children: [
+              if (selectable)
+                Checkbox(
+                    value: selected,
+                    onChanged: (v) => onSelectToggle?.call(v ?? false)),
+              Flexible(
+                  child: Text(item.dateLabel ?? '-',
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w300),
+                      overflow: TextOverflow.ellipsis))
+            ]),
           ),
           const SizedBox(width: 12),
-          SizedBox(width: 160, child: Text(item.employeeName ?? '-', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w300), overflow: TextOverflow.ellipsis)),
-          SizedBox(width: 220, child: Text(item.city ?? '-', style: theme.textTheme.bodyMedium, overflow: TextOverflow.ellipsis)),
-          SizedBox(width: 160, child: Text(item.type ?? '-', style: theme.textTheme.bodyMedium, overflow: TextOverflow.ellipsis)),
-          SizedBox(width: 360, child: Text(item.description ?? '-', style: theme.textTheme.bodyMedium, overflow: TextOverflow.ellipsis)),
-          SizedBox(width: 120, child: _StatusBadge(status: item.status ?? 'Pending')),
-          SizedBox(width: 80, child: trailing ?? _RowActions(
-            item: item,
-            onRefresh: onRefresh,
-            deviationId: item.id,
-            onOpenCommentsDialog: onOpenCommentsDialog,
-          )),
+          SizedBox(
+              width: 160,
+              child: Text(item.employeeName ?? '-',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w300),
+                  overflow: TextOverflow.ellipsis)),
+          SizedBox(
+              width: 220,
+              child: Text(item.city ?? '-',
+                  style: theme.textTheme.bodyMedium,
+                  overflow: TextOverflow.ellipsis)),
+          SizedBox(
+              width: 160,
+              child: Text(item.type ?? '-',
+                  style: theme.textTheme.bodyMedium,
+                  overflow: TextOverflow.ellipsis)),
+          SizedBox(
+              width: 360,
+              child: Text(item.description ?? '-',
+                  style: theme.textTheme.bodyMedium,
+                  overflow: TextOverflow.ellipsis)),
+          SizedBox(
+              width: 120,
+              child: _StatusBadge(status: item.status ?? 'Pending')),
+          SizedBox(
+              width: 80,
+              child: trailing ??
+                  _RowActions(
+                    item: item,
+                    onRefresh: onRefresh,
+                    deviationId: item.id,
+                    onOpenCommentsDialog: onOpenCommentsDialog,
+                  )),
         ],
       ),
     );
@@ -1999,9 +2367,9 @@ class _DeviationRow extends StatelessWidget {
 
 class _DeviationStylishCard extends StatelessWidget {
   const _DeviationStylishCard({
-    required this.item, 
-    this.selectable = false, 
-    this.selected = false, 
+    required this.item,
+    this.selectable = false,
+    this.selected = false,
     this.onSelectedChanged,
     this.deviationId,
     this.onAddComment,
@@ -2025,172 +2393,185 @@ class _DeviationStylishCard extends StatelessWidget {
       selected: selected,
       onChanged: onSelectedChanged,
       child: Stack(
-      children: [
-        Card(
-          color: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: border)),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(selectable ? 44 : 16, selectable ? 12 : 16, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: border)),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                  selectable ? 44 : 16, selectable ? 12 : 16, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: scheme.primaryContainer,
-                    child: Icon(
-                      _iconForType(item.type ?? ''),
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.type ?? '-',
-                          style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w300),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: scheme.primaryContainer,
+                        child: Icon(
+                          _iconForType(item.type ?? ''),
+                          color: Colors.white,
+                          size: 20,
                         ),
-                        const SizedBox(height: 2),
-                        Row(
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.place_outlined, size: 16, color: Colors.black45),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                item.city ?? '-',
-                                style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
-                                overflow: TextOverflow.ellipsis,
+                            Text(
+                              item.type ?? '-',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: const Color(0xFF12223B),
+                                  fontWeight: FontWeight.w300),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                const Icon(Icons.place_outlined,
+                                    size: 16, color: Colors.black45),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    item.city ?? '-',
+                                    style: theme.textTheme.bodyMedium
+                                        ?.copyWith(color: Colors.black54),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Flexible(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _InfoPill(
+                                icon: Icons.event,
+                                label: item.dateLabel ?? '-'),
+                            _StatusBadge(status: (item.status ?? 'Pending')),
+                            // Edit icon button
+                            IconButton(
+                              onPressed: () async {
+                                final result = await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => DeviationEntryScreen(
+                                        deviationId: deviationId),
+                                  ),
+                                );
+                                // Refresh data when returning from deviation entry screen, especially if data was saved
+                                if (result == true) {
+                                  print(
+                                      'DeviationListScreen: Deviation was saved, refreshing data...');
+                                }
+                                // Always refresh to ensure list is up to date
+                                onRefresh?.call();
+                              },
+                              icon: const Icon(Icons.edit_outlined, size: 20),
+                              tooltip: 'Edit Deviation',
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.blue.shade50,
+                                foregroundColor: Colors.blue.shade700,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _InfoPill(icon: Icons.event, label: item.dateLabel ?? '-'),
-                        _StatusBadge(status: (item.status ?? 'Pending')),
-                        // Edit icon button
-                        IconButton(
-                          onPressed: () async {
-                            final result = await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => DeviationEntryScreen(deviationId: deviationId),
-                              ),
-                            );
-                            // Refresh data when returning from deviation entry screen, especially if data was saved
-                            if (result == true) {
-                              print('DeviationListScreen: Deviation was saved, refreshing data...');
-                            }
-                            // Always refresh to ensure list is up to date
-                            onRefresh?.call();
-                          },
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                          tooltip: 'Edit Deviation',
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.blue.shade50,
-                            foregroundColor: Colors.blue.shade700,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                item.description ?? '-',
-                style: theme.textTheme.bodyMedium,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 12),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Comment button
-                    TextButton.icon(
-                      onPressed: () async {
-                        if (deviationId != null && onOpenCommentsDialog != null) {
-                          await onOpenCommentsDialog!(deviationId!);
-                        }
-                      },
-                      style: TextButton.styleFrom(
-                        // foregroundColor: Colors.white,
-                        // backgroundColor: theme.colorScheme.primary,
                       ),
-                      icon: const Icon(Icons.mode_comment_outlined, size: 18),
-                      label: const Text('Comment'),
-                    ),
-                    const SizedBox(width: 8),
-                    // LayoutBuilder(
-                    //   builder: (context, constraints) {
-                      //     final isMobile = MediaQuery.of(context).size.width < 768;
-                      //     return OutlinedButton.icon(
-                      //       onPressed: () async {
-                      //         final result = await Navigator.of(context).push(
-                      //           MaterialPageRoute(builder: (_) => const DeviationEntryScreen()),
-                      //         );
-                      //         // Refresh data when returning from deviation entry screen, especially if data was saved
-                      //         if (result == true) {
-                      //           print('DeviationListScreen: Deviation was saved, refreshing data...');
-                      //         }
-                      //         onRefresh?.call();
-                      //       },
-                      //       style: OutlinedButton.styleFrom(
-                      //         // foregroundColor: Colors.white,
-                      //         // backgroundColor: theme.colorScheme.primary,
-                      //         side: BorderSide(color: theme.colorScheme.primary),
-                      //         padding: isMobile 
-                      //           ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
-                      //           : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      //       ),
-                      //       icon: Icon(
-                      //         Icons.open_in_new, 
-                      //         size: isMobile ? 14 : 18,
-                      //       ),
-                      //       label: Text(
-                      //         'View Details',
-                      //         style: isMobile 
-                      //           ? theme.textTheme.labelSmall
-                      //           : theme.textTheme.labelMedium,
-                      //       ),
-                      //     );
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    item.description ?? '-',
+                    style: theme.textTheme.bodyMedium,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        // Comment button
+                        TextButton.icon(
+                          onPressed: () async {
+                            if (deviationId != null &&
+                                onOpenCommentsDialog != null) {
+                              await onOpenCommentsDialog!(deviationId!);
+                            }
+                          },
+                          style: TextButton.styleFrom(
+                              // foregroundColor: Colors.white,
+                              // backgroundColor: theme.colorScheme.primary,
+                              ),
+                          icon:
+                              const Icon(Icons.mode_comment_outlined, size: 18),
+                          label: const Text('Comment'),
+                        ),
+                        const SizedBox(width: 8),
+                        // LayoutBuilder(
+                        //   builder: (context, constraints) {
+                        //     final isMobile = MediaQuery.of(context).size.width < 768;
+                        //     return OutlinedButton.icon(
+                        //       onPressed: () async {
+                        //         final result = await Navigator.of(context).push(
+                        //           MaterialPageRoute(builder: (_) => const DeviationEntryScreen()),
+                        //         );
+                        //         // Refresh data when returning from deviation entry screen, especially if data was saved
+                        //         if (result == true) {
+                        //           print('DeviationListScreen: Deviation was saved, refreshing data...');
+                        //         }
+                        //         onRefresh?.call();
+                        //       },
+                        //       style: OutlinedButton.styleFrom(
+                        //         // foregroundColor: Colors.white,
+                        //         // backgroundColor: theme.colorScheme.primary,
+                        //         side: BorderSide(color: theme.colorScheme.primary),
+                        //         padding: isMobile
+                        //           ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+                        //           : const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        //       ),
+                        //       icon: Icon(
+                        //         Icons.open_in_new,
+                        //         size: isMobile ? 14 : 18,
+                        //       ),
+                        //       label: Text(
+                        //         'View Details',
+                        //         style: isMobile
+                        //           ? theme.textTheme.labelSmall
+                        //           : theme.textTheme.labelMedium,
+                        //       ),
+                        //     );
                         //   },
                         // ),
-                  ],
-                ),
-              ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-        if (selectable)
-          const Positioned(
-            top: 10,
-            left: 10,
-            child: _CardTopLeftCheckbox(),
-          ),
-      ],
-    ),
+          if (selectable)
+            const Positioned(
+              top: 10,
+              left: 10,
+              child: _CardTopLeftCheckbox(),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2240,16 +2621,20 @@ class _CardTopLeftCheckbox extends StatelessWidget {
 }
 
 class _CardCheckboxScope extends InheritedWidget {
-  const _CardCheckboxScope({required this.selected, required this.onChanged, required super.child});
-  final bool selected; final ValueChanged<bool>? onChanged;
-  static _CardCheckboxScope? of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<_CardCheckboxScope>();
+  const _CardCheckboxScope(
+      {required this.selected, required this.onChanged, required super.child});
+  final bool selected;
+  final ValueChanged<bool>? onChanged;
+  static _CardCheckboxScope? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_CardCheckboxScope>();
   @override
-  bool updateShouldNotify(covariant _CardCheckboxScope oldWidget) => selected != oldWidget.selected || onChanged != oldWidget.onChanged;
+  bool updateShouldNotify(covariant _CardCheckboxScope oldWidget) =>
+      selected != oldWidget.selected || onChanged != oldWidget.onChanged;
 }
 
 class _RowActions extends StatelessWidget {
   const _RowActions({
-    required this.item, 
+    required this.item,
     this.onRefresh,
     this.deviationId,
     this.onOpenCommentsDialog,
@@ -2258,7 +2643,7 @@ class _RowActions extends StatelessWidget {
   final VoidCallback? onRefresh;
   final int? deviationId;
   final Future<void> Function(int deviationId)? onOpenCommentsDialog;
-  
+
   @override
   Widget build(BuildContext context) {
     final bool isApproved = (item.status?.toLowerCase() ?? '') == 'approved';
@@ -2267,20 +2652,25 @@ class _RowActions extends StatelessWidget {
       children: [
         // Edit button
         IconButton(
-          icon: Icon(Icons.edit_outlined, size: 20, color: isApproved ? Colors.grey : null),
-          onPressed: isApproved ? null : () async {
-            final result = await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => DeviationEntryScreen(deviationId: item.id),
-              ),
-            );
-            // Refresh data when returning from deviation entry screen, especially if data was saved
-            if (result == true) {
-              print('DeviationListScreen: Deviation was saved, refreshing data...');
-            }
-            // Always refresh to ensure list is up to date
-            onRefresh?.call();
-          },
+          icon: Icon(Icons.edit_outlined,
+              size: 20, color: isApproved ? Colors.grey : null),
+          onPressed: isApproved
+              ? null
+              : () async {
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          DeviationEntryScreen(deviationId: item.id),
+                    ),
+                  );
+                  // Refresh data when returning from deviation entry screen, especially if data was saved
+                  if (result == true) {
+                    print(
+                        'DeviationListScreen: Deviation was saved, refreshing data...');
+                  }
+                  // Always refresh to ensure list is up to date
+                  onRefresh?.call();
+                },
           tooltip: 'Edit Deviation',
         ),
         // Comment button
@@ -2299,8 +2689,11 @@ class _RowActions extends StatelessWidget {
 }
 
 class _ActionPillButton extends StatelessWidget {
-  final IconData icon; final String label; final VoidCallback? onTap;
-  const _ActionPillButton({required this.icon, required this.label, this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  const _ActionPillButton(
+      {required this.icon, required this.label, this.onTap});
   @override
   Widget build(BuildContext context) {
     final Color border = Theme.of(context).dividerColor.withOpacity(.25);
@@ -2328,7 +2721,8 @@ class _ActionPillButton extends StatelessWidget {
 
 class _InfoPill extends StatelessWidget {
   const _InfoPill({required this.icon, required this.label});
-  final IconData icon; final String label;
+  final IconData icon;
+  final String label;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2346,8 +2740,9 @@ class _InfoPill extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              label, 
-              style: theme.textTheme.bodySmall?.copyWith(color: Colors.black87, fontWeight: FontWeight.w300),
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.black87, fontWeight: FontWeight.w300),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -2381,7 +2776,10 @@ class _ActionPill extends StatelessWidget {
               children: [
                 Icon(icon, size: 18),
                 const SizedBox(width: 8),
-                Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelLarge)),
+                Flexible(
+                    child: Text(label,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge)),
               ],
             ),
           ),
@@ -2391,14 +2789,19 @@ class _ActionPill extends StatelessWidget {
   }
 }
 
-Future<String?> _pickFromList(BuildContext context, {required String title, required List<String> options, String? selected, bool searchable = false}) async {
+Future<String?> _pickFromList(BuildContext context,
+    {required String title,
+    required List<String> options,
+    String? selected,
+    bool searchable = false}) async {
   // If searchable is true or options list is large, use searchable version
   final bool useSearch = searchable || options.length > 10;
-  
+
   if (useSearch) {
-    return _pickFromListSearchable(context, title: title, options: options, selected: selected);
+    return _pickFromListSearchable(context,
+        title: title, options: options, selected: selected);
   }
-  
+
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -2410,8 +2813,12 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Row(
               children: [
-                Expanded(child: Text(title, style: Theme.of(ctx).textTheme.titleLarge)),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
+                Expanded(
+                    child:
+                        Text(title, style: Theme.of(ctx).textTheme.titleLarge)),
+                IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx))
               ],
             ),
           ),
@@ -2422,7 +2829,9 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               itemBuilder: (c, i) => ListTile(
                 title: Text(options[i]),
-                trailing: options[i] == selected ? const Icon(Icons.check, color: Colors.green) : null,
+                trailing: options[i] == selected
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
                 onTap: () => Navigator.pop(ctx, options[i]),
               ),
               separatorBuilder: (_, __) => const Divider(height: 1),
@@ -2435,7 +2844,10 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
   );
 }
 
-Future<String?> _pickFromListSearchable(BuildContext context, {required String title, required List<String> options, String? selected}) async {
+Future<String?> _pickFromListSearchable(BuildContext context,
+    {required String title,
+    required List<String> options,
+    String? selected}) async {
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -2460,10 +2872,12 @@ class _SearchableListBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<_SearchableListBottomSheet> createState() => _SearchableListBottomSheetState();
+  State<_SearchableListBottomSheet> createState() =>
+      _SearchableListBottomSheetState();
 }
 
-class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> {
+class _SearchableListBottomSheetState
+    extends State<_SearchableListBottomSheet> {
   late List<String> _filteredOptions;
   late TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode();
@@ -2500,9 +2914,9 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
       if (query.isEmpty) {
         _filteredOptions = widget.options;
       } else {
-        _filteredOptions = widget.options.where((option) =>
-          option.toLowerCase().contains(query)
-        ).toList();
+        _filteredOptions = widget.options
+            .where((option) => option.toLowerCase().contains(query))
+            .toList();
       }
     });
   }
@@ -2524,7 +2938,10 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w500),
                     ),
                   ),
                   IconButton(
@@ -2558,7 +2975,8 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
                     onTap: () {
                       // Request focus when user explicitly taps on search field
@@ -2575,18 +2993,23 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                       padding: const EdgeInsets.all(32.0),
                       child: Text(
                         'No results found',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.grey),
                       ),
                     )
                   : ListView.separated(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
                       itemBuilder: (c, i) => ListTile(
                         title: Text(_filteredOptions[i]),
                         trailing: _filteredOptions[i] == widget.selected
                             ? const Icon(Icons.check, color: Colors.green)
                             : null,
-                        onTap: () => Navigator.pop(context, _filteredOptions[i]),
+                        onTap: () =>
+                            Navigator.pop(context, _filteredOptions[i]),
                       ),
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemCount: _filteredOptions.length,
@@ -2599,7 +3022,8 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
   }
 }
 
-Future<String?> _openCommentDialog(BuildContext context, {String title = 'Add Comment'}) async {
+Future<String?> _openCommentDialog(BuildContext context,
+    {String title = 'Add Comment'}) async {
   final TextEditingController controller = TextEditingController();
   return showDialog<String>(
     context: context,
@@ -2611,18 +3035,25 @@ Future<String?> _openCommentDialog(BuildContext context, {String title = 'Add Co
         decoration: const InputDecoration(hintText: 'Type your comment'),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save')),
       ],
     ),
   );
 }
 
 // Enhanced comment modal for inline commenting
-Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<void> Function(int deviationId, String comment)? onAddComment) async {
+Future<void> _showCommentModal(
+    BuildContext context,
+    int? deviationId,
+    Future<void> Function(int deviationId, String comment)?
+        onAddComment) async {
   final TextEditingController controller = TextEditingController();
   final theme = Theme.of(context);
-  
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -2652,7 +3083,7 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // Header
           Padding(
             padding: const EdgeInsets.all(20),
@@ -2664,7 +3095,8 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
                     color: Colors.blue.shade100,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.mode_comment_outlined, color: Colors.blue.shade700, size: 20),
+                  child: Icon(Icons.mode_comment_outlined,
+                      color: Colors.blue.shade700, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2691,15 +3123,16 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
                   icon: const Icon(Icons.close),
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.grey.shade100,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
               ],
             ),
           ),
-          
+
           const Divider(height: 1),
-          
+
           // Comment input
           Expanded(
             child: Padding(
@@ -2732,7 +3165,8 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                          borderSide: BorderSide(
+                              color: theme.colorScheme.primary, width: 2),
                         ),
                         contentPadding: const EdgeInsets.all(16),
                       ),
@@ -2742,13 +3176,14 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
               ),
             ),
           ),
-          
+
           // Action buttons
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(20)),
             ),
             child: Row(
               children: [
@@ -2757,7 +3192,8 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
                     onPressed: () => Navigator.pop(ctx),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     child: const Text('Cancel'),
                   ),
@@ -2768,7 +3204,9 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
                   child: ElevatedButton.icon(
                     onPressed: () async {
                       final comment = controller.text.trim();
-                      if (comment.isNotEmpty && deviationId != null && onAddComment != null) {
+                      if (comment.isNotEmpty &&
+                          deviationId != null &&
+                          onAddComment != null) {
                         await onAddComment!(deviationId!, comment);
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
@@ -2788,7 +3226,8 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
                       backgroundColor: theme.colorScheme.primary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ),
@@ -2800,40 +3239,63 @@ Future<void> _showCommentModal(BuildContext context, int? deviationId, Future<vo
     ),
   );
 }
+
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status});
   final String status;
   @override
   Widget build(BuildContext context) {
-    Color bg; Color fg;
+    Color bg;
+    Color fg;
     final s = status.toLowerCase();
     if (s.contains('approve')) {
-      bg = const Color(0xFFE8F5E9); fg = const Color(0xFF2E7D32);
+      bg = const Color(0xFFE8F5E9);
+      fg = const Color(0xFF2E7D32);
     } else if (s.contains('reject')) {
-      bg = const Color(0xFFFFEBEE); fg = const Color(0xFFC62828);
+      bg = const Color(0xFFFFEBEE);
+      fg = const Color(0xFFC62828);
     } else if (s.contains('open') || s.contains('pending')) {
-      bg = const Color(0xFFFFF4E5); fg = const Color(0xFF9A6B00);
+      bg = const Color(0xFFFFF4E5);
+      fg = const Color(0xFF9A6B00);
     } else if (s.contains('draft')) {
-      bg = const Color(0xFFE3F2FD); fg = const Color(0xFF1565C0);
+      bg = const Color(0xFFE3F2FD);
+      fg = const Color(0xFF1565C0);
     } else if (s.contains('send')) {
-      bg = const Color(0xFFFFF3E0); fg = const Color(0xFFEF6C00);
+      bg = const Color(0xFFFFF3E0);
+      fg = const Color(0xFFEF6C00);
     } else {
-      bg = const Color(0xFFF3E8FF); fg = const Color(0xFF6A1B9A);
+      bg = const Color(0xFFF3E8FF);
+      fg = const Color(0xFF6A1B9A);
     }
     return Container(
       alignment: Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-        child: Text(status, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Text(status,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
       ),
     );
   }
 }
 
 class _DeviationItem {
-  const _DeviationItem({required this.id, this.dateLabel, this.employeeName, this.city, this.type, this.description, this.status});
-  final int id; final String? dateLabel; final String? employeeName; final String? city; final String? type; final String? description; final String? status;
+  const _DeviationItem(
+      {required this.id,
+      this.dateLabel,
+      this.employeeName,
+      this.city,
+      this.type,
+      this.description,
+      this.status});
+  final int id;
+  final String? dateLabel;
+  final String? employeeName;
+  final String? city;
+  final String? type;
+  final String? description;
+  final String? status;
 }
 
 // Enhanced UI Components
@@ -2854,15 +3316,20 @@ class _EnhancedActionPill extends StatelessWidget {
     final theme = Theme.of(context);
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     final Color backgroundColor = isActive ? Colors.blue.shade50 : Colors.white;
-    final Color iconColor = isActive ? Colors.blue.shade600 : theme.colorScheme.primary;
-    final Color textColor = isActive ? Colors.blue.shade700 : Colors.grey.shade700;
-    final Color borderColor = isActive ? Colors.blue.shade200 : Colors.grey.shade200;
-    
+    final Color iconColor =
+        isActive ? Colors.blue.shade600 : theme.colorScheme.primary;
+    final Color textColor =
+        isActive ? Colors.blue.shade700 : Colors.grey.shade700;
+    final Color borderColor =
+        isActive ? Colors.blue.shade200 : Colors.grey.shade200;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(12),
       elevation: isActive ? 3 : 2,
-      shadowColor: isActive ? Colors.blue.withOpacity(0.2) : Colors.black.withOpacity(0.1),
+      shadowColor: isActive
+          ? Colors.blue.withOpacity(0.2)
+          : Colors.black.withOpacity(0.1),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -2915,7 +3382,7 @@ class _ClearFiltersButton extends StatelessWidget {
     required this.onPressed,
     this.isActive = false,
   });
-  
+
   final VoidCallback onPressed;
   final bool isActive;
 
@@ -2923,10 +3390,13 @@ class _ClearFiltersButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bool isMobile = MediaQuery.of(context).size.width < 600;
-    final Color backgroundColor = isActive ? Colors.red.shade50 : Colors.grey.shade100;
-    final Color iconColor = isActive ? Colors.red.shade600 : Colors.grey.shade600;
-    final Color textColor = isActive ? Colors.red.shade700 : Colors.grey.shade600;
-    
+    final Color backgroundColor =
+        isActive ? Colors.red.shade50 : Colors.grey.shade100;
+    final Color iconColor =
+        isActive ? Colors.red.shade600 : Colors.grey.shade600;
+    final Color textColor =
+        isActive ? Colors.red.shade700 : Colors.grey.shade600;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(12),
@@ -2990,7 +3460,7 @@ class _EnhancedDeviationCard extends StatelessWidget {
     final isSmallMobile = screenWidth < 360;
     final isMobile = screenWidth < 600;
     final isTablet = screenWidth >= 600;
-    
+
     final TextStyle label = GoogleFonts.inter(
       color: Colors.black54,
       fontWeight: FontWeight.w600,
@@ -3001,7 +3471,7 @@ class _EnhancedDeviationCard extends StatelessWidget {
       fontWeight: FontWeight.w600,
       fontSize: isMobile ? 14 : 15,
     );
-    
+
     return InkWell(
       onTap: onViewDetails,
       borderRadius: BorderRadius.circular(20),
@@ -3021,103 +3491,110 @@ class _EnhancedDeviationCard extends StatelessWidget {
         padding: EdgeInsets.all(isSmallMobile ? 12 : (isMobile ? 14 : 16)),
         margin: EdgeInsets.only(bottom: isMobile ? 10 : 12),
         child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-          // Header row: Icon + (Title + Status) + View
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: isTablet ? 44 : 40,
-                height: isTablet ? 44 : 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7F7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _getTypeIcon(item.type ?? ''),
-                  color: const Color(0xFF4db1b3),
-                  size: isTablet ? 22 : 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.type ?? 'Deviation',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: isTablet ? 14 : 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _getStatusChipForDeviation(item.status ?? 'Pending'),
-                  ],
-                ),
-              ),
-              // View Button - Right side (visual only, card is clickable)
-              if (onViewDetails != null)
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row: Icon + (Title + Status) + View
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Container(
-                  width: isTablet ? 40 : 36,
-                  height: isTablet ? 40 : 36,
+                  width: isTablet ? 44 : 40,
+                  height: isTablet ? 44 : 40,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                    color: const Color(0xFFEAF7F7),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    Icons.visibility_outlined,
-                    size: isTablet ? 18 : 16,
-                    color: Colors.grey.shade700,
+                    _getTypeIcon(item.type ?? ''),
+                    color: const Color(0xFF4db1b3),
+                    size: isTablet ? 22 : 20,
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.type ?? 'Deviation',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 14 : 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _getStatusChipForDeviation(item.status ?? 'Pending'),
+                    ],
+                  ),
+                ),
+                // View Button - Right side (visual only, card is clickable)
+                if (onViewDetails != null)
+                  Container(
+                    width: isTablet ? 40 : 36,
+                    height: isTablet ? 40 : 36,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                    child: Icon(
+                      Icons.visibility_outlined,
+                      size: isTablet ? 18 : 16,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Divider(
+                height: 1, thickness: 1, color: Colors.black.withOpacity(.06)),
+            const SizedBox(height: 10),
+            _iconKvRow(context, Icons.person_outline, 'Employee',
+                item.employeeName ?? 'Unknown'),
+            // Show cluster only for "UnPlanned Visit"
+            if ((item.type ?? '')
+                .toLowerCase()
+                .contains('unplanned visit')) ...[
+              SizedBox(height: isMobile ? 6 : 8),
+              _iconKvRow(context, Icons.place_outlined, 'Cluster',
+                  item.city ?? 'Unknown'),
             ],
-          ),
-          const SizedBox(height: 10),
-          Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(.06)),
-          const SizedBox(height: 10),
-          _iconKvRow(context, Icons.person_outline, 'Employee', item.employeeName ?? 'Unknown'),
-          // Show cluster only for "UnPlanned Visit"
-          if ((item.type ?? '').toLowerCase().contains('unplanned visit')) ...[
             SizedBox(height: isMobile ? 6 : 8),
-            _iconKvRow(context, Icons.place_outlined, 'Cluster', item.city ?? 'Unknown'),
+            _iconKvRow(context, Icons.calendar_today_outlined, 'Date',
+                item.dateLabel ?? 'Unknown'),
           ],
-          SizedBox(height: isMobile ? 6 : 8),
-          _iconKvRow(context, Icons.calendar_today_outlined, 'Date', item.dateLabel ?? 'Unknown'),
-        ],
-      ),
+        ),
       ),
     );
   }
 
   // Icon + key/value row (same as DCR list)
-  static Widget _iconKvRow(BuildContext context, IconData icon, String label, String valueText) {
+  static Widget _iconKvRow(
+      BuildContext context, IconData icon, String label, String valueText) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     final bool isSmallMobile = MediaQuery.of(context).size.width < 360;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
+      children: [
         Icon(icon, size: isSmallMobile ? 14 : 16, color: Colors.black54),
         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
+        Expanded(
+          child: Text(
             label,
             style: GoogleFonts.inter(
               color: Colors.black54,
-                            fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w600,
               fontSize: isSmallMobile ? 11 : (isMobile ? 12 : 13),
               letterSpacing: 0.1,
             ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
           child: Text(
             valueText,
             style: GoogleFonts.inter(
@@ -3129,9 +3606,9 @@ class _EnhancedDeviationCard extends StatelessWidget {
             textAlign: TextAlign.right,
             overflow: TextOverflow.ellipsis,
             maxLines: 2,
-                            ),
-                          ),
-                        ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -3139,7 +3616,7 @@ class _EnhancedDeviationCard extends StatelessWidget {
   static Widget _getStatusChipForDeviation(String statusText) {
     final status = statusText.trim().toLowerCase();
     _StatusChip statusChip;
-    
+
     if (status.contains('approved')) {
       statusChip = const _StatusChip.approved('Approved');
     } else if (status.contains('rejected')) {
@@ -3149,12 +3626,12 @@ class _EnhancedDeviationCard extends StatelessWidget {
     } else if (status.contains('open')) {
       statusChip = const _StatusChip.pending('Open');
     } else {
-      statusChip = _StatusChip.pending(statusText.isNotEmpty ? statusText : 'Pending');
+      statusChip =
+          _StatusChip.pending(statusText.isNotEmpty ? statusText : 'Pending');
     }
-    
+
     return statusChip;
   }
-
 
   // Helper methods (static for use in widget)
   static String _formatDate(String raw) {
@@ -3182,7 +3659,8 @@ class _EnhancedDeviationCard extends StatelessWidget {
     }
   }
 
-  static String _valueOrPlaceholder(String? value, {String placeholder = 'N/A'}) {
+  static String _valueOrPlaceholder(String? value,
+      {String placeholder = 'N/A'}) {
     if (value == null) {
       return placeholder;
     }
@@ -3219,7 +3697,6 @@ class _EnhancedDeviationCard extends StatelessWidget {
         return Icons.report_gmailerrorred_outlined;
     }
   }
-
 }
 
 class _ActionButton extends StatelessWidget {
@@ -3241,7 +3718,7 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     return Material(
       color: enabled ? color.withOpacity(0.1) : Colors.grey.shade100,
       borderRadius: BorderRadius.circular(8),
@@ -3255,8 +3732,11 @@ class _ActionButton extends StatelessWidget {
             vertical: isMobile ? 12 : 8,
           ),
           child: Row(
-            mainAxisAlignment: fullWidth || isMobile ? MainAxisAlignment.center : MainAxisAlignment.start,
-            mainAxisSize: fullWidth || isMobile ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: fullWidth || isMobile
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
+            mainAxisSize:
+                fullWidth || isMobile ? MainAxisSize.max : MainAxisSize.min,
             children: [
               Icon(
                 icon,
@@ -3267,10 +3747,11 @@ class _ActionButton extends StatelessWidget {
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: enabled ? color : Colors.grey.shade400,
-                  fontWeight: isMobile ? FontWeight.w500 : FontWeight.normal,
-                  fontSize: isMobile ? 14 : 12,
-                ),
+                      color: enabled ? color : Colors.grey.shade400,
+                      fontWeight:
+                          isMobile ? FontWeight.w500 : FontWeight.normal,
+                      fontSize: isMobile ? 14 : 12,
+                    ),
               ),
             ],
           ),
@@ -3297,8 +3778,8 @@ class _EnhancedStatusBadge extends StatelessWidget {
       child: Text(
         status,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: textColor,
-        ),
+              color: textColor,
+            ),
       ),
     );
   }
@@ -3306,17 +3787,35 @@ class _EnhancedStatusBadge extends StatelessWidget {
   (Color, Color) _getStatusColors(String status) {
     final s = status.toLowerCase();
     if (s.contains('approve')) {
-      return (const Color(0xFFE8F5E9), const Color(0xFF2E7D32)); // Green for Approved
+      return (
+        const Color(0xFFE8F5E9),
+        const Color(0xFF2E7D32)
+      ); // Green for Approved
     } else if (s.contains('pending') || s.contains('open')) {
-      return (const Color(0xFFFFF4E5), const Color(0xFF9A6B00)); // Orange for Pending
+      return (
+        const Color(0xFFFFF4E5),
+        const Color(0xFF9A6B00)
+      ); // Orange for Pending
     } else if (s.contains('draft')) {
-      return (const Color(0xFFE3F2FD), const Color(0xFF1565C0)); // Blue for Draft
+      return (
+        const Color(0xFFE3F2FD),
+        const Color(0xFF1565C0)
+      ); // Blue for Draft
     } else if (s.contains('reject')) {
-      return (const Color(0xFFFFEBEE), const Color(0xFFC62828)); // Red for Rejected
+      return (
+        const Color(0xFFFFEBEE),
+        const Color(0xFFC62828)
+      ); // Red for Rejected
     } else if (s.contains('send')) {
-      return (const Color(0xFFFFF3E0), const Color(0xFFEF6C00)); // Orange for Sent Back
+      return (
+        const Color(0xFFFFF3E0),
+        const Color(0xFFEF6C00)
+      ); // Orange for Sent Back
     } else {
-      return (const Color(0xFFF5F5F5), const Color(0xFF757575)); // Gray for Unknown
+      return (
+        const Color(0xFFF5F5F5),
+        const Color(0xFF757575)
+      ); // Gray for Unknown
     }
   }
 }
@@ -3325,7 +3824,7 @@ class _NewDeviationButton extends StatelessWidget {
   const _NewDeviationButton({
     required this.onPressed,
   });
-  
+
   final VoidCallback onPressed;
 
   @override
@@ -3383,7 +3882,8 @@ class _NewDeviationButton extends StatelessWidget {
 class _DeviationCommentsDialog extends StatefulWidget {
   final int deviationId;
   final Future<List<DeviationComment>> Function(int) onGetComments;
-  final Future<void> Function({required int deviationId, required String comment}) onSaveComment;
+  final Future<void> Function(
+      {required int deviationId, required String comment}) onSaveComment;
   final VoidCallback? onCommentAdded;
 
   const _DeviationCommentsDialog({
@@ -3394,7 +3894,8 @@ class _DeviationCommentsDialog extends StatefulWidget {
   });
 
   @override
-  State<_DeviationCommentsDialog> createState() => _DeviationCommentsDialogState();
+  State<_DeviationCommentsDialog> createState() =>
+      _DeviationCommentsDialogState();
 }
 
 class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
@@ -3436,7 +3937,7 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
 
   Future<void> _saveComment() async {
     final commentText = _commentController.text.trim();
-    
+
     // Validation: Check if comment is empty
     if (commentText.isEmpty) {
       ToastMessage.show(
@@ -3448,7 +3949,7 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
       );
       return;
     }
-    
+
     // Validation: Check minimum length
     if (commentText.length < 2) {
       ToastMessage.show(
@@ -3460,7 +3961,7 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
       );
       return;
     }
-    
+
     // Validation: Check maximum length
     if (commentText.length > 1000) {
       ToastMessage.show(
@@ -3523,7 +4024,7 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final screenHeight = MediaQuery.of(context).size.height;
     const Color tealGreen = Color(0xFF4db1b3);
-    
+
     // Use bottom sheet on mobile, dialog on tablet (same as tour plan)
     if (isMobile) {
       return DraggableScrollableSheet(
@@ -3560,7 +4061,7 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
         },
       );
     }
-    
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
@@ -3632,7 +4133,8 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.close, color: Colors.grey, size: isTablet ? 24 : 20),
+            icon:
+                Icon(Icons.close, color: Colors.grey, size: isTablet ? 24 : 20),
             onPressed: () => Navigator.of(context).pop(),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -3660,126 +4162,130 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-                    // Previous Comments Section
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          size: isTablet ? 20 : 18,
-                          color: tealGreen,
-                        ),
-                        SizedBox(width: isTablet ? 8 : 6),
-                        Flexible(
-                          child: Text(
-                            'Previous Comments (${_comments.length})',
-                            style: GoogleFonts.inter(
-                              fontSize: isTablet ? 16 : 14,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey[900],
-                              letterSpacing: -0.2,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: isTablet ? 16 : 14),
+          // Previous Comments Section
+          Row(
+            children: [
+              Icon(
+                Icons.chat_bubble_outline,
+                size: isTablet ? 20 : 18,
+                color: tealGreen,
+              ),
+              SizedBox(width: isTablet ? 8 : 6),
+              Flexible(
+                child: Text(
+                  'Previous Comments (${_comments.length})',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 16 : 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: isTablet ? 16 : 14),
 
-                    // Comments List with Scrollbar
-                    if (_isLoading)
-                      Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(isTablet ? 24 : 20),
-                          child: CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(tealGreen),
-                          ),
-                        ),
-                      )
-                    else if (_comments.isEmpty)
-                      Container(
-                        padding: EdgeInsets.all(isTablet ? 20 : 16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[200]!),
-                        ),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.chat_bubble_outline, size: isTablet ? 48 : 40, color: Colors.grey[400]),
-                              SizedBox(height: isTablet ? 12 : 10),
-                              Text(
-                                'No comments yet',
-                                style: GoogleFonts.inter(
-                                  color: Colors.grey[600],
-                                  fontSize: isTablet ? 14 : 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              SizedBox(height: isTablet ? 4 : 3),
-                              Text(
-                                'Be the first to comment!',
-                                style: GoogleFonts.inter(
-                                  color: Colors.grey[500],
-                                  fontSize: isTablet ? 12 : 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        constraints: BoxConstraints(
-                          maxHeight: isMobile ? MediaQuery.of(context).size.height * 0.25 : (isTablet ? 300 : 250),
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          border: Border.all(color: Colors.grey[200]!),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Scrollbar(
-                          controller: _scrollController,
-                          thumbVisibility: true,
-                          child: ListView.separated(
-                            controller: _scrollController,
-                            shrinkWrap: true,
-                            padding: EdgeInsets.all(isTablet ? 8 : 6),
-                            itemCount: _comments.length,
-                            separatorBuilder: (context, index) => SizedBox(height: isTablet ? 8 : 6),
-                            itemBuilder: (context, index) {
-                              return _buildCommentItem(_comments[index]);
-                            },
-                          ),
-                        ),
+          // Comments List with Scrollbar
+          if (_isLoading)
+            Center(
+              child: Padding(
+                padding: EdgeInsets.all(isTablet ? 24 : 20),
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(tealGreen),
+                ),
+              ),
+            )
+          else if (_comments.isEmpty)
+            Container(
+              padding: EdgeInsets.all(isTablet ? 20 : 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.chat_bubble_outline,
+                        size: isTablet ? 48 : 40, color: Colors.grey[400]),
+                    SizedBox(height: isTablet ? 12 : 10),
+                    Text(
+                      'No comments yet',
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[600],
+                        fontSize: isTablet ? 14 : 13,
+                        fontWeight: FontWeight.w600,
                       ),
-
-                    SizedBox(height: isTablet ? 24 : 20),
-
-                    // Add Comment Section
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.add_comment,
-                          size: isTablet ? 20 : 18,
-                          color: tealGreen,
-                        ),
-                        SizedBox(width: isTablet ? 8 : 6),
-                        Flexible(
-                          child: Text(
-                            'Add Comment *',
-                            style: GoogleFonts.inter(
-                              fontSize: isTablet ? 16 : 14,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey[900],
-                              letterSpacing: -0.2,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
                     ),
+                    SizedBox(height: isTablet ? 4 : 3),
+                    Text(
+                      'Be the first to comment!',
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[500],
+                        fontSize: isTablet ? 12 : 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Container(
+              constraints: BoxConstraints(
+                maxHeight: isMobile
+                    ? MediaQuery.of(context).size.height * 0.25
+                    : (isTablet ? 300 : 250),
+              ),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                border: Border.all(color: Colors.grey[200]!),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                child: ListView.separated(
+                  controller: _scrollController,
+                  shrinkWrap: true,
+                  padding: EdgeInsets.all(isTablet ? 8 : 6),
+                  itemCount: _comments.length,
+                  separatorBuilder: (context, index) =>
+                      SizedBox(height: isTablet ? 8 : 6),
+                  itemBuilder: (context, index) {
+                    return _buildCommentItem(_comments[index]);
+                  },
+                ),
+              ),
+            ),
+
+          SizedBox(height: isTablet ? 24 : 20),
+
+          // Add Comment Section
+          Row(
+            children: [
+              Icon(
+                Icons.add_comment,
+                size: isTablet ? 20 : 18,
+                color: tealGreen,
+              ),
+              SizedBox(width: isTablet ? 8 : 6),
+              Flexible(
+                child: Text(
+                  'Add Comment *',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 16 : 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
           SizedBox(height: isTablet ? 12 : 10),
 
           TextField(
@@ -3806,7 +4312,8 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
                 borderSide: BorderSide(color: tealGreen, width: 2),
               ),
               contentPadding: EdgeInsets.all(isTablet ? 16 : 14),
-              errorText: _commentController.text.trim().isEmpty && _commentController.text.isNotEmpty
+              errorText: _commentController.text.trim().isEmpty &&
+                      _commentController.text.isNotEmpty
                   ? 'Comment is required'
                   : null,
               helperText: 'Minimum 3 characters, maximum 1000 characters',
@@ -3869,7 +4376,8 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Icon(Icons.add, size: 18),
@@ -3883,7 +4391,8 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
                       style: FilledButton.styleFrom(
                         backgroundColor: tealGreen,
                         foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
+                        padding:
+                            EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
                         disabledBackgroundColor: tealGreen.withOpacity(0.5),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -3897,7 +4406,8 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       style: TextButton.styleFrom(
-                        padding: EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
+                        padding:
+                            EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
                       ),
                       child: Text(
                         'Cancel',
@@ -3911,55 +4421,56 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
                   ),
                 ],
               )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(
-                    'Cancel',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: isTablet ? 14 : 13,
-                      color: Colors.grey[700],
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: isTablet ? 14 : 13,
+                        color: Colors.grey[700],
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: isTablet ? 12 : 10),
-                FilledButton.icon(
-                  onPressed: _isSaving ? null : _saveComment,
-                  icon: _isSaving
-                      ? SizedBox(
-                          width: isTablet ? 18 : 16,
-                          height: isTablet ? 18 : 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Icon(Icons.add, size: isTablet ? 18 : 16),
-                  label: Text(
-                    _isSaving ? 'Saving...' : 'Add Comment',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: isTablet ? 14 : 13,
+                  SizedBox(width: isTablet ? 12 : 10),
+                  FilledButton.icon(
+                    onPressed: _isSaving ? null : _saveComment,
+                    icon: _isSaving
+                        ? SizedBox(
+                            width: isTablet ? 18 : 16,
+                            height: isTablet ? 18 : 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(Icons.add, size: isTablet ? 18 : 16),
+                    label: Text(
+                      _isSaving ? 'Saving...' : 'Add Comment',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: isTablet ? 14 : 13,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: tealGreen,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isTablet ? 20 : 16,
+                        vertical: isTablet ? 12 : 10,
+                      ),
+                      disabledBackgroundColor: tealGreen.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: tealGreen,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 20 : 16,
-                      vertical: isTablet ? 12 : 10,
-                    ),
-                    disabledBackgroundColor: tealGreen.withOpacity(0.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
       ),
     );
   }
@@ -3967,7 +4478,7 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
   Widget _buildCommentItem(DeviationComment comment) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     const Color tealGreen = Color(0xFF4db1b3);
-    
+
     return Container(
       margin: EdgeInsets.only(bottom: isTablet ? 12 : 10),
       padding: EdgeInsets.all(isTablet ? 16 : 12),
@@ -3996,7 +4507,9 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
             ),
             child: Center(
               child: Text(
-                (comment.userName ?? 'U').isNotEmpty ? (comment.userName ?? 'U')[0].toUpperCase() : 'U',
+                (comment.userName ?? 'U').isNotEmpty
+                    ? (comment.userName ?? 'U')[0].toUpperCase()
+                    : 'U',
                 style: GoogleFonts.inter(
                   color: tealGreen,
                   fontWeight: FontWeight.w700,
@@ -4083,23 +4596,42 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
 
       if (difference.inDays == 0) {
         // Today - show time
-        final hour = localDate.hour > 12 ? localDate.hour - 12 : (localDate.hour == 0 ? 12 : localDate.hour);
+        final hour = localDate.hour > 12
+            ? localDate.hour - 12
+            : (localDate.hour == 0 ? 12 : localDate.hour);
         final minute = localDate.minute.toString().padLeft(2, '0');
         final period = localDate.hour >= 12 ? 'PM' : 'AM';
         return 'Today at $hour:$minute $period';
       } else if (difference.inDays == 1) {
         // Yesterday
-        final hour = localDate.hour > 12 ? localDate.hour - 12 : (localDate.hour == 0 ? 12 : localDate.hour);
+        final hour = localDate.hour > 12
+            ? localDate.hour - 12
+            : (localDate.hour == 0 ? 12 : localDate.hour);
         final minute = localDate.minute.toString().padLeft(2, '0');
         final period = localDate.hour >= 12 ? 'PM' : 'AM';
         return 'Yesterday at $hour:$minute $period';
       } else {
         // Format as "Nov 10, 2025 at 03:09 PM"
-        final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final months = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec'
+        ];
         final month = months[localDate.month - 1];
         final day = localDate.day;
         final year = localDate.year;
-        final hour = localDate.hour > 12 ? localDate.hour - 12 : (localDate.hour == 0 ? 12 : localDate.hour);
+        final hour = localDate.hour > 12
+            ? localDate.hour - 12
+            : (localDate.hour == 0 ? 12 : localDate.hour);
         final minute = localDate.minute.toString().padLeft(2, '0');
         final period = localDate.hour >= 12 ? 'PM' : 'AM';
         return '$month $day, $year at $hour:$minute $period';
@@ -4111,10 +4643,38 @@ class _DeviationCommentsDialogState extends State<_DeviationCommentsDialog> {
 }
 
 final List<_DeviationItem> _mockItems = <_DeviationItem>[
-  _DeviationItem(id: 1, dateLabel: '28-05-2025', employeeName: 'John Doe', city: 'Mumbai', type: 'Missed Call', description: 'Customer not available at planned time.', status: 'Pending'),
-  _DeviationItem(id: 2, dateLabel: '29-05-2025', employeeName: 'Alice', city: 'Delhi', type: 'Leave Deviation', description: 'Applied for sick leave last minute.', status: 'Pending'),
-  _DeviationItem(id: 3, dateLabel: '30-05-2025', employeeName: 'Bob', city: 'Pune', type: 'Late Visit', description: 'Reached customer location late due to traffic.', status: 'Approved'),
-  _DeviationItem(id: 4, dateLabel: '31-05-2025', employeeName: 'John Doe', city: 'Chennai', type: 'Route Change', description: 'Changed planned route due to road closure.', status: 'Draft'),
+  _DeviationItem(
+      id: 1,
+      dateLabel: '28-05-2025',
+      employeeName: 'John Doe',
+      city: 'Mumbai',
+      type: 'Missed Call',
+      description: 'Customer not available at planned time.',
+      status: 'Pending'),
+  _DeviationItem(
+      id: 2,
+      dateLabel: '29-05-2025',
+      employeeName: 'Alice',
+      city: 'Delhi',
+      type: 'Leave Deviation',
+      description: 'Applied for sick leave last minute.',
+      status: 'Pending'),
+  _DeviationItem(
+      id: 3,
+      dateLabel: '30-05-2025',
+      employeeName: 'Bob',
+      city: 'Pune',
+      type: 'Late Visit',
+      description: 'Reached customer location late due to traffic.',
+      status: 'Approved'),
+  _DeviationItem(
+      id: 4,
+      dateLabel: '31-05-2025',
+      employeeName: 'John Doe',
+      city: 'Chennai',
+      type: 'Route Change',
+      description: 'Changed planned route due to road closure.',
+      status: 'Draft'),
 ];
 
 // Searchable Filter Dropdown Widget (same as DCR Manager Review)
@@ -4126,7 +4686,7 @@ class _SearchableFilterDropdown extends StatefulWidget {
   final ValueChanged<String?> onChanged;
   final bool isTablet;
   final VoidCallback? onExpanded;
-  
+
   const _SearchableFilterDropdown({
     super.key,
     required this.title,
@@ -4137,18 +4697,19 @@ class _SearchableFilterDropdown extends StatefulWidget {
     required this.isTablet,
     this.onExpanded,
   });
-  
+
   @override
-  State<_SearchableFilterDropdown> createState() => _SearchableFilterDropdownState();
+  State<_SearchableFilterDropdown> createState() =>
+      _SearchableFilterDropdownState();
 }
 
 class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   late TextEditingController _searchController;
   late List<String> _filteredOptions;
   bool _isExpanded = false;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   @override
   void initState() {
     super.initState();
@@ -4156,14 +4717,14 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
     _filteredOptions = widget.options;
     _searchController.addListener(_onSearchChanged);
   }
-  
+
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
   }
-  
+
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -4172,7 +4733,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
           .toList();
     });
   }
-  
+
   void _toggleExpanded() {
     setState(() {
       _isExpanded = !_isExpanded;
@@ -4187,7 +4748,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
       });
     }
   }
-  
+
   void _selectOption(String? option) {
     widget.onChanged(option);
     setState(() {
@@ -4196,11 +4757,11 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
       _filteredOptions = widget.options;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final bool isTablet = widget.isTablet;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4329,8 +4890,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           color: Colors.grey[900],
                         ),
                         decoration: InputDecoration(
-                          hintText:
-                              'Search ${widget.title.toLowerCase()}...',
+                          hintText: 'Search ${widget.title.toLowerCase()}...',
                           hintStyle: GoogleFonts.inter(
                             fontSize: isTablet ? 14 : 13,
                             color: Colors.grey[400],
@@ -4409,16 +4969,14 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                               SizedBox(height: isTablet ? 6 : 4),
                           itemBuilder: (context, index) {
                             final option = _filteredOptions[index];
-                            final isSelected =
-                                widget.selectedValue == option;
+                            final isSelected = widget.selectedValue == option;
                             return Material(
                               color: Colors.transparent,
                               child: InkWell(
                                 onTap: () => _selectOption(option),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  padding: EdgeInsets.all(
-                                      isTablet ? 12 : 10),
+                                  padding: EdgeInsets.all(isTablet ? 12 : 10),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? tealGreen.withOpacity(0.1)
@@ -4426,8 +4984,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                     borderRadius: BorderRadius.circular(12),
                                     border: isSelected
                                         ? Border.all(
-                                            color:
-                                                tealGreen.withOpacity(0.3),
+                                            color: tealGreen.withOpacity(0.3),
                                             width: 1,
                                           )
                                         : null,
@@ -4458,14 +5015,12 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                               )
                                             : null,
                                       ),
-                                      SizedBox(
-                                          width: isTablet ? 12 : 10),
+                                      SizedBox(width: isTablet ? 12 : 10),
                                       Expanded(
                                         child: Text(
                                           option,
                                           style: GoogleFonts.inter(
-                                            fontSize:
-                                                isTablet ? 14 : 13,
+                                            fontSize: isTablet ? 14 : 13,
                                             fontWeight: isSelected
                                                 ? FontWeight.w600
                                                 : FontWeight.w500,
@@ -4495,9 +5050,12 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
 // Status Chip widget (same as DCR list)
 class _StatusChip extends StatelessWidget {
   const _StatusChip._(this.text, this.color);
-  const _StatusChip.approved(String text) : this._(text, const Color(0xFF2DBE64));
-  const _StatusChip.pending(String text) : this._(text, const Color(0xFFFFC54D));
-  const _StatusChip.rejected(String text) : this._(text, const Color(0xFFE53935));
+  const _StatusChip.approved(String text)
+      : this._(text, const Color(0xFF2DBE64));
+  const _StatusChip.pending(String text)
+      : this._(text, const Color(0xFFFFC54D));
+  const _StatusChip.rejected(String text)
+      : this._(text, const Color(0xFFE53935));
 
   final String text;
   final Color color;
@@ -4527,11 +5085,11 @@ class _StatusChip extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: 10,
-                letterSpacing: 0.1,
-              ),
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                    letterSpacing: 0.1,
+                  ),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
@@ -4545,7 +5103,7 @@ class _StatusChip extends StatelessWidget {
 // Detail Row widget (same as DCR list)
 class _DetailRow extends StatelessWidget {
   const _DetailRow(this.label, this.value, {this.isMultiline = false});
-  
+
   final String label;
   final String value;
   final bool isMultiline;
@@ -4553,9 +5111,10 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     return Row(
-      crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      crossAxisAlignment:
+          isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
           width: isMobile ? 100 : 120,
@@ -4578,7 +5137,8 @@ class _DetailRow extends StatelessWidget {
               fontSize: isMobile ? 12 : 13,
             ),
             maxLines: isMultiline ? null : 3,
-            overflow: isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
+            overflow:
+                isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
           ),
         ),
       ],

@@ -10,6 +10,8 @@ import 'package:boilerplate/domain/entity/tour_plan/tour_plan.dart' as domain;
 import 'package:boilerplate/presentation/crm/tour_plan/mock/mock_tour_plan.dart';
 import 'package:boilerplate/presentation/crm/tour_plan/store/tour_plan_store.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
+import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart' as login;
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -36,7 +38,8 @@ class TourPlanScreen extends StatefulWidget {
   State<TourPlanScreen> createState() => _TourPlanScreenState();
 }
 
-class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+class _TourPlanScreenState extends State<TourPlanScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   String? _customer;
   String? _employee;
   String? _status; // Draft/Pending/Approved/Rejected
@@ -48,15 +51,15 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   late final TourPlanStore _store;
   late final UserDetailStore _userDetailStore;
   int _dataVersion = 0; // bump to force calendar rebuilds when data changes
-  
+
   // Customer options loaded from API
   List<String> _customerOptions = [];
   final Map<String, int> _customerNameToId = {};
-  
+
   // Status options loaded from API
   List<String> _statusOptions = [];
   final Map<String, int> _statusNameToId = {};
-  
+
   // Employee options loaded from API
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = {};
@@ -64,7 +67,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   Timer? _autoRefreshTimer;
   bool _isAppInForeground = true;
   bool _isRefreshing = false;
-  
+
   // Filter modal state
   bool _showFilterModal = false;
   AnimationController? _filterModalController;
@@ -78,12 +81,12 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     // Initialize stores
     _store = getIt<TourPlanStore>();
     _userDetailStore = getIt<UserDetailStore>();
     _store.month = _month;
-    
+
     // Initialize filter modal animation
     _filterModalController = AnimationController(
       vsync: this,
@@ -93,18 +96,42 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       parent: _filterModalController!,
       curve: Curves.easeOut,
     );
-    
+
     // Listen to user detail changes to rebuild when roleCategory changes
     _userDetailStore.addListener(_onUserDetailChanged);
-    
+
     // Load initial data from API only (no mock)
     _refreshAll();
     _getTourPlanStatusList(); // Load status list for filter
     _loadMappedCustomersByEmployeeId(); // Load customer list using API
     _getEmployeeList(); // Load employee list for filter
     // Auto-refresh disabled - removed periodic API calls
+
+    // Validate user when screen opens
+    _validateUserOnScreenOpen();
   }
-  
+
+  /// Validate user when Tour Plan screen opens
+  Future<void> _validateUserOnScreenOpen() async {
+    try {
+      if (getIt.isRegistered<UserValidationStore>()) {
+        final validationStore = getIt<UserValidationStore>();
+        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+        final user = await sharedPrefHelper.getUser();
+        if (user != null && (user.userId != null || user.id != null)) {
+          final userId = user.userId ?? user.id;
+          print(
+              '📱 [TourPlanScreen] Validating user on screen open - userId: $userId');
+          await validationStore.validateUser(userId!);
+        } else {
+          print('⚠️ [TourPlanScreen] User not available for validation');
+        }
+      }
+    } catch (e) {
+      print('❌ [TourPlanScreen] Error validating user: $e');
+    }
+  }
+
   void _openFilterModal() {
     if (_filterModalController == null) return;
     if (!_filterModalController!.isAnimating) {
@@ -152,11 +179,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       if (context == null || !_filterScrollController.hasClients) return;
       final RenderObject? renderObject = context.findRenderObject();
       if (renderObject == null || !renderObject.attached) return;
-      final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
+      final RenderAbstractViewport? viewport =
+          RenderAbstractViewport.of(renderObject);
       if (viewport == null) return;
-      final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
+      final double target =
+          viewport.getOffsetToReveal(renderObject, 0.05).offset;
       final position = _filterScrollController.position;
-      final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+      final double clamped =
+          target.clamp(position.minScrollExtent, position.maxScrollExtent);
       _filterScrollController.animateTo(
         clamped,
         duration: const Duration(milliseconds: 350),
@@ -164,7 +194,6 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       );
     });
   }
-
 
   void _onUserDetailChanged() {
     if (mounted) {
@@ -248,10 +277,11 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     // Check if Manager Review tab should be hidden
-    final shouldHideManagerReview = _userDetailStore.userDetail?.roleCategory == 3;
+    final shouldHideManagerReview =
+        _userDetailStore.userDetail?.roleCategory == 3;
     final tabLength = shouldHideManagerReview ? 1 : 2;
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    
+
     return Stack(
       children: [
         DefaultTabController(
@@ -259,96 +289,100 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           child: Scaffold(
             backgroundColor: Colors.grey[50],
             appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-          toolbarHeight: 0,
-          bottom: PreferredSize(
-            preferredSize: Size.fromHeight(isTablet ? 56 : 52),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.grey[200]!,
-                    width: 1,
+              backgroundColor: Colors.white,
+              elevation: 0,
+              surfaceTintColor: Colors.transparent,
+              toolbarHeight: 0,
+              bottom: PreferredSize(
+                preferredSize: Size.fromHeight(isTablet ? 56 : 52),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.grey[200]!,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: TabBar(
+                    isScrollable: false,
+                    labelColor: tealGreen,
+                    unselectedLabelColor: Colors.grey[600],
+                    indicatorColor: tealGreen,
+                    indicatorWeight: 3,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    labelStyle: GoogleFonts.inter(
+                      fontSize: isTablet ? 16 : 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                    unselectedLabelStyle: GoogleFonts.inter(
+                      fontSize: isTablet ? 16 : 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
+                    tabs: shouldHideManagerReview
+                        ? [
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.route_outlined,
+                                      size: isTablet ? 20 : 18),
+                                  SizedBox(width: isTablet ? 8 : 6),
+                                  const Text('My Tour Plan'),
+                                ],
+                              ),
+                            ),
+                          ]
+                        : [
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.route_outlined,
+                                      size: isTablet ? 20 : 18),
+                                  SizedBox(width: isTablet ? 8 : 6),
+                                  const Text('My Tour Plan'),
+                                ],
+                              ),
+                            ),
+                            Tab(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.verified_user_outlined,
+                                      size: isTablet ? 20 : 18),
+                                  SizedBox(width: isTablet ? 8 : 6),
+                                  const Text('Manager Review'),
+                                ],
+                              ),
+                            ),
+                          ],
                   ),
                 ),
               ),
-              child: TabBar(
-                isScrollable: false,
-                labelColor: tealGreen,
-                unselectedLabelColor: Colors.grey[600],
-                indicatorColor: tealGreen,
-                indicatorWeight: 3,
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelStyle: GoogleFonts.inter(
-                  fontSize: isTablet ? 16 : 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
-                ),
-                unselectedLabelStyle: GoogleFonts.inter(
-                  fontSize: isTablet ? 16 : 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                ),
-                tabs: shouldHideManagerReview
-                    ? [
-                        Tab(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.route_outlined, size: isTablet ? 20 : 18),
-                              SizedBox(width: isTablet ? 8 : 6),
-                              const Text('My Tour Plan'),
-                            ],
-                          ),
-                        ),
-                      ]
-                    : [
-                        Tab(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.route_outlined, size: isTablet ? 20 : 18),
-                              SizedBox(width: isTablet ? 8 : 6),
-                              const Text('My Tour Plan'),
-                            ],
-                          ),
-                        ),
-                        Tab(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.verified_user_outlined, size: isTablet ? 20 : 18),
-                              SizedBox(width: isTablet ? 8 : 6),
-                              const Text('Manager Review'),
-                            ],
-                          ),
-                        ),
-                      ],
-              ),
+            ),
+            body: TabBarView(
+              children: shouldHideManagerReview
+                  ? [
+                      // My Tour Plan Tab only
+                      _buildMyDCRTab(),
+                    ]
+                  : [
+                      // My Tour Plan Tab
+                      _buildMyDCRTab(),
+                      // Manager Review Tab
+                      const TourPlanManagerReviewScreen(),
+                    ],
             ),
           ),
         ),
-        body: TabBarView(
-          children: shouldHideManagerReview
-              ? [
-                  // My Tour Plan Tab only
-                  _buildMyDCRTab(),
-                ]
-              : [
-                  // My Tour Plan Tab
-                  _buildMyDCRTab(),
-                  // Manager Review Tab
-                  const TourPlanManagerReviewScreen(),
-                ],
-        ),
-        
-          ),
-        ),
         // Filter Modal
-        if (_showFilterModal) _buildFilterModal(isMobile: !isTablet, isTablet: isTablet, tealGreen: tealGreen),
+        if (_showFilterModal)
+          _buildFilterModal(
+              isMobile: !isTablet, isTablet: isTablet, tealGreen: tealGreen),
       ],
     );
   }
@@ -357,7 +391,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final isMobile = MediaQuery.of(context).size.width < 600;
     final double actionHeight = isTablet ? 54 : 48;
-    
+
     return SafeArea(
       child: Container(
         color: Colors.white,
@@ -372,7 +406,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             displacement: 36,
             color: tealGreen,
             child: SingleChildScrollView(
-              padding: EdgeInsets.only(bottom: 24 + MediaQuery.of(context).padding.bottom),
+              padding: EdgeInsets.only(
+                  bottom: 24 + MediaQuery.of(context).padding.bottom),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -430,38 +465,100 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                             Expanded(
                               child: SizedBox(
                                 height: actionHeight,
-                                child: FilledButton.icon(
-                                  onPressed: () async {
-                                    final result = await Navigator.of(context).push(
-                                      MaterialPageRoute(builder: (_) => const NewTourPlanScreen()),
-                                    );
-                                    if (result == true && mounted) {
-                                      await _refreshAllWithLoader();
-                                    }
-                                  },
-                                  icon: Icon(Icons.add_rounded, size: isTablet ? 20 : 18),
-                                  label: Text(
-                                    'New Plan',
-                                    style: GoogleFonts.inter(
-                                      fontSize: isTablet ? 16 : 15,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.3,
-                                    ),
-                                  ),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: tealGreen,
-                                    foregroundColor: Colors.white,
-                                    elevation: 4,
-                                    shadowColor: tealGreen.withOpacity(0.4),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: isTablet ? 20 : 16,
-                                    ),
-                                    minimumSize: Size.fromHeight(actionHeight),
-                                  ),
-                                ),
+                                child: getIt.isRegistered<UserValidationStore>()
+                                    ? ListenableBuilder(
+                                        listenable:
+                                            getIt<UserValidationStore>(),
+                                        builder: (context, _) {
+                                          final validationStore =
+                                              getIt<UserValidationStore>();
+                                          final isEnabled =
+                                              validationStore.canCreateTourPlan;
+                                          return FilledButton.icon(
+                                            onPressed: isEnabled
+                                                ? () async {
+                                                    final result =
+                                                        await Navigator.of(
+                                                                context)
+                                                            .push(
+                                                      MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              const NewTourPlanScreen()),
+                                                    );
+                                                    if (result == true &&
+                                                        mounted) {
+                                                      await _refreshAllWithLoader();
+                                                    }
+                                                  }
+                                                : null,
+                                            icon: Icon(Icons.add_rounded,
+                                                size: isTablet ? 20 : 18),
+                                            label: Text(
+                                              'New Plan',
+                                              style: GoogleFonts.inter(
+                                                fontSize: isTablet ? 16 : 15,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: isEnabled
+                                                  ? tealGreen
+                                                  : Colors.grey,
+                                              foregroundColor: Colors.white,
+                                              disabledBackgroundColor:
+                                                  Colors.grey.shade300,
+                                              disabledForegroundColor:
+                                                  Colors.grey.shade600,
+                                              elevation: isEnabled ? 4 : 0,
+                                              shadowColor: isEnabled
+                                                  ? tealGreen.withOpacity(0.4)
+                                                  : Colors.transparent,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                              ),
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isTablet ? 20 : 16,
+                                              ),
+                                              minimumSize:
+                                                  Size.fromHeight(actionHeight),
+                                            ),
+                                          );
+                                        },
+                                      )
+                                    : FilledButton.icon(
+                                        onPressed: () async {
+                                          final result =
+                                              await Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const NewTourPlanScreen()),
+                                          );
+                                          if (result == true && mounted) {
+                                            await _refreshAllWithLoader();
+                                          }
+                                        },
+                                        icon: Icon(Icons.add_rounded,
+                                            size: isTablet ? 20 : 18),
+                                        label: Text(
+                                          'New Plan',
+                                          style: GoogleFonts.inter(
+                                            fontSize: isTablet ? 16 : 15,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: tealGreen,
+                                          foregroundColor: Colors.white,
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: isTablet ? 20 : 16,
+                                          ),
+                                          minimumSize:
+                                              Size.fromHeight(actionHeight),
+                                        ),
+                                      ),
                               ),
                             ),
                             // Spacing between buttons
@@ -517,9 +614,279 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                     ),
                   ),
                   const SizedBox(height: 12),
-                // Calendar with API loading indicator
-                Observer(
-                  builder: (_) {
+                  // Calendar with API loading indicator
+                  Observer(
+                    builder: (_) {
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        color: Colors.white,
+                        surfaceTintColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(28),
+                          side:
+                              BorderSide(color: Colors.black.withOpacity(.06)),
+                        ),
+                        elevation: 12,
+                        child: Stack(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 12),
+                              child: Observer(
+                                builder: (_) {
+                                  // Rebuild decorations when calendar view data changes or filters change
+                                  final Map<DateTime, CalendarDayDecoration>
+                                      decorations = _buildApiDayDecorations(
+                                          _store.calendarViewData);
+                                  final bool isLoading = _store.calendarLoading;
+                                  return LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      return Stack(
+                                        children: [
+                                          MonthCalendar(
+                                            width: constraints.maxWidth,
+                                            key: ValueKey(
+                                                'month-cal-$_dataVersion-${_employee}-${_customer}-${_status}'),
+                                            visibleMonth: _month,
+                                            selectedDate: _selectedDay,
+                                            onDateTap: (d) {
+                                              setState(() {
+                                                // Toggle selection: if same date is tapped again, deselect it
+                                                _selectedDay = _selectedDay !=
+                                                            null &&
+                                                        _isSameDate(
+                                                            _selectedDay!, d)
+                                                    ? null
+                                                    : d;
+                                              });
+                                              // No need to reload data - filtering is handled in the UI
+                                            },
+                                            onMonthChanged: (m) async {
+                                              setState(() {
+                                                _month = DateTime(
+                                                    m.year, m.month, 1);
+                                                _selectedDay =
+                                                    null; // Clear selection when month changes
+                                                _store.month = _month;
+                                              });
+
+                                              // Call API when month changes
+                                              await _loadCalendarViewData();
+                                              await _loadCalendarItemListData();
+                                              await _loadTourPlanEmployeeListSummary();
+                                              await _loadTourPlanSummary();
+
+                                              // Force UI update after all data is loaded
+                                              if (mounted) {
+                                                setState(() {});
+                                              }
+                                            },
+                                            summaryText:
+                                                _daysAndHolidaysLabel(_month),
+                                            cellSpacing: 10,
+                                            cellCornerRadius: 12,
+                                            dayDecorations: decorations,
+                                            legendItems: _buildLegendItems(),
+                                          ),
+                                          // Calendar loading overlay - reactive to loading state
+                                          if (isLoading)
+                                            Positioned.fill(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withOpacity(0.8),
+                                                  borderRadius:
+                                                      BorderRadius.circular(28),
+                                                ),
+                                                child: Center(
+                                                  child: Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      CircularProgressIndicator(
+                                                        valueColor:
+                                                            AlwaysStoppedAnimation<
+                                                                    Color>(
+                                                                tealGreen),
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      const Text(
+                                                          'Loading calendar...'),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // Day plans list with quick edit (only show when a date is selected)
+                  Builder(builder: (context) {
+                    if (_selectedDay == null) return const SizedBox.shrink();
+                    final items = _entries
+                        .where((e) => _isSameDate(e.date, _selectedDay!))
+                        .toList();
+                    if (items.isEmpty) return const SizedBox.shrink();
+                    return _DayPlansCard(
+                      date: _selectedDay!,
+                      entries: items,
+                      onEdit: (entry) async {
+                        final result = await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const NewTourPlanScreen(),
+                          ),
+                        );
+                        if (result == true && mounted) {
+                          await _refreshAllWithLoader();
+                          setState(() {});
+                        } else {
+                          _applyFilters();
+                        }
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                  // Selected day plans from API (Calendar Item List Data)
+                  Observer(builder: (_) {
+                    final DateTime? selected = _selectedDay;
+                    final isTablet = MediaQuery.of(context).size.width >= 600;
+                    // Apply all filters: date, customer, employee, and status
+                    final apiItems = _store.calendarItemListData.where((item) {
+                      // Filter by date
+                      final bool byDate = selected == null ||
+                          _isSameDate(item.planDate, selected);
+
+                      // Filter by customer
+                      bool byCustomer = true;
+                      if (_customer != null && _customer!.isNotEmpty) {
+                        byCustomer = false;
+                        // Try matching by name (case-insensitive)
+                        if (item.customerName != null &&
+                            item.customerName!.trim().isNotEmpty) {
+                          final itemName =
+                              item.customerName!.trim().toLowerCase();
+                          final filterName = _customer!.trim().toLowerCase();
+                          if (itemName == filterName) {
+                            byCustomer = true;
+                          }
+                        }
+                        // Try matching by ID if name didn't match
+                        if (!byCustomer &&
+                            _customerNameToId.containsKey(_customer)) {
+                          final filterCustomerId =
+                              _customerNameToId[_customer!];
+                          if (item.customerId == filterCustomerId) {
+                            byCustomer = true;
+                          }
+                        }
+                      }
+
+                      // Filter by employee
+                      bool byEmployee = true;
+                      if (_employee != null && _employee!.isNotEmpty) {
+                        byEmployee = false;
+                        // Try matching by name (case-insensitive)
+                        if (item.employeeName != null &&
+                            item.employeeName!.trim().isNotEmpty) {
+                          final itemName =
+                              item.employeeName!.trim().toLowerCase();
+                          final filterName = _employee!.trim().toLowerCase();
+                          if (itemName == filterName) {
+                            byEmployee = true;
+                          }
+                        }
+                        // Try matching by ID if name didn't match
+                        if (!byEmployee &&
+                            _employeeNameToId.containsKey(_employee)) {
+                          final filterEmployeeId =
+                              _employeeNameToId[_employee!];
+                          if (item.employeeId == filterEmployeeId) {
+                            byEmployee = true;
+                          }
+                        }
+                      }
+
+                      // Filter by status
+                      bool byStatus = true;
+                      if (_status != null && _status!.isNotEmpty) {
+                        final filterStatusId = _statusNameToId[_status];
+
+                        if (filterStatusId != null) {
+                          // Check item.status field (this is the status value from API)
+                          // Status IDs: 5=Approved, 1=Pending/Submitted, 4=Sent Back, 3=Rejected, 2=Submitted
+                          if (item.status == filterStatusId) {
+                            byStatus = true;
+                          }
+                          // Also check statusId field as fallback
+                          else if (item.statusId == filterStatusId) {
+                            byStatus = true;
+                          }
+                          // Try statusText matching for text-based filtering
+                          else if (item.statusText != null &&
+                              item.statusText!.trim().isNotEmpty) {
+                            final itemStatusText =
+                                item.statusText!.trim().toLowerCase();
+                            final filterStatusText =
+                                _status!.trim().toLowerCase();
+                            if (itemStatusText == filterStatusText ||
+                                itemStatusText.contains(filterStatusText) ||
+                                filterStatusText.contains(itemStatusText)) {
+                              byStatus = true;
+                            }
+                          }
+                          // If none match but API filtered, trust API result (API already filtered correctly)
+                          // This handles edge cases where local fields don't match but API filtered correctly
+                          else {
+                            // Trust API filtering - if API returned it with status filter, it's correct
+                            byStatus = true;
+                          }
+                        } else {
+                          // Status not in mapping - use text matching only
+                          if (item.statusText != null &&
+                              item.statusText!.trim().isNotEmpty) {
+                            final itemStatusText =
+                                item.statusText!.trim().toLowerCase();
+                            final filterStatusText =
+                                _status!.trim().toLowerCase();
+                            if (itemStatusText == filterStatusText ||
+                                itemStatusText.contains(filterStatusText) ||
+                                filterStatusText.contains(itemStatusText)) {
+                              byStatus = true;
+                            } else {
+                              byStatus = false;
+                            }
+                          } else {
+                            // No status text available - trust API filtering
+                            byStatus = true;
+                          }
+                        }
+                      }
+
+                      final bool passes =
+                          byDate && byCustomer && byEmployee && byStatus;
+                      return passes;
+                    }).toList()
+                      ..sort((a, b) => a.planDate.compareTo(b.planDate));
+
+                    // Debug: Log filtering results
+                    if (_status != null ||
+                        _customer != null ||
+                        _employee != null) {
+                      print('TourPlanScreen: Filters applied - '
+                          'Status: "$_status", Customer: "$_customer", Employee: "$_employee" - '
+                          'Total items: ${_store.calendarItemListData.length}, '
+                          'Filtered items: ${apiItems.length}');
+                    }
                     return Card(
                       margin: EdgeInsets.zero,
                       color: Colors.white,
@@ -532,597 +899,373 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                       child: Stack(
                         children: [
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                             child: Observer(
-                               builder: (_) {
-                                 // Rebuild decorations when calendar view data changes or filters change
-                                 final Map<DateTime, CalendarDayDecoration> decorations = _buildApiDayDecorations(_store.calendarViewData);
-                                 final bool isLoading = _store.calendarLoading;
-                                 return LayoutBuilder(
-                               builder: (context, constraints) {
-                                return Stack(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
                                   children: [
-                                    MonthCalendar(
-                                      width: constraints.maxWidth,
-                                      key: ValueKey('month-cal-$_dataVersion-${_employee}-${_customer}-${_status}'),
-                                      visibleMonth: _month,
-                                      selectedDate: _selectedDay,
-                                      onDateTap: (d) {
-                                        setState(() {
-                                          // Toggle selection: if same date is tapped again, deselect it
-                                          _selectedDay = _selectedDay != null && _isSameDate(_selectedDay!, d) ? null : d;
-                                        });
-                                        // No need to reload data - filtering is handled in the UI
-                                      },
-                                      onMonthChanged: (m) async {
-                                        setState(() {
-                                          _month = DateTime(m.year, m.month, 1);
-                                          _selectedDay = null; // Clear selection when month changes
-                                          _store.month = _month;
-                                        });
-                                        
-                                        // Call API when month changes
-                                        await _loadCalendarViewData();
-                                        await _loadCalendarItemListData();
-                                        await _loadTourPlanEmployeeListSummary();
-                                        await _loadTourPlanSummary();
-                                        
-                                        // Force UI update after all data is loaded
-                                        if (mounted) {
-                                          setState(() {});
-                                        }
-                                      },
-                                      summaryText: _daysAndHolidaysLabel(_month),
-                                      cellSpacing: 10,
-                                      cellCornerRadius: 12,
-                                      dayDecorations: decorations,
-                                      legendItems: _buildLegendItems(),
-                                    ),
-                                    // Calendar loading overlay - reactive to loading state
-                                    if (isLoading)
-                                      Positioned.fill(
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.8),
-                                            borderRadius: BorderRadius.circular(28),
-                                          ),
-                                          child: Center(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                CircularProgressIndicator(
-                                                  valueColor: AlwaysStoppedAnimation<Color>(tealGreen),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                const Text('Loading calendar...'),
-                                              ],
-                                            ),
-                                          ),
+                                    Expanded(
+                                      child: Text(
+                                        selected != null
+                                            ? 'Plans on ${_formatDate(selected)}'
+                                            : 'All Tour plans',
+                                        style: GoogleFonts.inter(
+                                          fontSize: isTablet ? 18 : 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.grey[900],
+                                          letterSpacing: -0.3,
                                         ),
                                       ),
+                                    ),
                                   ],
-                                );
-                                   },
-                                );
-                              },
+                                ),
+                                const SizedBox(height: 12),
+                                if (apiItems.isNotEmpty) ...[
+                                  Text(
+                                    'Total Records: ${apiItems.length}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: isTablet ? 13 : 12,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...(apiItems.map(
+                                      (item) => _buildTourPlanItemCard(item))),
+                                ] else if (!_store
+                                    .calendarItemListDataLoading) ...[
+                                  Text(
+                                    selected != null
+                                        ? 'No plans for the selected day.'
+                                        : 'No tour plans available.',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: Colors.grey[600]),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
+                          if (_store.calendarItemListDataLoading)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(28),
+                              ),
+                              child: const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 8),
+                                    Text('Loading tour plans...'),
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     );
-                  },
-                ),
-                const SizedBox(height: 12),
-                // Day plans list with quick edit (only show when a date is selected)
-                Builder(builder: (context) {
-                  if (_selectedDay == null) return const SizedBox.shrink();
-                  final items = _entries.where((e) => _isSameDate(e.date, _selectedDay!)).toList();
-                  if (items.isEmpty) return const SizedBox.shrink();
-                  return _DayPlansCard(
-                    date: _selectedDay!,
-                    entries: items,
-                    onEdit: (entry) async {
-                      final result = await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const NewTourPlanScreen(),
-                        ),
-                      );
-                      if (result == true && mounted) {
-                        await _refreshAllWithLoader();
-                        setState(() {});
-                      } else {
-                        _applyFilters();
-                      }
-                    },
-                  );
-                }),
-                const SizedBox(height: 12),
-                // Selected day plans from API (Calendar Item List Data)
-                Observer(builder: (_) {
-                  final DateTime? selected = _selectedDay;
-                  final isTablet = MediaQuery.of(context).size.width >= 600;
-                  // Apply all filters: date, customer, employee, and status
-                  final apiItems = _store.calendarItemListData.where((item) {
-                    // Filter by date
-                    final bool byDate = selected == null || _isSameDate(item.planDate, selected);
-                    
-                    // Filter by customer
-                    bool byCustomer = true;
-                    if (_customer != null && _customer!.isNotEmpty) {
-                      byCustomer = false;
-                      // Try matching by name (case-insensitive)
-                      if (item.customerName != null && item.customerName!.trim().isNotEmpty) {
-                        final itemName = item.customerName!.trim().toLowerCase();
-                        final filterName = _customer!.trim().toLowerCase();
-                        if (itemName == filterName) {
-                          byCustomer = true;
-                        }
-                      }
-                      // Try matching by ID if name didn't match
-                      if (!byCustomer && _customerNameToId.containsKey(_customer)) {
-                        final filterCustomerId = _customerNameToId[_customer!];
-                        if (item.customerId == filterCustomerId) {
-                          byCustomer = true;
-                        }
-                      }
-                    }
-                    
-                    // Filter by employee
-                    bool byEmployee = true;
-                    if (_employee != null && _employee!.isNotEmpty) {
-                      byEmployee = false;
-                      // Try matching by name (case-insensitive)
-                      if (item.employeeName != null && item.employeeName!.trim().isNotEmpty) {
-                        final itemName = item.employeeName!.trim().toLowerCase();
-                        final filterName = _employee!.trim().toLowerCase();
-                        if (itemName == filterName) {
-                          byEmployee = true;
-                        }
-                      }
-                      // Try matching by ID if name didn't match
-                      if (!byEmployee && _employeeNameToId.containsKey(_employee)) {
-                        final filterEmployeeId = _employeeNameToId[_employee!];
-                        if (item.employeeId == filterEmployeeId) {
-                          byEmployee = true;
-                        }
-                      }
-                    }
-                    
-                    // Filter by status
-                    bool byStatus = true;
-                    if (_status != null && _status!.isNotEmpty) {
-                      final filterStatusId = _statusNameToId[_status];
-                      
-                      if (filterStatusId != null) {
-                        // Check item.status field (this is the status value from API)
-                        // Status IDs: 5=Approved, 1=Pending/Submitted, 4=Sent Back, 3=Rejected, 2=Submitted
-                        if (item.status == filterStatusId) {
-                          byStatus = true;
-                        }
-                        // Also check statusId field as fallback
-                        else if (item.statusId == filterStatusId) {
-                          byStatus = true;
-                        }
-                        // Try statusText matching for text-based filtering
-                        else if (item.statusText != null && item.statusText!.trim().isNotEmpty) {
-                          final itemStatusText = item.statusText!.trim().toLowerCase();
-                          final filterStatusText = _status!.trim().toLowerCase();
-                          if (itemStatusText == filterStatusText || 
-                              itemStatusText.contains(filterStatusText) || 
-                              filterStatusText.contains(itemStatusText)) {
-                            byStatus = true;
-                          }
-                        }
-                        // If none match but API filtered, trust API result (API already filtered correctly)
-                        // This handles edge cases where local fields don't match but API filtered correctly
-                        else {
-                          // Trust API filtering - if API returned it with status filter, it's correct
-                          byStatus = true;
-                        }
-                      } else {
-                        // Status not in mapping - use text matching only
-                        if (item.statusText != null && item.statusText!.trim().isNotEmpty) {
-                          final itemStatusText = item.statusText!.trim().toLowerCase();
-                          final filterStatusText = _status!.trim().toLowerCase();
-                          if (itemStatusText == filterStatusText || 
-                              itemStatusText.contains(filterStatusText) || 
-                              filterStatusText.contains(itemStatusText)) {
-                            byStatus = true;
-                          } else {
-                            byStatus = false;
-                          }
-                        } else {
-                          // No status text available - trust API filtering
-                          byStatus = true;
-                        }
-                      }
-                    }
-                    
-                    final bool passes = byDate && byCustomer && byEmployee && byStatus;
-                    return passes;
-                  }).toList()
-                    ..sort((a, b) => a.planDate.compareTo(b.planDate));
-                  
-                  // Debug: Log filtering results
-                  if (_status != null || _customer != null || _employee != null) {
-                    print('TourPlanScreen: Filters applied - '
-                        'Status: "$_status", Customer: "$_customer", Employee: "$_employee" - '
-                        'Total items: ${_store.calendarItemListData.length}, '
-                        'Filtered items: ${apiItems.length}');
-                  }
-                  return Card(
-                    margin: EdgeInsets.zero,
-                    color: Colors.white,
-                    surfaceTintColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                      side: BorderSide(color: Colors.black.withOpacity(.06)),
-                    ),
-                    elevation: 12,
-                    child: Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      selected != null 
-                                          ? 'Plans on ${_formatDate(selected)}'
-                                          : 'All Tour plans',
-                                      style: GoogleFonts.inter(
-                                        fontSize: isTablet ? 18 : 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.grey[900],
-                                        letterSpacing: -0.3,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              if (apiItems.isNotEmpty) ...[
-                                Text(
-                                  'Total Records: ${apiItems.length}',
-                                  style: GoogleFonts.inter(
-                                    fontSize: isTablet ? 13 : 12,
-                                    color: Colors.grey[600],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                ...(apiItems.map((item) => _buildTourPlanItemCard(item))),
-                              ] else if (!_store.calendarItemListDataLoading) ...[
-                                Text(
-                                  selected != null 
-                                      ? 'No plans for the selected day.'
-                                      : 'No tour plans available.',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        if (_store.calendarItemListDataLoading)
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(28),
-                            ),
-                            child: const Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(),
-                                  SizedBox(height: 8),
-                                  Text('Loading tour plans...'),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                }),
-                const SizedBox(height: 12),
-                // Tour Plan List API Results
-                // Observer(
-                //   builder: (_) {
-                //     return Card(
-                //       color: Colors.white,
-                //       surfaceTintColor: Colors.transparent,
-                //       shape: RoundedRectangleBorder(
-                //         borderRadius: BorderRadius.circular(28),
-                //         side: BorderSide(color: Colors.black.withOpacity(.06)),
-                //       ),
-                //       elevation: 12,
-                //       child: Stack(
-                //         children: [
-                //           Padding(
-                //             padding: const EdgeInsets.all(16.0),
-                //             child: Column(
-                //               crossAxisAlignment: CrossAxisAlignment.stretch,
-                //               children: [
-                //                 Row(
-                //                   children: [
-                //                     Expanded(
-                //                       child: Text(
-                //                         'Tour Plan List (API)',
-                //                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                //                       ),
-                //                     ),
-                //                     if (_store.tourPlanListLoading)
-                //                       const SizedBox(
-                //                         width: 16,
-                //                         height: 16,
-                //                         child: CircularProgressIndicator(strokeWidth: 2),
-                //                       ),
-                //                   ],
-                //                 ),
-                //                 const SizedBox(height: 12),
-                //                 if (_store.tourPlanListItems.isNotEmpty) ...[
-                //                   Text(
-                //                     'Total Records: ${_store.tourPlanListItems.length}',
-                //                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                //                   ),
-                //                   const SizedBox(height: 8),
-                //                   ...(_store.tourPlanListItems.take(5).map((item) => _buildTourPlanItemCard(item))),
-                //                   if (_store.tourPlanListItems.length > 5)
-                //                     Text(
-                //                       '... and ${_store.tourPlanListItems.length - 5} more items',
-                //                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                //                     ),
-                //                 ] else if (!_store.tourPlanListLoading)
-                //                   Text(
-                //                     'No tour plan data available. Tap the list icon to load data.',
-                //                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                //                   ),
-                //               ],
-                //             ),
-                //           ),
-                //           // Loading overlay
-                //           if (_store.tourPlanListLoading)
-                //             Container(
-                //               decoration: BoxDecoration(
-                //                 color: Colors.white.withOpacity(0.8),
-                //                 borderRadius: BorderRadius.circular(28),
-                //               ),
-                //               child: const Center(
-                //                 child: Column(
-                //                   mainAxisSize: MainAxisSize.min,
-                //                   children: [
-                //                     CircularProgressIndicator(),
-                //                     SizedBox(height: 8),
-                //                     Text('Loading tour plan list...'),
-                //                   ],
-                //                 ),
-                //               ),
-                //             ),
-                //         ],
-                //       ),
-                //     );
-                //   },
-                // ),
-                // const SizedBox(height: 12),
-                // Manager Summary API Results
-                // Observer(
-                //   builder: (_) {
-                //     return Card(
-                //       color: Colors.white,
-                //       surfaceTintColor: Colors.transparent,
-                //       shape: RoundedRectangleBorder(
-                //         borderRadius: BorderRadius.circular(28),
-                //         side: BorderSide(color: Colors.black.withOpacity(.06)),
-                //       ),
-                //       elevation: 12,
-                //       // child: Stack(
-                //       //   children: [
-                //       //     Padding(
-                //       //       padding: const EdgeInsets.all(16.0),
-                //       //       child: Column(
-                //       //         crossAxisAlignment: CrossAxisAlignment.stretch,
-                //       //         children: [
-                //       //           Row(
-                //       //             children: [
-                //       //               Expanded(
-                //       //                 child: Text(
-                //       //                   'Manager Summary (API)',
-                //       //                   style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                //       //                 ),
-                //       //               ),
-                //       //               if (_store.managerSummaryLoading)
-                //       //                 const SizedBox(
-                //       //                   width: 16,
-                //       //                   height: 16,
-                //       //                   child: CircularProgressIndicator(strokeWidth: 2),
-                //       //                 ),
-                //       //             ],
-                //       //           ),
-                //       //           const SizedBox(height: 12),
-                //       //           if (_store.managerSummaryData != null) ...[
-                //       //             _buildManagerSummaryDisplay(_store.managerSummaryData!),
-                //       //           ] else if (!_store.managerSummaryLoading)
-                //       //             Text(
-                //       //               'No manager summary data available. Tap the manage accounts icon to load data.',
-                //       //               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                //       //             ),
-                //       //         ],
-                //       //       ),
-                //       //     ),
-                //       //     // Loading overlay
-                //       //     if (_store.managerSummaryLoading)
-                //       //       Container(
-                //       //         decoration: BoxDecoration(
-                //       //           color: Colors.white.withOpacity(0.8),
-                //       //           borderRadius: BorderRadius.circular(28),
-                //       //         ),
-                //       //         child: const Center(
-                //       //           child: Column(
-                //       //             mainAxisSize: MainAxisSize.min,
-                //       //             children: [
-                //       //               CircularProgressIndicator(),
-                //       //               SizedBox(height: 8),
-                //       //               Text('Loading manager summary...'),
-                //       //             ],
-                //       //           ),
-                //       //         ),
-                //       //       ),
-                //       //   ],
-                //       // ),
-                //     );
-                //   },
-                // ),
-                // const SizedBox(height: 12),
-                // // Employee List Summary API Results
-                // Observer(
-                //   builder: (_) {
-                //     return Card(
-                //       color: Colors.white,
-                //       surfaceTintColor: Colors.transparent,
-                //       shape: RoundedRectangleBorder(
-                //         borderRadius: BorderRadius.circular(28),
-                //         side: BorderSide(color: Colors.black.withOpacity(.06)),
-                //       ),
-                //       elevation: 12,
-                //       child: Stack(
-                //         children: [
-                //           Padding(
-                //             padding: const EdgeInsets.all(16.0),
-                //             child: Column(
-                //               crossAxisAlignment: CrossAxisAlignment.stretch,
-                //               children: [
-                //                 Row(
-                //                   children: [
-                //                     Expanded(
-                //                       child: Text(
-                //                         'Employee List Summary (API)',
-                //                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                //                       ),
-                //                     ),
-                //                     if (_store.employeeListSummaryLoading)
-                //                       const SizedBox(
-                //                         width: 16,
-                //                         height: 16,
-                //                         child: CircularProgressIndicator(strokeWidth: 2),
-                //                       ),
-                //                   ],
-                //                 ),
-                //                 const SizedBox(height: 12),
-                //                 if (_store.employeeListSummaryData != null) ...[
-                //                   _buildEmployeeListSummaryDisplay(_store.employeeListSummaryData!),
-                //                 ] else if (!_store.employeeListSummaryLoading)
-                //                   Text(
-                //                     'No employee list summary data available. Tap the people icon to load data.',
-                //                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                //                   ),
-                //               ],
-                //             ),
-                //           ),
-                //           // Loading overlay
-                //           if (_store.employeeListSummaryLoading)
-                //             Container(
-                //               decoration: BoxDecoration(
-                //                 color: Colors.white.withOpacity(0.8),
-                //                 borderRadius: BorderRadius.circular(28),
-                //               ),
-                //               child: const Center(
-                //                 child: Column(
-                //                   mainAxisSize: MainAxisSize.min,
-                //                   children: [
-                //                     CircularProgressIndicator(),
-                //                     SizedBox(height: 8),
-                //                     Text('Loading employee list summary...'),
-                //                   ],
-                //                 ),
-                //               ),
-                //             ),
-                //         ],
-                //       ),
-                //     );
-                //   },
-                // ),
-                // const SizedBox(height: 12),
-                // Mapped Customers API Results
-                // Observer(
-                //   builder: (_) {
-                //     return Card(
-                //       color: Colors.white,
-                //       surfaceTintColor: Colors.transparent,
-                //       shape: RoundedRectangleBorder(
-                //         borderRadius: BorderRadius.circular(28),
-                //         side: BorderSide(color: Colors.black.withOpacity(.06)),
-                //       ),
-                //       elevation: 12,
-                //       child: Stack(
-                //         children: [
-                //           Padding(
-                //             padding: const EdgeInsets.all(16.0),
-                //             child: Column(
-                //               crossAxisAlignment: CrossAxisAlignment.stretch,
-                //               children: [
-                //                 Row(
-                //                   children: [
-                //                     Expanded(
-                //                       child: Text(
-                //                         'Mapped Customers (API)',
-                //                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                //                       ),
-                //                     ),
-                //                     if (_store.mappedCustomersLoading)
-                //                       const SizedBox(
-                //                         width: 16,
-                //                         height: 16,
-                //                         child: CircularProgressIndicator(strokeWidth: 2),
-                //                       ),
-                //                   ],
-                //                 ),
-                //                 const SizedBox(height: 12),
-                //                 if (_store.mappedCustomers.isNotEmpty) ...[
-                //                   _buildMappedCustomersDisplay(_store.mappedCustomers),
-                //                 ] else if (!_store.mappedCustomersLoading)
-                //                   Text(
-                //                     'No mapped customers data available. Tap the refresh button to load data.',
-                //                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                //                   ),
-                //               ],
-                //             ),
-                //           ),
-                //           // Loading overlay
-                //           if (_store.mappedCustomersLoading)
-                //             Container(
-                //               decoration: BoxDecoration(
-                //                 color: Colors.white.withOpacity(0.8),
-                //                 borderRadius: BorderRadius.circular(28),
-                //               ),
-                //               child: const Center(
-                //                 child: Column(
-                //                   mainAxisSize: MainAxisSize.min,
-                //                   children: [
-                //                     CircularProgressIndicator(),
-                //                     SizedBox(height: 8),
-                //                     Text('Loading mapped customers...'),
-                //                   ],
-                //                 ),
-                //               ),
-                //             ),
-                //         ],
-                //       ),
-                //     );
-                //   },
-                // ),
-              ],
+                  }),
+                  const SizedBox(height: 12),
+                  // Tour Plan List API Results
+                  // Observer(
+                  //   builder: (_) {
+                  //     return Card(
+                  //       color: Colors.white,
+                  //       surfaceTintColor: Colors.transparent,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(28),
+                  //         side: BorderSide(color: Colors.black.withOpacity(.06)),
+                  //       ),
+                  //       elevation: 12,
+                  //       child: Stack(
+                  //         children: [
+                  //           Padding(
+                  //             padding: const EdgeInsets.all(16.0),
+                  //             child: Column(
+                  //               crossAxisAlignment: CrossAxisAlignment.stretch,
+                  //               children: [
+                  //                 Row(
+                  //                   children: [
+                  //                     Expanded(
+                  //                       child: Text(
+                  //                         'Tour Plan List (API)',
+                  //                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  //                       ),
+                  //                     ),
+                  //                     if (_store.tourPlanListLoading)
+                  //                       const SizedBox(
+                  //                         width: 16,
+                  //                         height: 16,
+                  //                         child: CircularProgressIndicator(strokeWidth: 2),
+                  //                       ),
+                  //                   ],
+                  //                 ),
+                  //                 const SizedBox(height: 12),
+                  //                 if (_store.tourPlanListItems.isNotEmpty) ...[
+                  //                   Text(
+                  //                     'Total Records: ${_store.tourPlanListItems.length}',
+                  //                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                  //                   ),
+                  //                   const SizedBox(height: 8),
+                  //                   ...(_store.tourPlanListItems.take(5).map((item) => _buildTourPlanItemCard(item))),
+                  //                   if (_store.tourPlanListItems.length > 5)
+                  //                     Text(
+                  //                       '... and ${_store.tourPlanListItems.length - 5} more items',
+                  //                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                  //                     ),
+                  //                 ] else if (!_store.tourPlanListLoading)
+                  //                   Text(
+                  //                     'No tour plan data available. Tap the list icon to load data.',
+                  //                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                  //                   ),
+                  //               ],
+                  //             ),
+                  //           ),
+                  //           // Loading overlay
+                  //           if (_store.tourPlanListLoading)
+                  //             Container(
+                  //               decoration: BoxDecoration(
+                  //                 color: Colors.white.withOpacity(0.8),
+                  //                 borderRadius: BorderRadius.circular(28),
+                  //               ),
+                  //               child: const Center(
+                  //                 child: Column(
+                  //                   mainAxisSize: MainAxisSize.min,
+                  //                   children: [
+                  //                     CircularProgressIndicator(),
+                  //                     SizedBox(height: 8),
+                  //                     Text('Loading tour plan list...'),
+                  //                   ],
+                  //                 ),
+                  //               ),
+                  //             ),
+                  //         ],
+                  //       ),
+                  //     );
+                  //   },
+                  // ),
+                  // const SizedBox(height: 12),
+                  // Manager Summary API Results
+                  // Observer(
+                  //   builder: (_) {
+                  //     return Card(
+                  //       color: Colors.white,
+                  //       surfaceTintColor: Colors.transparent,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(28),
+                  //         side: BorderSide(color: Colors.black.withOpacity(.06)),
+                  //       ),
+                  //       elevation: 12,
+                  //       // child: Stack(
+                  //       //   children: [
+                  //       //     Padding(
+                  //       //       padding: const EdgeInsets.all(16.0),
+                  //       //       child: Column(
+                  //       //         crossAxisAlignment: CrossAxisAlignment.stretch,
+                  //       //         children: [
+                  //       //           Row(
+                  //       //             children: [
+                  //       //               Expanded(
+                  //       //                 child: Text(
+                  //       //                   'Manager Summary (API)',
+                  //       //                   style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  //       //                 ),
+                  //       //               ),
+                  //       //               if (_store.managerSummaryLoading)
+                  //       //                 const SizedBox(
+                  //       //                   width: 16,
+                  //       //                   height: 16,
+                  //       //                   child: CircularProgressIndicator(strokeWidth: 2),
+                  //       //                 ),
+                  //       //             ],
+                  //       //           ),
+                  //       //           const SizedBox(height: 12),
+                  //       //           if (_store.managerSummaryData != null) ...[
+                  //       //             _buildManagerSummaryDisplay(_store.managerSummaryData!),
+                  //       //           ] else if (!_store.managerSummaryLoading)
+                  //       //             Text(
+                  //       //               'No manager summary data available. Tap the manage accounts icon to load data.',
+                  //       //               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                  //       //             ),
+                  //       //         ],
+                  //       //       ),
+                  //       //     ),
+                  //       //     // Loading overlay
+                  //       //     if (_store.managerSummaryLoading)
+                  //       //       Container(
+                  //       //         decoration: BoxDecoration(
+                  //       //           color: Colors.white.withOpacity(0.8),
+                  //       //           borderRadius: BorderRadius.circular(28),
+                  //       //         ),
+                  //       //         child: const Center(
+                  //       //           child: Column(
+                  //       //             mainAxisSize: MainAxisSize.min,
+                  //       //             children: [
+                  //       //               CircularProgressIndicator(),
+                  //       //               SizedBox(height: 8),
+                  //       //               Text('Loading manager summary...'),
+                  //       //             ],
+                  //       //           ),
+                  //       //         ),
+                  //       //       ),
+                  //       //   ],
+                  //       // ),
+                  //     );
+                  //   },
+                  // ),
+                  // const SizedBox(height: 12),
+                  // // Employee List Summary API Results
+                  // Observer(
+                  //   builder: (_) {
+                  //     return Card(
+                  //       color: Colors.white,
+                  //       surfaceTintColor: Colors.transparent,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(28),
+                  //         side: BorderSide(color: Colors.black.withOpacity(.06)),
+                  //       ),
+                  //       elevation: 12,
+                  //       child: Stack(
+                  //         children: [
+                  //           Padding(
+                  //             padding: const EdgeInsets.all(16.0),
+                  //             child: Column(
+                  //               crossAxisAlignment: CrossAxisAlignment.stretch,
+                  //               children: [
+                  //                 Row(
+                  //                   children: [
+                  //                     Expanded(
+                  //                       child: Text(
+                  //                         'Employee List Summary (API)',
+                  //                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  //                       ),
+                  //                     ),
+                  //                     if (_store.employeeListSummaryLoading)
+                  //                       const SizedBox(
+                  //                         width: 16,
+                  //                         height: 16,
+                  //                         child: CircularProgressIndicator(strokeWidth: 2),
+                  //                       ),
+                  //                   ],
+                  //                 ),
+                  //                 const SizedBox(height: 12),
+                  //                 if (_store.employeeListSummaryData != null) ...[
+                  //                   _buildEmployeeListSummaryDisplay(_store.employeeListSummaryData!),
+                  //                 ] else if (!_store.employeeListSummaryLoading)
+                  //                   Text(
+                  //                     'No employee list summary data available. Tap the people icon to load data.',
+                  //                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                  //                   ),
+                  //               ],
+                  //             ),
+                  //           ),
+                  //           // Loading overlay
+                  //           if (_store.employeeListSummaryLoading)
+                  //             Container(
+                  //               decoration: BoxDecoration(
+                  //                 color: Colors.white.withOpacity(0.8),
+                  //                 borderRadius: BorderRadius.circular(28),
+                  //               ),
+                  //               child: const Center(
+                  //                 child: Column(
+                  //                   mainAxisSize: MainAxisSize.min,
+                  //                   children: [
+                  //                     CircularProgressIndicator(),
+                  //                     SizedBox(height: 8),
+                  //                     Text('Loading employee list summary...'),
+                  //                   ],
+                  //                 ),
+                  //               ),
+                  //             ),
+                  //         ],
+                  //       ),
+                  //     );
+                  //   },
+                  // ),
+                  // const SizedBox(height: 12),
+                  // Mapped Customers API Results
+                  // Observer(
+                  //   builder: (_) {
+                  //     return Card(
+                  //       color: Colors.white,
+                  //       surfaceTintColor: Colors.transparent,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(28),
+                  //         side: BorderSide(color: Colors.black.withOpacity(.06)),
+                  //       ),
+                  //       elevation: 12,
+                  //       child: Stack(
+                  //         children: [
+                  //           Padding(
+                  //             padding: const EdgeInsets.all(16.0),
+                  //             child: Column(
+                  //               crossAxisAlignment: CrossAxisAlignment.stretch,
+                  //               children: [
+                  //                 Row(
+                  //                   children: [
+                  //                     Expanded(
+                  //                       child: Text(
+                  //                         'Mapped Customers (API)',
+                  //                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  //                       ),
+                  //                     ),
+                  //                     if (_store.mappedCustomersLoading)
+                  //                       const SizedBox(
+                  //                         width: 16,
+                  //                         height: 16,
+                  //                         child: CircularProgressIndicator(strokeWidth: 2),
+                  //                       ),
+                  //                   ],
+                  //                 ),
+                  //                 const SizedBox(height: 12),
+                  //                 if (_store.mappedCustomers.isNotEmpty) ...[
+                  //                   _buildMappedCustomersDisplay(_store.mappedCustomers),
+                  //                 ] else if (!_store.mappedCustomersLoading)
+                  //                   Text(
+                  //                     'No mapped customers data available. Tap the refresh button to load data.',
+                  //                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                  //                   ),
+                  //               ],
+                  //             ),
+                  //           ),
+                  //           // Loading overlay
+                  //           if (_store.mappedCustomersLoading)
+                  //             Container(
+                  //               decoration: BoxDecoration(
+                  //                 color: Colors.white.withOpacity(0.8),
+                  //                 borderRadius: BorderRadius.circular(28),
+                  //               ),
+                  //               child: const Center(
+                  //                 child: Column(
+                  //                   mainAxisSize: MainAxisSize.min,
+                  //                   children: [
+                  //                     CircularProgressIndicator(),
+                  //                     SizedBox(height: 8),
+                  //                     Text('Loading mapped customers...'),
+                  //                   ],
+                  //                 ),
+                  //               ),
+                  //             ),
+                  //         ],
+                  //       ),
+                  //     );
+                  //   },
+                  // ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 
-  Map<DateTime, CalendarDayDecoration> _buildDayDecorations(List<domain.TourPlanEntry> entries) {
+  Map<DateTime, CalendarDayDecoration> _buildDayDecorations(
+      List<domain.TourPlanEntry> entries) {
     final Map<String, Color> dayColor = <String, Color>{};
     for (final e in entries) {
       final String key = '${e.date.year}-${e.date.month}-${e.date.day}';
@@ -1131,7 +1274,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         dayColor[key] = next;
       }
     }
-    final Map<DateTime, CalendarDayDecoration> map = <DateTime, CalendarDayDecoration>{};
+    final Map<DateTime, CalendarDayDecoration> map =
+        <DateTime, CalendarDayDecoration>{};
     dayColor.forEach((key, color) {
       final parts = key.split('-').map(int.parse).toList();
       final d = DateTime(parts[0], parts[1], parts[2]);
@@ -1140,12 +1284,23 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     return map;
   }
 
-  Map<TourPlanStatus, int> _buildMonthlyCounts(List<domain.TourPlanEntry> entries) {
+  Map<TourPlanStatus, int> _buildMonthlyCounts(
+      List<domain.TourPlanEntry> entries) {
     int planned = entries.length;
-    int pending = entries.where((e) => e.status == domain.TourPlanEntryStatus.pending || e.status == domain.TourPlanEntryStatus.sentBack).length;
-    int approved = entries.where((e) => e.status == domain.TourPlanEntryStatus.approved).length;
+    int pending = entries
+        .where((e) =>
+            e.status == domain.TourPlanEntryStatus.pending ||
+            e.status == domain.TourPlanEntryStatus.sentBack)
+        .length;
+    int approved = entries
+        .where((e) => e.status == domain.TourPlanEntryStatus.approved)
+        .length;
     int leaveDays = 0;
-    int notEntered = entries.where((e) => e.status == domain.TourPlanEntryStatus.draft || e.status == domain.TourPlanEntryStatus.rejected).length;
+    int notEntered = entries
+        .where((e) =>
+            e.status == domain.TourPlanEntryStatus.draft ||
+            e.status == domain.TourPlanEntryStatus.rejected)
+        .length;
     return {
       TourPlanStatus.planned: planned,
       TourPlanStatus.pending: pending,
@@ -1156,8 +1311,10 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   }
 
   /// Build day decorations from API calendar view data
-  Map<DateTime, CalendarDayDecoration> _buildApiDayDecorations(List<CalendarViewData> apiData) {
-    final Map<DateTime, CalendarDayDecoration> map = <DateTime, CalendarDayDecoration>{};
+  Map<DateTime, CalendarDayDecoration> _buildApiDayDecorations(
+      List<CalendarViewData> apiData) {
+    final Map<DateTime, CalendarDayDecoration> map =
+        <DateTime, CalendarDayDecoration>{};
     for (final d in apiData) {
       // Priority: Holiday > Weekend > Status-derived > Planned
       Color? color;
@@ -1181,7 +1338,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
               // Map status ids: 5=Approved, 1=Pending, 4=Sent Back, 3=Rejected
               if (statusId == 5) hasApproved = true;
               if (statusId == 4 || statusId == 3) hasSentBackOrRejected = true;
-              if (statusId == 1 || statusId == 2) hasPending = true; // include Submitted as pending-like
+              if (statusId == 1 || statusId == 2)
+                hasPending = true; // include Submitted as pending-like
             }
           }
 
@@ -1220,7 +1378,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     return null;
   }
 
-  bool _isSameDate(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _isSameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   void _applyFilters() {
     // Filters are applied both locally (immediate UI update) and via API (server-side filtering)
@@ -1229,7 +1388,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       setState(() {
         _dataVersion++; // Force UI rebuild
       });
-      
+
       // Reload calendar view and list data from API with filters applied
       // This ensures server-side filtering and gets the correct filtered data
       // The loading indicators in the UI will automatically show while data loads
@@ -1243,7 +1402,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   void _clearAllFilters() async {
     // Get the default employee (current user's employee) before clearing
     final String? defaultEmployee = _getDefaultEmployee();
-    
+
     setState(() {
       _customer = null;
       _status = null;
@@ -1274,12 +1433,12 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       });
     }
   }
-  
+
   // Get the default employee (current user's employee name)
   String? _getDefaultEmployee() {
     final int? userEmployeeId = _userDetailStore.userDetail?.employeeId;
     if (userEmployeeId == null) return null;
-    
+
     // Find the employee name that matches the current user's employee ID
     for (final entry in _employeeNameToId.entries) {
       if (entry.value == userEmployeeId) {
@@ -1320,27 +1479,29 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     }
   }
 
-
   // Check if employee filter should be disabled (when roleCategory === 3)
   bool _shouldDisableEmployeeFilter() {
     return _userDetailStore.userDetail?.roleCategory == 3;
   }
 
   // Build Filter Modal (DCR style)
-  Widget _buildFilterModal({required bool isMobile, required bool isTablet, required Color tealGreen}) {
+  Widget _buildFilterModal(
+      {required bool isMobile,
+      required bool isTablet,
+      required Color tealGreen}) {
     String? _tempCustomer = _customer;
     String? _tempStatus = _status;
     String? _tempEmployee = _employee;
-    
+
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
         color: Colors.black.withOpacity(0.4),
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(_filterModalAnimation ?? const AlwaysStoppedAnimation(0.0)),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(_filterModalAnimation ?? const AlwaysStoppedAnimation(0.0)),
           child: GestureDetector(
             onTap: () {}, // Prevent closing when tapping inside modal
             child: Align(
@@ -1411,7 +1572,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                             ],
                           ),
                         ),
-                        
+
                         // Modal Content
                         Flexible(
                           child: SingleChildScrollView(
@@ -1420,7 +1581,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                               isMobile ? 16 : 20,
                               isMobile ? 16 : 20,
                               isMobile ? 16 : 20,
-                              MediaQuery.of(context).viewInsets.bottom + (isMobile ? 16 : 20),
+                              MediaQuery.of(context).viewInsets.bottom +
+                                  (isMobile ? 16 : 20),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1438,7 +1600,9 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                                     });
                                   },
                                   isTablet: isTablet,
-                                  onExpanded: () => _scrollFilterSectionIntoView(_customerFilterSectionKey),
+                                  onExpanded: () =>
+                                      _scrollFilterSectionIntoView(
+                                          _customerFilterSectionKey),
                                 ),
                                 SizedBox(height: isTablet ? 24 : 20),
                                 // Status Filter - Searchable Dropdown
@@ -1447,14 +1611,23 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                                   title: 'Status',
                                   icon: Icons.verified_outlined,
                                   selectedValue: _tempStatus,
-                                  options: _statusOptions.isNotEmpty ? _statusOptions : const ['Draft', 'Pending', 'Approved', 'Rejected'],
+                                  options: _statusOptions.isNotEmpty
+                                      ? _statusOptions
+                                      : const [
+                                          'Draft',
+                                          'Pending',
+                                          'Approved',
+                                          'Rejected'
+                                        ],
                                   onChanged: (value) {
                                     setModalState(() {
                                       _tempStatus = value;
                                     });
                                   },
                                   isTablet: isTablet,
-                                  onExpanded: () => _scrollFilterSectionIntoView(_statusFilterSectionKey),
+                                  onExpanded: () =>
+                                      _scrollFilterSectionIntoView(
+                                          _statusFilterSectionKey),
                                 ),
                                 SizedBox(height: isTablet ? 24 : 20),
                                 // Employee Filter - Searchable Dropdown
@@ -1471,13 +1644,15 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                                       });
                                     },
                                     isTablet: isTablet,
-                                    onExpanded: () => _scrollFilterSectionIntoView(_employeeFilterSectionKey),
+                                    onExpanded: () =>
+                                        _scrollFilterSectionIntoView(
+                                            _employeeFilterSectionKey),
                                   ),
                               ],
                             ),
                           ),
                         ),
-                        
+
                         // Modal Footer Buttons
                         Container(
                           padding: EdgeInsets.all(isMobile ? 16 : 20),
@@ -1495,7 +1670,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                                 child: OutlinedButton(
                                   onPressed: () {
                                     // Get default employee before clearing
-                                    final String? defaultEmployee = _getDefaultEmployee();
+                                    final String? defaultEmployee =
+                                        _getDefaultEmployee();
                                     setModalState(() {
                                       _tempCustomer = null;
                                       _tempStatus = null;
@@ -1506,11 +1682,13 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                                     _closeFilterModal();
                                   },
                                   style: OutlinedButton.styleFrom(
-                                    padding: EdgeInsets.symmetric(vertical: isMobile ? 14 : 16),
+                                    padding: EdgeInsets.symmetric(
+                                        vertical: isMobile ? 14 : 16),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    side: BorderSide(color: tealGreen, width: 1.5),
+                                    side: BorderSide(
+                                        color: tealGreen, width: 1.5),
                                   ),
                                   child: Text(
                                     'Clear',
@@ -1536,7 +1714,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                                   style: FilledButton.styleFrom(
                                     backgroundColor: tealGreen,
                                     foregroundColor: Colors.white,
-                                    padding: EdgeInsets.symmetric(vertical: isMobile ? 14 : 16),
+                                    padding: EdgeInsets.symmetric(
+                                        vertical: isMobile ? 14 : 16),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -1569,31 +1748,37 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   /// Load calendar view data from API with logging
   Future<void> _loadCalendarViewData() async {
     try {
-      print('TourPlanScreen: Loading calendar view data for ${_month.month}/${_month.year}');
-      
+      print(
+          'TourPlanScreen: Loading calendar view data for ${_month.month}/${_month.year}');
+
       // Get user details from UserDetailStore
-      final int? userId = _userDetailStore.userDetail?.userId; // Keep as null if not available
-      final managerId = _userDetailStore.userDetail?.id ?? 0; // Assuming user is their own manager for now
-      
+      final int? userId =
+          _userDetailStore.userDetail?.userId; // Keep as null if not available
+      final managerId = _userDetailStore.userDetail?.id ??
+          0; // Assuming user is their own manager for now
+
       // Determine EmployeeId and SelectedEmployeeId based on filters
       // If employee filter is selected, use filtered employeeId for both EmployeeId and SelectedEmployeeId
-      final int? filteredEmployeeId = _employee != null && _employeeNameToId.containsKey(_employee!)
-          ? _employeeNameToId[_employee!]
-          : null;
-      
+      final int? filteredEmployeeId =
+          _employee != null && _employeeNameToId.containsKey(_employee!)
+              ? _employeeNameToId[_employee!]
+              : null;
+
       // Get user's employeeId - ensure it's not null/0
       final int? userEmployeeId = _userDetailStore.userDetail?.employeeId;
       if (userEmployeeId == null || userEmployeeId == 0) {
-        print('TourPlanScreen: EmployeeId not available from user store, cannot load calendar view data');
+        print(
+            'TourPlanScreen: EmployeeId not available from user store, cannot load calendar view data');
         return;
       }
-      
+
       // Use filtered employeeId if available, otherwise use user's employeeId
       final int finalEmployeeId = filteredEmployeeId ?? userEmployeeId;
       final int finalSelectedEmployeeId = filteredEmployeeId ?? userEmployeeId;
-      
-      print('TourPlanScreen: User details - userId: $userId, managerId: $managerId, employeeId: $finalEmployeeId, selectedEmployeeId: $finalSelectedEmployeeId (filtered: ${filteredEmployeeId != null})');
-      
+
+      print(
+          'TourPlanScreen: User details - userId: $userId, managerId: $managerId, employeeId: $finalEmployeeId, selectedEmployeeId: $finalSelectedEmployeeId (filtered: ${filteredEmployeeId != null})');
+
       // Create request with current month/year and user details
       // SelectedEmployeeId must equal employeeId (filtered if employee filter is applied)
       final request = CalendarViewRequest(
@@ -1601,12 +1786,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         year: _month.year,
         userId: userId, // null if not available, as per API requirement
         managerId: managerId,
-        employeeId: finalEmployeeId, // Use filtered employeeId if employee filter is applied
-        selectedEmployeeId: finalSelectedEmployeeId, // Use filtered employeeId if employee filter is applied
+        employeeId:
+            finalEmployeeId, // Use filtered employeeId if employee filter is applied
+        selectedEmployeeId:
+            finalSelectedEmployeeId, // Use filtered employeeId if employee filter is applied
       );
-      
+
       print('TourPlanScreen: Calendar View API Request - ${request.toJson()}');
-      
+
       // Call the API through store
       await _store.loadCalendarViewData(
         month: request.month,
@@ -1614,17 +1801,20 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         userId: request.userId, // Pass null directly, not 0
         managerId: request.managerId,
         employeeId: request.employeeId,
-        selectedEmployeeId: request.selectedEmployeeId, // Use filtered employeeId if employee filter is applied
+        selectedEmployeeId: request
+            .selectedEmployeeId, // Use filtered employeeId if employee filter is applied
       );
-      
-      print('TourPlanScreen: Calendar View API Response received - ${_store.calendarViewData.length} calendar entries');
-      
+
+      print(
+          'TourPlanScreen: Calendar View API Response received - ${_store.calendarViewData.length} calendar entries');
+
       // Log each calendar entry
       for (int i = 0; i < _store.calendarViewData.length; i++) {
         final data = _store.calendarViewData[i];
-        print('Day ${data.planDate.day}: Planned=${data.plannedCount}, Weekend=${data.isWeekend}, Holiday=${data.isHolidayDay}');
+        print(
+            'Day ${data.planDate.day}: Planned=${data.plannedCount}, Weekend=${data.isWeekend}, Holiday=${data.isHolidayDay}');
       }
-      
+
       // Force UI update after calendar view data is loaded to refresh calendar
       if (mounted) {
         setState(() {
@@ -1634,14 +1824,15 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
 
       // Log full JSON response for debugging
       try {
-        final jsonList = _store.calendarViewData.map((e) => e.toJson()).toList();
-        print('TourPlanScreen: CalendarViewData JSON => ${jsonEncode(jsonList)}');
+        final jsonList =
+            _store.calendarViewData.map((e) => e.toJson()).toList();
+        print(
+            'TourPlanScreen: CalendarViewData JSON => ${jsonEncode(jsonList)}');
       } catch (e) {
         print('TourPlanScreen: Failed to encode CalendarViewData to JSON: $e');
       }
-      
+
       print('TourPlanScreen: Calendar view data loaded successfully');
-      
     } catch (e) {
       print('TourPlanScreen: Error loading calendar view data: $e');
     }
@@ -1651,13 +1842,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   Future<void> _loadTourPlanDetail() async {
     try {
       print('TourPlanScreen: Loading tour plan list data');
-      
+
       // Get user details from UserDetailStore
       final userId = _userDetailStore.userDetail?.id ?? 1;
       final int employeeId = _getEmployeeIdForApi();
-      
-      print('TourPlanScreen: Loading tour plan list with userId: $userId, employeeId: $employeeId');
-      
+
+      print(
+          'TourPlanScreen: Loading tour plan list with userId: $userId, employeeId: $employeeId');
+
       // Create request with current month/year and user details
       // SelectedEmployeeId must always equal employeeId as per API requirement
       await _store.loadTourPlanDetails(
@@ -1668,11 +1860,12 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         userId: userId,
         employeeId: employeeId,
         bizunit: 1, // TODO: Get from user context or make configurable
-        selectedEmployeeId: employeeId, // SelectedEmployeeId must equal employeeId
+        selectedEmployeeId:
+            employeeId, // SelectedEmployeeId must equal employeeId
       );
-      
-      print('TourPlanScreen: Tour plan list loaded successfully - ${_store.tourPlanListItems.length} items');
-      
+
+      print(
+          'TourPlanScreen: Tour plan list loaded successfully - ${_store.tourPlanListItems.length} items');
     } catch (e) {
       print('TourPlanScreen: Error loading tour plan list: $e');
     }
@@ -1690,9 +1883,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         month: _month.month,
         year: _month.year,
       );
-      
+
       print('TourPlanScreen: Aggregate count summary loaded successfully');
-      
     } catch (e) {
       print('TourPlanScreen: Error loading aggregate count summary: $e');
     }
@@ -1702,9 +1894,11 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        final List<CommonDropdownItem> items = await commonRepo.getTourPlanStatusList();
-        final names = items.map((e) => e.text.trim()).where((s) => s.isNotEmpty).toSet();
-        
+        final List<CommonDropdownItem> items =
+            await commonRepo.getTourPlanStatusList();
+        final names =
+            items.map((e) => e.text.trim()).where((s) => s.isNotEmpty).toSet();
+
         if (names.isNotEmpty && mounted) {
           setState(() {
             _statusOptions = {..._statusOptions, ...names}.toList();
@@ -1714,13 +1908,15 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
               if (key.isNotEmpty) _statusNameToId[key] = item.id;
             }
           });
-          print('TourPlanScreen: Loaded ${_statusOptions.length} tour plan statuses');
+          print(
+              'TourPlanScreen: Loaded ${_statusOptions.length} tour plan statuses');
         }
       }
     } catch (e) {
       print('TourPlanScreen: Error getting tour plan status list: $e');
     }
   }
+
   /// Load tour plan summary data from API
   Future<void> _loadTourPlanSummary() async {
     try {
@@ -1733,9 +1929,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         userId: userId, // TODO: Get from user context
         bizunit: 1, // TODO: Get from user context
       );
-      
+
       print('TourPlanScreen: Tour plan summary loaded successfully');
-      
     } catch (e) {
       print('TourPlanScreen: Error loading tour plan summary: $e');
     }
@@ -1753,9 +1948,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         month: _month.month,
         year: _month.year,
       );
-      
+
       print('TourPlanScreen: Manager summary loaded successfully');
-      
     } catch (e) {
       print('TourPlanScreen: Error loading manager summary: $e');
     }
@@ -1766,10 +1960,11 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     // If employee filter is applied, use the filtered employee ID
     if (_employee != null && _employeeNameToId.containsKey(_employee)) {
       final filteredEmployeeId = _employeeNameToId[_employee!]!;
-      print('TourPlanScreen: Using filtered employee ID: $filteredEmployeeId for employee: $_employee');
+      print(
+          'TourPlanScreen: Using filtered employee ID: $filteredEmployeeId for employee: $_employee');
       return filteredEmployeeId;
     }
-    
+
     // Otherwise, use the current user's employee ID from UserStore
     final userEmployeeId = _userDetailStore.userDetail?.employeeId;
     if (userEmployeeId == null) {
@@ -1784,47 +1979,57 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   Future<void> _loadTourPlanEmployeeListSummary() async {
     try {
       print('TourPlanScreen: [START] Loading employee list summary data');
-      print('TourPlanScreen: [INFO] Current month: ${_month.month}, year: ${_month.year}');
-      
+      print(
+          'TourPlanScreen: [INFO] Current month: ${_month.month}, year: ${_month.year}');
+
       // Get employee ID from UserStore or from applied filter
       final int employeeId = _getEmployeeIdForApi();
-      print('TourPlanScreen: [INFO] Using employeeId: $employeeId for API call');
-      
+      print(
+          'TourPlanScreen: [INFO] Using employeeId: $employeeId for API call');
+
       // Check if employee filter is applied
       if (_employee != null) {
         print('TourPlanScreen: [INFO] Employee filter applied: $_employee');
       } else {
-        print('TourPlanScreen: [INFO] No employee filter applied, using current user data');
+        print(
+            'TourPlanScreen: [INFO] No employee filter applied, using current user data');
       }
-      
+
       // Create request with current month/year and employee ID
-      print('TourPlanScreen: [API] Calling loadTourPlanEmployeeListSummary with employeeId: $employeeId, month: ${_month.month}, year: ${_month.year}');
-      
+      print(
+          'TourPlanScreen: [API] Calling loadTourPlanEmployeeListSummary with employeeId: $employeeId, month: ${_month.month}, year: ${_month.year}');
+
       await _store.loadTourPlanEmployeeListSummary(
         employeeId: employeeId,
         month: _month.month,
         year: _month.year,
       );
-      
-      print('TourPlanScreen: [SUCCESS] Employee list summary loaded successfully');
-      print('TourPlanScreen: [INFO] Employee list summary data available: ${_store.employeeListSummaryData != null}');
-      
+
+      print(
+          'TourPlanScreen: [SUCCESS] Employee list summary loaded successfully');
+      print(
+          'TourPlanScreen: [INFO] Employee list summary data available: ${_store.employeeListSummaryData != null}');
+
       // Log the loaded data if available
-      if (_store.employeeListSummaryData != null && _store.employeeListSummaryData is TourPlanGetEmployeeListSummaryResponse) {
-        final data = _store.employeeListSummaryData as TourPlanGetEmployeeListSummaryResponse;
+      if (_store.employeeListSummaryData != null &&
+          _store.employeeListSummaryData
+              is TourPlanGetEmployeeListSummaryResponse) {
+        final data = _store.employeeListSummaryData
+            as TourPlanGetEmployeeListSummaryResponse;
         print('TourPlanScreen: [DATA] Total Employees: ${data.totalEmployees}');
         print('TourPlanScreen: [DATA] Total Planned: ${data.totalPlanned}');
         print('TourPlanScreen: [DATA] Total Approved: ${data.totalApproved}');
         print('TourPlanScreen: [DATA] Total Pending: ${data.totalPending}');
         print('TourPlanScreen: [DATA] Total Sent Back: ${data.totalSentBack}');
-        print('TourPlanScreen: [DATA] Total Not Entered: ${data.totalNotEntered}');
+        print(
+            'TourPlanScreen: [DATA] Total Not Entered: ${data.totalNotEntered}');
         print('TourPlanScreen: [DATA] Total Leave: ${data.totalLeave}');
       } else {
-        print('TourPlanScreen: [WARNING] Employee list summary data is null after API call');
+        print(
+            'TourPlanScreen: [WARNING] Employee list summary data is null after API call');
       }
-      
+
       print('TourPlanScreen: [END] Employee list summary loading completed');
-      
     } catch (e) {
       print('TourPlanScreen: [ERROR] Failed to load employee list summary: $e');
       print('TourPlanScreen: [ERROR] Stack trace: ${StackTrace.current}');
@@ -1837,17 +2042,25 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
         // If employeeId is not provided, try to get it from user store
-        final int? finalEmployeeId = employeeId ?? _userDetailStore.userDetail?.employeeId;
-        final List<CommonDropdownItem> items = await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
-        final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
-        
+        final int? finalEmployeeId =
+            employeeId ?? _userDetailStore.userDetail?.employeeId;
+        final List<CommonDropdownItem> items =
+            await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
+        final names = items
+            .map((e) =>
+                (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+
         if (names.isNotEmpty && mounted) {
           setState(() {
             _employeeOptions = {..._employeeOptions, ...names}.toList();
             // map names to ids for potential employee ID mapping
             String? selectedEmployeeName;
             for (final item in items) {
-              final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+              final String key =
+                  (item.employeeName.isNotEmpty ? item.employeeName : item.text)
+                      .trim();
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
                 // If this employee's id matches the employeeId used in API call, auto-select it
@@ -1859,22 +2072,26 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             // Auto-select the employee if found (always select if id matches the employeeId used in API)
             if (selectedEmployeeName != null) {
               _employee = selectedEmployeeName;
-              print('TourPlanScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
+              print(
+                  'TourPlanScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
             }
           });
-          print('TourPlanScreen: Loaded ${_employeeOptions.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
+          print(
+              'TourPlanScreen: Loaded ${_employeeOptions.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
         }
       }
     } catch (e) {
       print('TourPlanScreen: Error getting employee list: $e');
     }
   }
+
   /// Load mapped customers by employee ID from API
   Future<void> _loadMappedCustomersByEmployeeId() async {
     try {
       final int? employeeId = _userDetailStore.userDetail?.employeeId;
       if (employeeId == null || employeeId == 0) {
-        print('TourPlanScreen: Employee ID is null or 0, skipping customer load');
+        print(
+            'TourPlanScreen: Employee ID is null or 0, skipping customer load');
         return;
       }
 
@@ -1908,13 +2125,13 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         );
 
         final response = await repo.getMappedCustomersByEmployeeId(request);
-        
+
         if (response.customers.isNotEmpty) {
           final names = response.customers
               .map((e) => e.customerName.trim())
               .where((s) => s.isNotEmpty)
               .toSet();
-          
+
           if (names.isNotEmpty) {
             setState(() {
               _customerOptions = names.toList()..sort();
@@ -1926,14 +2143,16 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                 }
               }
             });
-            print('TourPlanScreen: Loaded ${_customerOptions.length} customers for employee $employeeId');
+            print(
+                'TourPlanScreen: Loaded ${_customerOptions.length} customers for employee $employeeId');
           }
         } else {
           print('TourPlanScreen: No customers found for employee $employeeId');
         }
       }
     } catch (e) {
-      print('TourPlanScreen: Error loading mapped customers by employee ID: $e');
+      print(
+          'TourPlanScreen: Error loading mapped customers by employee ID: $e');
     }
   }
 
@@ -1941,68 +2160,77 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   Future<void> _loadCalendarItemListData() async {
     try {
       print('TourPlanScreen: Loading calendar item list data');
-      
+
       // Get user details from UserDetailStore
       final userId = _userDetailStore.userDetail?.id;
       final employeeId = _userDetailStore.userDetail?.employeeId;
-      
+
       if (userId == null || employeeId == null) {
-        print('TourPlanScreen: User details not available for calendar item list');
+        print(
+            'TourPlanScreen: User details not available for calendar item list');
         return;
       }
-      
-      print('TourPlanScreen: Loading calendar item list with userId: $userId, employeeId: $employeeId, month: ${_month.month}, year: ${_month.year}');
-      
+
+      print(
+          'TourPlanScreen: Loading calendar item list with userId: $userId, employeeId: $employeeId, month: ${_month.month}, year: ${_month.year}');
+
       // Determine EmployeeId and SelectedEmployeeId based on filters
       // If employee filter is selected, use filtered employeeId for both EmployeeId and SelectedEmployeeId
-      final int? filteredEmployeeId = _employee != null && _employeeNameToId.containsKey(_employee!)
-          ? _employeeNameToId[_employee!]
-          : null;
-      
+      final int? filteredEmployeeId =
+          _employee != null && _employeeNameToId.containsKey(_employee!)
+              ? _employeeNameToId[_employee!]
+              : null;
+
       // Ensure employeeId is valid (not null/0)
       if (employeeId == null || employeeId == 0) {
-        print('TourPlanScreen: Invalid employeeId ($employeeId), cannot load calendar item list data');
+        print(
+            'TourPlanScreen: Invalid employeeId ($employeeId), cannot load calendar item list data');
         return;
       }
-      
+
       // Use filtered employeeId if available, otherwise use user's employeeId
       final int finalEmployeeId = filteredEmployeeId ?? employeeId;
       final int finalSelectedEmployeeId = filteredEmployeeId ?? employeeId;
-      
+
       // Get customerId and status from filters
-      final int? customerId = _customer != null && _customerNameToId.containsKey(_customer!)
-          ? _customerNameToId[_customer!]
-          : null;
-      final int? status = _status != null && _statusNameToId.containsKey(_status!)
-          ? _statusNameToId[_status!]
-          : null;
-      
-      print('TourPlanScreen: API Request params - EmployeeId: $finalEmployeeId, SelectedEmployeeId: $finalSelectedEmployeeId, CustomerId: $customerId, Status: $status');
-      
+      final int? customerId =
+          _customer != null && _customerNameToId.containsKey(_customer!)
+              ? _customerNameToId[_customer!]
+              : null;
+      final int? status =
+          _status != null && _statusNameToId.containsKey(_status!)
+              ? _statusNameToId[_status!]
+              : null;
+
+      print(
+          'TourPlanScreen: API Request params - EmployeeId: $finalEmployeeId, SelectedEmployeeId: $finalSelectedEmployeeId, CustomerId: $customerId, Status: $status');
+
       await _store.loadCalendarItemListData(
         searchText: null,
         pageNumber: 1,
         pageSize: 1000,
-        employeeId: finalEmployeeId, // Use filtered employeeId if employee filter is applied
+        employeeId:
+            finalEmployeeId, // Use filtered employeeId if employee filter is applied
         month: _month.month,
         userId: userId,
         bizunit: 1, // TODO: Get from user context or make configurable
         year: _month.year,
-        selectedEmployeeId: finalSelectedEmployeeId, // Use filtered employeeId if employee filter is applied
+        selectedEmployeeId:
+            finalSelectedEmployeeId, // Use filtered employeeId if employee filter is applied
         customerId: customerId,
         status: status,
         sortOrder: 0,
         sortDir: 0,
         sortField: null,
       );
-      
-      print('TourPlanScreen: Calendar item list data loaded successfully - ${_store.calendarItemListData.length} items');
-      
+
+      print(
+          'TourPlanScreen: Calendar item list data loaded successfully - ${_store.calendarItemListData.length} items');
+
       // Force UI update after data is loaded to refresh the list
       if (mounted) {
         setState(() {});
       }
-      
     } catch (e) {
       print('TourPlanScreen: Error loading calendar item list data: $e');
     }
@@ -2012,21 +2240,27 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   void _approveSingleTourPlan(int tourPlanId, String comment) async {
     try {
       print('TourPlanScreen: Approving single tour plan with ID: $tourPlanId');
-      
+
       final request = TourPlanActionRequest(
         id: tourPlanId,
         action: 5, // Action code for approve
         comment: comment,
       );
-      
+
       final response = await _store.approveSingleTourPlan(request);
-      
+
       final String msg = (response.message).trim().toLowerCase();
-      final bool success = response.status || msg.isEmpty || msg == 'success' || msg == 'ok' || msg.contains('approved');
+      final bool success = response.status ||
+          msg.isEmpty ||
+          msg == 'success' ||
+          msg == 'ok' ||
+          msg.contains('approved');
       if (mounted) {
         ToastMessage.show(
           context,
-          message: success ? 'Success: Tour plan approved' : 'Failed to approve tour plan: ${response.message}',
+          message: success
+              ? 'Success: Tour plan approved'
+              : 'Failed to approve tour plan: ${response.message}',
           type: success ? ToastType.success : ToastType.error,
           duration: const Duration(seconds: 3),
         );
@@ -2048,21 +2282,27 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   void _rejectSingleTourPlan(int tourPlanId, String comment) async {
     try {
       print('TourPlanScreen: Rejecting single tour plan with ID: $tourPlanId');
-      
+
       final request = TourPlanActionRequest(
         id: tourPlanId,
         action: 4, // Action code for reject
         comment: comment,
       );
-      
+
       final response = await _store.rejectSingleTourPlan(request);
-      
+
       final String msg = (response.message).trim().toLowerCase();
-      final bool success = response.status || msg.isEmpty || msg == 'success' || msg == 'ok' || msg.contains('rejected');
+      final bool success = response.status ||
+          msg.isEmpty ||
+          msg == 'success' ||
+          msg == 'ok' ||
+          msg.contains('rejected');
       if (mounted) {
         ToastMessage.show(
           context,
-          message: success ? 'Success: Tour plan rejected' : 'Failed to reject tour plan: ${response.message}',
+          message: success
+              ? 'Success: Tour plan rejected'
+              : 'Failed to reject tour plan: ${response.message}',
           type: success ? ToastType.success : ToastType.error,
           duration: const Duration(seconds: 3),
         );
@@ -2081,20 +2321,26 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   }
 
   /// Bulk approve multiple tour plan entries
-  void _bulkApproveTourPlans(int tourPlanId, List<int> tourPlanDetailIds) async {
+  void _bulkApproveTourPlans(
+      int tourPlanId, List<int> tourPlanDetailIds) async {
     try {
       print('TourPlanScreen: Bulk approving tour plans with ID: $tourPlanId');
-      
+
       final request = TourPlanBulkActionRequest(
         id: tourPlanId,
         action: 5, // Action code for approve
-        tourPlanDetails: tourPlanDetailIds.map((id) => TourPlanDetailItem(id: id)).toList(),
+        tourPlanDetails:
+            tourPlanDetailIds.map((id) => TourPlanDetailItem(id: id)).toList(),
       );
-      
+
       final response = await _store.bulkApproveTourPlans(request);
-      
+
       final String msg = (response.message).trim().toLowerCase();
-      final bool success = response.status || msg.isEmpty || msg == 'success' || msg == 'ok' || msg.contains('approved');
+      final bool success = response.status ||
+          msg.isEmpty ||
+          msg == 'success' ||
+          msg == 'ok' ||
+          msg.contains('approved');
       if (mounted) {
         ToastMessage.show(
           context,
@@ -2119,20 +2365,28 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   }
 
   /// Bulk send back multiple tour plan entries
-  void _bulkSendBackTourPlans(int tourPlanId, List<int> tourPlanDetailIds) async {
+  void _bulkSendBackTourPlans(
+      int tourPlanId, List<int> tourPlanDetailIds) async {
     try {
-      print('TourPlanScreen: Bulk sending back tour plans with ID: $tourPlanId');
-      
+      print(
+          'TourPlanScreen: Bulk sending back tour plans with ID: $tourPlanId');
+
       final request = TourPlanBulkActionRequest(
         id: tourPlanId,
         action: 4, // Action code for send back
-        tourPlanDetails: tourPlanDetailIds.map((id) => TourPlanDetailItem(id: id)).toList(),
+        tourPlanDetails:
+            tourPlanDetailIds.map((id) => TourPlanDetailItem(id: id)).toList(),
       );
-      
+
       final response = await _store.bulkSendBackTourPlans(request);
-      
+
       final String msg = (response.message).trim().toLowerCase();
-      final bool success = response.status || msg.isEmpty || msg == 'success' || msg == 'ok' || msg.contains('send back') || msg.contains('sent back');
+      final bool success = response.status ||
+          msg.isEmpty ||
+          msg == 'success' ||
+          msg == 'ok' ||
+          msg.contains('send back') ||
+          msg.contains('sent back');
       if (mounted) {
         ToastMessage.show(
           context,
@@ -2164,7 +2418,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     final statusColor = _getStatusColor(item.status);
     final statusBgColor = _getStatusBackgroundColor(item.status);
     final customerName = item.customerName ?? 'Customer ${item.customerId}';
-    
+
     return InkWell(
       onTap: () => _showTourPlanDetails(item),
       borderRadius: BorderRadius.circular(16),
@@ -2188,153 +2442,158 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-            // Header row: Icon + Customer Name + View Button (matching DCR list)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Icon container (matching DCR list)
-                Container(
-                  width: isTablet ? 40 : 36,
-                  height: isTablet ? 40 : 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF7F7),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.description_outlined,
-                    color: tealGreen,
-                    size: isTablet ? 20 : 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // Customer Name - matching DCR list text color
-                Expanded(
-                  child: Text(
-                    customerName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 13 : 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                      color: Colors.black87, // Same as DCR list
+              // Header row: Icon + Customer Name + View Button (matching DCR list)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Icon container (matching DCR list)
+                  Container(
+                    width: isTablet ? 40 : 36,
+                    height: isTablet ? 40 : 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF7F7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.description_outlined,
+                      color: tealGreen,
+                      size: isTablet ? 20 : 18,
                     ),
                   ),
-                ),
-                // View Button - Right side (visual only, card is clickable)
-                Container(
-                  width: isTablet ? 36 : 32,
-                  height: isTablet ? 36 : 32,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
-                  ),
-                  child: Icon(Icons.visibility_outlined, size: isTablet ? 16 : 14, color: Colors.grey.shade700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Employee row (matching DCR list)
-            if (item.employeeName != null && item.employeeName!.isNotEmpty) ...[
-              Row(
-                children: [
-                  Icon(
-                    Icons.person_outline,
-                    size: isTablet ? 13 : 12,
-                    color: Colors.grey[600],
-                  ),
-                  const SizedBox(width: 5),
+                  const SizedBox(width: 10),
+                  // Customer Name - matching DCR list text color
                   Expanded(
                     child: Text(
-                      item.employeeName!,
+                      customerName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 13 : 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                        color: Colors.black87, // Same as DCR list
+                      ),
+                    ),
+                  ),
+                  // View Button - Right side (visual only, card is clickable)
+                  Container(
+                    width: isTablet ? 36 : 32,
+                    height: isTablet ? 36 : 32,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                    child: Icon(Icons.visibility_outlined,
+                        size: isTablet ? 16 : 14, color: Colors.grey.shade700),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Employee row (matching DCR list)
+              if (item.employeeName != null &&
+                  item.employeeName!.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_outline,
+                      size: isTablet ? 13 : 12,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        item.employeeName!,
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 11 : 10,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[700],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+              // Status and Date row: Status on left, Date on right (matching DCR list layout)
+              Row(
+                children: [
+                  // Status chip on left
+                  if (statusText.isNotEmpty)
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 9 : 8,
+                          vertical: isTablet ? 4 : 3),
+                      decoration: BoxDecoration(
+                        color: statusBgColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: statusColor.withOpacity(0.5),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: isTablet ? 5 : 4,
+                            height: isTablet ? 5 : 4,
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: isTablet ? 5 : 4),
+                          Flexible(
+                            child: Text(
+                              statusText,
+                              style: GoogleFonts.inter(
+                                color: statusColor,
+                                fontWeight: FontWeight.w600,
+                                fontSize: isTablet ? 11 : 10,
+                                letterSpacing: 0.1,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const Spacer(),
+                  // Date on right (where status was)
+                  if (item.planDate != null) ...[
+                    Icon(
+                      Icons.calendar_today_outlined,
+                      size: isTablet ? 13 : 12,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _formatDate(item.planDate!),
                       style: GoogleFonts.inter(
                         fontSize: isTablet ? 11 : 10,
                         fontWeight: FontWeight.w500,
                         color: Colors.grey[700],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 8),
             ],
-            // Status and Date row: Status on left, Date on right (matching DCR list layout)
-            Row(
-              children: [
-                // Status chip on left
-                if (statusText.isNotEmpty)
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: isTablet ? 9 : 8, vertical: isTablet ? 4 : 3),
-                    decoration: BoxDecoration(
-                      color: statusBgColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: statusColor.withOpacity(0.5),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: isTablet ? 5 : 4,
-                          height: isTablet ? 5 : 4,
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        SizedBox(width: isTablet ? 5 : 4),
-                        Flexible(
-                          child: Text(
-                            statusText,
-                            style: GoogleFonts.inter(
-                              color: statusColor,
-                              fontWeight: FontWeight.w600,
-                              fontSize: isTablet ? 11 : 10,
-                              letterSpacing: 0.1,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const Spacer(),
-                // Date on right (where status was)
-                if (item.planDate != null) ...[
-                  Icon(
-                    Icons.calendar_today_outlined,
-                    size: isTablet ? 13 : 12,
-                    color: Colors.grey[600],
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    _formatDate(item.planDate!),
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 11 : 10,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[700],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
-  
+
   /// Build info section for card display (simplified version)
-  Widget _buildCardInfoSection(String title, List<MapEntry<String, String>> items, bool isTablet) {
+  Widget _buildCardInfoSection(
+      String title, List<MapEntry<String, String>> items, bool isTablet) {
     if (items.isEmpty) return const SizedBox.shrink();
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2348,34 +2607,34 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         ),
         const SizedBox(height: 8),
         ...items.map((item) => Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: isTablet ? 100 : 90,
-                child: Text(
-                  '${item.key}:',
-                  style: GoogleFonts.inter(
-                    fontSize: isTablet ? 13 : 12,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: isTablet ? 100 : 90,
+                    child: Text(
+                      '${item.key}:',
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 13 : 12,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  item.value,
-                  style: GoogleFonts.inter(
-                    fontSize: isTablet ? 13 : 12,
-                    color: Colors.grey[900],
-                    fontWeight: FontWeight.w500,
+                  Expanded(
+                    child: Text(
+                      item.value,
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 13 : 12,
+                        color: Colors.grey[900],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-        )),
+            )),
       ],
     );
   }
@@ -2384,29 +2643,39 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   /// Shows comment icon for: Pending (1, 2), Approved (5), and Sent Back (4)
   /// Status IDs: 5=Approved, 1=Pending/Submitted, 4=Sent Back, 3=Rejected, 2=Submitted
   bool _canCommentTourPlan(TourPlanItem item) {
-    return item.status == 1 || item.status == 2 || item.status == 4 || item.status == 5;
+    return item.status == 1 ||
+        item.status == 2 ||
+        item.status == 4 ||
+        item.status == 5;
   }
 
   /// Check if tour plan can be edited (Draft, Pending, or Sent Back status)
   bool _canEditTourPlan(TourPlanItem item) {
     // Allow editing for Draft (status 0), Pending (status 1 or 2), and Sent Back (status 4) tour plans
     // Status 4 = Sent Back - user should be able to edit and resubmit
-    return item.status == 0 || item.status == 1 || item.status == 2 || item.status == 4;
+    return item.status == 0 ||
+        item.status == 1 ||
+        item.status == 2 ||
+        item.status == 4;
   }
 
   /// Check if tour plan can be deleted (Medical Rep with roleCategory == 3, and not approved/sent back)
   bool _canDeleteTourPlan(TourPlanItem item) {
-    // Only allow delete for Medical Rep (roleCategory == 3) 
+    // Only allow delete for Medical Rep (roleCategory == 3)
     // Exclude Approved (5) and Sent Back (4) statuses - server doesn't allow deleting sent back tour plans
     final roleCategory = _userDetailStore.userDetail?.roleCategory;
-    return roleCategory == 3 && item.status != 5 && item.status != 4; // Status 5 = Approved, 4 = Sent Back
+    return roleCategory == 3 &&
+        item.status != 5 &&
+        item.status != 4; // Status 5 = Approved, 4 = Sent Back
   }
 
   /// Check if DCR can be created from tour plan (not available for pending or sent back tour plans)
   bool _canCreateDcrFromTourPlan(TourPlanItem item) {
     // DCR cannot be created from pending tour plans (status 1 or 2) or sent back tour plans (status 4)
     // DCR can be created from Draft (0), Approved (5), and Rejected (3) tour plans
-    return item.status != 1 && item.status != 2 && item.status != 4; // Exclude pending and sent back statuses
+    return item.status != 1 &&
+        item.status != 2 &&
+        item.status != 4; // Exclude pending and sent back statuses
   }
 
   /// Show detailed popup for Tour Plan item with bottom-to-top slide animation
@@ -2416,8 +2685,10 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     final statusColor = _getStatusColor(item.status);
     final statusBgColor = _getStatusBackgroundColor(item.status);
     final customerName = item.customerName ?? 'Customer ${item.customerId}';
-    final customerCode = item.customerId != null ? ' - P${item.customerId.toString().padLeft(5, '0')}' : '';
-    
+    final customerCode = item.customerId != null
+        ? ' - P${item.customerId.toString().padLeft(5, '0')}'
+        : '';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2425,7 +2696,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       builder: (context) => Container(
         constraints: BoxConstraints(
           maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
+          maxHeight:
+              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
         ),
         margin: isTablet
             ? EdgeInsets.symmetric(
@@ -2455,7 +2727,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEAF7F7),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Column(
                   children: [
@@ -2546,164 +2819,204 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Employee Information
-                    if (item.employeeName != null || item.designation != null || item.planDate != null) ...[
-                      Text(
-                        'Employee Information',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.grey[900],
-                          letterSpacing: -0.2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Employee Information
+                      if (item.employeeName != null ||
+                          item.designation != null ||
+                          item.planDate != null) ...[
+                        Text(
+                          'Employee Information',
+                          style: GoogleFonts.inter(
+                            fontSize: isTablet ? 14 : 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey[900],
+                            letterSpacing: -0.2,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: isTablet ? 10 : 8),
-                      Container(
-                        padding: EdgeInsets.all(isTablet ? 12 : 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            if (item.employeeName != null && item.employeeName!.isNotEmpty)
-                              _DetailRow('Name', item.employeeName!),
-                            if (item.designation != null && item.designation!.isNotEmpty) ...[
-                              if (item.employeeName != null && item.employeeName!.isNotEmpty) SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Designation', item.designation!),
+                        SizedBox(height: isTablet ? 10 : 8),
+                        Container(
+                          padding: EdgeInsets.all(isTablet ? 12 : 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              if (item.employeeName != null &&
+                                  item.employeeName!.isNotEmpty)
+                                _DetailRow('Name', item.employeeName!),
+                              if (item.designation != null &&
+                                  item.designation!.isNotEmpty) ...[
+                                if (item.employeeName != null &&
+                                    item.employeeName!.isNotEmpty)
+                                  SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow('Designation', item.designation!),
+                              ],
+                              if (item.planDate != null) ...[
+                                if ((item.employeeName != null &&
+                                        item.employeeName!.isNotEmpty) ||
+                                    (item.designation != null &&
+                                        item.designation!.isNotEmpty))
+                                  SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow('Date', _formatDate(item.planDate)),
+                              ],
                             ],
-                            if (item.planDate != null) ...[
-                              if ((item.employeeName != null && item.employeeName!.isNotEmpty) || (item.designation != null && item.designation!.isNotEmpty))
+                          ),
+                        ),
+                        SizedBox(height: isTablet ? 12 : 10),
+                      ],
+
+                      // Location Details
+                      if (item.cluster != null ||
+                          item.clusters != null ||
+                          item.territory != null) ...[
+                        Text(
+                          'Location Details',
+                          style: GoogleFonts.inter(
+                            fontSize: isTablet ? 14 : 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey[900],
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: isTablet ? 10 : 8),
+                        Container(
+                          padding: EdgeInsets.all(isTablet ? 12 : 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              if (item.clusters != null &&
+                                  item.clusters!.isNotEmpty) ...[
+                                _DetailRow('Clusters', item.clusters!),
+                              ] else if (item.cluster != null &&
+                                  item.cluster!.isNotEmpty) ...[
+                                _DetailRow('Cluster', item.cluster!),
+                              ],
+                              if (item.territory != null &&
+                                  item.territory!.isNotEmpty) ...[
+                                if (item.cluster != null ||
+                                    item.clusters != null)
+                                  SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow('Territory', item.territory!),
+                              ],
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: isTablet ? 12 : 10),
+                      ],
+
+                      // Visit Details
+                      if (customerName.isNotEmpty ||
+                          item.productsToDiscuss != null ||
+                          item.samplesToDistribute != null ||
+                          item.objective != null) ...[
+                        Text(
+                          'Visit Details',
+                          style: GoogleFonts.inter(
+                            fontSize: isTablet ? 14 : 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey[900],
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: isTablet ? 10 : 8),
+                        Container(
+                          padding: EdgeInsets.all(isTablet ? 12 : 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              _DetailRow(
+                                  'Customer', '$customerName$customerCode'),
+                              if (item.productsToDiscuss != null &&
+                                  item.productsToDiscuss!.isNotEmpty) ...[
                                 SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Date', _formatDate(item.planDate)),
-                            ],
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: isTablet ? 12 : 10),
-                    ],
-                    
-                    // Location Details
-                    if (item.cluster != null || item.clusters != null || item.territory != null) ...[
-                      Text(
-                        'Location Details',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.grey[900],
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      SizedBox(height: isTablet ? 10 : 8),
-                      Container(
-                        padding: EdgeInsets.all(isTablet ? 12 : 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            if (item.clusters != null && item.clusters!.isNotEmpty) ...[
-                              _DetailRow('Clusters', item.clusters!),
-                            ] else if (item.cluster != null && item.cluster!.isNotEmpty) ...[
-                              _DetailRow('Cluster', item.cluster!),
-                            ],
-                            if (item.territory != null && item.territory!.isNotEmpty) ...[
-                              if (item.cluster != null || item.clusters != null) SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Territory', item.territory!),
-                            ],
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: isTablet ? 12 : 10),
-                    ],
-                    
-                    // Visit Details
-                    if (customerName.isNotEmpty || item.productsToDiscuss != null || item.samplesToDistribute != null || item.objective != null) ...[
-                      Text(
-                        'Visit Details',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.grey[900],
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      SizedBox(height: isTablet ? 10 : 8),
-                      Container(
-                        padding: EdgeInsets.all(isTablet ? 12 : 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            _DetailRow('Customer', '$customerName$customerCode'),
-                            if (item.productsToDiscuss != null && item.productsToDiscuss!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Products to Discuss', item.productsToDiscuss!),
-                            ],
-                            if (item.samplesToDistribute != null && item.samplesToDistribute!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Samples to Distribute', item.samplesToDistribute!),
-                            ],
-                            if (item.objective != null && item.objective!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Objective', item.objective!),
-                            ],
-                            if (item.tourPlanType != null && item.tourPlanType!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Plan Type', item.tourPlanType!),
-                            ],
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: isTablet ? 12 : 10),
-                    ],
-                    
-                    // Additional Information
-                    if (item.notes != null || item.remarks != null || item.managerComments != null) ...[
-                      Text(
-                        'Additional Information',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.grey[900],
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      SizedBox(height: isTablet ? 10 : 8),
-                      Container(
-                        padding: EdgeInsets.all(isTablet ? 12 : 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            if (item.notes != null && item.notes!.isNotEmpty) ...[
-                              _DetailRow('Notes', item.notes!, isMultiline: true),
-                            ],
-                            if (item.remarks != null && item.remarks!.isNotEmpty) ...[
-                              if (item.notes != null && item.notes!.isNotEmpty) SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Remarks', item.remarks!, isMultiline: true),
-                            ],
-                            if (item.managerComments != null && item.managerComments!.isNotEmpty) ...[
-                              if ((item.notes != null && item.notes!.isNotEmpty) || (item.remarks != null && item.remarks!.isNotEmpty))
+                                _DetailRow('Products to Discuss',
+                                    item.productsToDiscuss!),
+                              ],
+                              if (item.samplesToDistribute != null &&
+                                  item.samplesToDistribute!.isNotEmpty) ...[
                                 SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Manager Comments', item.managerComments!, isMultiline: true),
+                                _DetailRow('Samples to Distribute',
+                                    item.samplesToDistribute!),
+                              ],
+                              if (item.objective != null &&
+                                  item.objective!.isNotEmpty) ...[
+                                SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow('Objective', item.objective!),
+                              ],
+                              if (item.tourPlanType != null &&
+                                  item.tourPlanType!.isNotEmpty) ...[
+                                SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow('Plan Type', item.tourPlanType!),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
+                        SizedBox(height: isTablet ? 12 : 10),
+                      ],
+
+                      // Additional Information
+                      if (item.notes != null ||
+                          item.remarks != null ||
+                          item.managerComments != null) ...[
+                        Text(
+                          'Additional Information',
+                          style: GoogleFonts.inter(
+                            fontSize: isTablet ? 14 : 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey[900],
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: isTablet ? 10 : 8),
+                        Container(
+                          padding: EdgeInsets.all(isTablet ? 12 : 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              if (item.notes != null &&
+                                  item.notes!.isNotEmpty) ...[
+                                _DetailRow('Notes', item.notes!,
+                                    isMultiline: true),
+                              ],
+                              if (item.remarks != null &&
+                                  item.remarks!.isNotEmpty) ...[
+                                if (item.notes != null &&
+                                    item.notes!.isNotEmpty)
+                                  SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow('Remarks', item.remarks!,
+                                    isMultiline: true),
+                              ],
+                              if (item.managerComments != null &&
+                                  item.managerComments!.isNotEmpty) ...[
+                                if ((item.notes != null &&
+                                        item.notes!.isNotEmpty) ||
+                                    (item.remarks != null &&
+                                        item.remarks!.isNotEmpty))
+                                  SizedBox(height: isTablet ? 6 : 4),
+                                _DetailRow(
+                                    'Manager Comments', item.managerComments!,
+                                    isMultiline: true),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
               // Footer actions
               SafeArea(
                 top: false,
@@ -2714,114 +3027,161 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                     runSpacing: 8,
                     alignment: WrapAlignment.end,
                     children: [
-                  // Edit button
-                  if (_canEditTourPlan(item))
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _editTourPlan(item);
-                      },
-                      icon: Icon(Icons.edit_outlined, size: isTablet ? 18 : 16),
-                      label: Text(
-                        'Edit',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w600,
+                      // Edit button
+                      if (_canEditTourPlan(item))
+                        getIt.isRegistered<UserValidationStore>()
+                            ? ListenableBuilder(
+                                listenable: getIt<UserValidationStore>(),
+                                builder: (context, _) {
+                                  final validationStore =
+                                      getIt<UserValidationStore>();
+                                  final isEnabled =
+                                      validationStore.canUpdateTourPlan;
+                                  return FilledButton.icon(
+                                    onPressed: isEnabled
+                                        ? () {
+                                            Navigator.of(context).pop();
+                                            _editTourPlan(item);
+                                          }
+                                        : null,
+                                    icon: Icon(Icons.edit_outlined,
+                                        size: isTablet ? 18 : 16),
+                                    label: Text(
+                                      'Edit',
+                                      style: GoogleFonts.inter(
+                                        fontSize: isTablet ? 14 : 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor:
+                                          isEnabled ? tealGreen : Colors.grey,
+                                      foregroundColor: Colors.white,
+                                      disabledBackgroundColor:
+                                          Colors.grey.shade300,
+                                      disabledForegroundColor:
+                                          Colors.grey.shade600,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isTablet ? 20 : 16,
+                                        vertical: isTablet ? 12 : 10,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              )
+                            : FilledButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  _editTourPlan(item);
+                                },
+                                icon: Icon(Icons.edit_outlined,
+                                    size: isTablet ? 18 : 16),
+                                label: Text(
+                                  'Edit',
+                                  style: GoogleFonts.inter(
+                                    fontSize: isTablet ? 14 : 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: tealGreen,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isTablet ? 20 : 16,
+                                    vertical: isTablet ? 12 : 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                      // Comment button (for Pending, Approved, and Sent Back)
+                      if (_canCommentTourPlan(item))
+                        FilledButton.icon(
+                          onPressed: () {
+                            // Don't close the popup - let the comment dialog open on top
+                            _addCommentToTourPlan(item);
+                          },
+                          icon: Icon(Icons.comment_outlined,
+                              size: isTablet ? 18 : 16),
+                          label: Text(
+                            'Comment',
+                            style: GoogleFonts.inter(
+                              fontSize: isTablet ? 14 : 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: tealGreen,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 20 : 16,
+                              vertical: isTablet ? 12 : 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: tealGreen,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 20 : 16,
-                          vertical: isTablet ? 12 : 10,
+                      // Create DCR button
+                      if (_canCreateDcrFromTourPlan(item))
+                        FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _createDcrFromTourPlan(item);
+                          },
+                          icon: Icon(Icons.description_outlined,
+                              size: isTablet ? 18 : 16),
+                          label: Text(
+                            'Create DCR',
+                            style: GoogleFonts.inter(
+                              fontSize: isTablet ? 14 : 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: tealGreen,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 20 : 16,
+                              vertical: isTablet ? 12 : 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      // Delete button
+                      if (_canDeleteTourPlan(item))
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _deleteTourPlan(item);
+                          },
+                          icon: Icon(Icons.delete_outlined,
+                              size: isTablet ? 18 : 16),
+                          label: Text(
+                            'Delete',
+                            style: GoogleFonts.inter(
+                              fontSize: isTablet ? 14 : 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 20 : 16,
+                              vertical: isTablet ? 12 : 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  // Comment button (for Pending, Approved, and Sent Back)
-                  if (_canCommentTourPlan(item))
-                    FilledButton.icon(
-                      onPressed: () {
-                        // Don't close the popup - let the comment dialog open on top
-                        _addCommentToTourPlan(item);
-                      },
-                      icon: Icon(Icons.comment_outlined, size: isTablet ? 18 : 16),
-                      label: Text(
-                        'Comment',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: tealGreen,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 20 : 16,
-                          vertical: isTablet ? 12 : 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  // Create DCR button
-                  if (_canCreateDcrFromTourPlan(item))
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _createDcrFromTourPlan(item);
-                      },
-                      icon: Icon(Icons.description_outlined, size: isTablet ? 18 : 16),
-                      label: Text(
-                        'Create DCR',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: tealGreen,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 20 : 16,
-                          vertical: isTablet ? 12 : 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  // Delete button
-                  if (_canDeleteTourPlan(item))
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _deleteTourPlan(item);
-                      },
-                      icon: Icon(Icons.delete_outlined, size: isTablet ? 18 : 16),
-                      label: Text(
-                        'Delete',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 14 : 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 20 : 16,
-                          vertical: isTablet ? 12 : 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
                     ],
                   ),
                 ),
@@ -2832,13 +3192,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       ),
     );
   }
-  
+
   /// Detail row widget for popup (matching deviation screen)
   Widget _DetailRow(String label, String value, {bool isMultiline = false}) {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     return Row(
-      crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      crossAxisAlignment:
+          isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
           width: isMobile ? 100 : 120,
@@ -2861,7 +3222,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
               fontSize: isMobile ? 12 : 13,
             ),
             maxLines: isMultiline ? null : 3,
-            overflow: isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
+            overflow:
+                isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -2878,10 +3240,10 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       ),
     );
 
-  // Refresh the data after editing
-  if (result == true && mounted) {
-    await _refreshAllWithLoader();
-  }
+    // Refresh the data after editing
+    if (result == true && mounted) {
+      await _refreshAllWithLoader();
+    }
   }
 
   /// Delete tour plan (for Medical Rep only, before approval)
@@ -2891,7 +3253,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Tour Plan'),
-        content: Text('Are you sure you want to delete this tour plan? This action cannot be undone.'),
+        content: Text(
+            'Are you sure you want to delete this tour plan? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -2929,7 +3292,9 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         if (response.status) {
           ToastMessage.show(
             context,
-            message: response.message.isNotEmpty ? response.message : 'Tour plan deleted successfully',
+            message: response.message.isNotEmpty
+                ? response.message
+                : 'Tour plan deleted successfully',
             type: ToastType.success,
             duration: const Duration(seconds: 3),
           );
@@ -2937,7 +3302,9 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         } else {
           ToastMessage.show(
             context,
-            message: response.message.isNotEmpty ? response.message : 'Failed to delete tour plan',
+            message: response.message.isNotEmpty
+                ? response.message
+                : 'Failed to delete tour plan',
             type: ToastType.error,
             duration: const Duration(seconds: 4),
           );
@@ -2953,13 +3320,15 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         // Extract a more user-friendly error message
         String errorMessage = 'Failed to delete tour plan';
         if (e.toString().contains('500')) {
-          errorMessage = 'Cannot delete this tour plan. It may have been sent back or is in a state that cannot be deleted.';
+          errorMessage =
+              'Cannot delete this tour plan. It may have been sent back or is in a state that cannot be deleted.';
         } else if (e.toString().contains('status code')) {
-          errorMessage = 'Server error: Unable to delete tour plan. Please try again later.';
+          errorMessage =
+              'Server error: Unable to delete tour plan. Please try again later.';
         } else {
           errorMessage = 'Error: ${e.toString()}';
         }
-        
+
         ToastMessage.show(
           context,
           message: errorMessage,
@@ -2973,8 +3342,9 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   /// Create DCR from a tour plan item
   void _createDcrFromTourPlan(TourPlanItem item) async {
     try {
-      print('TourPlanScreen: Creating DCR from tour plan - Item ID: ${item.id}, TourPlanId: ${item.tourPlanId}');
-      
+      print(
+          'TourPlanScreen: Creating DCR from tour plan - Item ID: ${item.id}, TourPlanId: ${item.tourPlanId}');
+
       // Show loading indicator
       showDialog(
         context: context,
@@ -2983,48 +3353,55 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           child: CircularProgressIndicator(),
         ),
       );
-      
+
       int? typeOfWorkId;
       TourPlanItem? fullItem = item;
-      
+
       // If tourPlanDetails is null, fetch full tour plan details from API (same as edit tour plan form)
       if (item.tourPlanDetails == null || item.tourPlanDetails!.isEmpty) {
-        print('TourPlanScreen: tourPlanDetails is null/empty - fetching full details from API...');
-        
+        print(
+            'TourPlanScreen: tourPlanDetails is null/empty - fetching full details from API...');
+
         try {
           final repo = getIt<TourPlanRepository>();
           int effectiveTourPlanId = item.tourPlanId;
           int effectiveId = item.id;
-          
+
           // If tourPlanId is 0 or null, use id as tourPlanId
           if (effectiveTourPlanId == 0) {
             effectiveTourPlanId = effectiveId;
-            print('TourPlanScreen: tourPlanId was 0, using id as tourPlanId: $effectiveTourPlanId');
+            print(
+                'TourPlanScreen: tourPlanId was 0, using id as tourPlanId: $effectiveTourPlanId');
           }
-          
-          print('TourPlanScreen: Calling getTourPlanDetails with tourPlanId=$effectiveTourPlanId, id=$effectiveId');
+
+          print(
+              'TourPlanScreen: Calling getTourPlanDetails with tourPlanId=$effectiveTourPlanId, id=$effectiveId');
           final response = await repo.getTourPlanDetails(
             tourPlanId: effectiveTourPlanId,
             id: effectiveId,
           );
-          
+
           if (response.items.isNotEmpty) {
             fullItem = response.items.first;
             print('TourPlanScreen: ✓ Fetched full tour plan details');
-            print('TourPlanScreen: tourPlanDetails count: ${fullItem.tourPlanDetails?.length ?? 0}');
+            print(
+                'TourPlanScreen: tourPlanDetails count: ${fullItem.tourPlanDetails?.length ?? 0}');
           } else {
-            print('TourPlanScreen: ⚠ API returned empty items, using original item');
+            print(
+                'TourPlanScreen: ⚠ API returned empty items, using original item');
           }
         } catch (e) {
           print('TourPlanScreen: ⚠ Error fetching tour plan details: $e');
           print('TourPlanScreen: Using original item data');
         }
       }
-      
+
       // Get typeOfWorkId and other data from tour plan details (same as edit tour plan form)
       int? customerIdFromDetail;
       int? clusterIdFromDetail;
-      if (fullItem != null && fullItem.tourPlanDetails != null && fullItem.tourPlanDetails!.isNotEmpty) {
+      if (fullItem != null &&
+          fullItem.tourPlanDetails != null &&
+          fullItem.tourPlanDetails!.isNotEmpty) {
         final detail = fullItem.tourPlanDetails!.first;
         typeOfWorkId = detail.typeOfWorkId;
         customerIdFromDetail = detail.customerId;
@@ -3034,9 +3411,10 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         print('  - customerId: $customerIdFromDetail');
         print('  - clusterId: $clusterIdFromDetail');
       } else {
-        print('TourPlanScreen: ⚠ No tourPlanDetails found, typeOfWorkId will be null');
+        print(
+            'TourPlanScreen: ⚠ No tourPlanDetails found, typeOfWorkId will be null');
       }
-      
+
       // Ensure fullItem is not null before using it
       if (fullItem == null) {
         // Close loading dialog
@@ -3048,33 +3426,37 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 4),
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
           );
         }
         return;
       }
-      
+
       // At this point, fullItem is guaranteed to be non-null
       final TourPlanItem finalItem = fullItem;
-      
+
       // Close loading dialog
       if (mounted) Navigator.of(context).pop();
-      
+
       // Map tour plan to DCR entry (purpose will be set from typeOfWorkId in DCR entry screen)
       // All data will be populated from tourPlanDetails[0] (same as edit tour plan form)
-      final dcr.DcrEntry initial = _mapTourPlanToDcr(finalItem, purposeOfVisit: null);
-      
-      print('TourPlanScreen: Opening DCR entry screen with initialTypeOfWorkId: $typeOfWorkId');
-      
+      final dcr.DcrEntry initial =
+          _mapTourPlanToDcr(finalItem, purposeOfVisit: null);
+
+      print(
+          'TourPlanScreen: Opening DCR entry screen with initialTypeOfWorkId: $typeOfWorkId');
+
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => DcrEntryScreen(
             initialEntry: initial,
             // Use customerId from tourPlanDetails[0] if available, otherwise fallback to header
-            initialCustomerId: customerIdFromDetail != null && customerIdFromDetail! > 0 
-                ? customerIdFromDetail 
-                : (finalItem.customerId == 0 ? null : finalItem.customerId),
+            initialCustomerId:
+                customerIdFromDetail != null && customerIdFromDetail! > 0
+                    ? customerIdFromDetail
+                    : (finalItem.customerId == 0 ? null : finalItem.customerId),
             // Use clusterId from tourPlanDetails[0] if available, otherwise fallback to header
             initialClusterId: clusterIdFromDetail ?? finalItem.clusterId,
             initialTypeOfWorkId: typeOfWorkId,
@@ -3089,7 +3471,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -3103,7 +3486,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -3118,7 +3502,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       detail = item.tourPlanDetails!.first;
       print('TourPlanScreen: Using tourPlanDetails[0] for DCR mapping');
     }
-    
+
     // Extract date from tourPlanDetails[0].planDate (format: "2025-11-13T00:00:00")
     final DateTime visitDate;
     final TimeOfDay visitTime;
@@ -3134,10 +3518,12 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       visitTime = TimeOfDay(hour: now.hour, minute: now.minute);
       print('TourPlanScreen: Using planDate from item: ${item.planDate}');
     }
-    
+
     // Extract cluster from tourPlanDetails[0].clusterNames
     final String clusterName;
-    if (detail != null && detail.clusterNames != null && detail.clusterNames!.trim().isNotEmpty) {
+    if (detail != null &&
+        detail.clusterNames != null &&
+        detail.clusterNames!.trim().isNotEmpty) {
       clusterName = detail.clusterNames!.trim();
       print('TourPlanScreen: Using clusterNames from detail: $clusterName');
     } else {
@@ -3146,53 +3532,64 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           ? item.cluster!.trim()
           : (item.clusters?.trim() ?? '');
     }
-    
+
     // Extract customer from tourPlanDetails[0].location (format: "CLUSTER - CUSTOMER - CODE")
     // Example: "ANGURUWELLA - Safeway Pharmaceuticals (Pvt) Ltd - P01304"
     String customerName = '';
-    if (detail != null && detail.location != null && detail.location!.contains('-')) {
+    if (detail != null &&
+        detail.location != null &&
+        detail.location!.contains('-')) {
       final parts = detail.location!.split('-');
       if (parts.length >= 2) {
         // Customer name is typically the second part (index 1)
         customerName = parts[1].trim();
-        print('TourPlanScreen: Extracted customer from location: $customerName');
+        print(
+            'TourPlanScreen: Extracted customer from location: $customerName');
       }
     }
     // Fallback to header-level customerName
     if (customerName.isEmpty) {
       customerName = item.customerName?.trim() ?? '';
     }
-    
+
     // Extract products from tourPlanDetails[0].productsToDiscuss
     final String products;
-    if (detail != null && detail.productsToDiscuss != null && detail.productsToDiscuss!.trim().isNotEmpty) {
+    if (detail != null &&
+        detail.productsToDiscuss != null &&
+        detail.productsToDiscuss!.trim().isNotEmpty) {
       products = detail.productsToDiscuss!.trim();
       print('TourPlanScreen: Using productsToDiscuss from detail: $products');
     } else {
       products = item.productsToDiscuss?.trim() ?? '';
     }
-    
+
     // Extract samples from tourPlanDetails[0].samplesToDistribute
     final String samples;
-    if (detail != null && detail.samplesToDistribute != null && detail.samplesToDistribute!.trim().isNotEmpty) {
+    if (detail != null &&
+        detail.samplesToDistribute != null &&
+        detail.samplesToDistribute!.trim().isNotEmpty) {
       samples = detail.samplesToDistribute!.trim();
       print('TourPlanScreen: Using samplesToDistribute from detail: $samples');
     } else {
       samples = item.samplesToDistribute?.trim() ?? '';
     }
-    
+
     // Extract notes/remarks from tourPlanDetails[0].remarks
     final String notes;
-    if (detail != null && detail.remarks != null && detail.remarks!.trim().isNotEmpty) {
+    if (detail != null &&
+        detail.remarks != null &&
+        detail.remarks!.trim().isNotEmpty) {
       notes = detail.remarks!.trim();
       print('TourPlanScreen: Using remarks from detail: $notes');
     } else {
       notes = item.notes?.trim() ?? '';
     }
-    
+
     // Extract location from tourPlanDetails[0].location
     final String? location;
-    if (detail != null && detail.location != null && detail.location!.trim().isNotEmpty) {
+    if (detail != null &&
+        detail.location != null &&
+        detail.location!.trim().isNotEmpty) {
       location = detail.location!.trim();
       print('TourPlanScreen: Using location from detail: $location');
     } else {
@@ -3203,7 +3600,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     // (same approach as edit tour plan form)
     // This ensures consistency and uses the same reverse mapping logic
     // Pass empty string as placeholder - will be set from typeOfWorkId in DCR entry screen
-    final String finalPurposeOfVisit = ''; // Will be resolved from typeOfWorkId in DCR entry screen
+    final String finalPurposeOfVisit =
+        ''; // Will be resolved from typeOfWorkId in DCR entry screen
 
     // Create DateTime with date from planDate and time from planDate (extracted earlier)
     final DateTime dcrDate = DateTime(
@@ -3213,7 +3611,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       visitTime.hour,
       visitTime.minute,
     );
-    
+
     print('TourPlanScreen: Mapped DCR Entry:');
     print('  - Date: $dcrDate');
     print('  - Cluster: $clusterName');
@@ -3268,7 +3666,9 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             border: Border.all(color: Colors.grey[300]!, width: 0.5),
           ),
           child: Column(
-            children: items.map((item) => _buildInfoRow(item.key, item.value)).toList(),
+            children: items
+                .map((item) => _buildInfoRow(item.key, item.value))
+                .toList(),
           ),
         ),
       ],
@@ -3325,7 +3725,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         return Colors.grey;
     }
   }
-  
+
   /// Get status background color based on status value
   Color _getStatusBackgroundColor(int status) {
     switch (status) {
@@ -3337,24 +3737,25 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         return Colors.redAccent.withOpacity(0.15); // Rejected - Red
       case 2:
       case 1:
-        return const Color(0xFFFFA41C).withOpacity(0.15); // Pending / Submitted - Yellow
+        return const Color(0xFFFFA41C)
+            .withOpacity(0.15); // Pending / Submitted - Yellow
       default:
         return Colors.grey.withOpacity(0.15);
     }
   }
-  
+
   /// Get status display text with fallbacks
   String _getStatusDisplayText(TourPlanItem item) {
     // First try statusText
     if (item.statusText != null && item.statusText!.trim().isNotEmpty) {
       return item.statusText!.trim();
     }
-    
+
     // Fallback to tourPlanStatus
     if (item.tourPlanStatus != null && item.tourPlanStatus!.trim().isNotEmpty) {
       return item.tourPlanStatus!.trim();
     }
-    
+
     // Fallback to deriving from status ID
     switch (item.status) {
       case 5:
@@ -3388,20 +3789,27 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           height: 120, // Fixed height for horizontal cards
           child: ListView(
             scrollDirection: Axis.horizontal,
-          children: [
-              _buildHorizontalSummaryCard('Total Employees', data.totalEmployees, Colors.blue),
+            children: [
+              _buildHorizontalSummaryCard(
+                  'Total Employees', data.totalEmployees, Colors.blue),
               const SizedBox(width: 8),
-              _buildHorizontalSummaryCard('Planned', data.planned, Colors.green),
+              _buildHorizontalSummaryCard(
+                  'Planned', data.planned, Colors.green),
               const SizedBox(width: 8),
-              _buildHorizontalSummaryCard('Approved', data.approved, Colors.teal),
+              _buildHorizontalSummaryCard(
+                  'Approved', data.approved, Colors.teal),
               const SizedBox(width: 8),
-              _buildHorizontalSummaryCard('Pending', data.pending, Colors.orange),
+              _buildHorizontalSummaryCard(
+                  'Pending', data.pending, Colors.orange),
               const SizedBox(width: 8),
-              _buildHorizontalSummaryCard('Send Back', data.sendBack, Colors.red),
+              _buildHorizontalSummaryCard(
+                  'Send Back', data.sendBack, Colors.red),
               const SizedBox(width: 8),
-              _buildHorizontalSummaryCard('Not Entered', data.notEntered, Colors.grey),
+              _buildHorizontalSummaryCard(
+                  'Not Entered', data.notEntered, Colors.grey),
               const SizedBox(width: 8),
-              _buildHorizontalSummaryCard('Leave Count', data.leaveCount, Colors.purple),
+              _buildHorizontalSummaryCard(
+                  'Leave Count', data.leaveCount, Colors.purple),
             ],
           ),
         ),
@@ -3464,23 +3872,23 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          value.toString(),
+        children: [
+          Text(
+            value.toString(),
             style: TextStyle(
               fontSize: 18,
-            fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.bold,
               color: color,
+            ),
           ),
-        ),
           const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.grey[600],
-          ),
-          textAlign: TextAlign.center,
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -3492,53 +3900,52 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   /// Build legend items for calendar using employee list summary data
   List<CalendarLegendItem> _buildLegendItems() {
     // Use employee list summary data if available, otherwise fallback to default values
-    if (_store.employeeListSummaryData != null && _store.employeeListSummaryData is TourPlanGetEmployeeListSummaryResponse) {
-      final data = _store.employeeListSummaryData as TourPlanGetEmployeeListSummaryResponse;
+    if (_store.employeeListSummaryData != null &&
+        _store.employeeListSummaryData
+            is TourPlanGetEmployeeListSummaryResponse) {
+      final data = _store.employeeListSummaryData
+          as TourPlanGetEmployeeListSummaryResponse;
       return [
         CalendarLegendItem(
-          label: 'Total Employee', 
-          color: const Color(0xFF1976D2), 
-          count: data.totalEmployees
-        ),
+            label: 'Total Employee',
+            color: const Color(0xFF1976D2),
+            count: data.totalEmployees),
         CalendarLegendItem(
-          label: 'Approved', 
-          color: const Color(0xFF2DBE64), 
-          count: data.totalApproved
-        ),
+            label: 'Approved',
+            color: const Color(0xFF2DBE64),
+            count: data.totalApproved),
         CalendarLegendItem(
-          label: 'Send Back', 
-          color: Colors.redAccent, 
-          count: data.totalSentBack
-        ),
+            label: 'Send Back',
+            color: Colors.redAccent,
+            count: data.totalSentBack),
         CalendarLegendItem(
-          label: 'Planned', 
-          color: const Color(0xFF2B78FF), 
-          count: data.totalPlanned
-        ),
+            label: 'Planned',
+            color: const Color(0xFF2B78FF),
+            count: data.totalPlanned),
         CalendarLegendItem(
-          label: 'Pending', 
-          color: const Color(0xFFFFA41C), 
-          count: data.totalPending
-        ),
+            label: 'Pending',
+            color: const Color(0xFFFFA41C),
+            count: data.totalPending),
         CalendarLegendItem(
-          label: 'Not Entered', 
-          color: Colors.grey, 
-          count: data.totalNotEntered
-        ),
+            label: 'Not Entered',
+            color: Colors.grey,
+            count: data.totalNotEntered),
         CalendarLegendItem(
-          label: 'Leave', 
-          color: Colors.purple, 
-          count: data.totalLeave
-        ),
+            label: 'Leave', color: Colors.purple, count: data.totalLeave),
       ];
     } else {
       // Fallback to default values when no data is available
       return const [
-        CalendarLegendItem(label: 'Total Employee', color: Color(0xFF1976D2), count: 0),
-        CalendarLegendItem(label: 'Approved', color: Color(0xFF2DBE64), count: 0),
-        CalendarLegendItem(label: 'Send Back', color: Colors.redAccent, count: 0),
-        CalendarLegendItem(label: 'Planned', color: Color(0xFF2B78FF), count: 0),
-        CalendarLegendItem(label: 'Pending', color: Color(0xFFFFA41C), count: 0),
+        CalendarLegendItem(
+            label: 'Total Employee', color: Color(0xFF1976D2), count: 0),
+        CalendarLegendItem(
+            label: 'Approved', color: Color(0xFF2DBE64), count: 0),
+        CalendarLegendItem(
+            label: 'Send Back', color: Colors.redAccent, count: 0),
+        CalendarLegendItem(
+            label: 'Planned', color: Color(0xFF2B78FF), count: 0),
+        CalendarLegendItem(
+            label: 'Pending', color: Color(0xFFFFA41C), count: 0),
         CalendarLegendItem(label: 'Not Entered', color: Colors.grey, count: 0),
         CalendarLegendItem(label: 'Leave', color: Colors.purple, count: 0),
       ];
@@ -3579,24 +3986,33 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             children: [
               Text(
                 'Monthly Summary Statistics',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildSummaryStat('Total Planned', data.planedDays, Colors.blue),
-                  _buildSummaryStat('Total Approved', data.approvedDays, Colors.green),
-                  _buildSummaryStat('Total Pending', data.pendingDays, Colors.orange),
+                  _buildSummaryStat(
+                      'Total Planned', data.planedDays, Colors.blue),
+                  _buildSummaryStat(
+                      'Total Approved', data.approvedDays, Colors.green),
+                  _buildSummaryStat(
+                      'Total Pending', data.pendingDays, Colors.orange),
                 ],
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildSummaryStat('Total Sent Back', data.sentBackDays, Colors.red),
-                  _buildSummaryStat('Approval Rate', _calculateApprovalRate(data), Colors.teal),
-                  _buildSummaryStat('Completion Rate', _calculateCompletionRate(data), Colors.purple),
+                  _buildSummaryStat(
+                      'Total Sent Back', data.sentBackDays, Colors.red),
+                  _buildSummaryStat('Approval Rate',
+                      _calculateApprovalRate(data), Colors.teal),
+                  _buildSummaryStat('Completion Rate',
+                      _calculateCompletionRate(data), Colors.purple),
                 ],
               ),
             ],
@@ -3644,7 +4060,6 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
     return (((data.approvedDays + data.sentBackDays) / total) * 100).round();
   }
 
-
   /// Build manager summary display
   Widget _buildManagerSummaryDisplay(TourPlanGetManagerSummaryResponse data) {
     return Column(
@@ -3659,10 +4074,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           children: [
-            _buildSummaryCard('Total Employees', data.totalEmployees, Colors.blue),
-            _buildSummaryCard('Not Planned Employees', data.notPlannedEmployees, Colors.orange),
-            _buildSummaryCard('Fully Approved', data.fullyApproved, Colors.green),
-            _buildSummaryCard('Partially Approved', data.partiallyApprovedCount, Colors.teal),
+            _buildSummaryCard(
+                'Total Employees', data.totalEmployees, Colors.blue),
+            _buildSummaryCard('Not Planned Employees', data.notPlannedEmployees,
+                Colors.orange),
+            _buildSummaryCard(
+                'Fully Approved', data.fullyApproved, Colors.green),
+            _buildSummaryCard(
+                'Partially Approved', data.partiallyApprovedCount, Colors.teal),
           ],
         ),
         const SizedBox(height: 16),
@@ -3679,24 +4098,33 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             children: [
               Text(
                 'Detailed Breakdown',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildSummaryStat('Total Planned', data.totalPlanned, Colors.blue),
-                  _buildSummaryStat('Total Approved', data.totalApproved, Colors.green),
-                  _buildSummaryStat('Total Pending', data.totalPending, Colors.orange),
+                  _buildSummaryStat(
+                      'Total Planned', data.totalPlanned, Colors.blue),
+                  _buildSummaryStat(
+                      'Total Approved', data.totalApproved, Colors.green),
+                  _buildSummaryStat(
+                      'Total Pending', data.totalPending, Colors.orange),
                 ],
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildSummaryStat('Total Sent Back', data.totalSentBack, Colors.red),
-                  _buildSummaryStat('Total Leave', data.totalLeave, Colors.purple),
-                  _buildSummaryStat('Total Not Entered', data.totalNotEntered, Colors.grey),
+                  _buildSummaryStat(
+                      'Total Sent Back', data.totalSentBack, Colors.red),
+                  _buildSummaryStat(
+                      'Total Leave', data.totalLeave, Colors.purple),
+                  _buildSummaryStat(
+                      'Total Not Entered', data.totalNotEntered, Colors.grey),
                 ],
               ),
               const SizedBox(height: 12),
@@ -3713,17 +4141,20 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                     Text(
                       'Additional Metrics',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blue[800],
-                      ),
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue[800],
+                          ),
                     ),
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildSummaryStat('Approved Days', data.approvedDays, Colors.green),
-                        _buildSummaryStat('Partial Mixed Status', data.partialMixedStatus, Colors.amber),
-                        _buildSummaryStat('Not Planned', data.notPlanned, Colors.grey),
+                        _buildSummaryStat(
+                            'Approved Days', data.approvedDays, Colors.green),
+                        _buildSummaryStat('Partial Mixed Status',
+                            data.partialMixedStatus, Colors.amber),
+                        _buildSummaryStat(
+                            'Not Planned', data.notPlanned, Colors.grey),
                       ],
                     ),
                   ],
@@ -3737,7 +4168,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   }
 
   /// Build employee list summary display
-  Widget _buildEmployeeListSummaryDisplay(TourPlanGetEmployeeListSummaryResponse data) {
+  Widget _buildEmployeeListSummaryDisplay(
+      TourPlanGetEmployeeListSummaryResponse data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3750,10 +4182,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           children: [
-            _buildSummaryCard('Total Employees', data.totalEmployees, Colors.blue),
-            _buildSummaryCard('Not Planned Employees', data.notPlannedEmployees, Colors.orange),
-            _buildSummaryCard('Fully Approved', data.fullyApproved, Colors.green),
-            _buildSummaryCard('Partially Approved', data.partiallyApprovedCount, Colors.teal),
+            _buildSummaryCard(
+                'Total Employees', data.totalEmployees, Colors.blue),
+            _buildSummaryCard('Not Planned Employees', data.notPlannedEmployees,
+                Colors.orange),
+            _buildSummaryCard(
+                'Fully Approved', data.fullyApproved, Colors.green),
+            _buildSummaryCard(
+                'Partially Approved', data.partiallyApprovedCount, Colors.teal),
           ],
         ),
         const SizedBox(height: 16),
@@ -3770,24 +4206,33 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             children: [
               Text(
                 'Employee Tour Plan Breakdown',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildSummaryStat('Total Planned', data.totalPlanned, Colors.blue),
-                  _buildSummaryStat('Total Approved', data.totalApproved, Colors.green),
-                  _buildSummaryStat('Total Pending', data.totalPending, Colors.orange),
+                  _buildSummaryStat(
+                      'Total Planned', data.totalPlanned, Colors.blue),
+                  _buildSummaryStat(
+                      'Total Approved', data.totalApproved, Colors.green),
+                  _buildSummaryStat(
+                      'Total Pending', data.totalPending, Colors.orange),
                 ],
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildSummaryStat('Total Sent Back', data.totalSentBack, Colors.red),
-                  _buildSummaryStat('Total Leave', data.totalLeave, Colors.purple),
-                  _buildSummaryStat('Total Not Entered', data.totalNotEntered, Colors.grey),
+                  _buildSummaryStat(
+                      'Total Sent Back', data.totalSentBack, Colors.red),
+                  _buildSummaryStat(
+                      'Total Leave', data.totalLeave, Colors.purple),
+                  _buildSummaryStat(
+                      'Total Not Entered', data.totalNotEntered, Colors.grey),
                 ],
               ),
               const SizedBox(height: 12),
@@ -3804,17 +4249,20 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                     Text(
                       'Employee Performance Metrics',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green[800],
-                      ),
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green[800],
+                          ),
                     ),
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildSummaryStat('Approved Days', data.approvedDays, Colors.green),
-                        _buildSummaryStat('Partial Mixed Status', data.partialMixedStatus, Colors.amber),
-                        _buildSummaryStat('Not Planned', data.notPlanned, Colors.grey),
+                        _buildSummaryStat(
+                            'Approved Days', data.approvedDays, Colors.green),
+                        _buildSummaryStat('Partial Mixed Status',
+                            data.partialMixedStatus, Colors.amber),
+                        _buildSummaryStat(
+                            'Not Planned', data.notPlanned, Colors.grey),
                       ],
                     ),
                   ],
@@ -3835,9 +4283,9 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         Text(
           'Total Mapped Customers: ${customers.length}',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: Colors.blue[800],
-          ),
+                fontWeight: FontWeight.w600,
+                color: Colors.blue[800],
+              ),
         ),
         const SizedBox(height: 12),
         if (customers.isNotEmpty) ...[
@@ -3851,9 +4299,12 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: customer.isActive ? Colors.green : Colors.grey,
+                    backgroundColor:
+                        customer.isActive ? Colors.green : Colors.grey,
                     child: Text(
-                      customer.customerName.isNotEmpty ? customer.customerName[0].toUpperCase() : 'C',
+                      customer.customerName.isNotEmpty
+                          ? customer.customerName[0].toUpperCase()
+                          : 'C',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -3868,14 +4319,18 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Cluster: ${customer.clusterName}'),
-                      if (customer.territory != null) Text('Territory: ${customer.territory}'),
-                      if (customer.contactNumber != null) Text('Contact: ${customer.contactNumber}'),
+                      if (customer.territory != null)
+                        Text('Territory: ${customer.territory}'),
+                      if (customer.contactNumber != null)
+                        Text('Contact: ${customer.contactNumber}'),
                       if (customer.lastVisitDate != null)
-                        Text('Last Visit: ${_formatDate(customer.lastVisitDate!)}'),
+                        Text(
+                            'Last Visit: ${_formatDate(customer.lastVisitDate!)}'),
                     ],
                   ),
                   trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: customer.isActive ? Colors.green : Colors.grey,
                       borderRadius: BorderRadius.circular(12),
@@ -3917,9 +4372,11 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       // GetList API expects: {"id": <tour_plan_item_id>}
       // Save API expects: {"TourPlanId": <tour_plan_item_id>}
       final int tourPlanItemId = item.id;
-      print('TourPlanScreen: Adding comment to tour plan - Item ID: ${item.id}, Item tourPlanId: ${item.tourPlanId}');
-      print('TourPlanScreen: Using item.id ($tourPlanItemId) for both GetList and Save APIs');
-      
+      print(
+          'TourPlanScreen: Adding comment to tour plan - Item ID: ${item.id}, Item tourPlanId: ${item.tourPlanId}');
+      print(
+          'TourPlanScreen: Using item.id ($tourPlanItemId) for both GetList and Save APIs');
+
       // Open comment dialog with previous comments
       await _openTourPlanCommentsDialog(context, id: tourPlanItemId);
     } catch (e) {
@@ -3931,7 +4388,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -3945,24 +4403,29 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   }) async {
     try {
       print('TourPlanScreen: Saving tour plan comment for ID: $tourPlanId');
-      
+
       // Get user ID from UserDetailStore (use id field which is non-nullable)
       // Fallback to UserStore (login response) if UserDetailStore is not loaded
       int? userId;
-      
+
       if (_userDetailStore.userDetail != null) {
         // Use id field (non-nullable) or userId field if available
-        userId = _userDetailStore.userDetail!.userId ?? _userDetailStore.userDetail!.id;
-        print('TourPlanScreen: Got userId from UserDetailStore: $userId (id: ${_userDetailStore.userDetail!.id}, userId: ${_userDetailStore.userDetail!.userId})');
+        userId = _userDetailStore.userDetail!.userId ??
+            _userDetailStore.userDetail!.id;
+        print(
+            'TourPlanScreen: Got userId from UserDetailStore: $userId (id: ${_userDetailStore.userDetail!.id}, userId: ${_userDetailStore.userDetail!.userId})');
       } else {
         // Fallback to UserStore (login response) - this has the login API response
         final loginUserStore = getIt<login.UserStore>();
-        userId = loginUserStore.currentUser?.userId ?? loginUserStore.currentUser?.id;
-        print('TourPlanScreen: Got userId from UserStore (login): $userId (id: ${loginUserStore.currentUser?.id}, userId: ${loginUserStore.currentUser?.userId})');
+        userId = loginUserStore.currentUser?.userId ??
+            loginUserStore.currentUser?.id;
+        print(
+            'TourPlanScreen: Got userId from UserStore (login): $userId (id: ${loginUserStore.currentUser?.id}, userId: ${loginUserStore.currentUser?.userId})');
       }
-      
+
       if (userId == null || userId == 0) {
-        print('TourPlanScreen: User details not available for tour plan comment');
+        print(
+            'TourPlanScreen: User details not available for tour plan comment');
         if (mounted) {
           ToastMessage.show(
             context,
@@ -3973,7 +4436,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         }
         return;
       }
-      
+
       // Format date as ISO 8601 format: "2025-11-10T20:27:00.000" (local time, no timezone)
       // Use local time instead of UTC to match the user's current time
       final now = DateTime.now(); // Use local time, not UTC
@@ -3985,11 +4448,12 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
       final second = now.second.toString().padLeft(2, '0');
       final millisecond = now.millisecond.toString().padLeft(3, '0');
       // Format: "2025-11-10T20:27:00.000" (no 'Z' suffix since it's local time)
-      final commentDate = '$year-$month-${day}T$hour:$minute:$second.${millisecond}';
-      
+      final commentDate =
+          '$year-$month-${day}T$hour:$minute:$second.${millisecond}';
+
       print('TourPlanScreen: Comment date (local time): $commentDate');
       print('TourPlanScreen: Current local time: ${now.toString()}');
-      
+
       // Create request with hardcoded values: IsSystemGenerated = 0, Active = 1
       final request = TourPlanCommentSaveRequest(
         createdBy: userId, // CreatedBy = UserId
@@ -4001,14 +4465,14 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
         active: 1, // Hardcoded
         // tourPlanType is optional, not included in API requirement
       );
-      
+
       print('TourPlanScreen: Comment save request: ${request.toJson()}');
-      
+
       // Call API through store
       final response = await _store.saveTourPlanComment(request);
-      
+
       print('TourPlanScreen: Comment saved successfully: ${response.comment}');
-      
+
       // Show success message
       if (mounted) {
         ToastMessage.show(
@@ -4018,7 +4482,6 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
           duration: const Duration(seconds: 3),
         );
       }
-      
     } catch (e) {
       print('TourPlanScreen: Error saving tour plan comment: $e');
       if (mounted) {
@@ -4033,7 +4496,7 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   }
 
   /// Get tour plan comments list
- /* Future<List<TourPlanCommentItem>> _getTourPlanCommentsList({
+  /* Future<List<TourPlanCommentItem>> _getTourPlanCommentsList({
     required int tourPlanId,
     String tourPlanType = 'TP',
   }) async
@@ -4071,26 +4534,27 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
   Future<List<TourPlanCommentItem>> _getTourPlanCommentsList(int id) async {
     try {
       print('TourPlanScreen: Getting comments list for tour plan item ID: $id');
-      
+
       // Create request with id (this is the tour plan item's id, not tourPlanId)
       // API expects: {"id": <tour_plan_item_id>}
       final request = TourPlanCommentGetListRequest(id: id);
-      
+
       print('TourPlanScreen: Comments list request: ${request.toJson()}');
-      
+
       // Call API through store (which uses repository)
       final comments = await _store.getTourPlanCommentsList(request);
-      
-      print('TourPlanScreen: Comments list response received - ${comments.length} comments');
-      
+
+      print(
+          'TourPlanScreen: Comments list response received - ${comments.length} comments');
+
       // Log each comment for debugging
       for (int i = 0; i < comments.length; i++) {
         final comment = comments[i];
-        print('TourPlanScreen: Comment ${i + 1}: ID=${comment.id}, User=${comment.userName}, Date=${comment.commentDate}, Text="${comment.comment}"');
+        print(
+            'TourPlanScreen: Comment ${i + 1}: ID=${comment.id}, User=${comment.userName}, Date=${comment.commentDate}, Text="${comment.comment}"');
       }
-      
+
       return comments;
-      
     } catch (e, stackTrace) {
       print('TourPlanScreen: Error getting tour plan comments list: $e');
       print('TourPlanScreen: Stack trace: $stackTrace');
@@ -4100,9 +4564,10 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
 
   /// Open comprehensive comment dialog with previous comments and add comment section
   /// Note: The 'id' parameter is the tour plan item's id (not tourPlanId field)
-  Future<void> _openTourPlanCommentsDialog(BuildContext context, {required int id}) async {
+  Future<void> _openTourPlanCommentsDialog(BuildContext context,
+      {required int id}) async {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     if (isMobile) {
       // Use bottom sheet on mobile
       await showModalBottomSheet(
@@ -4141,7 +4606,8 @@ class _TourPlanScreenState extends State<TourPlanScreen> with WidgetsBindingObse
 class _TourPlanCommentsDialog extends StatefulWidget {
   final int tourPlanId;
   final Future<List<TourPlanCommentItem>> Function(int) onGetComments;
-  final Future<void> Function({required int tourPlanId, required String comment}) onSaveComment;
+  final Future<void> Function(
+      {required int tourPlanId, required String comment}) onSaveComment;
   final VoidCallback? onCommentAdded;
 
   const _TourPlanCommentsDialog({
@@ -4152,7 +4618,8 @@ class _TourPlanCommentsDialog extends StatefulWidget {
   });
 
   @override
-  State<_TourPlanCommentsDialog> createState() => _TourPlanCommentsDialogState();
+  State<_TourPlanCommentsDialog> createState() =>
+      _TourPlanCommentsDialogState();
 }
 
 class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
@@ -4161,9 +4628,9 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
   bool _isLoading = true;
   bool _isSaving = false;
   List<TourPlanCommentItem> _comments = [];
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -4196,7 +4663,7 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
 
   Future<void> _saveComment() async {
     final commentText = _commentController.text.trim();
-    
+
     // Validation: Check if comment is empty
     if (commentText.isEmpty) {
       ToastMessage.show(
@@ -4207,7 +4674,7 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
       );
       return;
     }
-    
+
     // Validation: Check minimum length
     if (commentText.length < 3) {
       ToastMessage.show(
@@ -4218,7 +4685,7 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
       );
       return;
     }
-    
+
     // Validation: Check maximum length
     if (commentText.length > 1000) {
       ToastMessage.show(
@@ -4263,7 +4730,7 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final isMobile = MediaQuery.of(context).size.width < 600;
     final screenHeight = MediaQuery.of(context).size.height;
-    
+
     // Use bottom sheet on mobile, dialog on tablet
     if (isMobile) {
       return DraggableScrollableSheet(
@@ -4297,7 +4764,7 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
         },
       );
     }
-    
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
@@ -4368,7 +4835,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.close, color: Colors.grey, size: isTablet ? 24 : 20),
+            icon:
+                Icon(Icons.close, color: Colors.grey, size: isTablet ? 24 : 20),
             onPressed: () => Navigator.of(context).pop(),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -4398,7 +4866,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
           // Previous Comments Section
           Row(
             children: [
-              Icon(Icons.chat_bubble_outline, size: isTablet ? 20 : 18, color: tealGreen),
+              Icon(Icons.chat_bubble_outline,
+                  size: isTablet ? 20 : 18, color: tealGreen),
               SizedBox(width: isTablet ? 8 : 6),
               Flexible(
                 child: Text(
@@ -4438,7 +4907,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.chat_bubble_outline, size: isTablet ? 48 : 40, color: Colors.grey[400]),
+                    Icon(Icons.chat_bubble_outline,
+                        size: isTablet ? 48 : 40, color: Colors.grey[400]),
                     SizedBox(height: isTablet ? 12 : 10),
                     Text(
                       'No comments yet',
@@ -4463,9 +4933,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
           else
             Container(
               constraints: BoxConstraints(
-                maxHeight: isMobile 
-                    ? screenHeight * 0.18 
-                    : (isTablet ? 220 : 180),
+                maxHeight:
+                    isMobile ? screenHeight * 0.18 : (isTablet ? 220 : 180),
               ),
               decoration: BoxDecoration(
                 color: Colors.grey[50],
@@ -4480,9 +4949,11 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                   shrinkWrap: true,
                   padding: EdgeInsets.all(isTablet ? 8 : 6),
                   itemCount: _comments.length,
-                  separatorBuilder: (context, index) => SizedBox(height: isTablet ? 8 : 6),
+                  separatorBuilder: (context, index) =>
+                      SizedBox(height: isTablet ? 8 : 6),
                   itemBuilder: (context, index) {
-                    return _buildCommentItem(_comments[index], isTablet: isTablet);
+                    return _buildCommentItem(_comments[index],
+                        isTablet: isTablet);
                   },
                 ),
               ),
@@ -4493,7 +4964,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
           // Add Comment Section
           Row(
             children: [
-              Icon(Icons.add_comment, size: isTablet ? 20 : 18, color: tealGreen),
+              Icon(Icons.add_comment,
+                  size: isTablet ? 20 : 18, color: tealGreen),
               SizedBox(width: isTablet ? 8 : 6),
               Flexible(
                 child: Text(
@@ -4535,7 +5007,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                 borderSide: BorderSide(color: tealGreen, width: 2),
               ),
               contentPadding: EdgeInsets.all(isTablet ? 16 : 14),
-              errorText: _commentController.text.trim().isEmpty && _commentController.text.isNotEmpty
+              errorText: _commentController.text.trim().isEmpty &&
+                      _commentController.text.isNotEmpty
                   ? 'Comment is required'
                   : null,
               helperText: 'Minimum 3 characters, maximum 1000 characters',
@@ -4574,7 +5047,7 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
         left: isTablet ? 20 : 14,
         right: isTablet ? 20 : 14,
         top: isTablet ? 16 : 0,
-        bottom: isMobile 
+        bottom: isMobile
             ? (safeAreaBottom > 0 ? safeAreaBottom : 6)
             : (isTablet ? 20 : 14),
       ),
@@ -4598,7 +5071,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Icon(Icons.add, size: 18),
@@ -4612,7 +5086,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                     style: FilledButton.styleFrom(
                       backgroundColor: tealGreen,
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
+                      padding:
+                          EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
                       disabledBackgroundColor: tealGreen.withOpacity(0.5),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -4626,7 +5101,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                   child: TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
+                      padding:
+                          EdgeInsets.symmetric(vertical: isTablet ? 14 : 12),
                     ),
                     child: Text(
                       'Cancel',
@@ -4663,7 +5139,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
                           height: isTablet ? 18 : 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : Icon(Icons.add, size: isTablet ? 18 : 16),
@@ -4692,7 +5169,8 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
     );
   }
 
-  Widget _buildCommentItem(TourPlanCommentItem comment, {required bool isTablet}) {
+  Widget _buildCommentItem(TourPlanCommentItem comment,
+      {required bool isTablet}) {
     return Container(
       margin: EdgeInsets.only(bottom: isTablet ? 12 : 10),
       padding: EdgeInsets.all(isTablet ? 16 : 12),
@@ -4721,7 +5199,9 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
             ),
             child: Center(
               child: Text(
-                comment.userName.isNotEmpty ? comment.userName[0].toUpperCase() : 'U',
+                comment.userName.isNotEmpty
+                    ? comment.userName[0].toUpperCase()
+                    : 'U',
                 style: GoogleFonts.inter(
                   color: tealGreen,
                   fontWeight: FontWeight.w700,
@@ -4789,23 +5269,42 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
 
     if (difference.inDays == 0) {
       // Today - show time
-      final hour = localDate.hour > 12 ? localDate.hour - 12 : (localDate.hour == 0 ? 12 : localDate.hour);
+      final hour = localDate.hour > 12
+          ? localDate.hour - 12
+          : (localDate.hour == 0 ? 12 : localDate.hour);
       final minute = localDate.minute.toString().padLeft(2, '0');
       final period = localDate.hour >= 12 ? 'PM' : 'AM';
       return 'Today at $hour:$minute $period';
     } else if (difference.inDays == 1) {
       // Yesterday
-      final hour = localDate.hour > 12 ? localDate.hour - 12 : (localDate.hour == 0 ? 12 : localDate.hour);
+      final hour = localDate.hour > 12
+          ? localDate.hour - 12
+          : (localDate.hour == 0 ? 12 : localDate.hour);
       final minute = localDate.minute.toString().padLeft(2, '0');
       final period = localDate.hour >= 12 ? 'PM' : 'AM';
       return 'Yesterday at $hour:$minute $period';
     } else {
       // Format as "Nov 10, 2025 at 03:09 PM"
-      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
       final month = months[localDate.month - 1];
       final day = localDate.day;
       final year = localDate.year;
-      final hour = localDate.hour > 12 ? localDate.hour - 12 : (localDate.hour == 0 ? 12 : localDate.hour);
+      final hour = localDate.hour > 12
+          ? localDate.hour - 12
+          : (localDate.hour == 0 ? 12 : localDate.hour);
       final minute = localDate.minute.toString().padLeft(2, '0');
       final period = localDate.hour >= 12 ? 'PM' : 'AM';
       return '$month $day, $year at $hour:$minute $period';
@@ -4838,8 +5337,12 @@ class _TourPlanCommentsDialogState extends State<_TourPlanCommentsDialog> {
 const String kFilterClearToken = '__CLEAR__';
 
 class _FilterPill extends StatelessWidget {
-  const _FilterPill({required this.icon, required this.label, this.onTap, this.onLongPress});
-  final IconData icon; final String label; final VoidCallback? onTap; final VoidCallback? onLongPress;
+  const _FilterPill(
+      {required this.icon, required this.label, this.onTap, this.onLongPress});
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   @override
   Widget build(BuildContext context) {
     final Color border = Theme.of(context).dividerColor.withOpacity(.25);
@@ -4866,14 +5369,19 @@ class _FilterPill extends StatelessWidget {
   }
 }
 
-Future<String?> _pickFromList(BuildContext context, {required String title, required List<String> options, String? selected, bool searchable = false}) async {
+Future<String?> _pickFromList(BuildContext context,
+    {required String title,
+    required List<String> options,
+    String? selected,
+    bool searchable = false}) async {
   // If searchable is true or options list is large, use searchable version
   final bool useSearch = searchable || options.length > 10;
-  
+
   if (useSearch) {
-    return _pickFromListSearchable(context, title: title, options: options, selected: selected);
+    return _pickFromListSearchable(context,
+        title: title, options: options, selected: selected);
   }
-  
+
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -4885,8 +5393,15 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Row(
               children: [
-                Expanded(child: Text(title, style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
+                Expanded(
+                    child: Text(title,
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700))),
+                IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx))
               ],
             ),
           ),
@@ -4897,7 +5412,9 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               itemBuilder: (c, i) => ListTile(
                 title: Text(options[i]),
-                trailing: options[i] == selected ? const Icon(Icons.check, color: Colors.green) : null,
+                trailing: options[i] == selected
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
                 onTap: () => Navigator.pop(ctx, options[i]),
               ),
               separatorBuilder: (_, __) => const Divider(height: 1),
@@ -4910,7 +5427,10 @@ Future<String?> _pickFromList(BuildContext context, {required String title, requ
   );
 }
 
-Future<String?> _pickFromListSearchable(BuildContext context, {required String title, required List<String> options, String? selected}) async {
+Future<String?> _pickFromListSearchable(BuildContext context,
+    {required String title,
+    required List<String> options,
+    String? selected}) async {
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -4935,10 +5455,12 @@ class _SearchableListBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<_SearchableListBottomSheet> createState() => _SearchableListBottomSheetState();
+  State<_SearchableListBottomSheet> createState() =>
+      _SearchableListBottomSheetState();
 }
 
-class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> {
+class _SearchableListBottomSheetState
+    extends State<_SearchableListBottomSheet> {
   late List<String> _filteredOptions;
   late TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode();
@@ -4975,9 +5497,9 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
       if (query.isEmpty) {
         _filteredOptions = widget.options;
       } else {
-        _filteredOptions = widget.options.where((option) =>
-          option.toLowerCase().contains(query)
-        ).toList();
+        _filteredOptions = widget.options
+            .where((option) => option.toLowerCase().contains(query))
+            .toList();
       }
     });
   }
@@ -4999,7 +5521,10 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w500),
                     ),
                   ),
                   IconButton(
@@ -5035,7 +5560,8 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                       ),
                       filled: true,
                       fillColor: Colors.grey.shade50,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
                     onTap: () {
                       // Request focus when user explicitly taps on search field
@@ -5052,18 +5578,23 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
                       padding: const EdgeInsets.all(32.0),
                       child: Text(
                         'No results found',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.grey),
                       ),
                     )
                   : ListView.separated(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
                       itemBuilder: (c, i) => ListTile(
                         title: Text(_filteredOptions[i]),
                         trailing: _filteredOptions[i] == widget.selected
                             ? const Icon(Icons.check, color: Colors.green)
                             : null,
-                        onTap: () => Navigator.pop(context, _filteredOptions[i]),
+                        onTap: () =>
+                            Navigator.pop(context, _filteredOptions[i]),
                       ),
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemCount: _filteredOptions.length,
@@ -5076,7 +5607,10 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
   }
 }
 
-Future<Set<String>?> _pickMultipleFromList(BuildContext context, {required String title, required List<String> options, required Set<String> initiallySelected}) async {
+Future<Set<String>?> _pickMultipleFromList(BuildContext context,
+    {required String title,
+    required List<String> options,
+    required Set<String> initiallySelected}) async {
   final Set<String> temp = {...initiallySelected};
   return showModalBottomSheet<Set<String>>(
     context: context,
@@ -5089,10 +5623,19 @@ Future<Set<String>?> _pickMultipleFromList(BuildContext context, {required Strin
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Row(
               children: [
-                Expanded(child: Text(title, style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-                TextButton(onPressed: () => Navigator.pop(ctx, <String>{}), child: const Text('Clear')),
+                Expanded(
+                    child: Text(title,
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700))),
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, <String>{}),
+                    child: const Text('Clear')),
                 const SizedBox(width: 4),
-                FilledButton(onPressed: () => Navigator.pop(ctx, temp), child: const Text('Apply')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, temp),
+                    child: const Text('Apply')),
               ],
             ),
           ),
@@ -5115,14 +5658,16 @@ Future<Set<String>?> _pickMultipleFromList(BuildContext context, {required Strin
                     }
                     (context as Element).markNeedsBuild();
                   },
-                  leading: Checkbox(value: selected, onChanged: (_) {
-                    if (selected) {
-                      temp.remove(opt);
-                    } else {
-                      temp.add(opt);
-                    }
-                    (context as Element).markNeedsBuild();
-                  }),
+                  leading: Checkbox(
+                      value: selected,
+                      onChanged: (_) {
+                        if (selected) {
+                          temp.remove(opt);
+                        } else {
+                          temp.add(opt);
+                        }
+                        (context as Element).markNeedsBuild();
+                      }),
                   title: Text(opt),
                 );
               },
@@ -5135,13 +5680,15 @@ Future<Set<String>?> _pickMultipleFromList(BuildContext context, {required Strin
 }
 
 class _DayPlansCard extends StatelessWidget {
-  const _DayPlansCard({required this.date, required this.entries, required this.onEdit});
+  const _DayPlansCard(
+      {required this.date, required this.entries, required this.onEdit});
   final DateTime date;
   final List<domain.TourPlanEntry> entries;
   final void Function(domain.TourPlanEntry entry) onEdit;
   @override
   Widget build(BuildContext context) {
-    final String label = '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
+    final String label =
+        '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -5149,12 +5696,20 @@ class _DayPlansCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(children: [
-              Expanded(child: Text('Planned Calls on $label', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+              Expanded(
+                  child: Text('Planned Calls on $label',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700))),
             ]),
             const SizedBox(height: 12),
             ...entries.asMap().entries.map((e) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _PlanRow(index: e.key + 1, entry: e.value, onEdit: () => onEdit(e.value)),
+                  child: _PlanRow(
+                      index: e.key + 1,
+                      entry: e.value,
+                      onEdit: () => onEdit(e.value)),
                 )),
           ],
         ),
@@ -5164,24 +5719,31 @@ class _DayPlansCard extends StatelessWidget {
 }
 
 class _PlanRow extends StatelessWidget {
-  const _PlanRow({required this.index, required this.entry, required this.onEdit});
+  const _PlanRow(
+      {required this.index, required this.entry, required this.onEdit});
   final int index;
   final domain.TourPlanEntry entry;
   final VoidCallback onEdit;
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFFF6F7FA), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+          color: const Color(0xFFF6F7FA),
+          borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           CircleAvatar(radius: 16, child: Text('$index')),
           const SizedBox(width: 12),
-          Expanded(child: Text('${entry.customer} • ${entry.callDetails.purposes.isNotEmpty ? entry.callDetails.purposes.join(', ') : 'No purpose'}')),
+          Expanded(
+              child: Text(
+                  '${entry.customer} • ${entry.callDetails.purposes.isNotEmpty ? entry.callDetails.purposes.join(', ') : 'No purpose'}')),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: _statusColor(entry.status).withOpacity(.15), borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(
+                color: _statusColor(entry.status).withOpacity(.15),
+                borderRadius: BorderRadius.circular(20)),
             child: Text(_statusText(entry.status)),
           ),
           const SizedBox(width: 8),
@@ -5287,13 +5849,20 @@ class _CalendarSectionState extends State<_CalendarSection> {
     const Color blue = Color(0xFF2B78FF); // Paneled
     const Color yellow = Color(0xFFFFA41C); // Draft/Pending
 
-    final Map<DateTime, CalendarDayDecoration> decorations = <DateTime, CalendarDayDecoration>{
-      DateTime(_focusedDay.year, _focusedDay.month, 1): const CalendarDayDecoration(backgroundColor: green),
-      DateTime(_focusedDay.year, _focusedDay.month, 2): const CalendarDayDecoration(backgroundColor: yellow),
-      DateTime(_focusedDay.year, _focusedDay.month, 21): const CalendarDayDecoration(backgroundColor: blue),
-      DateTime(_focusedDay.year, _focusedDay.month, 22): const CalendarDayDecoration(backgroundColor: yellow),
-      DateTime(_focusedDay.year, _focusedDay.month, 23): const CalendarDayDecoration(backgroundColor: yellow),
-      DateTime(_focusedDay.year, _focusedDay.month, 24): const CalendarDayDecoration(backgroundColor: yellow),
+    final Map<DateTime, CalendarDayDecoration> decorations =
+        <DateTime, CalendarDayDecoration>{
+      DateTime(_focusedDay.year, _focusedDay.month, 1):
+          const CalendarDayDecoration(backgroundColor: green),
+      DateTime(_focusedDay.year, _focusedDay.month, 2):
+          const CalendarDayDecoration(backgroundColor: yellow),
+      DateTime(_focusedDay.year, _focusedDay.month, 21):
+          const CalendarDayDecoration(backgroundColor: blue),
+      DateTime(_focusedDay.year, _focusedDay.month, 22):
+          const CalendarDayDecoration(backgroundColor: yellow),
+      DateTime(_focusedDay.year, _focusedDay.month, 23):
+          const CalendarDayDecoration(backgroundColor: yellow),
+      DateTime(_focusedDay.year, _focusedDay.month, 24):
+          const CalendarDayDecoration(backgroundColor: yellow),
     };
 
     final List<CalendarLegendItem> legend = const <CalendarLegendItem>[
@@ -5303,7 +5872,8 @@ class _CalendarSectionState extends State<_CalendarSection> {
       CalendarLegendItem(label: 'Draft/Ped..', color: yellow, count: 1),
     ];
 
-    final String summary = _daysAndHolidaysLabel(_focusedDay).replaceAll('|', '\u00A0|\u00A0Holidays:');
+    final String summary = _daysAndHolidaysLabel(_focusedDay)
+        .replaceAll('|', '\u00A0|\u00A0Holidays:');
 
     return Card(
       color: Colors.white,
@@ -5346,7 +5916,8 @@ class _CalendarSectionState extends State<_CalendarSection> {
 
   _DayStatus _statusForDay(int d) {
     // No longer used in the simplified MonthCalendar view, kept for reference.
-    return const _DayStatus(label: '', color: Colors.transparent, calls: 0, window: '');
+    return const _DayStatus(
+        label: '', color: Colors.transparent, calls: 0, window: '');
   }
 }
 
@@ -5393,14 +5964,16 @@ class _DayCard extends StatelessWidget {
                 const Spacer(),
                 if (status.label.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: status.color.withOpacity(.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       status.label,
-                      style: TextStyle(color: status.color, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          color: status.color, fontWeight: FontWeight.w600),
                     ),
                   ),
               ],
@@ -5417,12 +5990,17 @@ class _CalendarCell extends StatelessWidget {
   final _DayStatus status;
   final bool selected;
   final bool highlight;
-  const _CalendarCell({required this.day, required this.status, required this.selected, required this.highlight});
+  const _CalendarCell(
+      {required this.day,
+      required this.status,
+      required this.selected,
+      required this.highlight});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bg = selected ? colorScheme.primary.withOpacity(.08) : Colors.transparent;
+    final bg =
+        selected ? colorScheme.primary.withOpacity(.08) : Colors.transparent;
     final border = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(10),
       side: BorderSide(
@@ -5454,7 +6032,8 @@ class _CalendarCell extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-              if (status.label.isNotEmpty) _StatusBadge(label: status.label, color: status.color),
+              if (status.label.isNotEmpty)
+                _StatusBadge(label: status.label, color: status.color),
             ],
           ),
         ),
@@ -5483,7 +6062,10 @@ class _CallsPill extends StatelessWidget {
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.fade,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey[700], fontSize: 10),
+          style: Theme.of(context)
+              .textTheme
+              .labelSmall
+              ?.copyWith(color: Colors.grey[700], fontSize: 10),
         ),
       ),
     );
@@ -5537,7 +6119,8 @@ class _StatusBadge extends StatelessWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 9.5),
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.w600, fontSize: 9.5),
         ),
       ),
     );
@@ -5554,7 +6137,7 @@ class _MonthPickerSheet extends StatefulWidget {
 
 class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   late DateTime _cursor;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
 
   @override
@@ -5575,7 +6158,8 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
             Row(
               children: [
                 IconButton(
-                  onPressed: () => setState(() => _cursor = DateTime(_cursor.year - 1, _cursor.month, 1)),
+                  onPressed: () => setState(() =>
+                      _cursor = DateTime(_cursor.year - 1, _cursor.month, 1)),
                   icon: Icon(Icons.chevron_left, color: tealGreen),
                 ),
                 Expanded(
@@ -5591,7 +6175,8 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                   ),
                 ),
                 IconButton(
-                  onPressed: () => setState(() => _cursor = DateTime(_cursor.year + 1, _cursor.month, 1)),
+                  onPressed: () => setState(() =>
+                      _cursor = DateTime(_cursor.year + 1, _cursor.month, 1)),
                   icon: Icon(Icons.chevron_right, color: tealGreen),
                 ),
               ],
@@ -5602,7 +6187,8 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                 final isTablet = constraints.maxWidth >= 600;
                 final isSmallMobile = constraints.maxWidth < 400;
                 // Adjust aspect ratio based on screen size to prevent text overlap
-                final childAspectRatio = isTablet ? 3.2 : (isSmallMobile ? 2.5 : 2.8);
+                final childAspectRatio =
+                    isTablet ? 3.2 : (isSmallMobile ? 2.5 : 2.8);
                 return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -5615,15 +6201,21 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                   itemCount: 12,
                   itemBuilder: (context, i) {
                     final date = DateTime(_cursor.year, i + 1, 1);
-                    final selected = date.year == widget.initial.year && date.month == widget.initial.month;
+                    final selected = date.year == widget.initial.year &&
+                        date.month == widget.initial.month;
                     return OutlinedButton(
                       style: OutlinedButton.styleFrom(
-                        backgroundColor: selected ? tealGreen.withOpacity(0.1) : Colors.white,
+                        backgroundColor: selected
+                            ? tealGreen.withOpacity(0.1)
+                            : Colors.white,
                         side: BorderSide(
-                          color: selected ? tealGreen.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+                          color: selected
+                              ? tealGreen.withOpacity(0.3)
+                              : Colors.grey.withOpacity(0.3),
                           width: selected ? 1.5 : 1,
                         ),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                         padding: EdgeInsets.symmetric(
                           horizontal: isTablet ? 8 : (isSmallMobile ? 2 : 4),
                           vertical: isTablet ? 12 : (isSmallMobile ? 8 : 10),
@@ -5640,8 +6232,11 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                             _monthShort(i + 1),
                             style: GoogleFonts.inter(
                               fontSize: isTablet ? 14 : 12,
-                              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                              color: selected ? tealGreen : tealGreen.withOpacity(0.7),
+                              fontWeight:
+                                  selected ? FontWeight.w600 : FontWeight.w500,
+                              color: selected
+                                  ? tealGreen
+                                  : tealGreen.withOpacity(0.7),
                             ),
                             textAlign: TextAlign.center,
                             overflow: TextOverflow.visible,
@@ -5663,7 +6258,20 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
 }
 
 String _monthShort(int month) {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
+  ];
   return months[month - 1];
 }
 
@@ -5673,7 +6281,12 @@ class _CalendarHeader extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onPickMonth;
-  const _CalendarHeader({required this.monthLabel, required this.onPrev, required this.onNext, required this.onPickMonth, this.subtitle});
+  const _CalendarHeader(
+      {required this.monthLabel,
+      required this.onPrev,
+      required this.onNext,
+      required this.onPickMonth,
+      this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -5689,7 +6302,8 @@ class _CalendarHeader extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(.3)),
+                border: Border.all(
+                    color: Theme.of(context).dividerColor.withOpacity(.3)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -5711,7 +6325,10 @@ class _CalendarHeader extends StatelessWidget {
                           Text(
                             subtitle!,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Colors.black54),
                           ),
                         ],
                       ],
@@ -5736,7 +6353,12 @@ class _CircleDay extends StatelessWidget {
   final bool filled;
   final bool disabled;
   final bool dot;
-  const _CircleDay({required this.day, required this.color, required this.filled, required this.disabled, required this.dot});
+  const _CircleDay(
+      {required this.day,
+      required this.color,
+      required this.filled,
+      required this.disabled,
+      required this.dot});
 
   @override
   Widget build(BuildContext context) {
@@ -5753,12 +6375,16 @@ class _CircleDay extends StatelessWidget {
             color: bg,
           ),
           alignment: Alignment.center,
-          child: Text('${day.day}', style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+          child: Text('${day.day}',
+              style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
         ),
         if (dot)
           Padding(
             padding: const EdgeInsets.only(top: 4.0),
-            child: Container(width: 4, height: 4, decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
+            child: Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
           ),
       ],
     );
@@ -5767,8 +6393,18 @@ class _CircleDay extends StatelessWidget {
 
 String _monthName(DateTime date) {
   const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December'
   ];
   return '${months[date.month - 1]} ${date.year}';
 }
@@ -5802,7 +6438,11 @@ class _DayStatus {
   final Color color;
   final int calls;
   final String window;
-  const _DayStatus({required this.label, required this.color, required this.calls, required this.window});
+  const _DayStatus(
+      {required this.label,
+      required this.color,
+      required this.calls,
+      required this.window});
 }
 
 class _OutlinedChip extends StatelessWidget {
@@ -5816,7 +6456,8 @@ class _OutlinedChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(.4)),
+        border:
+            Border.all(color: Theme.of(context).dividerColor.withOpacity(.4)),
       ),
       child: child,
     );
@@ -5830,7 +6471,6 @@ class _SpendBreakdownCard extends StatelessWidget {
     return const SizedBox.shrink();
   }
 }
-
 
 class _CategoryAndDonutRow extends StatelessWidget {
   @override
@@ -5873,31 +6513,32 @@ class _CategoryAndDonutRow extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
-          //   Expanded(child: StatusByCategoryCard(data: {
-          //     'Shopping': {
-          //       TourPlanStatus.planned: 2,
-          //       TourPlanStatus.pending: 1,
-          //       TourPlanStatus.approved: 3,
-          //       TourPlanStatus.leaveDays: 0,
-          //       TourPlanStatus.notEntered: 1,
-          //     },
-          //     'Device': {
-          //       TourPlanStatus.planned: 1,
-          //       TourPlanStatus.pending: 2,
-          //       TourPlanStatus.approved: 1,
-          //       TourPlanStatus.leaveDays: 0,
-          //       TourPlanStatus.notEntered: 2,
-          //     },
-          //     'Grocery': {
-          //       TourPlanStatus.planned: 1,
-          //       TourPlanStatus.pending: 0,
-          //       TourPlanStatus.approved: 1,
-          //       TourPlanStatus.leaveDays: 1,
-          //       TourPlanStatus.notEntered: 1,
-          //     },
-          //   }, title: 'By Category')),
+            //   Expanded(child: StatusByCategoryCard(data: {
+            //     'Shopping': {
+            //       TourPlanStatus.planned: 2,
+            //       TourPlanStatus.pending: 1,
+            //       TourPlanStatus.approved: 3,
+            //       TourPlanStatus.leaveDays: 0,
+            //       TourPlanStatus.notEntered: 1,
+            //     },
+            //     'Device': {
+            //       TourPlanStatus.planned: 1,
+            //       TourPlanStatus.pending: 2,
+            //       TourPlanStatus.approved: 1,
+            //       TourPlanStatus.leaveDays: 0,
+            //       TourPlanStatus.notEntered: 2,
+            //     },
+            //     'Grocery': {
+            //       TourPlanStatus.planned: 1,
+            //       TourPlanStatus.pending: 0,
+            //       TourPlanStatus.approved: 1,
+            //       TourPlanStatus.leaveDays: 1,
+            //       TourPlanStatus.notEntered: 1,
+            //     },
+            //   }, title: 'By Category')),
             SizedBox(width: 12),
-            Expanded(child: StatusDonutCard(counts: {
+            Expanded(
+                child: StatusDonutCard(counts: {
               TourPlanStatus.planned: 4,
               TourPlanStatus.pending: 3,
               TourPlanStatus.approved: 5,
@@ -5929,11 +6570,13 @@ class _EnhancedActionPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    final Color backgroundColor = isActive ? tealGreen.withOpacity(0.12) : Colors.grey[50]!;
+    final Color backgroundColor =
+        isActive ? tealGreen.withOpacity(0.12) : Colors.grey[50]!;
     final Color iconColor = isActive ? tealGreen : Colors.grey[600]!;
     final Color textColor = isActive ? tealGreen : Colors.grey[700]!;
-    final Color borderColor = isActive ? tealGreen.withOpacity(0.3) : Colors.grey[200]!;
-    
+    final Color borderColor =
+        isActive ? tealGreen.withOpacity(0.3) : Colors.grey[200]!;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(14),
@@ -5990,17 +6633,20 @@ class _ClearFiltersButton extends StatelessWidget {
     required this.onPressed,
     this.isActive = false,
   });
-  
+
   final VoidCallback onPressed;
   final bool isActive;
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    final Color backgroundColor = isActive ? Colors.red.shade50 : Colors.grey[100]!;
-    final Color iconColor = isActive ? Colors.red.shade600 : Colors.grey.shade600;
-    final Color textColor = isActive ? Colors.red.shade700 : Colors.grey.shade600;
-    
+    final Color backgroundColor =
+        isActive ? Colors.red.shade50 : Colors.grey[100]!;
+    final Color iconColor =
+        isActive ? Colors.red.shade600 : Colors.grey.shade600;
+    final Color textColor =
+        isActive ? Colors.red.shade700 : Colors.grey.shade600;
+
     return Material(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(14),
@@ -6017,7 +6663,9 @@ class _ClearFiltersButton extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: isActive ? Border.all(color: Colors.red.shade200, width: 1) : null,
+            border: isActive
+                ? Border.all(color: Colors.red.shade200, width: 1)
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -6051,9 +6699,9 @@ class _FilterIconButton extends StatelessWidget {
   final int filterCount;
   final VoidCallback onTap;
   final bool isTablet;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   const _FilterIconButton({
     required this.filterCount,
     required this.onTap,
@@ -6148,7 +6796,7 @@ class _FilterModal extends StatefulWidget {
   final VoidCallback onApply;
   final VoidCallback onClear;
   final bool shouldDisableEmployeeFilter;
-  
+
   const _FilterModal({
     required this.customer,
     required this.status,
@@ -6168,29 +6816,30 @@ class _FilterModal extends StatefulWidget {
   State<_FilterModal> createState() => _FilterModalState();
 }
 
-class _FilterModalState extends State<_FilterModal> with SingleTickerProviderStateMixin {
+class _FilterModalState extends State<_FilterModal>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _slideAnimation;
   late Animation<double> _fadeAnimation;
-  
+
   String? _tempCustomer;
   String? _tempStatus;
   String? _tempEmployee;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   @override
   void initState() {
     super.initState();
     _tempCustomer = widget.customer;
     _tempStatus = widget.status;
     _tempEmployee = widget.employee;
-    
+
     _controller = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
     _slideAnimation = Tween<double>(
       begin: 1.0,
       end: 0.0,
@@ -6198,7 +6847,7 @@ class _FilterModalState extends State<_FilterModal> with SingleTickerProviderSta
       parent: _controller,
       curve: Curves.easeOutCubic,
     ));
-    
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -6206,16 +6855,16 @@ class _FilterModalState extends State<_FilterModal> with SingleTickerProviderSta
       parent: _controller,
       curve: Curves.easeOut,
     ));
-    
+
     _controller.forward();
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
-  
+
   void _handleClose() {
     _controller.reverse().then((_) {
       if (mounted) {
@@ -6223,7 +6872,7 @@ class _FilterModalState extends State<_FilterModal> with SingleTickerProviderSta
       }
     });
   }
-  
+
   void _handleApply() {
     widget.onCustomerChanged(_tempCustomer);
     widget.onStatusChanged(_tempStatus);
@@ -6232,7 +6881,7 @@ class _FilterModalState extends State<_FilterModal> with SingleTickerProviderSta
       widget.onApply();
     });
   }
-  
+
   void _handleClear() {
     setState(() {
       _tempCustomer = null;
@@ -6241,20 +6890,19 @@ class _FilterModalState extends State<_FilterModal> with SingleTickerProviderSta
     });
     widget.onClear();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     // Better responsive sizing for tablets
-    final modalHeight = isTablet 
+    final modalHeight = isTablet
         ? (screenHeight * 0.65).clamp(500.0, 700.0)
         : screenHeight * 0.75;
-    final modalWidth = isTablet 
-        ? (screenWidth * 0.6).clamp(500.0, 700.0)
-        : screenWidth;
-    
+    final modalWidth =
+        isTablet ? (screenWidth * 0.6).clamp(500.0, 700.0) : screenWidth;
+
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -6268,13 +6916,17 @@ class _FilterModalState extends State<_FilterModal> with SingleTickerProviderSta
                 alignment: isTablet ? Alignment.center : Alignment.bottomCenter,
                 child: Transform.translate(
                   offset: isTablet
-                      ? Offset(0, (modalHeight * _slideAnimation.value) - (screenHeight - modalHeight) / 2)
+                      ? Offset(
+                          0,
+                          (modalHeight * _slideAnimation.value) -
+                              (screenHeight - modalHeight) / 2)
                       : Offset(0, modalHeight * _slideAnimation.value),
                   child: Container(
                     height: modalHeight,
                     width: modalWidth,
                     margin: isTablet
-                        ? EdgeInsets.symmetric(horizontal: (screenWidth - modalWidth) / 2)
+                        ? EdgeInsets.symmetric(
+                            horizontal: (screenWidth - modalWidth) / 2)
                         : EdgeInsets.zero,
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -6484,7 +7136,7 @@ class _SearchableFilterDropdown extends StatefulWidget {
   final ValueChanged<String?> onChanged;
   final bool isTablet;
   final VoidCallback? onExpanded;
-  
+
   const _SearchableFilterDropdown({
     super.key,
     required this.title,
@@ -6497,16 +7149,17 @@ class _SearchableFilterDropdown extends StatefulWidget {
   });
 
   @override
-  State<_SearchableFilterDropdown> createState() => _SearchableFilterDropdownState();
+  State<_SearchableFilterDropdown> createState() =>
+      _SearchableFilterDropdownState();
 }
 
 class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   late TextEditingController _searchController;
   late List<String> _filteredOptions;
   bool _isExpanded = false;
-  
+
   static const Color tealGreen = Color(0xFF4db1b3);
-  
+
   @override
   void initState() {
     super.initState();
@@ -6514,14 +7167,14 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
     _filteredOptions = widget.options;
     _searchController.addListener(_onSearchChanged);
   }
-  
+
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
   }
-  
+
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -6530,7 +7183,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
           .toList();
     });
   }
-  
+
   void _toggleExpanded() {
     setState(() {
       _isExpanded = !_isExpanded;
@@ -6545,7 +7198,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
       });
     }
   }
-  
+
   void _selectOption(String? option) {
     widget.onChanged(option);
     setState(() {
@@ -6712,34 +7365,34 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                   },
                                 )
                               : null,
-                      filled: true,
-                      fillColor: Colors.grey[50],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.grey[200]!,
-                          width: 1,
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.grey[200]!,
+                              width: 1,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.grey[200]!,
+                              width: 1,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: tealGreen,
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: widget.isTablet ? 14 : 12,
+                            vertical: widget.isTablet ? 12 : 10,
+                          ),
                         ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.grey[200]!,
-                          width: 1,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: tealGreen,
-                          width: 2,
-                        ),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: widget.isTablet ? 14 : 12,
-                        vertical: widget.isTablet ? 12 : 10,
-                      ),
-                    ),
                       );
                     },
                   ),
@@ -6764,7 +7417,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                             vertical: widget.isTablet ? 8 : 6,
                           ),
                           itemCount: _filteredOptions.length,
-                          separatorBuilder: (_, __) => SizedBox(height: widget.isTablet ? 6 : 4),
+                          separatorBuilder: (_, __) =>
+                              SizedBox(height: widget.isTablet ? 6 : 4),
                           itemBuilder: (context, index) {
                             final option = _filteredOptions[index];
                             final isSelected = widget.selectedValue == option;
@@ -6774,7 +7428,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                 onTap: () => _selectOption(option),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  padding: EdgeInsets.all(widget.isTablet ? 12 : 10),
+                                  padding:
+                                      EdgeInsets.all(widget.isTablet ? 12 : 10),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? tealGreen.withOpacity(0.1)
@@ -6796,7 +7451,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                           color: isSelected
                                               ? tealGreen
                                               : Colors.white,
-                                          borderRadius: BorderRadius.circular(4),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                           border: Border.all(
                                             color: isSelected
                                                 ? tealGreen
@@ -6812,7 +7468,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                                               )
                                             : null,
                                       ),
-                                      SizedBox(width: widget.isTablet ? 12 : 10),
+                                      SizedBox(
+                                          width: widget.isTablet ? 12 : 10),
                                       Expanded(
                                         child: Text(
                                           option,

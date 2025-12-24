@@ -1250,3 +1250,42 @@ class TourPlanDcrDetailGet {
   }
 }
 
+
+/// Request model for ValidateUser API
+class DcrValidateUserRequest {
+  final int userId;
+
+  DcrValidateUserRequest({
+    required this.userId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'userId': userId,
+    };
+  }
+}
+
+/// Response model for ValidateUser API
+class DcrValidateUserResponse {
+  final bool isValid;
+
+  DcrValidateUserResponse({
+    required this.isValid,
+  });
+
+  factory DcrValidateUserResponse.fromJson(dynamic json) {
+    // Handle both boolean and string responses
+    if (json is bool) {
+      return DcrValidateUserResponse(isValid: json);
+    } else if (json is String) {
+      return DcrValidateUserResponse(isValid: json.toLowerCase() == 'true');
+    } else if (json is Map<String, dynamic>) {
+      return DcrValidateUserResponse(
+        isValid: json['isValid'] ?? json['result'] ?? false,
+      );
+    } else {
+      return DcrValidateUserResponse(isValid: false);
+    }
+  }
+}

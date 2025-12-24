@@ -1073,6 +1073,22 @@ class DcrRepositoryImpl implements DcrRepository {
       throw Exception('Failed to save expense: ${e.toString()}');
     }
   }
+
+  @override
+  Future<DcrValidateUserResponse> validateUser(int userId) async {
+    try {
+      // Use API to validate user
+      if (getIt.isRegistered<DcrApi>()) {
+        final dcrApi = getIt<DcrApi>();
+        final request = DcrValidateUserRequest(userId: userId);
+        return await dcrApi.validateUser(request);
+      } else {
+        throw Exception('DCR API not available');
+      }
+    } catch (error) {
+      throw Exception('Failed to validate user: ${error.toString()}');
+    }
+  }
 }
 
 
