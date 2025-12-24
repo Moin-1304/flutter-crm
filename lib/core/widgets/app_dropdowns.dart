@@ -604,28 +604,42 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
     _searchController.clear();
     _filteredOptions = widget.options;
     
+    // Calculate position and check if scrolling is needed BEFORE creating overlay
+    final Offset currentPosition = box.localToGlobal(Offset.zero);
+    final MediaQueryData mediaQuery = MediaQuery.of(context);
+    final double screenHeight = mediaQuery.size.height;
+    final double spaceBelow = screenHeight - currentPosition.dy - size.height;
+    final double maxHeight = (spaceBelow - 20).clamp(100.0, 320.0);
+    
+    // Auto-scroll to make the dropdown visible if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final double fieldBottom = currentPosition.dy + size.height;
+      final double dropdownHeight = maxHeight;
+      final double screenBottom = screenHeight;
+      
+      // If dropdown would go off screen, scroll to make it visible
+      if (fieldBottom + dropdownHeight > screenBottom - 20) {
+        final ScrollableState? scrollable = Scrollable.maybeOf(context);
+        if (scrollable != null) {
+          final ScrollPosition position = scrollable.position;
+          final double scrollOffset = (fieldBottom + dropdownHeight) - (screenBottom - 20);
+          if (scrollOffset > 0 && position.hasContentDimensions) {
+            position.animateTo(
+              position.pixels + scrollOffset,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        }
+      }
+    });
+    
     _entry = OverlayEntry(
       builder: (overlayContext) {
         final theme = Theme.of(overlayContext);
         final scheme = theme.colorScheme;
-        final MediaQueryData mediaQuery = MediaQuery.of(overlayContext);
-        final double screenHeight = mediaQuery.size.height;
-        final double screenWidth = mediaQuery.size.width;
-        
-        // Recalculate position relative to overlay
-        final Offset currentPosition = box.localToGlobal(Offset.zero);
-        
-        // Calculate available space below and above the field
-        final double spaceBelow = screenHeight - currentPosition.dy - size.height;
-        final double spaceAbove = currentPosition.dy;
-        
-        // Determine if we should show above or below
-        final bool showAbove = spaceBelow < 250 && spaceAbove > spaceBelow;
-        
-        // Calculate maximum height (leave some padding)
-        final double maxHeight = showAbove 
-            ? (spaceAbove - 20).clamp(100.0, 300.0)
-            : (spaceBelow - 20).clamp(100.0, 300.0);
+        final MediaQueryData overlayMediaQuery = MediaQuery.of(overlayContext);
+        final double screenWidth = overlayMediaQuery.size.width;
         
         return Stack(
           children: [
@@ -635,7 +649,7 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
             CompositedTransformFollower(
               link: _link,
               showWhenUnlinked: false,
-              offset: showAbove ? Offset(0, -(maxHeight + 2)) : Offset(0, size.height - 1),
+              offset: Offset(0, size.height - 1), // Always show below
               child: Material(
                 color: Colors.transparent,
                 child: Container(
@@ -646,19 +660,7 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                   ),
                   decoration: BoxDecoration(
                     color: scheme.surface,
-                    borderRadius: showAbove
-                        ? const BorderRadius.only(
-                            topLeft: Radius.circular(10),
-                            topRight: Radius.circular(10),
-                            bottomLeft: Radius.zero,
-                            bottomRight: Radius.zero,
-                          )
-                        : const BorderRadius.only(
-                            topLeft: Radius.zero,
-                            topRight: Radius.zero,
-                            bottomLeft: Radius.circular(10),
-                            bottomRight: Radius.circular(10),
-                          ),
+                    borderRadius: BorderRadius.circular(18), // Curved corners like DCR forms
                     boxShadow: [
                       BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 18, offset: const Offset(0, 6)),
                     ],

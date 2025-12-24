@@ -142,4 +142,7 @@ class Endpoints {
   // Option 2: Get Base URL API (Fallback)
   // GET /erpweb/api/FilesUpload/GetBaseUrl
   static String get fileUploadGetBaseUrl => "$fileUploadBaseUrl/FilesUpload/GetBaseUrl";
+
+  // ItemIssue endpoints
+  static const String itemIssueList = "$baseUrl/ItemIssue/List";
 }

@@ -3,18 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'customer_issue_entry_screen.dart';
+import 'package:boilerplate/domain/repository/item_issue/item_issue_repository.dart';
+import 'package:boilerplate/domain/entity/item_issue/item_issue_api_models.dart';
+import 'package:boilerplate/di/service_locator.dart';
+import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
+import 'package:boilerplate/presentation/user/store/user_store.dart';
 
 class CustomerIssueListScreen extends StatefulWidget {
   const CustomerIssueListScreen({super.key});
 
   @override
-  State<CustomerIssueListScreen> createState() => _CustomerIssueListScreenState();
+  State<CustomerIssueListScreen> createState() =>
+      _CustomerIssueListScreenState();
 }
 
-class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with SingleTickerProviderStateMixin {
+class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
+    with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   final ScrollController _listScrollController = ScrollController();
-  
+
   // Filter modal state
   AnimationController? _filterModalController;
   Animation<Offset>? _filterModalAnimation;
@@ -28,73 +35,39 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
   String? _issueNo;
   DateTime? _stDateFrom;
   DateTime? _stDateTo;
-  
+
   // Filter options
   final List<String> _statusList = ['Approved', 'Drafted', 'Cancelled'];
   final List<String> _fromStoreList = ['Inventory', 'Customer Store'];
   List<String> _issueNoList = [];
-  
+
   // Column filter state - keep for complex filters
   final Map<String, ColumnFilterState> _columnFilters = {
     'stDate': ColumnFilterState(),
     'fromStore': ColumnFilterState(),
     'itemDetails': ColumnFilterState(),
   };
-  
+
   // Status filter state (multi-select checkbox)
   final Set<String> _selectedStatusFilters = <String>{};
   String _statusSearchText = '';
-  
+
   // Issue No filter state (multi-select checkbox)
   final Set<String> _selectedIssueNoFilters = <String>{};
   String _issueNoSearchText = '';
-  
+
   // Old filter methods - keeping for compatibility but not used in new card-based layout
   String? _activeFilterColumn;
 
-  // Sample data matching the screenshot
-  final List<CustomerIssueItem> _issues = [
-    CustomerIssueItem(
-      id: '1',
-      stDate: DateTime(2025, 12, 19),
-      issueNo: 'CMI-25-12-0004',
-      fromStore: 'Inventory',
-      itemDetails: 'CFX96 Touch Real-Time PCR Detection System with Starter Package',
-      status: 'Approved',
-    ),
-    CustomerIssueItem(
-      id: '2',
-      stDate: DateTime(2025, 12, 18),
-      issueNo: '', // Empty as shown in screenshot
-      fromStore: 'Inventory',
-      itemDetails: 'Droplet Lancets 28g 100\'s',
-      status: 'Drafted',
-    ),
-    CustomerIssueItem(
-      id: '3',
-      stDate: DateTime(2025, 12, 17),
-      issueNo: 'CMI-25-12-0003',
-      fromStore: 'Inventory',
-      itemDetails: 'Droplet Lancets 28g 200\'s',
-      status: 'Approved',
-    ),
-    CustomerIssueItem(
-      id: '4',
-      stDate: DateTime(2025, 12, 17),
-      issueNo: 'CMI-25-12-0002',
-      fromStore: 'Customer Store',
-      itemDetails: 'Droplet Lancets 28g 200\'s',
-      status: 'Approved',
-    ),
-    CustomerIssueItem(
-      id: '5',
-      stDate: DateTime(2025, 12, 17),
-      issueNo: 'CMI-25-12-0001',
-      fromStore: 'Inventory',
-      itemDetails: 'Droplet Lancets 28g 200\'s',
-      status: 'Cancelled',
-    ),
-  ];
+  // API-loaded data
+  List<CustomerIssueItem> _issues = [];
+  String? _loadError;
+  int _currentPage = 1;
+  final int _pageSize = 15;
+  bool _hasMore = true;
+
+  // Cached filtered issues for performance optimization
+  List<CustomerIssueItem>? _cachedFilteredIssues;
 
   final List<String> _filterOperators = [
     'Is equal to',
@@ -110,7 +83,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     'Has no value',
     'Has value',
   ];
-  
+
   final List<String> _dateFilterOperators = [
     'Is equal to',
     'Is not equal to',
@@ -138,13 +111,183 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       begin: const Offset(0, 1),
       end: Offset.zero,
     ).animate(curvedAnimation);
-    
-    // Initialize issue number list from sample data
-    _issueNoList = _issues
-        .where((issue) => issue.issueNo.isNotEmpty)
-        .map((issue) => issue.issueNo)
-        .toSet()
-        .toList();
+
+    // Load data from API
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadItemIssues();
+    });
+  }
+
+  /// Load ItemIssue list from API
+  Future<void> _loadItemIssues({bool refresh = false}) async {
+    if (!mounted) return;
+
+    if (refresh) {
+      _currentPage = 1;
+      _hasMore = true;
+    }
+
+    if (!_hasMore && !refresh) return;
+
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      // Get user info from SharedPreferences for userId
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+
+      if (user == null) {
+        throw Exception('User not available');
+      }
+
+      final userId = user.userId ?? user.id;
+
+      // Get bizUnit from UserDetailStore (more reliable than SharedPreferences)
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+
+      // Prefer UserDetailStore, fallback to SharedPreferences, then default to 1
+      final int bizUnit = bizUnitFromStore ?? bizUnitFromPrefs ?? 1;
+
+      // Log for debugging
+      print(
+          'CustomerIssueListScreen: bizUnit from UserDetailStore: $bizUnitFromStore');
+      print(
+          'CustomerIssueListScreen: bizUnit from SharedPreferences: $bizUnitFromPrefs');
+      print('CustomerIssueListScreen: Final bizUnit: $bizUnit');
+
+      // Validate bizUnit - it should not be 0
+      if (bizUnit == 0) {
+        throw Exception(
+            'BizUnit is 0. UserDetailStore sbuId: $bizUnitFromStore, SharedPreferences sbuId: $bizUnitFromPrefs. Please ensure user details are loaded correctly.');
+      }
+
+      // Get menuId (default to 1554 as per API example)
+      final menuId = 1554;
+
+      // Prepare date filters
+      String? fromDateStr;
+      if (_stDateFrom != null) {
+        fromDateStr =
+            DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(_stDateFrom!);
+      }
+
+      // Prepare status filter
+      int? statusFilter;
+      if (_status != null) {
+        // Map status text to status code
+        // 2 = Approved, 1 = Drafted, 0 = Cancelled (approximate mapping)
+        if (_status == 'Approved') {
+          statusFilter = 2;
+        } else if (_status == 'Drafted') {
+          statusFilter = 1;
+        } else if (_status == 'Cancelled') {
+          statusFilter = 0;
+        }
+      }
+
+      // Prepare toStore filter
+      int? toStoreFilter;
+      if (_fromStore != null) {
+        // Map store text to store ID
+        // 6 = Inventory, 12 = Customer Store (from API response)
+        if (_fromStore == 'Inventory') {
+          toStoreFilter = 6;
+        } else if (_fromStore == 'Customer Store') {
+          toStoreFilter = 12;
+        }
+      }
+
+      final request = ItemIssueListRequest(
+        pageNumber: _currentPage,
+        pageSize: _pageSize,
+        userId: userId,
+        bizUnit: bizUnit,
+        menuId: menuId,
+        fromDate: fromDateStr,
+        toDate: _stDateTo != null
+            ? DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(_stDateTo!)
+            : null,
+        status: statusFilter,
+        toStore: toStoreFilter,
+        searchText: _issueNo, // Use issueNo as search text if provided
+        transactionType: 14, // Customer Issue transaction type
+      );
+
+      final itemIssueRepository = getIt<ItemIssueRepository>();
+      final response = await itemIssueRepository.getItemIssueList(request);
+
+      if (mounted) {
+        setState(() {
+          if (refresh) {
+            _issues = _convertApiItemsToCustomerIssues(response.items);
+          } else {
+            _issues.addAll(_convertApiItemsToCustomerIssues(response.items));
+          }
+
+          _hasMore = response.items.length >= _pageSize;
+          _isLoading = false;
+
+          // Update issue number list for filters
+          _issueNoList = _issues
+              .where((issue) => issue.issueNo.isNotEmpty)
+              .map((issue) => issue.issueNo)
+              .toSet()
+              .toList();
+
+          // Invalidate filter cache when data changes
+          _invalidateFilterCache();
+        });
+      }
+    } catch (e) {
+      print('Error loading ItemIssue list: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = 'Failed to load customer issues: ${e.toString()}';
+        });
+      }
+    }
+  }
+
+  /// Convert API items to CustomerIssueItem list
+  List<CustomerIssueItem> _convertApiItemsToCustomerIssues(
+      List<ItemIssueApiItem> apiItems) {
+    return apiItems.map((apiItem) {
+      // Parse date string to DateTime
+      DateTime? parsedDate;
+      try {
+        if (apiItem.date.isNotEmpty) {
+          // Try parsing ISO format first
+          parsedDate = DateTime.tryParse(apiItem.date);
+          // If that fails, try other formats
+          if (parsedDate == null) {
+            parsedDate = DateFormat('yyyy-MM-dd').parse(apiItem.date);
+          }
+        }
+      } catch (e) {
+        print('Error parsing date: ${apiItem.date}');
+        parsedDate = DateTime.now();
+      }
+
+      return CustomerIssueItem(
+        id: apiItem.id.toString(),
+        stDate: parsedDate ?? DateTime.now(),
+        issueNo: apiItem.no,
+        fromStore: apiItem.toStoreText.isNotEmpty
+            ? apiItem.toStoreText
+            : apiItem.departmentText,
+        itemDetails: apiItem.itemText,
+        status: apiItem.statusText,
+      );
+    }).toList();
   }
 
   @override
@@ -186,7 +329,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
   void _applyFiltersFromModal() {
     _closeFilterModal();
     _pendingFilterApply?.call();
-    setState(() {}); // Refresh filtered list
+    // Reload data from API with new filters
+    _loadItemIssues(refresh: true);
   }
 
   // Clear all filters
@@ -202,7 +346,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       for (var filter in _columnFilters.values) {
         filter.clear();
       }
+      // Invalidate filter cache when filters change
+      _invalidateFilterCache();
     });
+    await _loadItemIssues(refresh: true);
   }
 
   // Get filter count
@@ -221,7 +368,13 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
   }
 
   List<CustomerIssueItem> get _filteredIssues {
-    List<CustomerIssueItem> filtered = _issues;
+    // Use cached result if available and data/filters haven't changed
+    if (_cachedFilteredIssues != null) {
+      return _cachedFilteredIssues!;
+    }
+
+    // Compute filtered list
+    List<CustomerIssueItem> filtered = List.from(_issues);
 
     // Apply status filter (multi-select)
     if (_selectedStatusFilters.isNotEmpty) {
@@ -238,7 +391,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     // Apply Issue No filter (multi-select)
     if (_selectedIssueNoFilters.isNotEmpty) {
       filtered = filtered.where((issue) {
-        final issueNo = issue.issueNo.isEmpty ? 'Issue #${issue.id}' : issue.issueNo;
+        final issueNo =
+            issue.issueNo.isEmpty ? 'Issue #${issue.id}' : issue.issueNo;
         return _selectedIssueNoFilters.contains(issueNo);
       }).toList();
     }
@@ -250,14 +404,15 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
 
     // Apply from store filter
     if (_fromStore != null) {
-      filtered = filtered.where((issue) => issue.fromStore == _fromStore).toList();
+      filtered =
+          filtered.where((issue) => issue.fromStore == _fromStore).toList();
     }
 
     // Apply column filters
     for (final entry in _columnFilters.entries) {
       final columnKey = entry.key;
       final filterState = entry.value;
-      
+
       if (!filterState.isActive) continue;
       if (columnKey == 'status') continue; // Status handled separately
       if (columnKey == 'issueNo') continue; // Issue No handled separately
@@ -277,7 +432,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
 
         bool condition1Result;
         bool condition2Result;
-        
+
         if (columnKey == 'stDate') {
           // Date-specific filtering
           condition1Result = _evaluateDateCondition(
@@ -312,14 +467,22 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       }).toList();
     }
 
+    // Cache the result
+    _cachedFilteredIssues = filtered;
     return filtered;
+  }
+
+  /// Invalidate the filtered issues cache
+  void _invalidateFilterCache() {
+    _cachedFilteredIssues = null;
   }
 
   /// Show issue details modal (popup)
   void _showIssueDetails(BuildContext context, CustomerIssueItem issue) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    final String statusLabel = issue.status.isNotEmpty ? issue.status : 'Status';
-    
+    final String statusLabel =
+        issue.status.isNotEmpty ? issue.status : 'Status';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -327,7 +490,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       builder: (context) => Container(
         constraints: BoxConstraints(
           maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
+          maxHeight:
+              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
         ),
         margin: isTablet
             ? EdgeInsets.symmetric(
@@ -356,7 +520,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEAF7F7),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Row(
                   children: [
@@ -414,9 +579,11 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _DetailRow('ST Date', DateFormat('dd-MMM-yyyy').format(issue.stDate)),
+                      _DetailRow('ST Date',
+                          DateFormat('dd-MMM-yyyy').format(issue.stDate)),
                       const SizedBox(height: 12),
-                      _DetailRow('Issue No', issue.issueNo.isEmpty ? 'N/A' : issue.issueNo),
+                      _DetailRow('Issue No',
+                          issue.issueNo.isEmpty ? 'N/A' : issue.issueNo),
                       const SizedBox(height: 12),
                       _DetailRow('From Store', issue.fromStore),
                       const SizedBox(height: 12),
@@ -424,7 +591,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                       const SizedBox(height: 20),
                       Divider(height: 1, color: Colors.grey.shade300),
                       const SizedBox(height: 20),
-                      _DetailRow('Item Details', issue.itemDetails, isMultiline: true),
+                      _DetailRow('Item Details', issue.itemDetails,
+                          isMultiline: true),
                     ],
                   ),
                 ),
@@ -458,8 +626,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                             backgroundColor: const Color(0xFF4db1b3),
                             foregroundColor: Colors.white,
                             minimumSize: const Size.fromHeight(44),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
                         ),
                       ),
@@ -484,8 +654,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                             backgroundColor: const Color(0xFF4db1b3),
                             foregroundColor: Colors.white,
                             minimumSize: const Size.fromHeight(44),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
                         ),
                       ),
@@ -504,34 +676,36 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     final statusLower = status.toLowerCase();
     Color backgroundColor;
     Color textColor;
-    
+
+    // Match DCR screen styling
     if (statusLower.contains('approved')) {
-      backgroundColor = Colors.green.shade50;
-      textColor = Colors.green.shade700;
-    } else if (statusLower.contains('drafted')) {
-      backgroundColor = Colors.orange.shade50;
-      textColor = Colors.orange.shade700;
-    } else if (statusLower.contains('cancelled')) {
-      backgroundColor = Colors.red.shade50;
-      textColor = Colors.red.shade700;
+      backgroundColor = const Color(0xFFE8F5E9); // Light green
+      textColor = const Color(0xFF2E7D32); // Dark green
+    } else if (statusLower.contains('drafted') ||
+        statusLower.contains('draft')) {
+      backgroundColor = const Color(0xFFF3E8FF); // Light purple
+      textColor = const Color(0xFF6A1B9A); // Dark purple
+    } else if (statusLower.contains('cancelled') ||
+        statusLower.contains('cancel')) {
+      backgroundColor = Colors.grey.shade200; // Light grey
+      textColor = Colors.grey.shade700; // Dark grey
     } else {
-      backgroundColor = Colors.grey.shade100;
+      backgroundColor = Colors.grey.shade200;
       textColor = Colors.grey.shade700;
     }
-    
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: textColor.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         status,
-        style: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
+        style: TextStyle(
           color: textColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -568,7 +742,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     }
   }
 
-  bool _evaluateDateCondition(DateTime issueDate, String operator, String filterValue) {
+  bool _evaluateDateCondition(
+      DateTime issueDate, String operator, String filterValue) {
     if (filterValue.isEmpty) {
       // For operators that don't need a value
       switch (operator) {
@@ -604,8 +779,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
 
   bool _compareDates(DateTime issueDate, String operator, DateTime filterDate) {
     // Normalize to date only (remove time)
-    final issueDateOnly = DateTime(issueDate.year, issueDate.month, issueDate.day);
-    final filterDateOnly = DateTime(filterDate.year, filterDate.month, filterDate.day);
+    final issueDateOnly =
+        DateTime(issueDate.year, issueDate.month, issueDate.day);
+    final filterDateOnly =
+        DateTime(filterDate.year, filterDate.month, filterDate.day);
 
     switch (operator) {
       case 'Is equal to':
@@ -613,11 +790,13 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       case 'Is not equal to':
         return !issueDateOnly.isAtSameMomentAs(filterDateOnly);
       case 'Is after or equal to':
-        return issueDateOnly.isAfter(filterDateOnly) || issueDateOnly.isAtSameMomentAs(filterDateOnly);
+        return issueDateOnly.isAfter(filterDateOnly) ||
+            issueDateOnly.isAtSameMomentAs(filterDateOnly);
       case 'Is after':
         return issueDateOnly.isAfter(filterDateOnly);
       case 'Is before or equal to':
-        return issueDateOnly.isBefore(filterDateOnly) || issueDateOnly.isAtSameMomentAs(filterDateOnly);
+        return issueDateOnly.isBefore(filterDateOnly) ||
+            issueDateOnly.isAtSameMomentAs(filterDateOnly);
       case 'Is before':
         return issueDateOnly.isBefore(filterDateOnly);
       case 'Is null':
@@ -630,9 +809,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
   }
 
   void _showStatusFilter(BuildContext context, GlobalKey? buttonKey) {
-    final RenderBox? button = buttonKey?.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? button =
+        buttonKey?.currentContext?.findRenderObject() as RenderBox?;
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     // On mobile, show as bottom sheet or centered dialog
     if (button == null || isMobile) {
       showModalBottomSheet(
@@ -664,6 +844,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                   } else {
                     _selectedStatusFilters.add(status);
                   }
+                  _invalidateFilterCache();
                 });
               },
               onSelectAll: (selectAll) {
@@ -673,6 +854,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                   } else {
                     _selectedStatusFilters.clear();
                   }
+                  _invalidateFilterCache();
                 });
               },
               onApply: () {
@@ -702,7 +884,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       builder: (BuildContext dialogContext) {
         double left = buttonPosition.dx;
         double top = buttonPosition.dy + buttonSize.height + 4;
-        
+
         const double popupWidth = 280;
         if (left + popupWidth > screenSize.width) {
           left = screenSize.width - popupWidth - 8;
@@ -771,17 +953,22 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
   }
 
   List<String> get _statusOptions => ['Drafted', 'Approved', 'Cancelled'];
-  
+
   List<String> get _issueNoOptions {
-    return _issues.map((issue) {
-      return issue.issueNo.isEmpty ? 'Issue #${issue.id}' : issue.issueNo;
-    }).toSet().toList()..sort();
+    return _issues
+        .map((issue) {
+          return issue.issueNo.isEmpty ? 'Issue #${issue.id}' : issue.issueNo;
+        })
+        .toSet()
+        .toList()
+      ..sort();
   }
 
   void _showIssueNoFilter(BuildContext context, GlobalKey? buttonKey) {
-    final RenderBox? button = buttonKey?.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? button =
+        buttonKey?.currentContext?.findRenderObject() as RenderBox?;
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     // On mobile, show as bottom sheet
     if (isMobile || button == null) {
       showModalBottomSheet(
@@ -814,6 +1001,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                   } else {
                     _selectedIssueNoFilters.add(issueNo);
                   }
+                  _invalidateFilterCache();
                 });
               },
               onSelectAll: (selectAll) {
@@ -823,6 +1011,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                   } else {
                     _selectedIssueNoFilters.clear();
                   }
+                  _invalidateFilterCache();
                 });
               },
               onApply: () {
@@ -832,6 +1021,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                 setState(() {
                   _selectedIssueNoFilters.clear();
                   _issueNoSearchText = '';
+                  _invalidateFilterCache();
                 });
                 Navigator.of(context).pop();
               },
@@ -852,7 +1042,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       builder: (BuildContext dialogContext) {
         double left = buttonPosition.dx;
         double top = buttonPosition.dy + buttonSize.height + 4;
-        
+
         const double popupWidth = 280;
         if (left + popupWidth > screenSize.width) {
           left = screenSize.width - popupWidth - 8;
@@ -891,6 +1081,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                       } else {
                         _selectedIssueNoFilters.add(issueNo);
                       }
+                      _invalidateFilterCache();
                     });
                   },
                   onSelectAll: (selectAll) {
@@ -900,6 +1091,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                       } else {
                         _selectedIssueNoFilters.clear();
                       }
+                      _invalidateFilterCache();
                     });
                   },
                   onApply: () {
@@ -909,6 +1101,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                     setState(() {
                       _selectedIssueNoFilters.clear();
                       _issueNoSearchText = '';
+                      _invalidateFilterCache();
                     });
                     Navigator.of(dialogContext).pop();
                   },
@@ -922,9 +1115,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
   }
 
   void _showStDateFilter(BuildContext context, GlobalKey? buttonKey) {
-    final RenderBox? button = buttonKey?.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? button =
+        buttonKey?.currentContext?.findRenderObject() as RenderBox?;
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     // On mobile, show as bottom sheet
     if (isMobile || button == null) {
       showModalBottomSheet(
@@ -947,12 +1141,14 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
               onApply: () {
                 setState(() {
                   _columnFilters['stDate']!.isActive = true;
+                  _invalidateFilterCache();
                 });
                 Navigator.of(dialogContext).pop();
               },
               onClear: () {
                 setState(() {
                   _columnFilters['stDate']!.clear();
+                  _invalidateFilterCache();
                 });
                 Navigator.of(dialogContext).pop();
               },
@@ -973,7 +1169,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       builder: (BuildContext dialogContext) {
         double left = buttonPosition.dx;
         double top = buttonPosition.dy + buttonSize.height + 4;
-        
+
         const double popupWidth = 320;
         if (left + popupWidth > screenSize.width) {
           left = screenSize.width - popupWidth - 8;
@@ -1020,7 +1216,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     );
   }
 
-  void _showColumnFilter(BuildContext context, String columnKey, GlobalKey buttonKey) {
+  void _showColumnFilter(
+      BuildContext context, String columnKey, GlobalKey buttonKey) {
     // For status, use special multi-select filter
     if (columnKey == 'status') {
       _showStatusFilter(context, buttonKey);
@@ -1036,9 +1233,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       _showStDateFilter(context, buttonKey);
       return;
     }
-    final RenderBox? button = buttonKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? button =
+        buttonKey.currentContext?.findRenderObject() as RenderBox?;
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     // On mobile, show as bottom sheet or centered dialog
     if (isMobile || button == null) {
       showModalBottomSheet(
@@ -1061,12 +1259,14 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
               onApply: () {
                 setState(() {
                   _columnFilters[columnKey]!.isActive = true;
+                  _invalidateFilterCache();
                 });
                 Navigator.of(dialogContext).pop();
               },
               onClear: () {
                 setState(() {
                   _columnFilters[columnKey]!.clear();
+                  _invalidateFilterCache();
                 });
                 Navigator.of(dialogContext).pop();
               },
@@ -1092,7 +1292,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
         // Calculate position - adjust if too close to screen edges
         double left = buttonPosition.dx;
         double top = buttonPosition.dy + buttonSize.height + 4;
-        
+
         // Ensure popup doesn't go off screen
         const double popupWidth = 320;
         if (left + popupWidth > screenSize.width) {
@@ -1153,165 +1353,301 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     );
   }
 
+  // Build Header Section (matches DCR pattern)
+  Widget _buildHeader(bool isTablet, Color tealGreen) {
+    final bool isMobile = !isTablet;
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 16,
+        vertical: isMobile ? 8 : 12,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Customer Issues',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 20 : 18,
+                    fontWeight: FontWeight.normal,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.8,
+                  ),
+                ),
+                SizedBox(height: isTablet ? 6 : 4),
+                Text(
+                  'View and manage customer issues',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 13 : 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Filter Icon with Badge
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: isMobile ? 48 : 56,
+                height: isMobile ? 48 : 56,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.grey.withOpacity(0.2),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _openFilterModal,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Icon(
+                      Icons.filter_alt,
+                      color: tealGreen,
+                      size: isMobile ? 24 : 28,
+                    ),
+                  ),
+                ),
+              ),
+              if (_getFilterCount() > 0)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: EdgeInsets.all(isMobile ? 3 : 4),
+                    decoration: BoxDecoration(
+                      color: tealGreen,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    constraints: BoxConstraints(
+                      minWidth: isMobile ? 18 : 20,
+                      minHeight: isMobile ? 18 : 20,
+                    ),
+                    child: Center(
+                      child: Text(
+                        _getFilterCount().toString(),
+                        style: TextStyle(
+                          fontSize: isMobile ? 9 : 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Build Filter Button with Record Count (display only, not clickable)
+  Widget _buildFilterButtonWithCount(bool isTablet, Color tealGreen) {
+    final bool isMobile = !isTablet;
+    final int recordCount = _filteredIssues.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 18,
+        vertical: 12,
+      ),
+      decoration: BoxDecoration(
+        color: tealGreen.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: tealGreen.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Icon(
+            Icons.filter_alt_rounded,
+            color: tealGreen,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '$recordCount ${recordCount == 1 ? 'record' : 'records'}',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: tealGreen,
+                letterSpacing: -0.1,
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Build Action Buttons Section (matches DCR pattern)
+  Widget _buildActionButtonsSection(bool isTablet, Color tealGreen) {
+    final bool isMobile = !isTablet;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double w = constraints.maxWidth;
+          final bool isVeryNarrow = w < 380;
+          if (isVeryNarrow) {
+            // Stack vertically on small phones
+            return Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CustomerIssueEntryScreen(),
+                        ),
+                      );
+                      if (context.mounted) {
+                        await _loadItemIssues(refresh: true);
+                      }
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: Text(
+                      'Customer Issue',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: tealGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 2,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Filter button with record count
+                SizedBox(
+                  width: double.infinity,
+                  child: _buildFilterButtonWithCount(isTablet, tealGreen),
+                ),
+              ],
+            );
+          } else {
+            // Side by side on larger screens
+            return Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CustomerIssueEntryScreen(),
+                        ),
+                      );
+                      if (context.mounted) {
+                        await _loadItemIssues(refresh: true);
+                      }
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: Text(
+                      'Customer Issue',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: tealGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 2,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Filter button with record count - same width as Customer Issue button
+                Expanded(
+                  child: _buildFilterButtonWithCount(isTablet, tealGreen),
+                ),
+              ],
+            );
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bool isTablet = MediaQuery.of(context).size.width >= 800;
-    final double actionHeight = isTablet ? 54 : 48;
     const Color tealGreen = Color(0xFF4db1b3);
-    
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: _dismissKeyboard,
       child: RefreshIndicator(
         onRefresh: () async {
-          setState(() {});
+          await _loadItemIssues(refresh: true);
         },
         color: tealGreen,
         child: Stack(
           children: [
             CustomScrollView(
               controller: _listScrollController,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               slivers: [
-                // Header with filter icon
+                // Header Section
                 SliverToBoxAdapter(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final bool isMobile = constraints.maxWidth < 600;
-                      return Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          isMobile ? 12 : 16,
-                          8,
-                          isMobile ? 12 : 16,
-                          16,
-                        ),
-                        child: Column(
-                          children: [
-                            // Header with filter icon
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Customer Issues',
-                                        style: GoogleFonts.inter(
-                                          fontSize: isTablet ? 20 : 18,
-                                          fontWeight: FontWeight.normal,
-                                          color: Colors.grey[900],
-                                          letterSpacing: -0.8,
-                                        ),
-                                      ),
-                                      SizedBox(height: isTablet ? 6 : 4),
-                                      Text(
-                                        'View and manage customer issues',
-                                        style: GoogleFonts.inter(
-                                          fontSize: isTablet ? 13 : 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey[600],
-                                          letterSpacing: 0.2,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Filter Icon with Badge
-                                Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Container(
-                                      width: isMobile ? 48 : 56,
-                                      height: isMobile ? 48 : 56,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: Colors.grey.withOpacity(0.2),
-                                          width: 1,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(0.05),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          onTap: _openFilterModal,
-                                          borderRadius: BorderRadius.circular(12),
-                                          child: Icon(
-                                            Icons.filter_alt,
-                                            color: tealGreen,
-                                            size: isMobile ? 24 : 28,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (_getFilterCount() > 0)
-                                      Positioned(
-                                        top: 6,
-                                        right: 6,
-                                        child: Container(
-                                          padding: EdgeInsets.all(isMobile ? 3 : 4),
-                                          decoration: BoxDecoration(
-                                            color: tealGreen,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 2),
-                                          ),
-                                          constraints: BoxConstraints(
-                                            minWidth: isMobile ? 18 : 20,
-                                            minHeight: isMobile ? 18 : 20,
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              _getFilterCount().toString(),
-                                              style: TextStyle(
-                                                fontSize: isMobile ? 9 : 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(width: 12),
-                                // New button
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (context) => const CustomerIssueEntryScreen(),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.add, size: 18, color: Colors.white),
-                                  label: const Text('New'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: tealGreen,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: isMobile ? 12 : 16,
-                                      vertical: isMobile ? 10 : 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                  child: _buildHeader(isTablet, tealGreen),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: isTablet ? 14 : 12),
+                ),
+
+                // Action Buttons Section
+                SliverToBoxAdapter(
+                  child: _buildActionButtonsSection(isTablet, tealGreen),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: isTablet ? 14 : 12),
                 ),
                 // List of issues (cards)
                 SliverPadding(
@@ -1321,56 +1657,105 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                     MediaQuery.of(context).size.width >= 600 ? 16 : 12,
                     16,
                   ),
-                  sliver: _isLoading
+                  sliver: _isLoading && _issues.isEmpty
                       ? SliverToBoxAdapter(
                           child: Container(
                             padding: const EdgeInsets.all(40),
-                            child: const Center(child: CircularProgressIndicator()),
+                            child: const Center(
+                                child: CircularProgressIndicator()),
                           ),
                         )
-                      : _filteredIssues.isEmpty
+                      : _loadError != null && _issues.isEmpty
                           ? SliverToBoxAdapter(
                               child: Container(
                                 padding: const EdgeInsets.all(40),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
+                                    Icon(Icons.error_outline,
+                                        size: 64, color: Colors.red.shade400),
                                     const SizedBox(height: 16),
                                     Text(
-                                      'No customer issues found',
+                                      'Failed to load customer issues',
                                       style: GoogleFonts.inter(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w500,
-                                        color: Colors.grey.shade600,
+                                        color: Colors.grey.shade900,
                                       ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'Try adjusting your search or filter criteria',
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: Colors.grey.shade500,
+                                      _loadError!,
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        color: Colors.grey.shade600,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: () =>
+                                          _loadItemIssues(refresh: true),
+                                      icon: const Icon(Icons.refresh, size: 18),
+                                      label: const Text('Retry'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: tealGreen,
+                                        foregroundColor: Colors.white,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
                             )
-                          : SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) {
-                                  final issue = _filteredIssues[index];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: _CustomerIssueCard(
-                                      issue: issue,
-                                      onViewDetails: () => _showIssueDetails(context, issue),
+                          : _filteredIssues.isEmpty
+                              ? SliverToBoxAdapter(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(40),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.inbox,
+                                            size: 64,
+                                            color: Colors.grey.shade400),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'No customer issues found',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Try adjusting your search or filter criteria',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  );
-                                },
-                                childCount: _filteredIssues.length,
-                              ),
-                            ),
+                                  ),
+                                )
+                              : SliverList(
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, index) {
+                                      final issue = _filteredIssues[index];
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 12),
+                                        child: _CustomerIssueCard(
+                                          issue: issue,
+                                          onViewDetails: () =>
+                                              _showIssueDetails(context, issue),
+                                        ),
+                                      );
+                                    },
+                                    childCount: _filteredIssues.length,
+                                  ),
+                                ),
                 ),
               ],
             ),
@@ -1389,13 +1774,14 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
     String? _tempStatus = _status;
     String? _tempFromStore = _fromStore;
     String? _tempIssueNo = _issueNo;
-    
+
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
         color: Colors.black.withOpacity(0.4),
         child: SlideTransition(
-          position: _filterModalAnimation ?? const AlwaysStoppedAnimation(Offset.zero),
+          position: _filterModalAnimation ??
+              const AlwaysStoppedAnimation(Offset.zero),
           child: GestureDetector(
             onTap: () {},
             child: Align(
@@ -1427,7 +1813,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                       padding: EdgeInsets.all(isMobile ? 16 : 20),
                       decoration: BoxDecoration(
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
+                          bottom: BorderSide(
+                              color: Colors.grey.withOpacity(0.1), width: 1),
                         ),
                       ),
                       child: Row(
@@ -1441,156 +1828,201 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
                               letterSpacing: -0.5,
                             ),
                           ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: _closeFilterModal,
-                            icon: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Colors.grey.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.close, size: 18, color: Colors.grey[700]),
-                            ),
-                          ),
                         ],
                       ),
                     ),
                     // Content
                     StatefulBuilder(
                       builder: (context, setModalState) {
-                        return Flexible(
-                          child: SingleChildScrollView(
-                            controller: _filterScrollController,
-                            padding: EdgeInsets.fromLTRB(
-                              isMobile ? 16 : 20,
-                              isMobile ? 16 : 20,
-                              isMobile ? 16 : 20,
-                              MediaQuery.of(context).viewInsets.bottom + (isMobile ? 16 : 20),
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: SingleChildScrollView(
+                                controller: _filterScrollController,
+                                padding: EdgeInsets.fromLTRB(
+                                  isMobile ? 16 : 20,
+                                  isMobile ? 16 : 20,
+                                  isMobile ? 16 : 20,
+                                  isMobile ? 16 : 20,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Status Filter (multi-select checkbox)
+                                    _buildFilterSection(
+                                      title: 'Status',
+                                      icon: Icons.flag_outlined,
+                                      hasActiveFilter:
+                                          _selectedStatusFilters.isNotEmpty,
+                                      onTap: () =>
+                                          _showStatusFilter(context, null),
+                                      selectedCount:
+                                          _selectedStatusFilters.length,
+                                      isTablet: isTablet,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    // Issue No Filter (multi-select checkbox)
+                                    _buildFilterSection(
+                                      title: 'Issue No',
+                                      icon: Icons.numbers_outlined,
+                                      hasActiveFilter:
+                                          _selectedIssueNoFilters.isNotEmpty,
+                                      onTap: () =>
+                                          _showIssueNoFilter(context, null),
+                                      selectedCount:
+                                          _selectedIssueNoFilters.length,
+                                      isTablet: isTablet,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    // ST Date Filter (date filter with operators)
+                                    _buildFilterSection(
+                                      title: 'ST Date',
+                                      icon: Icons.calendar_today_outlined,
+                                      hasActiveFilter:
+                                          _columnFilters['stDate']!.isActive,
+                                      onTap: () =>
+                                          _showStDateFilter(context, null),
+                                      selectedCount:
+                                          _columnFilters['stDate']!.isActive
+                                              ? 1
+                                              : 0,
+                                      isTablet: isTablet,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    // From Store Filter (column filter with operators)
+                                    _buildFilterSection(
+                                      title: 'From Store',
+                                      icon: Icons.store_outlined,
+                                      hasActiveFilter:
+                                          _columnFilters['fromStore']!.isActive,
+                                      onTap: () => _showColumnFilter(
+                                          context, 'fromStore', GlobalKey()),
+                                      selectedCount:
+                                          _columnFilters['fromStore']!.isActive
+                                              ? 1
+                                              : 0,
+                                      isTablet: isTablet,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    // Item Details Filter (column filter with operators)
+                                    _buildFilterSection(
+                                      title: 'Item Details',
+                                      icon: Icons.description_outlined,
+                                      hasActiveFilter:
+                                          _columnFilters['itemDetails']!
+                                              .isActive,
+                                      onTap: () => _showColumnFilter(
+                                          context, 'itemDetails', GlobalKey()),
+                                      selectedCount:
+                                          _columnFilters['itemDetails']!
+                                                  .isActive
+                                              ? 1
+                                              : 0,
+                                      isTablet: isTablet,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Status Filter (multi-select checkbox)
-                                _buildFilterSection(
-                                  title: 'Status',
-                                  icon: Icons.flag_outlined,
-                                  hasActiveFilter: _selectedStatusFilters.isNotEmpty,
-                                  onTap: () => _showStatusFilter(context, null),
-                                  selectedCount: _selectedStatusFilters.length,
-                                  isTablet: isTablet,
+                            // Footer
+                            Container(
+                              padding: EdgeInsets.all(isMobile ? 16 : 20),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  top: BorderSide(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      width: 1),
                                 ),
-                                const SizedBox(height: 24),
-                                // Issue No Filter (multi-select checkbox)
-                                _buildFilterSection(
-                                  title: 'Issue No',
-                                  icon: Icons.numbers_outlined,
-                                  hasActiveFilter: _selectedIssueNoFilters.isNotEmpty,
-                                  onTap: () => _showIssueNoFilter(context, null),
-                                  selectedCount: _selectedIssueNoFilters.length,
-                                  isTablet: isTablet,
-                                ),
-                                const SizedBox(height: 24),
-                                // ST Date Filter (date filter with operators)
-                                _buildFilterSection(
-                                  title: 'ST Date',
-                                  icon: Icons.calendar_today_outlined,
-                                  hasActiveFilter: _columnFilters['stDate']!.isActive,
-                                  onTap: () => _showStDateFilter(context, null),
-                                  selectedCount: _columnFilters['stDate']!.isActive ? 1 : 0,
-                                  isTablet: isTablet,
-                                ),
-                                const SizedBox(height: 24),
-                                // From Store Filter (column filter with operators)
-                                _buildFilterSection(
-                                  title: 'From Store',
-                                  icon: Icons.store_outlined,
-                                  hasActiveFilter: _columnFilters['fromStore']!.isActive,
-                                  onTap: () => _showColumnFilter(context, 'fromStore', GlobalKey()),
-                                  selectedCount: _columnFilters['fromStore']!.isActive ? 1 : 0,
-                                  isTablet: isTablet,
-                                ),
-                                const SizedBox(height: 24),
-                                // Item Details Filter (column filter with operators)
-                                _buildFilterSection(
-                                  title: 'Item Details',
-                                  icon: Icons.description_outlined,
-                                  hasActiveFilter: _columnFilters['itemDetails']!.isActive,
-                                  onTap: () => _showColumnFilter(context, 'itemDetails', GlobalKey()),
-                                  selectedCount: _columnFilters['itemDetails']!.isActive ? 1 : 0,
-                                  isTablet: isTablet,
-                                ),
-                              ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () {
+                                        setModalState(() {
+                                          _tempStatus = null;
+                                          _tempFromStore = null;
+                                          _tempIssueNo = null;
+                                          _selectedStatusFilters.clear();
+                                          _selectedIssueNoFilters.clear();
+                                          for (var filter
+                                              in _columnFilters.values) {
+                                            filter.clear();
+                                          }
+                                        });
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: isMobile
+                                              ? 14
+                                              : isTablet
+                                                  ? 16
+                                                  : 18,
+                                          horizontal: isMobile ? 12 : 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        side: BorderSide(
+                                            color: tealGreen, width: 1.5),
+                                        foregroundColor: tealGreen,
+                                      ),
+                                      child: Text(
+                                        'Clear',
+                                        style: GoogleFonts.inter(
+                                          color: tealGreen,
+                                          fontSize: isMobile ? 14 : 15,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: isMobile ? 12 : 16),
+                                  Expanded(
+                                    flex: 2,
+                                    child: FilledButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _status = _tempStatus;
+                                          _fromStore = _tempFromStore;
+                                          _issueNo = _tempIssueNo;
+                                        });
+                                        _closeFilterModal();
+                                        _loadItemIssues(refresh: true);
+                                      },
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: tealGreen,
+                                        foregroundColor: Colors.white,
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: isMobile
+                                              ? 14
+                                              : isTablet
+                                                  ? 16
+                                                  : 18,
+                                          horizontal: isMobile ? 12 : 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Apply Filter',
+                                        style: GoogleFonts.inter(
+                                          fontSize: isMobile ? 14 : 15,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         );
                       },
-                    ),
-                    // Footer
-                    Container(
-                      padding: EdgeInsets.all(isMobile ? 16 : 20),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                await _clearAllFilters();
-                                _closeFilterModal();
-                              },
-                              style: OutlinedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(
-                                  vertical: isMobile ? 14 : isTablet ? 16 : 18,
-                                  horizontal: isMobile ? 12 : 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                side: BorderSide(color: tealGreen, width: 1.5),
-                                foregroundColor: tealGreen,
-                              ),
-                              child: Text(
-                                'Clear',
-                                style: GoogleFonts.inter(
-                                  color: tealGreen,
-                                  fontSize: isMobile ? 14 : 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: isMobile ? 12 : 16),
-                          Expanded(
-                            flex: 2,
-                            child: FilledButton(
-                              onPressed: _closeFilterModal,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: tealGreen,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(
-                                  vertical: isMobile ? 14 : isTablet ? 16 : 18,
-                                  horizontal: isMobile ? 12 : 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: Text(
-                                'Close',
-                                style: GoogleFonts.inter(
-                                  fontSize: isMobile ? 14 : 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ],
                 ),
@@ -1706,8 +2138,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen> with 
       },
     );
   }
-
 }
+
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
@@ -1748,7 +2180,7 @@ class _DetailRow extends StatelessWidget {
 class _CustomerIssueCard extends StatelessWidget {
   final CustomerIssueItem issue;
   final VoidCallback? onViewDetails;
-  
+
   const _CustomerIssueCard({
     required this.issue,
     this.onViewDetails,
@@ -1761,7 +2193,7 @@ class _CustomerIssueCard extends StatelessWidget {
     final isSmallMobile = screenWidth < 360;
     final isMobile = screenWidth < 600;
     final isTablet = screenWidth >= 600;
-    
+
     final TextStyle label = GoogleFonts.inter(
       color: Colors.black54,
       fontWeight: FontWeight.w600,
@@ -1772,7 +2204,7 @@ class _CustomerIssueCard extends StatelessWidget {
       fontWeight: FontWeight.w600,
       fontSize: isMobile ? 14 : 15,
     );
-    
+
     return InkWell(
       onTap: onViewDetails,
       borderRadius: BorderRadius.circular(20),
@@ -1817,7 +2249,9 @@ class _CustomerIssueCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        issue.issueNo.isEmpty ? 'Issue #${issue.id}' : issue.issueNo,
+                        issue.issueNo.isEmpty
+                            ? 'Issue #${issue.id}'
+                            : issue.issueNo,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.inter(
@@ -1851,11 +2285,14 @@ class _CustomerIssueCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(.06)),
+            Divider(
+                height: 1, thickness: 1, color: Colors.black.withOpacity(.06)),
             const SizedBox(height: 10),
-            _iconKvRow(context, Icons.calendar_today_outlined, 'ST Date', DateFormat('dd-MMM-yyyy').format(issue.stDate)),
+            _iconKvRow(context, Icons.calendar_today_outlined, 'ST Date',
+                DateFormat('dd-MMM-yyyy').format(issue.stDate)),
             SizedBox(height: isMobile ? 6 : 8),
-            _iconKvRow(context, Icons.store_outlined, 'From Store', issue.fromStore),
+            _iconKvRow(
+                context, Icons.store_outlined, 'From Store', issue.fromStore),
           ],
         ),
       ),
@@ -1863,7 +2300,8 @@ class _CustomerIssueCard extends StatelessWidget {
   }
 
   // Icon + key/value row (same as deviation)
-  static Widget _iconKvRow(BuildContext context, IconData icon, String label, String valueText) {
+  static Widget _iconKvRow(
+      BuildContext context, IconData icon, String label, String valueText) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     final bool isSmallMobile = MediaQuery.of(context).size.width < 360;
     return Row(
@@ -1905,34 +2343,36 @@ class _CustomerIssueCard extends StatelessWidget {
     final statusLower = status.toLowerCase();
     Color backgroundColor;
     Color textColor;
-    
+
+    // Match DCR screen styling
     if (statusLower.contains('approved')) {
-      backgroundColor = Colors.green.shade50;
-      textColor = Colors.green.shade700;
-    } else if (statusLower.contains('drafted')) {
-      backgroundColor = Colors.orange.shade50;
-      textColor = Colors.orange.shade700;
-    } else if (statusLower.contains('cancelled')) {
-      backgroundColor = Colors.red.shade50;
-      textColor = Colors.red.shade700;
+      backgroundColor = const Color(0xFFE8F5E9); // Light green
+      textColor = const Color(0xFF2E7D32); // Dark green
+    } else if (statusLower.contains('drafted') ||
+        statusLower.contains('draft')) {
+      backgroundColor = const Color(0xFFF3E8FF); // Light purple
+      textColor = const Color(0xFF6A1B9A); // Dark purple
+    } else if (statusLower.contains('cancelled') ||
+        statusLower.contains('cancel')) {
+      backgroundColor = Colors.grey.shade200; // Light grey
+      textColor = Colors.grey.shade700; // Dark grey
     } else {
-      backgroundColor = Colors.grey.shade100;
+      backgroundColor = Colors.grey.shade200;
       textColor = Colors.grey.shade700;
     }
-    
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: textColor.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         status,
-        style: GoogleFonts.inter(
+        style: TextStyle(
+          color: textColor,
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: textColor,
         ),
       ),
     );
@@ -1993,7 +2433,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
     const blueColor = Color(0xFF2196F3);
     final isMobile = MediaQuery.of(context).size.width < 600;
     final screenWidth = MediaQuery.of(context).size.width;
-    
+
     return Container(
       width: isMobile ? screenWidth - 32 : 320,
       constraints: BoxConstraints(
@@ -2061,7 +2501,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                   borderRadius: BorderRadius.circular(4),
                   borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               items: const [
                 DropdownMenuItem(value: 'And', child: Text('And')),
@@ -2120,7 +2561,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                   backgroundColor: blueColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -2140,8 +2582,14 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
     required ValueChanged<String> onOperatorChanged,
     required ValueChanged<String> onValueChanged,
   }) {
-    final bool needsValue = !['Is null', 'Is not null', 'Is empty', 'Is not empty', 'Has no value', 'Has value']
-        .contains(operator);
+    final bool needsValue = ![
+      'Is null',
+      'Is not null',
+      'Is empty',
+      'Is not empty',
+      'Has no value',
+      'Has value'
+    ].contains(operator);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2157,7 +2605,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                     borderRadius: BorderRadius.circular(4),
                     borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
                 items: widget.operators.map((op) {
                   return DropdownMenuItem(
@@ -2185,7 +2634,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                       borderRadius: BorderRadius.circular(4),
                       borderSide: BorderSide(color: Colors.grey.shade300),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                   onChanged: onValueChanged,
                 ),
@@ -2243,20 +2693,23 @@ class _StatusFilterPopupState extends State<_StatusFilterPopup> {
       return _allStatuses;
     }
     return _allStatuses.where((status) {
-      return status.toLowerCase().contains(_searchController.text.toLowerCase());
+      return status
+          .toLowerCase()
+          .contains(_searchController.text.toLowerCase());
     }).toList();
   }
 
   bool get _isAllSelected {
     final filtered = _filteredStatuses;
-    return filtered.isNotEmpty && filtered.every((status) => widget.selectedStatuses.contains(status));
+    return filtered.isNotEmpty &&
+        filtered.every((status) => widget.selectedStatuses.contains(status));
   }
 
   @override
   Widget build(BuildContext context) {
     const blueColor = Color(0xFF2196F3);
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     return Container(
       width: isMobile ? double.infinity : 280,
       constraints: BoxConstraints(
@@ -2300,7 +2753,8 @@ class _StatusFilterPopupState extends State<_StatusFilterPopup> {
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search',
-              prefixIcon: const Icon(Icons.search, size: 20, color: Colors.grey),
+              prefixIcon:
+                  const Icon(Icons.search, size: 20, color: Colors.grey),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(4),
                 borderSide: BorderSide(color: Colors.grey.shade300),
@@ -2313,7 +2767,8 @@ class _StatusFilterPopupState extends State<_StatusFilterPopup> {
                 borderRadius: BorderRadius.circular(4),
                 borderSide: BorderSide(color: blueColor, width: 2),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
             onChanged: (value) {
               widget.onSearchChanged(value);
@@ -2387,7 +2842,8 @@ class _StatusFilterPopupState extends State<_StatusFilterPopup> {
                   backgroundColor: blueColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -2448,20 +2904,23 @@ class _IssueNoFilterPopupState extends State<_IssueNoFilterPopup> {
       return widget.issueNoOptions;
     }
     return widget.issueNoOptions.where((issueNo) {
-      return issueNo.toLowerCase().contains(_searchController.text.toLowerCase());
+      return issueNo
+          .toLowerCase()
+          .contains(_searchController.text.toLowerCase());
     }).toList();
   }
 
   bool get _isAllSelected {
     final filtered = _filteredIssueNos;
-    return filtered.isNotEmpty && filtered.every((issueNo) => widget.selectedIssueNos.contains(issueNo));
+    return filtered.isNotEmpty &&
+        filtered.every((issueNo) => widget.selectedIssueNos.contains(issueNo));
   }
 
   @override
   Widget build(BuildContext context) {
     const blueColor = Color(0xFF2196F3);
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+
     return Container(
       width: isMobile ? double.infinity : 280,
       constraints: BoxConstraints(
@@ -2505,7 +2964,8 @@ class _IssueNoFilterPopupState extends State<_IssueNoFilterPopup> {
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search',
-              prefixIcon: const Icon(Icons.search, size: 20, color: Colors.grey),
+              prefixIcon:
+                  const Icon(Icons.search, size: 20, color: Colors.grey),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(4),
                 borderSide: BorderSide(color: Colors.grey.shade300),
@@ -2518,7 +2978,8 @@ class _IssueNoFilterPopupState extends State<_IssueNoFilterPopup> {
                 borderRadius: BorderRadius.circular(4),
                 borderSide: BorderSide(color: blueColor, width: 2),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
             onChanged: (value) {
               widget.onSearchChanged(value);
@@ -2592,7 +3053,8 @@ class _IssueNoFilterPopupState extends State<_IssueNoFilterPopup> {
                   backgroundColor: blueColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -2642,16 +3104,18 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
     if (!widget.operators.contains(op2)) {
       op2 = 'Is equal to';
     }
-    
+
     _localState = ColumnFilterState()
       ..condition1Operator = op1
       ..condition1Value = widget.filterState.condition1Value
       ..logicalOperator = widget.filterState.logicalOperator
       ..condition2Operator = op2
       ..condition2Value = widget.filterState.condition2Value;
-    
-    _condition1DateController = TextEditingController(text: _localState.condition1Value);
-    _condition2DateController = TextEditingController(text: _localState.condition2Value);
+
+    _condition1DateController =
+        TextEditingController(text: _localState.condition1Value);
+    _condition2DateController =
+        TextEditingController(text: _localState.condition2Value);
   }
 
   @override
@@ -2687,7 +3151,7 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
     const blueColor = Color(0xFF2196F3);
     final isMobile = MediaQuery.of(context).size.width < 600;
     final screenWidth = MediaQuery.of(context).size.width;
-    
+
     return Container(
       width: isMobile ? screenWidth - 32 : 320,
       constraints: BoxConstraints(
@@ -2757,7 +3221,8 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
                   borderRadius: BorderRadius.circular(4),
                   borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               items: const [
                 DropdownMenuItem(value: 'And', child: Text('And')),
@@ -2818,7 +3283,8 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
                   backgroundColor: blueColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -2854,7 +3320,8 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
                 borderRadius: BorderRadius.circular(4),
                 borderSide: BorderSide(color: Colors.grey.shade300),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             items: widget.operators.map((op) {
               return DropdownMenuItem(
@@ -2885,7 +3352,8 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
                   borderRadius: BorderRadius.circular(4),
                   borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.calendar_today, size: 20),
                   onPressed: onDatePickerTap,
