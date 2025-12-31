@@ -944,43 +944,87 @@ class _DcrListScreenState extends State<DcrListScreen>
   // Build Action Buttons Section
   Widget _buildActionButtonsSection(
       bool isMobile, bool isTablet, Color tealGreen) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildActionButton(
-            icon: Icons.add,
-            label: 'New DCR',
-            color: tealGreen,
-            isMobile: isMobile,
-            onTap: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DcrEntryScreen()),
+    return getIt.isRegistered<UserValidationStore>()
+        ? ListenableBuilder(
+            listenable: getIt<UserValidationStore>(),
+            builder: (context, _) {
+              final validationStore = getIt<UserValidationStore>();
+              final canCreateDcr = validationStore.canCreateDcr;
+              
+              return Row(
+                children: [
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.add,
+                      label: 'New DCR',
+                      color: tealGreen,
+                      isMobile: isMobile,
+                      onTap: canCreateDcr
+                          ? () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const DcrEntryScreen()),
+                              );
+                              if (context.mounted) {
+                                await _load();
+                              }
+                            }
+                          : null,
+                    ),
+                  ),
+                  SizedBox(width: isMobile ? 12 : 16),
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.add,
+                      label: 'New Expense',
+                      color: tealGreen,
+                      isMobile: isMobile,
+                      onTap: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const ExpenseEntryScreen()),
+                        );
+                        if (context.mounted) {
+                          await _load();
+                        }
+                      },
+                    ),
+                  ),
+                ],
               );
-              if (context.mounted) {
-                await _load();
-              }
             },
-          ),
-        ),
-        SizedBox(width: isMobile ? 12 : 16),
-        Expanded(
-          child: _buildActionButton(
-            icon: Icons.add,
-            label: 'New Expense',
-            color: tealGreen,
-            isMobile: isMobile,
-            onTap: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ExpenseEntryScreen()),
-              );
-              if (context.mounted) {
-                await _load();
-              }
-            },
-          ),
-        ),
-      ],
-    );
+          )
+        : Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.add,
+                  label: 'New DCR',
+                  color: tealGreen,
+                  isMobile: isMobile,
+                  onTap: null, // Disabled if validation store not available
+                ),
+              ),
+              SizedBox(width: isMobile ? 12 : 16),
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.add,
+                  label: 'New Expense',
+                  color: tealGreen,
+                  isMobile: isMobile,
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const ExpenseEntryScreen()),
+                    );
+                    if (context.mounted) {
+                      await _load();
+                    }
+                  },
+                ),
+              ),
+            ],
+          );
   }
 
   // Build Action Button
@@ -1250,7 +1294,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                             'Filters',
                             style: GoogleFonts.inter(
                               fontSize: isMobile ? 18 : 20,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.normal,
                               color: Colors.grey[900],
                               letterSpacing: -0.5,
                             ),
@@ -1297,7 +1341,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   'Transaction Type',
                                   style: GoogleFonts.inter(
                                     fontSize: isMobile ? 14 : 15,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.normal,
                                     color: Colors.grey[900],
                                     letterSpacing: 0.1,
                                   ),
@@ -1370,7 +1414,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   'Date',
                                   style: GoogleFonts.inter(
                                     fontSize: isMobile ? 14 : 15,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.normal,
                                     color: Colors.grey[900],
                                     letterSpacing: 0.1,
                                   ),
@@ -2017,6 +2061,14 @@ class _DcrListScreenState extends State<DcrListScreen>
   /// Helper method to check if a DCR item is editable
   /// DCR is editable if status is Draft or Sent Back
   bool _isDcrEditable(UnifiedDcrItem item) {
+    // First check if user validation allows updates
+    if (getIt.isRegistered<UserValidationStore>()) {
+      final validationStore = getIt<UserValidationStore>();
+      if (!validationStore.canUpdateDcr) {
+        return false; // Disable edit if validation fails
+      }
+    }
+    
     if (item.isDcr) {
       // Check statusText first
       final statusText = item.statusText.trim().toLowerCase();
@@ -4637,7 +4689,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               widget.title,
               style: GoogleFonts.inter(
                 fontSize: widget.isTablet ? 16 : 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.normal,
                 color: Colors.grey[900],
               ),
             ),

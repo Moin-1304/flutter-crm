@@ -1547,7 +1547,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 'Filters',
                                 style: GoogleFonts.inter(
                                   fontSize: isMobile ? 18 : 20,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.normal,
                                   color: Colors.grey[900],
                                   letterSpacing: -0.5,
                                 ),
@@ -2651,6 +2651,14 @@ class _TourPlanScreenState extends State<TourPlanScreen>
 
   /// Check if tour plan can be edited (Draft, Pending, or Sent Back status)
   bool _canEditTourPlan(TourPlanItem item) {
+    // First check if user validation allows updates
+    if (getIt.isRegistered<UserValidationStore>()) {
+      final validationStore = getIt<UserValidationStore>();
+      if (!validationStore.canUpdateTourPlan) {
+        return false; // Disable edit if validation fails
+      }
+    }
+    
     // Allow editing for Draft (status 0), Pending (status 1 or 2), and Sent Back (status 4) tour plans
     // Status 4 = Sent Back - user should be able to edit and resubmit
     return item.status == 0 ||
@@ -6964,7 +6972,7 @@ class _FilterModalState extends State<_FilterModal>
                                 'Filters',
                                 style: GoogleFonts.inter(
                                   fontSize: isTablet ? 22 : 20,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.normal,
                                   color: Colors.grey[900],
                                   letterSpacing: -0.5,
                                 ),
@@ -7225,7 +7233,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               widget.title,
               style: GoogleFonts.inter(
                 fontSize: widget.isTablet ? 16 : 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.normal,
                 color: Colors.grey[900],
                 letterSpacing: -0.3,
               ),

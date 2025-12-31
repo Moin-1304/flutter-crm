@@ -1456,7 +1456,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                             'Filters',
                             style: GoogleFonts.inter(
                               fontSize: isMobile ? 18 : 20,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.normal,
                               color: Colors.grey[900],
                               letterSpacing: -0.5,
                             ),
@@ -4799,7 +4799,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               widget.title,
               style: GoogleFonts.inter(
                 fontSize: isTablet ? 16 : 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.normal,
                 color: Colors.grey[900],
                 letterSpacing: -0.3,
               ),

@@ -137,6 +137,9 @@ class _DashboardShellState extends State<DashboardShell>
       setState(() {
         _selected = i;
       });
+      // Re-validate user when switching to a different screen
+      // This ensures buttons are properly enabled/disabled based on current validation
+      _validateUser();
     }
   }
 

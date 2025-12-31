@@ -2892,66 +2892,70 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     _items = _itemDetails
         .map((detail) => _convertItemDetailToIssueItemDetail(detail))
         .toList();
-    // Submit button enabled only when hasEdit = true from workflow API
-    final bool canSubmit = _items.isNotEmpty &&
+
+    // Save button enabled when form is valid (doesn't require hasEdit since it doesn't use workflow)
+    // Note: Save doesn't need to wait for workflow to load since it doesn't use workflow
+    final bool canSave = _items.isNotEmpty &&
         _issueAgainst != null &&
         _issueTo != null &&
         _fromStore != null &&
-        _toStore != null &&
-        _hasEdit && // Enable submit only when hasEdit is true
-        !_isLoadingWorkflow; // Disable while loading workflow
+        _toStore != null;
+
+    // Submit button enabled only when hasEdit = true from workflow API AND form is valid
+    final bool canSubmit =
+        canSave && _hasEdit; // Enable submit only when hasEdit is true
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!canSubmit)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.shade200, width: 1),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline,
-                      size: 20, color: Colors.orange.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _items.isEmpty
-                          ? 'Add at least one item to enable save/submit'
-                          : 'Complete all required fields to save/submit',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        color: Colors.orange.shade800,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        // if (!canSubmit)
+        // Padding(
+        //   padding: const EdgeInsets.only(bottom: 12),
+        //   child: Container(
+        //     padding: const EdgeInsets.all(12),
+        //     decoration: BoxDecoration(
+        //       color: Colors.orange.shade50,
+        //       borderRadius: BorderRadius.circular(8),
+        //       border: Border.all(color: Colors.orange.shade200, width: 1),
+        //     ),
+        // child: Row(
+        //   children: [
+        //     Icon(Icons.info_outline,
+        //         size: 20, color: Colors.orange.shade700),
+        //     const SizedBox(width: 8),
+        //     Expanded(
+        //       child: Text(
+        //         _items.isEmpty
+        //             ? 'Add at least one item to enable save/submit'
+        //             : 'Complete all required fields to save/submit',
+        //         style: GoogleFonts.inter(
+        //           fontSize: 13,
+        //           color: Colors.orange.shade800,
+        //           fontWeight: FontWeight.w500,
+        //         ),
+        //       ),
+        //     ),
+        //   ],
+        // ),
+        //   ),
+        // ),
         // Save and Submit buttons in a row
         Row(
           children: [
             // Save button
             Expanded(
               child: Tooltip(
-                message: canSubmit
+                message: canSave
                     ? 'Save customer issue (without workflow)'
                     : (_items.isEmpty
                         ? 'Add at least one item first'
                         : 'Complete all required fields first'),
                 child: OutlinedButton.icon(
-                  onPressed: canSubmit && !_isLoading ? _handleSave : null,
+                  onPressed: canSave && !_isLoading ? _handleSave : null,
                   icon: Icon(
                     Icons.save,
                     size: 20,
-                    color: canSubmit && !_isLoading
+                    color: canSave && !_isLoading
                         ? tealGreen
                         : Colors.grey.shade700,
                   ),
@@ -2960,7 +2964,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                     style: GoogleFonts.inter(
                       fontSize: isTablet ? 15 : 14,
                       fontWeight: FontWeight.w600,
-                      color: canSubmit && !_isLoading
+                      color: canSave && !_isLoading
                           ? tealGreen
                           : Colors.grey.shade700,
                     ),
@@ -2968,7 +2972,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: tealGreen,
                     side: BorderSide(
-                      color: canSubmit && !_isLoading
+                      color: canSave && !_isLoading
                           ? tealGreen
                           : Colors.grey.shade300,
                       width: 1.5,
