@@ -58,6 +58,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   String? _selectedCustomerType;
   String? _customerTypeError;
 
+  // Employee dropdown for managers/field managers
+  List<String> _employeeOptions = [];
+  final Map<String, int> _employeeNameToId = <String, int>{};
+  String? _selectedEmployee;
+  String? _employeeError;
+  bool _isLoadingEmployees = false;
+  bool _isManagerOrFieldManager = false;
+  int? _selectedEmployeeId; // Store the selected employee ID
+
   // Dynamic calls list
   final List<_CallData> _calls = <_CallData>[
     _CallData(),
@@ -85,6 +94,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     _dateCtrl = TextEditingController(text: _formatDate(_tourPlanDate));
     _clearCallErrors();
 
+    // Check if user is manager or field manager
+    _checkUserRole();
+
     if (widget.tourPlanToEdit != null) {
       // For editing, fetch full tour plan details from API
       _loadTourPlanDetails();
@@ -96,6 +108,109 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       });
     }
     _clearCallErrors();
+  }
+
+  /// Check if user is manager or field manager/coordinator
+  void _checkUserRole() {
+    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final String? serviceArea = userStore?.userDetail?.serviceArea;
+    
+    if (serviceArea != null) {
+      final String serviceAreaLower = serviceArea.trim().toLowerCase();
+      // Check if service area contains "manager" or "field manager" or "coordinator"
+      _isManagerOrFieldManager = serviceAreaLower.contains('manager') || 
+                                  serviceAreaLower.contains('coordinator');
+      
+      print('NewTourPlanScreen: [Employee] Service Area: "$serviceArea", Is Manager/Field Manager: $_isManagerOrFieldManager');
+      
+      if (!_isManagerOrFieldManager) {
+        // For non-managers, set current employee as selected
+        final int? employeeId = userStore?.userDetail?.employeeId;
+        final String? employeeName = userStore?.userDetail?.employeeName;
+        final String? employeeCode = userStore?.userDetail?.code;
+        
+        if (employeeId != null && employeeId > 0 && employeeName != null) {
+          final String displayName = employeeCode != null && employeeCode.isNotEmpty
+              ? '$employeeCode - $employeeName'
+              : employeeName;
+          setState(() {
+            _selectedEmployee = displayName;
+            _selectedEmployeeId = employeeId;
+          });
+          print('NewTourPlanScreen: [Employee] Set current employee: $_selectedEmployee (ID: $_selectedEmployeeId)');
+        }
+      } else {
+        // For managers, load reporting staff list
+        _loadReportingStaffList();
+      }
+    } else {
+      print('NewTourPlanScreen: [Employee] Service Area is null');
+    }
+  }
+
+  /// Load reporting staff list for managers/field managers using CommandType 276
+  Future<void> _loadReportingStaffList() async {
+    if (!_isManagerOrFieldManager) return;
+    
+    setState(() {
+      _isLoadingEmployees = true;
+    });
+
+    try {
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final int? loginEmployeeId = userStore?.userDetail?.employeeId;
+      
+      if (loginEmployeeId == null || loginEmployeeId <= 0) {
+        print('NewTourPlanScreen: [Employee] Login employeeId is null or invalid');
+        return;
+      }
+
+      if (!getIt.isRegistered<CommonRepository>()) {
+        print('NewTourPlanScreen: [Employee] CommonRepository not registered');
+        return;
+      }
+
+      final repo = getIt<CommonRepository>();
+      print('NewTourPlanScreen: [Employee] Loading reporting staff for employeeId: $loginEmployeeId');
+      
+      final List<CommonDropdownItem> items = await repo.getEmployeesReportingTo(loginEmployeeId);
+      
+      if (items.isEmpty) {
+        print('NewTourPlanScreen: [Employee] No reporting staff found');
+        setState(() {
+          _employeeOptions = [];
+          _employeeNameToId.clear();
+        });
+        return;
+      }
+
+      setState(() {
+        _employeeOptions.clear();
+        _employeeNameToId.clear();
+        
+        for (final item in items) {
+          // Format: "CODE - NAME" or just "NAME" if no code
+          final String employeeName = item.employeeName.isNotEmpty ? item.employeeName : item.text;
+          final String employeeCode = item.code ?? '';
+          final String displayName = employeeCode.isNotEmpty
+              ? '$employeeCode - $employeeName'
+              : employeeName;
+          
+          if (displayName.trim().isNotEmpty) {
+            _employeeOptions.add(displayName);
+            _employeeNameToId[displayName] = item.id;
+          }
+        }
+        
+        print('NewTourPlanScreen: [Employee] Loaded ${_employeeOptions.length} reporting staff');
+      });
+    } catch (e) {
+      print('NewTourPlanScreen: [Employee] Error loading reporting staff: $e');
+    } finally {
+      setState(() {
+        _isLoadingEmployees = false;
+      });
+    }
   }
   
   /// Load basic data (clusters, customers, type of work, products, customer type) for new tour plans
@@ -503,6 +618,52 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            // Employee dropdown (for managers/field managers) or read-only display (for others)
+                            _Labeled(
+                              label: 'Employee',
+                              required: _isManagerOrFieldManager,
+                              errorText: _employeeError,
+                              child: _isManagerOrFieldManager
+                                  ? _isLoadingEmployees
+                                      ? AppTextField(
+                                          hint: 'Loading employees...',
+                                          readOnly: true,
+                                          controller: TextEditingController(),
+                                        )
+                                      : _SingleSelectDropdown(
+                                          options: _employeeOptions,
+                                          value: _selectedEmployee,
+                                          hintText: 'Select Employee',
+                                          onChanged: (v) {
+                                        setState(() {
+                                          _selectedEmployee = v;
+                                          _selectedEmployeeId = v != null ? _employeeNameToId[v] : null;
+                                          _employeeError = null;
+                                          // Clear clusters and customers when employee changes
+                                          _selectedClusters.clear();
+                                          _customerOptions.clear();
+                                          _customerNameToId.clear();
+                                          _customerIdToName.clear();
+                                          _customerNameToClusterName.clear();
+                                          _autoSelectedClusters.clear();
+                                          for (final call in _calls) {
+                                            call.customers = {};
+                                          }
+                                          _updateAutoSelectedClusters();
+                                        });
+                                        // Reload clusters and customers for selected employee
+                                        if (_selectedEmployeeId != null) {
+                                          _loadClusterList(force: true);
+                                        }
+                                      },
+                                    )
+                                  : AppTextField(
+                                      hint: 'Employee',
+                                      readOnly: true,
+                                      controller: TextEditingController(text: _selectedEmployee ?? ''),
+                                    ),
+                            ),
+                            const SizedBox(height: 12),
                             _Labeled(
                               label: 'Tour Plan Date',
                               required: true,
@@ -821,8 +982,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
                           final int userId = userStore.userDetail?.id ?? 0;
                           final int sbuId = userStore.userDetail?.sbuId ?? 0;
-                          final int employeeId = userStore.userDetail?.employeeId ?? 0;
-                          final String employee = userStore.userDetail?.employeeName ?? "";
+                          
+                          // For managers/field managers, use selectedEmployeeId; otherwise use current user's employeeId
+                          final int employeeId = (_isManagerOrFieldManager && _selectedEmployeeId != null)
+                              ? _selectedEmployeeId!
+                              : (userStore.userDetail?.employeeId ?? 0);
+                          final String employee = (_isManagerOrFieldManager && _selectedEmployee != null)
+                              ? _selectedEmployee!
+                              : (userStore.userDetail?.employeeName ?? "");
+
+                          print('NewTourPlanScreen: [Submit] Using employeeId: $employeeId (Manager/Field Manager: $_isManagerOrFieldManager)');
 
                           // For updates: Header Id must be TourPlanId from the list item
                           final bool isNewTourPlan = widget.tourPlanToEdit == null;
@@ -1237,10 +1406,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
     String? dateError;
     String? clusterError;
+    String? employeeError;
     final List<_CallValidationState> callErrors = List<_CallValidationState>.generate(
       _calls.length,
       (_) => _CallValidationState(),
     );
+
+    // Validate employee selection for managers/field managers
+    if (_isManagerOrFieldManager) {
+      if (_selectedEmployee == null || _selectedEmployee!.isEmpty || _selectedEmployeeId == null) {
+        employeeError = 'Please select an employee';
+        firstMessage ??= 'Select an employee';
+        isValid = false;
+      }
+    }
 
     if (_dateCtrl.text.trim().isEmpty) {
       dateError = 'Please select a tour plan date';
@@ -1301,6 +1480,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     setState(() {
       _dateError = dateError;
       _clusterError = clusterError;
+      _employeeError = employeeError;
       _customerTypeError = customerTypeError;
       _callErrors = callErrors;
     });
@@ -1355,20 +1535,30 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
       final repo = getIt<CommonRepository>();
       const int countryId = 208;
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-
-      int? employeeId = userStore?.userDetail?.employeeId;
-      int retry = 0;
-      while (employeeId == null && retry < 5) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        employeeId = userStore?.userDetail?.employeeId;
-        retry++;
+      
+      // For managers/field managers, use selectedEmployeeId; otherwise use current user's employeeId
+      int? employeeIdNullable;
+      if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
+        employeeIdNullable = _selectedEmployeeId;
+        print('NewTourPlanScreen: [Clusters] Using selected employeeId: $employeeIdNullable (Manager/Field Manager)');
+      } else {
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        employeeIdNullable = userStore?.userDetail?.employeeId;
+        int retry = 0;
+        while (employeeIdNullable == null && retry < 5) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          employeeIdNullable = userStore?.userDetail?.employeeId;
+          retry++;
+        }
+        if (employeeIdNullable == null) {
+          print('NewTourPlanScreen: [Clusters] employeeId still null after retries');
+          return;
+        }
+        print('NewTourPlanScreen: [Clusters] Using current user employeeId: $employeeIdNullable');
       }
-      if (employeeId == null) {
-        print('NewTourPlanScreen: [Clusters] employeeId still null after retries');
-        return;
-      }
 
+      // At this point, employeeIdNullable is guaranteed to be non-null
+      final int employeeId = employeeIdNullable!;
       final List<CommonDropdownItem> items = await repo.getClusterList(countryId, employeeId);
       final Set<String> clusters = items
           .map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim())
@@ -1633,11 +1823,26 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         return;
       }
       final repo = getIt<TourPlanRepository>();
-      final userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-      final int? employeeId = userStore?.userDetail?.employeeId;
-      if (employeeId == null) {
-        print('NewTourPlanScreen: [Customers] employeeId is null - skipping');
-        return;
+      
+      // For managers/field managers, use selectedEmployeeId; otherwise use current user's employeeId
+      int? employeeId;
+      int? selectedEmployeeIdForRequest;
+      
+      if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
+        // Manager/Field Manager: use selected employee
+        employeeId = _selectedEmployeeId;
+        selectedEmployeeIdForRequest = _selectedEmployeeId;
+        print('NewTourPlanScreen: [Customers] Using selected employeeId: $employeeId (Manager/Field Manager)');
+      } else {
+        // Regular user: use current user's employeeId
+        final userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        employeeId = userStore?.userDetail?.employeeId;
+        selectedEmployeeIdForRequest = null;
+        if (employeeId == null) {
+          print('NewTourPlanScreen: [Customers] employeeId is null - skipping');
+          return;
+        }
+        print('NewTourPlanScreen: [Customers] Using current user employeeId: $employeeId');
       }
 
       // Build ClusterIds from selected clusters in dropdown
@@ -1674,7 +1879,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         return;
       }
 
-      // Dynamic Id: use tour plan Id if editing; otherwise fall back to current employeeId
+      // Dynamic Id: use tour plan Id if editing; otherwise fall back to employeeId
       final int? dynamicId = widget.tourPlanToEdit?.id ?? employeeId;
 
       // Use current plan date (yyyy-MM-dd)
@@ -1704,7 +1909,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         tourPlanAcceptId: null,
         remarks: null,
         clusterIds: selectedClusterIds,
-        selectedEmployeeId: null,
+        selectedEmployeeId: selectedEmployeeIdForRequest,
         date: dateStr,
         customerTypeId: customerTypeId,
       );

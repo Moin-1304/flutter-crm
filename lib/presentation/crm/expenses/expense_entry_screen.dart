@@ -574,7 +574,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                       ),
                       const SizedBox(height: 12),
                       _Labeled(
-                        label: 'Amount (₹)',
+                        label: 'Amount (LKR)',
                         required: true,
                         errorText: detail.amountError,
                         child: TextFormField(

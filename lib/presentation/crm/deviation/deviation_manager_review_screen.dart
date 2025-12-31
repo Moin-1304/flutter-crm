@@ -63,21 +63,38 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   final GlobalKey _employeeFilterSectionKey = GlobalKey();
 
   void _scrollFilterSectionIntoView(GlobalKey key) {
+    // Use multiple post-frame callbacks to ensure layout is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = key.currentContext;
-      if (context == null || !_filterScrollController.hasClients) return;
-      final RenderObject? renderObject = context.findRenderObject();
-      if (renderObject == null || !renderObject.attached) return;
-      final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
-      if (viewport == null) return;
-      final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
-      final position = _filterScrollController.position;
-      final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
-      _filterScrollController.animateTo(
-        clamped,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOutCubic,
-      );
+      // Wait for another frame to ensure layout is stable
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          final context = key.currentContext;
+          if (context == null || !_filterScrollController.hasClients) return;
+          final RenderObject? renderObject = context.findRenderObject();
+          if (renderObject == null || !renderObject.attached) return;
+          
+          // Check if layout is needed
+          if (renderObject.debugNeedsLayout) return;
+          
+          final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
+          if (viewport == null) return;
+          
+          final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
+          final position = _filterScrollController.position;
+          if (!position.hasContentDimensions) return;
+          
+          final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+          _filterScrollController.animateTo(
+            clamped,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+          );
+        } catch (e) {
+          // Silently handle any scroll errors to prevent layout issues
+          print('Error scrolling to filter section: $e');
+        }
+      });
     });
   }
   
@@ -703,6 +720,40 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
     );
   }
 
+  /// Parse From Cluster from Tour Plan name (format: "text | customer | date")
+  /// Returns the text part which represents the cluster
+  String _parseFromClusterFromTourPlan(String? tourPlanName) {
+    if (tourPlanName == null || tourPlanName.trim().isEmpty) {
+      return 'Not Available';
+    }
+    try {
+      final parts = tourPlanName.split('|');
+      if (parts.isNotEmpty) {
+        return parts[0].trim().isEmpty ? 'Not Available' : parts[0].trim();
+      }
+    } catch (e) {
+      // If parsing fails, return original
+    }
+    return 'Not Available';
+  }
+
+  /// Parse From Customer from Tour Plan name (format: "text | customer | date")
+  /// Returns the customer part
+  String _parseFromCustomerFromTourPlan(String? tourPlanName) {
+    if (tourPlanName == null || tourPlanName.trim().isEmpty) {
+      return 'Not Available';
+    }
+    try {
+      final parts = tourPlanName.split('|');
+      if (parts.length >= 2) {
+        return parts[1].trim().isEmpty ? 'Not Available' : parts[1].trim();
+      }
+    } catch (e) {
+      // If parsing fails, return original
+    }
+    return 'Not Available';
+  }
+
   /// Show deviation details modal (same as deviation list screen)
   void _showDeviationDetails(DeviationApiItem data) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
@@ -825,10 +876,40 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                       const SizedBox(height: 20),
                       Divider(height: 1, color: Colors.grey.shade300),
                       const SizedBox(height: 20),
-                      // Show cluster only for "UnPlanned Visit"
+                      // Show From and To Area/Customer for "UnPlanned Visit"
                       if (typeLabel.toLowerCase().contains('unplanned visit')) ...[
-                        _DetailRow('Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
+                        // From Area / Customer (from Tour Plan) - Only show if Tour Plan is linked
+                        if (data.tourPlanName.isNotEmpty) ...[
+                          Text(
+                            'From Area / Customer',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _DetailRow('From Cluster', _parseFromClusterFromTourPlan(data.tourPlanName)),
+                          const SizedBox(height: 12),
+                          _DetailRow('From Customer', _parseFromCustomerFromTourPlan(data.tourPlanName)),
+                          const SizedBox(height: 20),
+                        ],
+                        // To Area / Customer
+                        Text(
+                          'To Area / Customer',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _DetailRow('To Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
                         const SizedBox(height: 12),
+                        _DetailRow('To Customer', data.customerId > 0 ? 'Customer ID: ${data.customerId}' : 'Not Assigned'),
+                        const SizedBox(height: 20),
                       ],
                       _DetailRow('Tour Plan', _EnhancedDeviationCard._valueOrPlaceholder(data.tourPlanName, placeholder: 'Not Linked')),
                       const SizedBox(height: 20),
@@ -1430,7 +1511,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                   options: _statusOptions,
                                   onChanged: (v) => setModalState(() => _tempStatus = v),
                                   isTablet: isTablet,
-                                  onExpanded: () => _scrollFilterSectionIntoView(_statusFilterSectionKey),
+                                  // Removed onExpanded to prevent layout conflicts during scrolling
                                 ),
                                 const SizedBox(height: 24),
                                 // Employee
@@ -1443,7 +1524,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                     options: _employeeOptions,
                                     onChanged: (v) => setModalState(() => _tempEmployee = v),
                                     isTablet: isTablet,
-                                    onExpanded: () => _scrollFilterSectionIntoView(_employeeFilterSectionKey),
+                                    // Removed onExpanded to prevent layout conflicts during scrolling
                                   ),
                                 if (!_shouldDisableEmployeeFilter()) const SizedBox(height: 24),
                               ],
@@ -1998,11 +2079,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
         _filteredOptions = widget.options;
       }
     });
-    if (_isExpanded) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onExpanded?.call();
-    });
-    }
+    // Removed onExpanded callback to prevent layout conflicts during scrolling
   }
   
   void _selectOption(String? option) {
@@ -2130,7 +2207,6 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               maxHeight: isTablet ? 400 : 350,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
                   padding: EdgeInsets.all(isTablet ? 12 : 10),
@@ -2146,8 +2222,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           color: Colors.grey[900],
                         ),
                         decoration: InputDecoration(
-                          hintText:
-                              'Search ${widget.title.toLowerCase()}...',
+                          hintText: 'Search ${widget.title.toLowerCase()}...',
                           hintStyle: GoogleFonts.inter(
                             fontSize: isTablet ? 14 : 13,
                             color: Colors.grey[400],
@@ -2216,7 +2291,6 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
-                          shrinkWrap: true,
                           padding: EdgeInsets.symmetric(
                             horizontal: isTablet ? 12 : 10,
                             vertical: isTablet ? 8 : 6,

@@ -17,5 +17,33 @@ class ItemIssueRepositoryImpl implements ItemIssueRepository {
       throw Exception('Failed to get ItemIssue list: ${e.toString()}');
     }
   }
+
+  @override
+  Future<ItemIssueApiItem> getItemIssue(int id) async {
+    try {
+      if (getIt.isRegistered<ItemIssueApi>()) {
+        final itemIssueApi = getIt<ItemIssueApi>();
+        return await itemIssueApi.getItemIssue(id);
+      } else {
+        throw Exception('ItemIssueApi not registered in service locator');
+      }
+    } catch (e) {
+      throw Exception('Failed to get ItemIssue: ${e.toString()}');
+    }
+  }
+
+  @override
+  Future<ItemIssueSaveResponse> saveItemIssue(ItemIssueSaveRequest request) async {
+    try {
+      if (getIt.isRegistered<ItemIssueApi>()) {
+        final itemIssueApi = getIt<ItemIssueApi>();
+        return await itemIssueApi.saveItemIssue(request);
+      } else {
+        throw Exception('ItemIssueApi not registered in service locator');
+      }
+    } catch (e) {
+      throw Exception('Failed to save ItemIssue: ${e.toString()}');
+    }
+  }
 }
 

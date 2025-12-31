@@ -220,8 +220,8 @@ class _DeviationListScreenState extends State<DeviationListScreen>
             if (_deviations.isNotEmpty) {
               print('Sample deviation data:');
               for (var deviation in _deviations.take(3)) {
-                print(
-                    '  - Employee: ${deviation.employeeName}, Status: ${deviation.deviationStatus}, Customer: ${deviation.clusterName}');
+              print(
+                  '  - Employee: ${deviation.employeeName}, Status: ${deviation.deviationStatus1 ?? deviation.deviationStatus}, Customer: ${deviation.clusterName}');
               }
             }
           }
@@ -303,16 +303,26 @@ class _DeviationListScreenState extends State<DeviationListScreen>
       // Apply client-side filtering for status and customer
       _filteredDeviations = _deviations.where((e) {
         // Status matching - handle variations (case-insensitive, handle hyphens/spaces)
+        // Use deviationStatus1 if available (actual status text), otherwise fall back to deviationStatus
         bool statusMatch = true;
         if (_status != null) {
-          final apiStatus = (e.deviationStatus ?? '').trim().toLowerCase();
+          // Prefer deviationStatus1 (the actual status text like "Approved", "Submitted")
+          // Fall back to deviationStatus if deviationStatus1 is null/empty
+          final statusText = e.deviationStatus1 ?? e.deviationStatus;
+          final apiStatus = (statusText ?? '').trim().toLowerCase();
           final filterStatus = _status!.trim().toLowerCase();
-          // Normalize both strings (remove hyphens, extra spaces)
-          final normalizedApiStatus =
-              apiStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
-          final normalizedFilterStatus =
-              filterStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
-          statusMatch = normalizedApiStatus == normalizedFilterStatus;
+          
+          // If filtering by "Pending" and status is null/empty, treat as pending
+          if (filterStatus == 'pending' && apiStatus.isEmpty) {
+            statusMatch = true;
+          } else {
+            // Normalize both strings (remove hyphens, extra spaces)
+            final normalizedApiStatus =
+                apiStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+            final normalizedFilterStatus =
+                filterStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+            statusMatch = normalizedApiStatus == normalizedFilterStatus;
+          }
         }
 
         // Customer matching
@@ -421,8 +431,8 @@ class _DeviationListScreenState extends State<DeviationListScreen>
   void _applyFiltersFromModal() {
     _closeFilterModal();
     _pendingFilterApply?.call();
-    // Reapply filters to the existing data
-    _applyStatusAndCustomerFilter();
+    // Reload data from API with new filters (especially important for employee filter)
+    _loadDeviations();
   }
 
   // Load customer list for filtering
@@ -517,7 +527,8 @@ class _DeviationListScreenState extends State<DeviationListScreen>
       city: apiItem.clusterName,
       type: apiItem.deviationType,
       description: apiItem.description,
-      status: apiItem.deviationStatus,
+      // Use deviationStatus1 (actual status text) if available, otherwise fall back to deviationStatus
+      status: apiItem.deviationStatus1 ?? apiItem.deviationStatus,
     );
   }
 
@@ -618,8 +629,9 @@ class _DeviationListScreenState extends State<DeviationListScreen>
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final String typeLabel =
         data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
-    final String statusLabel =
-        data.deviationStatus.isNotEmpty ? data.deviationStatus : 'Status';
+    // Use deviationStatus1 (actual status text) if available, otherwise fall back to deviationStatus
+    final String statusText = data.deviationStatus1 ?? data.deviationStatus;
+    final String statusLabel = statusText.isNotEmpty ? statusText : 'Status';
     final bool isApproved = statusLabel.toLowerCase().contains('approved');
 
     showModalBottomSheet(
@@ -1492,9 +1504,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                   onChanged: (v) =>
                                       setModalState(() => _tempStatus = v),
                                   isTablet: isTablet,
-                                  onExpanded: () =>
-                                      _scrollFilterSectionIntoView(
-                                          _statusFilterSectionKey),
+                                  // Removed onExpanded to prevent layout conflicts
                                 ),
                                 const SizedBox(height: 24),
                                 // Employee
@@ -1508,9 +1518,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                     onChanged: (v) =>
                                         setModalState(() => _tempEmployee = v),
                                     isTablet: isTablet,
-                                    onExpanded: () =>
-                                        _scrollFilterSectionIntoView(
-                                            _employeeFilterSectionKey),
+                                    // Removed onExpanded to prevent layout conflicts
                                   ),
                                 if (!_shouldDisableEmployeeFilter())
                                   const SizedBox(height: 24),
@@ -1666,8 +1674,9 @@ class _DeviationListScreenState extends State<DeviationListScreen>
             final statusNames = <String>[];
             _statusNameToId.clear();
 
-            // Check if "Open" status (ID 0) exists, if not add it
+            // Check if "Open" status (ID 0) and "Pending" status exist
             bool hasOpenStatus = false;
+            bool hasPendingStatus = false;
             for (final status in statuses) {
               final statusName = status.text.trim();
               if (statusName.isNotEmpty) {
@@ -1675,6 +1684,10 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                 _statusNameToId[statusName] = status.id;
                 if (status.id == 0) {
                   hasOpenStatus = true;
+                }
+                // Check for "Pending" status (case-insensitive)
+                if (statusName.toLowerCase() == 'pending') {
+                  hasPendingStatus = true;
                 }
               }
             }
@@ -1684,6 +1697,15 @@ class _DeviationListScreenState extends State<DeviationListScreen>
               statusNames.insert(0, 'Open'); // Add at the beginning
               _statusNameToId['Open'] = 0;
               print('Added "Open" status (ID: 0) to status list');
+            }
+
+            // Always ensure "Pending" status exists (add if not found)
+            if (!hasPendingStatus) {
+              // Find the best position: after Open if Open exists, otherwise at the beginning
+              final insertIndex = hasOpenStatus ? 1 : 0;
+              statusNames.insert(insertIndex, 'Pending');
+              _statusNameToId['Pending'] = 1; // Use ID 1 for Pending
+              print('Added "Pending" status (ID: 1) to status list');
             }
 
             print('Status names extracted: $statusNames');

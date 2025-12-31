@@ -46,6 +46,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
   String? _deviationTypeErrorText;
   String? _reasonErrorText;
   String? _dateError;
+  String? _toClusterErrorText;
+  String? _toCustomerErrorText;
   bool _isLoading = false;
   bool _isEditing = false;
   List<String> _deviationTypes = [];
@@ -61,8 +63,16 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
   List<String> _customerOptions = [];
   final Map<String, int> _customerNameToId = <String, int>{};
   
+  // From Cluster and From Customer (read-only, from Tour Plan)
+  String? _fromCluster;
+  String? _fromCustomer;
+  
   // Store tour plan detail ID for editing mode
   int? _storedTourPlanDetailId;
+  
+  // Store tour plan data: map from tour plan display text to cluster/customer
+  Map<String, String> _tourPlanToCluster = <String, String>{};
+  Map<String, String> _tourPlanToCustomer = <String, String>{};
 
   @override
   void initState() {
@@ -178,6 +188,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
           if (mounted) {
             final List<String> tourPlanOptions = [];
             final Map<String, int> tourPlanNameToId = {};
+            final Map<String, String> tourPlanToCluster = {};
+            final Map<String, String> tourPlanToCustomer = {};
 
             for (final item in tourPlanItems) {
               final planText = item.text.trim().isNotEmpty ? item.text.trim() : 'Unknown';
@@ -187,11 +199,17 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
 
               tourPlanOptions.add(displayText);
               tourPlanNameToId[displayText] = item.id;
+              
+              // Store mapping for From fields: text -> cluster, customer -> customer
+              tourPlanToCluster[displayText] = planText; // text field contains cluster
+              tourPlanToCustomer[displayText] = customer; // customer field contains customer
             }
 
             setState(() {
               _tourPlanOptions = tourPlanOptions;
               _tourPlanNameToId = tourPlanNameToId;
+              _tourPlanToCluster = tourPlanToCluster;
+              _tourPlanToCustomer = tourPlanToCustomer;
             });
 
             print('DeviationEntryScreen: Loaded ${_tourPlanOptions.length} tour plans');
@@ -343,8 +361,12 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
     if (selectedOption != null && mounted) {
       setState(() {
         _tourPlan = selectedOption;
+        // Populate From fields when Tour Plan is set
+        _fromCluster = _tourPlanToCluster[selectedOption] ?? '';
+        _fromCustomer = _tourPlanToCustomer[selectedOption] ?? '';
       });
       print('DeviationEntryScreen: Tour plan set successfully: $_tourPlan');
+      print('DeviationEntryScreen: From Cluster: $_fromCluster, From Customer: $_fromCustomer');
     } else {
       print('DeviationEntryScreen: Tour plan with ID $_storedTourPlanDetailId not found in list');
       // Optionally, you could add a fallback option here
@@ -618,10 +640,21 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       selectedOption = '$dateStr | $tourPlanName (Previous)';
       _tourPlanOptions.add(selectedOption);
       _tourPlanNameToId[selectedOption] = tourPlanId ?? 0;
+      // For fallback, try to extract cluster/customer from the tour plan name
+      // Format would be different, so we'll leave it empty or try to parse
       print('DeviationEntryScreen: Created fallback: $selectedOption');
     }
     
-    _tourPlan = selectedOption;
+    if (mounted) {
+      setState(() {
+        _tourPlan = selectedOption;
+        // Populate From fields when Tour Plan is set
+        if (selectedOption != null) {
+          _fromCluster = _tourPlanToCluster[selectedOption] ?? '';
+          _fromCustomer = _tourPlanToCustomer[selectedOption] ?? '';
+        }
+      });
+    }
     print('DeviationEntryScreen: Final tour plan set to: $_tourPlan');
   }
 
@@ -780,10 +813,28 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       firstMessage ??= 'Enter reason for deviation';
     }
 
+    // Validate To Cluster and To Customer for Unplanned Visit
+    String? toClusterError;
+    String? toCustomerError;
+    if (_deviationType?.toLowerCase() == 'unplanned visit') {
+      if (_selectedCluster == null || _selectedCluster!.trim().isEmpty) {
+        toClusterError = 'Please select To Cluster';
+        isValid = false;
+        firstMessage ??= 'Select To Cluster';
+      }
+      if (_selectedCustomer == null || _selectedCustomer!.trim().isEmpty) {
+        toCustomerError = 'Please select To Customer';
+        isValid = false;
+        firstMessage ??= 'Select To Customer';
+      }
+    }
+
     setState(() {
       _dateError = dateError;
       _deviationTypeErrorText = deviationTypeError;
       _reasonErrorText = reasonError;
+      _toClusterErrorText = toClusterError;
+      _toCustomerErrorText = toCustomerError;
     });
 
     if (!isValid) {
@@ -1101,6 +1152,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                                         if (v?.toLowerCase() != 'unplanned visit') {
                                           _selectedCluster = null;
                                           _selectedCustomer = null;
+                                          _toClusterErrorText = null;
+                                          _toCustomerErrorText = null;
                                         }
                                       });
                                       // Load customers if UnPlanned Visit is selected and cluster is selected
@@ -1140,23 +1193,112 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                                 value: _tourPlan,
                                 hintText: 'Select tour plan',
                                 searchHintText: 'Search tour plan...',
-                                onChanged: (v) => setState(() => _tourPlan = v),
+                                onChanged: (v) {
+                                  setState(() {
+                                    _tourPlan = v;
+                                    // Populate From fields when Tour Plan is selected
+                                    if (v != null && v.isNotEmpty) {
+                                      _fromCluster = _tourPlanToCluster[v] ?? '';
+                                      _fromCustomer = _tourPlanToCustomer[v] ?? '';
+                                    } else {
+                                      // Clear From fields when Tour Plan is cleared
+                                      _fromCluster = null;
+                                      _fromCustomer = null;
+                                    }
+                                  });
+                                },
                               ),
                             ),
                             
-                            // Cluster and Customer for UnPlanned Visit
+                            // From and To Area/Customer for UnPlanned Visit
                             if (_deviationType?.toLowerCase() == 'unplanned visit') ...[
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
+                              Divider(height: 1, color: Colors.grey.shade300),
+                              const SizedBox(height: 20),
+                              
+                              // From Area / Customer (Read-Only) - Only show when Tour Plan is selected
+                              if (_tourPlan != null && _tourPlan!.isNotEmpty) ...[
+                                Text(
+                                  'From Area / Customer',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                    letterSpacing: 0.1,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                _LabeledField(
+                                  label: 'From Cluster',
+                                  child: TextFormField(
+                                    readOnly: true,
+                                    enabled: false,
+                                    controller: TextEditingController(text: _fromCluster ?? ''),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
+                                      color: Colors.grey[600],
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'Will be filled from Tour Plan',
+                                      hintStyle: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w400,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _LabeledField(
+                                  label: 'From Customer',
+                                  child: TextFormField(
+                                    readOnly: true,
+                                    enabled: false,
+                                    controller: TextEditingController(text: _fromCustomer ?? ''),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
+                                      color: Colors.grey[600],
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'Will be filled from Tour Plan',
+                                      hintStyle: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w400,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                              ],
+                              
+                              // To Area / Customer (Mandatory)
+                              Text(
+                                'To Area / Customer',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[700],
+                                  letterSpacing: 0.1,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               _LabeledField(
-                                label: 'Cluster/City',
+                                label: 'To Cluster',
+                                required: true,
+                                errorText: _toClusterErrorText,
                                 child: SearchableDropdown(
                                   options: _clusterOptions,
                                   value: _selectedCluster,
                                   hintText: 'Select cluster/city',
                                   searchHintText: 'Search cluster/city...',
+                                  hasError: _toClusterErrorText != null,
                                   onChanged: (v) {
                                     setState(() {
                                       _selectedCluster = v;
+                                      _toClusterErrorText = null; // Clear error when changed
                                       // Clear customer when cluster changes
                                       _selectedCustomer = null;
                                     });
@@ -1174,7 +1316,9 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                               ),
                               const SizedBox(height: 12),
                               _LabeledField(
-                                label: 'Customer',
+                                label: 'To Customer',
+                                required: true,
+                                errorText: _toCustomerErrorText,
                                 child: SearchableDropdown(
                                   options: _customerOptions,
                                   value: _selectedCustomer,
@@ -1182,7 +1326,13 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                                       ? 'Select cluster first' 
                                       : 'Select customer',
                                   searchHintText: 'Search customer...',
-                                  onChanged: (v) => setState(() => _selectedCustomer = v),
+                                  hasError: _toCustomerErrorText != null,
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _selectedCustomer = v;
+                                      _toCustomerErrorText = null; // Clear error when changed
+                                    });
+                                  },
                                 ),
                               ),
                             ],

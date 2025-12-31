@@ -132,6 +132,21 @@ class DcrRepositoryImpl implements DcrRepository {
           transactionType: null,
           typeOfWorkId: null,
           isGeneric: null,
+          coVisit: params.coVisit,
+          coVisitorDetails: params.coVisit && params.coVisitorId != null
+              ? [
+                  CoVisitorDetail(
+                    id: null,
+                    dcrDetailId: null,
+                    coVisitorId: params.coVisitorId!,
+                    coordinatorId: employeeIdInt,
+                    remarks: null,
+                    active: 1,
+                    slNo: null,
+                    coVisitorName: null,
+                  ),
+                ]
+              : const [], // Empty array when coVisit is false
         );
         
         final response = await dcrApi.saveDcr(request);
@@ -579,6 +594,21 @@ class DcrRepositoryImpl implements DcrRepository {
             transactionType: null,
             typeOfWorkId: null,
             isGeneric: null,
+            coVisit: entry.coVisit,
+            coVisitorDetails: entry.coVisit && entry.coVisitorId != null
+                ? [
+                    CoVisitorDetail(
+                      id: null,
+                      dcrDetailId: null,
+                      coVisitorId: entry.coVisitorId!,
+                      coordinatorId: int.tryParse(entry.employeeId) ?? user.id,
+                      remarks: null,
+                      active: 1,
+                      slNo: null,
+                      coVisitorName: null,
+                    ),
+                  ]
+                : const [], // Empty array when coVisit is false
           );
           
           final response = await dcrApi.saveDcr(saveRequest);

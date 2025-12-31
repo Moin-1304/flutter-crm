@@ -11,6 +11,7 @@ import 'package:boilerplate/data/network/apis/common/common_api.dart';
 import 'package:boilerplate/data/network/apis/expense/expense_api.dart';
 import 'package:boilerplate/data/network/apis/attendance/punch_in_out_api.dart';
 import 'package:boilerplate/data/network/apis/item_issue/item_issue_api.dart';
+import 'package:boilerplate/data/network/apis/workflow/workflow_api.dart';
 import 'package:boilerplate/data/network/constants/endpoints.dart';
 import 'package:boilerplate/data/network/interceptors/error_interceptor.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
@@ -62,6 +63,7 @@ class NetworkModule {
     getIt.registerSingleton<ExpenseApi>(ExpenseApi(getIt<DioClient>()));
     getIt.registerSingleton<PunchInOutApi>(PunchInOutApi(getIt<DioClient>()));
     getIt.registerSingleton<ItemIssueApi>(ItemIssueApi(getIt<DioClient>()));
+    getIt.registerSingleton<WorkflowApi>(WorkflowApi(getIt<DioClient>()));
   }
 }
 

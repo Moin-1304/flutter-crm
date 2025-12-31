@@ -61,6 +61,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
 
   // API-loaded data
   List<CustomerIssueItem> _issues = [];
+  // Store full API items by ID for editing
+  final Map<String, ItemIssueApiItem> _apiItemsById = {};
   String? _loadError;
   int _currentPage = 1;
   final int _pageSize = 15;
@@ -125,6 +127,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     if (refresh) {
       _currentPage = 1;
       _hasMore = true;
+      _apiItemsById.clear(); // Clear API items map on refresh
     }
 
     if (!_hasMore && !refresh) return;
@@ -228,8 +231,14 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
         setState(() {
           if (refresh) {
             _issues = _convertApiItemsToCustomerIssues(response.items);
+            _apiItemsById.clear(); // Clear map on refresh
           } else {
             _issues.addAll(_convertApiItemsToCustomerIssues(response.items));
+          }
+
+          // Store full API items by ID for editing
+          for (var apiItem in response.items) {
+            _apiItemsById[apiItem.id.toString()] = apiItem;
           }
 
           _hasMore = response.items.length >= _pageSize;
@@ -608,11 +617,30 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                         child: FilledButton.icon(
                           onPressed: () async {
                             Navigator.of(context).pop();
+                            // Get full API item data for editing
+                            final apiItem = _apiItemsById[issue.id];
+                            print('═══════════════════════════════════════════════════════════');
+                            print('✏️ EDIT BUTTON CLICKED');
+                            print('═══════════════════════════════════════════════════════════');
+                            print('Issue ID: ${issue.id}');
+                            print('API Items Map Size: ${_apiItemsById.length}');
+                            print('API Items Keys: ${_apiItemsById.keys.take(5).toList()}');
+                            print('API Item Found: ${apiItem != null}');
+                            if (apiItem != null) {
+                              print('API Item ID: ${apiItem.id}');
+                              print('API Item No: ${apiItem.no}');
+                              print('API Item Details Count: ${apiItem.details?.length ?? 0}');
+                            } else {
+                              print('⚠️ WARNING: API Item not found in map!');
+                            }
+                            print('═══════════════════════════════════════════════════════════');
+                            
                             final result = await Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => CustomerIssueEntryScreen(
                                   issueId: issue.id,
                                   issueData: issue,
+                                  apiIssueData: apiItem, // Pass full API data
                                 ),
                               ),
                             );
@@ -638,11 +666,14 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                         child: FilledButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
+                            // Get full API item data for viewing
+                            final apiItem = _apiItemsById[issue.id];
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => CustomerIssueEntryScreen(
                                   issueId: issue.id,
                                   issueData: issue,
+                                  apiIssueData: apiItem, // Pass full API data
                                   isViewOnly: true,
                                 ),
                               ),
@@ -1524,7 +1555,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                     onPressed: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const CustomerIssueEntryScreen(),
+                          builder: (_) => CustomerIssueEntryScreen(),
                         ),
                       );
                       if (context.mounted) {
@@ -1570,7 +1601,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                     onPressed: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const CustomerIssueEntryScreen(),
+                          builder: (_) => CustomerIssueEntryScreen(),
                         ),
                       );
                       if (context.mounted) {

@@ -169,4 +169,9 @@ class Endpoints {
 
   // ItemIssue endpoints
   static const String itemIssueList = "$baseUrl/ItemIssue/List";
+  static const String itemIssueSave = "$baseUrl/ItemIssue/Save";
+  static String itemIssueGet(int id) => "$baseUrl/ItemIssue/Get?Id=$id";
+
+  // Workflow endpoints
+  static const String workflowGetAllActions = "$baseUrl/WorkflowMaster/GetAllActions";
 }

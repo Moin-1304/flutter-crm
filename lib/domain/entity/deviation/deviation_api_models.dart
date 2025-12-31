@@ -65,6 +65,7 @@ class DeviationApiItem {
   final String impact;
   final String deviationType;
   final String deviationStatus;
+  final String? deviationStatus1; // The actual status text (e.g., "Approved", "Pending", "Submitted")
   final int commentCount;
   final String clusterName;
   final int employeeId;
@@ -91,6 +92,7 @@ class DeviationApiItem {
     required this.impact,
     required this.deviationType,
     required this.deviationStatus,
+    this.deviationStatus1,
     required this.commentCount,
     required this.clusterName,
     required this.employeeId,
@@ -119,6 +121,7 @@ class DeviationApiItem {
       impact: json['impact'] ?? '',
       deviationType: json['deviationType'] ?? '',
       deviationStatus: json['deviationStatus'] ?? '',
+      deviationStatus1: json['deviationStatus1'],
       commentCount: json['commentCount'] ?? 0,
       clusterName: json['clusterName'] ?? '',
       employeeId: json['employeeId'] ?? 0,

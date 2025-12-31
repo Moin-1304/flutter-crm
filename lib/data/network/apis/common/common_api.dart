@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../../../../core/data/network/dio/dio_client.dart';
 import '../../constants/endpoints.dart';
@@ -434,6 +435,27 @@ class CommonApi {
       int divisionId) async {
     try {
       final request = ItemDescriptionRequest(divisionId: divisionId);
+      final requestJson = request.toJson();
+      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestJson);
+      
+      print('\n');
+      print('═══════════════════════════════════════════════════════════════');
+      print('🔵 ITEM DESCRIPTION API REQUEST');
+      print('═══════════════════════════════════════════════════════════════');
+      print('📡 Endpoint: POST ${Endpoints.commonGetAuto}');
+      print('📋 Request Headers:');
+      print('   Content-Type: application/json');
+      print('');
+      print('📦 Request Body (JSON):');
+      print(requestJsonString);
+      print('');
+      print('🔑 Key Parameters:');
+      print('   CommandType: ${requestJson['CommandType']}');
+      print('   Division: ${requestJson['Division']}');
+      print('   DivisionId: $divisionId');
+      print('═══════════════════════════════════════════════════════════════');
+      print('');
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: request.toJson(),
@@ -444,18 +466,86 @@ class CommonApi {
         ),
       );
 
+      // Print API Response Details
+      print('═══════════════════════════════════════════════════════════════');
+      print('🟢 ITEM DESCRIPTION API RESPONSE');
+      print('═══════════════════════════════════════════════════════════════');
+      print('📊 Status Code: ${response.statusCode}');
+      print('📋 Response Headers:');
+      if (response.headers.map.isNotEmpty) {
+        response.headers.map.forEach((key, value) {
+          print('   $key: ${value.join(", ")}');
+        });
+      }
+      print('');
+      
+      if (response.data != null) {
+        print('📦 Response Data Type: ${response.data.runtimeType}');
+        
+        if (response.data is List) {
+          final responseList = response.data as List;
+          print('📊 Total Items: ${responseList.length}');
+          print('');
+          print('📋 Response Body (JSON):');
+          
+          // Pretty print the response
+          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          print(responseJsonString);
+          print('');
+          
+          // Print first few items in detail
+          if (responseList.isNotEmpty) {
+            print('📝 Sample Items (first ${responseList.length > 3 ? 3 : responseList.length}):');
+            for (int i = 0; i < responseList.length && i < 3; i++) {
+              final item = responseList[i];
+              print('   Item ${i + 1}:');
+              if (item is Map) {
+                print('     id: ${item['id']}');
+                print('     text: ${item['text']}');
+                if (item.containsKey('code')) print('     code: ${item['code']}');
+                if (item.containsKey('name')) print('     name: ${item['name']}');
+                if (item.containsKey('uom')) print('     uom: ${item['uom']}');
+                if (item.containsKey('stock')) print('     stock: ${item['stock']}');
+                if (item.containsKey('rate')) print('     rate: ${item['rate']}');
+              } else {
+                print('     $item');
+              }
+            }
+            if (responseList.length > 3) {
+              print('   ... and ${responseList.length - 3} more items');
+            }
+          } else {
+            print('⚠️  No item descriptions found in response');
+          }
+        } else {
+          print('📋 Response Body:');
+          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          print(responseJsonString);
+        }
+      } else {
+        print('⚠️  No response data received');
+      }
+      print('═══════════════════════════════════════════════════════════════');
+      print('');
+
       if (response.data != null) {
         if (response.data is List) {
-          return (response.data as List)
+          final items = (response.data as List)
               .map((item) => CommonDropdownItem.fromJson(item))
               .toList();
+          print('✅ Successfully parsed ${items.length} item description items');
+          print('');
+          return items;
         } else {
+          print('❌ Invalid response format - expected array');
           throw Exception('Invalid response format - expected array');
         }
       } else {
+        print('❌ No response data received');
         throw Exception('No response data received');
       }
     } catch (e) {
+      print('❌ [CommonApi] Item Description API Exception: ${e.toString()}');
       throw Exception('Failed to get item description list: ${e.toString()}');
     }
   }
@@ -483,9 +573,31 @@ class CommonApi {
       );
 
       // Print API Request Details
-      print('🔵 [CommonApi] Batch No API Call');
-      print('URL: ${Endpoints.commonGetAuto}');
-      print('Request Body: ${request.toJson()}');
+      final requestJson = request.toJson();
+      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestJson);
+      
+      print('\n');
+      print('═══════════════════════════════════════════════════════════════');
+      print('🔵 BATCH NO API REQUEST');
+      print('═══════════════════════════════════════════════════════════════');
+      print('📡 Endpoint: POST ${Endpoints.commonGetAuto}');
+      print('📋 Request Headers:');
+      print('   Content-Type: application/json');
+      print('');
+      print('📦 Request Body (JSON):');
+      print(requestJsonString);
+      print('');
+      print('🔑 Key Parameters:');
+      print('   CommandType: ${requestJson['CommandType']}');
+      print('   Id (ItemId): ${requestJson['Id']}');
+      print('   EmployeeId: ${requestJson['EmployeeId']}');
+      print('   ToDate: ${requestJson['ToDate']}');
+      print('   BizUnit: ${requestJson['BizUnit']}');
+      print('   Module: ${requestJson['Module']}');
+      print('   CustomerId: ${requestJson['CustomerId']}');
+      print('   TransactionType: ${requestJson['TransactionType']}');
+      print('═══════════════════════════════════════════════════════════════');
+      print('');
 
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
@@ -498,22 +610,72 @@ class CommonApi {
       );
 
       // Print API Response Details
-      print('🟢 [CommonApi] Batch No API Response');
-      print('Status Code: ${response.statusCode}');
-      if (response.data != null) {
-        print('Response Data Type: ${response.data.runtimeType}');
-        if (response.data is List) {
-          print('Response Items Count: ${(response.data as List).length}');
-        }
+      print('═══════════════════════════════════════════════════════════════');
+      print('🟢 BATCH NO API RESPONSE');
+      print('═══════════════════════════════════════════════════════════════');
+      print('📊 Status Code: ${response.statusCode}');
+      print('📋 Response Headers:');
+      if (response.headers.map.isNotEmpty) {
+        response.headers.map.forEach((key, value) {
+          print('   $key: ${value.join(", ")}');
+        });
       }
+      print('');
+      
+      if (response.data != null) {
+        print('📦 Response Data Type: ${response.data.runtimeType}');
+        
+        if (response.data is List) {
+          final responseList = response.data as List;
+          print('📊 Total Items: ${responseList.length}');
+          print('');
+          print('📋 Response Body (JSON):');
+          
+          // Pretty print the response
+          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          print(responseJsonString);
+          print('');
+          
+          // Print first few items in detail
+          if (responseList.isNotEmpty) {
+            print('📝 Sample Items (first ${responseList.length > 3 ? 3 : responseList.length}):');
+            for (int i = 0; i < responseList.length && i < 3; i++) {
+              final item = responseList[i];
+              print('   Item ${i + 1}:');
+              if (item is Map) {
+                print('     id: ${item['id']}');
+                print('     text: ${item['text']}');
+                if (item.containsKey('stock')) print('     stock: ${item['stock']}');
+                if (item.containsKey('expiryDate')) print('     expiryDate: ${item['expiryDate']}');
+                if (item.containsKey('name')) print('     name: ${item['name']}');
+              } else {
+                print('     $item');
+              }
+            }
+            if (responseList.length > 3) {
+              print('   ... and ${responseList.length - 3} more items');
+            }
+          } else {
+            print('⚠️  No batch numbers found in response');
+          }
+        } else {
+          print('📋 Response Body:');
+          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          print(responseJsonString);
+        }
+      } else {
+        print('⚠️  No response data received');
+      }
+      print('═══════════════════════════════════════════════════════════════');
+      print('');
 
       if (response.data != null) {
         if (response.data is List) {
           final items = (response.data as List)
               .map((item) => CommonDropdownItem.fromJson(item))
               .toList();
-          print(
-              '✅ [CommonApi] Batch No API Success - Parsed ${items.length} items');
+          print('✅ Successfully parsed ${items.length} batch number items');
+          print('');
           return items;
         } else {
           print(
@@ -527,6 +689,37 @@ class CommonApi {
     } catch (e) {
       print('❌ [CommonApi] Batch No API Exception: ${e.toString()}');
       throw Exception('Failed to get batch no list: ${e.toString()}');
+    }
+  }
+
+  /// Get Reporting Manager List (CommandType: 333, Id: 91)
+  /// Returns list of reporting managers for co-visit dropdown
+  Future<List<CommonDropdownItem>> getReportingManagerList() async {
+    try {
+      final request = ReportingManagerRequest();
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get reporting manager list: ${e.toString()}');
     }
   }
 }

@@ -24,6 +24,8 @@ import 'package:boilerplate/domain/repository/attendance/punch_in_out_repository
 import 'package:boilerplate/data/repository/attendance/punch_in_out_repository_impl.dart';
 import 'package:boilerplate/domain/repository/item_issue/item_issue_repository.dart';
 import 'package:boilerplate/data/repository/item_issue/item_issue_repository_impl.dart';
+import 'package:boilerplate/domain/repository/workflow/workflow_repository.dart';
+import 'package:boilerplate/data/repository/workflow/workflow_repository_impl.dart';
 
 import '../../../di/service_locator.dart';
 import '../../network/apis/attendance/punch_in_out_api.dart';
@@ -63,5 +65,8 @@ class RepositoryModule {
     
     // ItemIssue repository
     getIt.registerSingleton<ItemIssueRepository>(ItemIssueRepositoryImpl());
+    
+    // Workflow repository
+    getIt.registerSingleton<WorkflowRepository>(WorkflowRepositoryImpl());
   }
 }

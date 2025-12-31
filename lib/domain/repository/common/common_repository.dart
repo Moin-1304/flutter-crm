@@ -44,4 +44,5 @@ abstract class CommonRepository {
     int module = 6,
     int transactionType = 14,
   });
+  Future<List<CommonDropdownItem>> getReportingManagerList();
 }

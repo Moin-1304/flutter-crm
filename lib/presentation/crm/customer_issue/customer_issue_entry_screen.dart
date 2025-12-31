@@ -9,16 +9,55 @@ import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/core/widgets/app_dropdowns.dart';
 import 'package:boilerplate/data/network/constants/endpoints.dart';
+import 'package:boilerplate/domain/repository/workflow/workflow_repository.dart';
+import 'package:boilerplate/domain/entity/workflow/workflow_api_models.dart';
+import 'package:boilerplate/domain/repository/item_issue/item_issue_repository.dart';
+import 'package:boilerplate/domain/entity/item_issue/item_issue_api_models.dart';
+
+class ItemDetail {
+  String? divisionCategory;
+  String? itemDescription;
+  String? batchNo;
+  int? batchId; // Store batch ID when batch is selected
+  TextEditingController qtyInStockCtrl = TextEditingController();
+  TextEditingController qtyIssuedCtrl = TextEditingController();
+  TextEditingController uomCtrl = TextEditingController();
+  TextEditingController rateCtrl = TextEditingController();
+  TextEditingController amountCtrl = TextEditingController();
+  TextEditingController remarksCtrl = TextEditingController();
+  String? divisionCategoryError;
+  String? itemDescriptionError;
+  String? qtyIssuedError;
+
+  // Dropdown options for this item (can be loaded per item or shared)
+  List<String> itemDescriptionOptions = [];
+  List<String> batchNoOptions = [];
+
+  ItemDetail();
+
+  void dispose() {
+    qtyInStockCtrl.dispose();
+    qtyIssuedCtrl.dispose();
+    uomCtrl.dispose();
+    rateCtrl.dispose();
+    amountCtrl.dispose();
+    remarksCtrl.dispose();
+  }
+}
 
 class CustomerIssueEntryScreen extends StatefulWidget {
   final String? issueId; // Optional issue ID for edit/view mode
-  final CustomerIssueItem? issueData; // Optional pre-loaded issue data
+  final CustomerIssueItem?
+      issueData; // Optional pre-loaded issue data (limited fields)
+  final ItemIssueApiItem?
+      apiIssueData; // Optional full API issue data (preferred for editing)
   final bool isViewOnly; // If true, shows read-only view mode
 
-  const CustomerIssueEntryScreen({
+  CustomerIssueEntryScreen({
     super.key,
     this.issueId,
     this.issueData,
+    this.apiIssueData,
     this.isViewOnly = false,
   });
 
@@ -47,16 +86,25 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   bool _isDetailsExpanded = true;
   bool _isListExpanded = true;
 
-  // Items list
-  final List<IssueItemDetail> _items = [];
+  // Items list - using ItemDetail for expandable sections (like ExpenseDetail)
+  List<ItemDetail> _itemDetails = [ItemDetail()];
+  int _expandedIndex = 0; // Track which item detail is expanded
+
+  // Legacy items list (for backward compatibility, will be converted from _itemDetails)
+  List<IssueItemDetail> _items = [];
 
   // Loading state
   bool _isLoading = false;
 
+  // Store API issue data for delayed population (after dropdowns load)
+  ItemIssueApiItem? _pendingApiIssueData;
+
   // Check if in edit mode
   bool get _isEditMode =>
       !widget.isViewOnly &&
-      (widget.issueId != null || widget.issueData != null);
+      (widget.issueId != null ||
+          widget.issueData != null ||
+          widget.apiIssueData != null);
   // Check if in view mode
   bool get _isViewMode => widget.isViewOnly;
 
@@ -88,19 +136,105 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   bool _isLoadingIssueAgainst = false;
   String? _issueAgainstLoadError;
 
+  // Division/Category dropdown options (shared across all items)
+  List<String> _divisionCategoryOptions = [];
+  List<CommonDropdownItem> _divisionCategoryList = [];
+  bool _isLoadingDivisionCategory = false;
+
+  // Item Description dropdown options (loaded per item based on division)
+  final Map<String, List<String>> _divisionToItemDescriptions = {};
+  final Map<String, List<CommonDropdownItem>> _divisionToItemDescriptionList =
+      {};
+
+  // Batch No dropdown options (loaded per item based on item description)
+  final Map<String, List<String>> _itemToBatchNumbers = {};
+  final Map<String, List<CommonDropdownItem>> _itemToBatchNumberList = {};
+
   @override
   void initState() {
     super.initState();
-    // Load stores, issue-to, and issue-against options after the first frame is built to avoid blocking
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadStores();
-      _loadIssueToOptions();
-      _loadIssueAgainstOptions();
-    });
-
-    if (_isEditMode || _isViewMode) {
-      _loadIssueData();
+    // Store API issue data if provided for later population
+    if (widget.apiIssueData != null) {
+      _pendingApiIssueData = widget.apiIssueData;
     }
+
+    // Load stores, issue-to, issue-against, and division category options after the first frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      print('🔄 Starting form initialization...');
+      print('   Edit Mode: $_isEditMode');
+      print('   View Mode: $_isViewMode');
+      print('   Issue ID: ${widget.issueId}');
+      print('   Has API Data: ${widget.apiIssueData != null}');
+
+      // Step 1: ALWAYS call Get API in edit/view mode to get complete data
+      // Even if apiIssueData is provided, Get API has more complete details
+      if ((_isEditMode || _isViewMode) && widget.issueId != null) {
+        final issueId = int.tryParse(widget.issueId!);
+        if (issueId != null && issueId > 0) {
+          print(
+              '📥 Calling Get API to load complete issue data (ID: $issueId)...');
+          print('   (This will override any partial data from list screen)');
+          await _loadIssueFromApi(issueId);
+        } else {
+          print('⚠️ Invalid issue ID: ${widget.issueId}');
+        }
+      } else {
+        print(
+            'ℹ️ Not in edit/view mode or no issue ID - skipping Get API call');
+      }
+
+      // Step 2: Load all dropdowns in parallel
+      print('🔄 Loading dropdowns for form population...');
+      await Future.wait([
+        _loadStores(),
+        _loadIssueToOptions(),
+        _loadIssueAgainstOptions(),
+        _loadDivisionCategoryOptions(),
+      ]);
+
+      print('✅ All dropdowns loaded');
+      print('   - Stores: ${_storeList.length}');
+      print('   - Issue To: ${_issueToList.length}');
+      print('   - Issue Against: ${_issueAgainstList.length}');
+      print('   - Division Categories: ${_divisionCategoryList.length}');
+
+      // Step 3: After both API data and dropdowns are loaded, populate form
+      // Check pending data first (loaded from API), then widget data
+      print('🔍 Checking for API data to populate form...');
+      print(
+          '   _pendingApiIssueData: ${_pendingApiIssueData != null ? "EXISTS (ID: ${_pendingApiIssueData!.id})" : "NULL"}');
+      print(
+          '   widget.apiIssueData: ${widget.apiIssueData != null ? "EXISTS (ID: ${widget.apiIssueData!.id})" : "NULL"}');
+
+      final apiDataToUse = _pendingApiIssueData ?? widget.apiIssueData;
+      if (apiDataToUse != null && mounted) {
+        print(
+            '✅ Found API data - Populating form with API data (ID: ${apiDataToUse.id})...');
+        await _populateFormFromApiIssue(apiDataToUse);
+        _pendingApiIssueData = null; // Clear pending data
+        print('✅ Form population completed');
+      } else {
+        print('❌ No API data to populate!');
+        if (widget.issueId != null) {
+          print(
+              '   Issue ID provided: ${widget.issueId}, but no API data available');
+        }
+        if (_pendingApiIssueData == null && widget.apiIssueData == null) {
+          print(
+              '   ⚠️ WARNING: Both _pendingApiIssueData and widget.apiIssueData are null!');
+          print('   This means the Get API either failed or was not called.');
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _referenceCtrl.dispose();
+    for (final detail in _itemDetails) {
+      detail.dispose();
+    }
+    super.dispose();
   }
 
   /// Load store list from API
@@ -277,14 +411,172 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _referenceCtrl.dispose();
-    super.dispose();
+  /// Load Division/Category list from API (shared across all items)
+  Future<void> _loadDivisionCategoryOptions() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingDivisionCategory = true;
+    });
+
+    try {
+      final commonRepository = getIt<CommonRepository>();
+      final divisionCategoryList =
+          await commonRepository.getDivisionCategoryList().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception(
+              'Request timeout: Failed to load division/category options');
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _divisionCategoryList = divisionCategoryList;
+          _divisionCategoryOptions =
+              divisionCategoryList.map((item) => item.text).toList();
+          _isLoadingDivisionCategory = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading division/category: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingDivisionCategory = false;
+          _divisionCategoryOptions = [];
+        });
+      }
+    }
   }
 
-  void _loadIssueData() {
-    // If issueData is provided, use it directly
+  /// Load Item Description list for a specific division
+  Future<void> _loadItemDescriptionsForDivision(
+      String? divisionCategory, ItemDetail itemDetail) async {
+    if (!mounted || divisionCategory == null) return;
+
+    // Find division ID from the list
+    final divisionItem = _divisionCategoryList.firstWhere(
+      (item) => item.text == divisionCategory,
+      orElse: () => _divisionCategoryList.first,
+    );
+
+    // Check if already loaded
+    if (_divisionToItemDescriptions.containsKey(divisionCategory)) {
+      setState(() {
+        itemDetail.itemDescriptionOptions =
+            _divisionToItemDescriptions[divisionCategory]!;
+      });
+      return;
+    }
+
+    try {
+      final commonRepository = getIt<CommonRepository>();
+      final itemDescriptionList = await commonRepository
+          .getItemDescriptionList(divisionItem.id)
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout: Failed to load item descriptions');
+        },
+      );
+
+      if (mounted) {
+        final itemDescriptions =
+            itemDescriptionList.map((item) => item.text).toList();
+        _divisionToItemDescriptions[divisionCategory] = itemDescriptions;
+        _divisionToItemDescriptionList[divisionCategory] = itemDescriptionList;
+        setState(() {
+          itemDetail.itemDescriptionOptions = itemDescriptions;
+        });
+      }
+    } catch (e) {
+      print('Error loading item descriptions: $e');
+      if (mounted) {
+        setState(() {
+          itemDetail.itemDescriptionOptions = [];
+        });
+      }
+    }
+  }
+
+  /// Load Batch Numbers for a specific item
+  Future<void> _loadBatchNumbersForItem(
+      String? itemDescription, ItemDetail itemDetail) async {
+    if (!mounted || itemDescription == null) return;
+
+    // Find the division to get the item description list
+    String? divisionCategory = itemDetail.divisionCategory;
+    if (divisionCategory == null) return;
+
+    final itemDescriptionList =
+        _divisionToItemDescriptionList[divisionCategory];
+    if (itemDescriptionList == null) return;
+
+    final itemItem = itemDescriptionList.firstWhere(
+      (item) => item.text == itemDescription,
+      orElse: () => itemDescriptionList.first,
+    );
+
+    // Check if already loaded
+    if (_itemToBatchNumbers.containsKey(itemDescription)) {
+      setState(() {
+        itemDetail.batchNoOptions = _itemToBatchNumbers[itemDescription]!;
+      });
+      return;
+    }
+
+    try {
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) throw Exception('User not available');
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      final employeeId = userStore?.userDetail?.employeeId ?? 1;
+      final bizUnit = (userStore?.userDetail?.sbuId != null &&
+              userStore!.userDetail!.sbuId! > 0)
+          ? userStore.userDetail!.sbuId!
+          : ((user.sbuId != null && user.sbuId! > 0) ? user.sbuId! : 1);
+
+      final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final commonRepository = getIt<CommonRepository>();
+      final batchNoList = await commonRepository
+          .getBatchNoList(
+            itemId: itemItem.id,
+            employeeId: employeeId,
+            toDate: toDate,
+            bizUnit: bizUnit,
+            customerId: 0,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (mounted) {
+        final batchNos = batchNoList.map((item) => item.text).toList();
+        _itemToBatchNumbers[itemDescription] = batchNos;
+        _itemToBatchNumberList[itemDescription] = batchNoList;
+        setState(() {
+          itemDetail.batchNoOptions = batchNos;
+        });
+      }
+    } catch (e) {
+      print('Error loading batch numbers: $e');
+      if (mounted) {
+        setState(() {
+          itemDetail.batchNoOptions = [];
+        });
+      }
+    }
+  }
+
+  Future<void> _loadIssueData() async {
+    // If full API issue data is provided, use it (preferred)
+    if (widget.apiIssueData != null) {
+      await _populateFormFromApiIssue(widget.apiIssueData!);
+      return;
+    }
+
+    // If limited issueData is provided, use it
     if (widget.issueData != null) {
       _populateFormFromIssue(widget.issueData!);
       return;
@@ -292,34 +584,411 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
     // Otherwise, load from API using issueId
     if (widget.issueId != null) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // TODO: Call API to load issue data
-      // For now, using mock data based on screenshot
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          _populateFormFromMockData();
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      });
+      _loadIssueFromApi(int.tryParse(widget.issueId!) ?? 0);
     }
+  }
+
+  /// Load issue data from API by ID
+  Future<void> _loadIssueFromApi(int issueId) async {
+    if (issueId == 0) {
+      print('⚠️ Invalid issue ID: ${widget.issueId}');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      print('═══════════════════════════════════════════════════════════');
+      print('📥 LOADING ISSUE FROM API');
+      print('═══════════════════════════════════════════════════════════');
+      print('Issue ID: $issueId');
+
+      final itemIssueRepo = getIt<ItemIssueRepository>();
+      final apiIssue = await itemIssueRepo.getItemIssue(issueId);
+
+      print('✅ Issue loaded successfully');
+      print('   Issue No: ${apiIssue.no}');
+      print('   Details Count: ${apiIssue.details?.length ?? 0}');
+
+      // Store for population after dropdowns load
+      if (mounted) {
+        print('💾 Storing API data in _pendingApiIssueData...');
+        _pendingApiIssueData = apiIssue;
+        print('   ✅ Stored: Issue ID ${apiIssue.id}, No: ${apiIssue.no}');
+        print(
+            '   ✅ Stored: Issue To ID ${apiIssue.issueTo}, Issue Against ID ${apiIssue.issueAgainst}');
+        print('   ✅ Stored: Details count ${apiIssue.details?.length ?? 0}');
+
+        // If dropdowns are already loaded, populate immediately
+        if (_storeList.isNotEmpty &&
+            _issueToList.isNotEmpty &&
+            _issueAgainstList.isNotEmpty) {
+          print('   Dropdowns already loaded - populating form immediately...');
+          await _populateFormFromApiIssue(apiIssue);
+          _pendingApiIssueData = null;
+        } else {
+          print(
+              '   Dropdowns not loaded yet - will populate after dropdowns load');
+        }
+
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading issue from API: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load customer issue: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _populateFormFromApiIssue(ItemIssueApiItem apiIssue) async {
+    print('═══════════════════════════════════════════════════════════');
+    print('📝 POPULATING FORM FROM API ISSUE DATA');
+    print('═══════════════════════════════════════════════════════════');
+    print('Issue ID: ${apiIssue.id}');
+    print('Issue No: ${apiIssue.no}');
+    print('Date: ${apiIssue.date}');
+    print('Department Text: ${apiIssue.departmentText}');
+    print('To Store Text: ${apiIssue.toStoreText}');
+    print('Issue Against ID: ${apiIssue.issueAgainst}');
+    print('Issue To ID: ${apiIssue.issueTo}');
+    print('Reference: ${apiIssue.reference}');
+    print('Details Count: ${apiIssue.details?.length ?? 0}');
+    print('Issue Against List Count: ${_issueAgainstList.length}');
+    print('Issue To List Count: ${_issueToList.length}');
+    print('═══════════════════════════════════════════════════════════');
+
+    // Map full API issue data to form fields
+    setState(() {
+      _stNo = apiIssue.no.isNotEmpty ? apiIssue.no : apiIssue.id.toString();
+
+      // Parse date
+      try {
+        if (apiIssue.date.isNotEmpty) {
+          _stDate = DateTime.tryParse(apiIssue.date) ??
+              DateFormat('yyyy-MM-dd').parse(apiIssue.date);
+        }
+      } catch (e) {
+        print('Error parsing date: ${apiIssue.date}');
+      }
+
+      // Map stores - use text values directly
+      _fromStore =
+          apiIssue.departmentText.isNotEmpty ? apiIssue.departmentText : null;
+      _toStore = apiIssue.toStoreText.isNotEmpty ? apiIssue.toStoreText : null;
+
+      // Map issue against - convert ID to text value
+      if (apiIssue.issueAgainst != null) {
+        if (_issueAgainstList.isNotEmpty) {
+          try {
+            final issueAgainstId = apiIssue.issueAgainst;
+            print('🔍 Looking for Issue Against ID: $issueAgainstId');
+            print(
+                '   Available IDs in list: ${_issueAgainstList.map((e) => e.id).toList()}');
+
+            final issueAgainstItem = _issueAgainstList.firstWhere(
+              (item) => item.id == issueAgainstId,
+            );
+            _issueAgainst = issueAgainstItem.text;
+            print(
+                '✅ Mapped Issue Against: ID $issueAgainstId -> "${issueAgainstItem.text}"');
+          } catch (e) {
+            print(
+                '❌ ERROR: Could not find issue against for ID: ${apiIssue.issueAgainst}');
+            print(
+                '   Available IDs: ${_issueAgainstList.map((e) => e.id).toList()}');
+            print(
+                '   Available texts: ${_issueAgainstList.map((e) => e.text).toList()}');
+            print('   Error: $e');
+            // Don't set _issueAgainst, leave it as null so user can select
+          }
+        } else {
+          print(
+              '⚠️ Issue Against list is empty, cannot map ID: ${apiIssue.issueAgainst}');
+        }
+      } else {
+        print('ℹ️ Issue Against is null in API response (field is optional)');
+        _issueAgainst = null; // Explicitly set to null
+      }
+
+      // Map issue to - convert ID to text value
+      if (apiIssue.issueTo != null) {
+        if (_issueToList.isNotEmpty) {
+          try {
+            final issueToId = apiIssue.issueTo;
+            print('🔍 Looking for Issue To ID: $issueToId');
+            print(
+                '   Available IDs in list: ${_issueToList.map((e) => e.id).toList()}');
+
+            final issueToItem = _issueToList.firstWhere(
+              (item) => item.id == issueToId,
+            );
+            _issueTo = issueToItem.text;
+            print('✅ Mapped Issue To: ID $issueToId -> "${issueToItem.text}"');
+          } catch (e) {
+            print(
+                '❌ ERROR: Could not find issue to for ID: ${apiIssue.issueTo}');
+            print(
+                '   Available IDs: ${_issueToList.map((e) => e.id).toList()}');
+            print(
+                '   Available texts: ${_issueToList.map((e) => e.text).toList()}');
+            print('   Error: $e');
+            // Don't set _issueTo, leave it as null so user can select
+          }
+        } else {
+          print(
+              '⚠️ Issue To list is empty, cannot map ID: ${apiIssue.issueTo}');
+        }
+      } else {
+        print('⚠️ Issue To is null in API response (this should not happen)');
+        _issueTo = null; // Explicitly set to null
+      }
+
+      // Reference/Remarks
+      _referenceCtrl.text = apiIssue.reference ?? '';
+
+      // Populate item details from apiIssue.details
+      print('═══════════════════════════════════════════════════════════');
+      print('📦 POPULATING ITEM DETAILS');
+      print('═══════════════════════════════════════════════════════════');
+      print('Details is null: ${apiIssue.details == null}');
+      print('Details type: ${apiIssue.details.runtimeType}');
+      if (apiIssue.details != null) {
+        print('Details is List: ${apiIssue.details is List}');
+        if (apiIssue.details is List) {
+          print('Details list length: ${(apiIssue.details as List).length}');
+        }
+      }
+
+      _itemDetails = [];
+      if (apiIssue.details != null && apiIssue.details is List) {
+        final detailsList = apiIssue.details as List;
+        print('📦 Parsing ${detailsList.length} item details...');
+
+        for (int i = 0; i < detailsList.length; i++) {
+          final detailJson = detailsList[i];
+          print('   Processing detail $i...');
+          print('   Detail type: ${detailJson.runtimeType}');
+
+          if (detailJson is Map<String, dynamic>) {
+            print('   Detail keys: ${detailJson.keys.toList()}');
+            try {
+              final itemDetail = ItemDetail();
+
+              // Map fields from API response (check both PascalCase and camelCase)
+              itemDetail.divisionCategory = detailJson['divisionText'] ??
+                  detailJson['DivisionText'] ??
+                  detailJson['itemCategoryText'] ??
+                  detailJson['ItemCategoryText'] ??
+                  '';
+              print('   Division Category: ${itemDetail.divisionCategory}');
+
+              itemDetail.itemDescription = detailJson['itemText'] ??
+                  detailJson['ItemText'] ??
+                  detailJson['itemCode'] ??
+                  detailJson['ItemCode'] ??
+                  '';
+              print('   Item Description: ${itemDetail.itemDescription}');
+
+              itemDetail.batchNo =
+                  detailJson['batchNo'] ?? detailJson['BatchNo'] ?? '';
+              print('   Batch No: ${itemDetail.batchNo}');
+
+              // Quantity fields
+              final qtyInStock = detailJson['stock'] ??
+                  detailJson['Stock'] ??
+                  detailJson['quantityInStock'] ??
+                  detailJson['QuantityInStock'] ??
+                  0.0;
+              final qtyInStockValue = qtyInStock is double
+                  ? qtyInStock
+                  : (qtyInStock is int ? qtyInStock.toDouble() : 0.0);
+              itemDetail.qtyInStockCtrl.text =
+                  qtyInStockValue.toStringAsFixed(0);
+              print('   Qty In Stock: ${itemDetail.qtyInStockCtrl.text}');
+
+              final qtyIssued = detailJson['quantityConsumed'] ??
+                  detailJson['QuantityConsumed'] ??
+                  0.0;
+              final qtyIssuedValue = qtyIssued is double
+                  ? qtyIssued
+                  : (qtyIssued is int ? qtyIssued.toDouble() : 0.0);
+              itemDetail.qtyIssuedCtrl.text = qtyIssuedValue.toStringAsFixed(0);
+              print('   Qty Issued: ${itemDetail.qtyIssuedCtrl.text}');
+
+              // UOM
+              itemDetail.uomCtrl.text = detailJson['uomText'] ??
+                  detailJson['UOMText'] ??
+                  detailJson['uomCode'] ??
+                  detailJson['UomCode'] ??
+                  '';
+              print('   UOM: ${itemDetail.uomCtrl.text}');
+
+              // Rate
+              final rate = detailJson['rate'] ?? detailJson['Rate'] ?? 0.0;
+              final rateValue =
+                  rate is double ? rate : (rate is int ? rate.toDouble() : 0.0);
+              itemDetail.rateCtrl.text = rateValue.toStringAsFixed(2);
+              print('   Rate: ${itemDetail.rateCtrl.text}');
+
+              // Amount
+              final amount =
+                  detailJson['amount'] ?? detailJson['Amount'] ?? 0.0;
+              final amountValue = amount is double
+                  ? amount
+                  : (amount is int ? amount.toDouble() : 0.0);
+              itemDetail.amountCtrl.text = amountValue.toStringAsFixed(2);
+              print('   Amount: ${itemDetail.amountCtrl.text}');
+
+              // Remarks
+              itemDetail.remarksCtrl.text =
+                  detailJson['remarks'] ?? detailJson['Remarks'] ?? '';
+              print('   Remarks: ${itemDetail.remarksCtrl.text}');
+
+              // Store batch ID if available (for later use in save)
+              final batchId = detailJson['batchId'] ?? detailJson['BatchId'];
+              if (batchId != null && batchId is int) {
+                itemDetail.batchId = batchId;
+                print('   Batch ID: ${itemDetail.batchId}');
+              }
+
+              _itemDetails.add(itemDetail);
+              print('✅ Added item ${i + 1}: ${itemDetail.itemDescription}');
+              print('   - Division: ${itemDetail.divisionCategory}');
+              print(
+                  '   - Batch: ${itemDetail.batchNo} (ID: ${itemDetail.batchId})');
+              print('   - Qty Issued: ${itemDetail.qtyIssuedCtrl.text}');
+              print('   - Rate: ${itemDetail.rateCtrl.text}');
+              print('   - Amount: ${itemDetail.amountCtrl.text}');
+
+              // Store item info for loading dropdown options after setState
+              // We'll load these options after the setState completes
+            } catch (e, stackTrace) {
+              print('❌ Error parsing item detail $i: $e');
+              print('   Stack trace: $stackTrace');
+              print('   Detail JSON keys: ${detailJson.keys.toList()}');
+              print('   Detail JSON: $detailJson');
+            }
+          } else {
+            print(
+                '⚠️ Detail $i is not a Map, it is: ${detailJson.runtimeType}');
+          }
+        }
+
+        print('═══════════════════════════════════════════════════════════');
+        if (_itemDetails.isNotEmpty) {
+          _expandedIndex = 0;
+          print(
+              '✅ Successfully loaded ${_itemDetails.length} items into _itemDetails');
+          print('   Expanded Index set to: $_expandedIndex');
+          print(
+              '   First item description: ${_itemDetails[0].itemDescription}');
+          print('   First item batch: ${_itemDetails[0].batchNo}');
+        } else {
+          print('⚠️ WARNING: No items were successfully parsed!');
+          print(
+              '   _itemDetails is empty after parsing ${detailsList.length} details');
+          print('   This means items will not be displayed in the UI');
+          // Add at least one empty item so the UI doesn't break
+          _itemDetails.add(ItemDetail());
+          print('   Added empty ItemDetail to prevent UI issues');
+        }
+        print('═══════════════════════════════════════════════════════════');
+      } else {
+        print('⚠️ Details is null or not a list');
+        print('   Details value: ${apiIssue.details}');
+        print('   Details type: ${apiIssue.details?.runtimeType}');
+        // Ensure at least one empty item exists
+        if (_itemDetails.isEmpty) {
+          _itemDetails.add(ItemDetail());
+          print('   Added empty ItemDetail since details is null');
+        }
+      }
+
+      // Force UI update after populating items
+      print('🔄 Triggering UI rebuild with ${_itemDetails.length} items');
+      print('═══════════════════════════════════════════════════════════');
+      print('📊 FINAL STATE AFTER ITEM POPULATION');
+      print('═══════════════════════════════════════════════════════════');
+      print('_itemDetails.length: ${_itemDetails.length}');
+      print('_expandedIndex: $_expandedIndex');
+      if (_itemDetails.isNotEmpty) {
+        for (int i = 0; i < _itemDetails.length; i++) {
+          print('Item $i:');
+          print('  - Division: ${_itemDetails[i].divisionCategory}');
+          print('  - Description: ${_itemDetails[i].itemDescription}');
+          print('  - Batch: ${_itemDetails[i].batchNo}');
+          print('  - Qty Issued: ${_itemDetails[i].qtyIssuedCtrl.text}');
+          print('  - Rate: ${_itemDetails[i].rateCtrl.text}');
+          print('  - Amount: ${_itemDetails[i].amountCtrl.text}');
+        }
+      }
+      print('═══════════════════════════════════════════════════════════');
+    });
+
+    // After setState, load dropdown options for each item so the values display correctly
+    // This needs to happen outside setState because it's async
+    if (_itemDetails.isNotEmpty) {
+      print('🔄 Loading dropdown options for populated items...');
+      for (int i = 0; i < _itemDetails.length; i++) {
+        final itemDetail = _itemDetails[i];
+
+        // Load item descriptions if division category is set
+        if (itemDetail.divisionCategory != null &&
+            itemDetail.divisionCategory!.isNotEmpty) {
+          print(
+              '   Loading item descriptions for division: ${itemDetail.divisionCategory}');
+          await _loadItemDescriptionsForDivision(
+              itemDetail.divisionCategory, itemDetail);
+
+          // Load batch numbers if item description is set
+          if (itemDetail.itemDescription != null &&
+              itemDetail.itemDescription!.isNotEmpty) {
+            print(
+                '   Loading batch numbers for item: ${itemDetail.itemDescription}');
+            await _loadBatchNumbersForItem(
+                itemDetail.itemDescription, itemDetail);
+          }
+        }
+      }
+      print('✅ Dropdown options loaded for all items');
+
+      // Trigger UI update after loading options
+      if (mounted) {
+        setState(() {
+          // Just trigger rebuild to show the populated values
+        });
+      }
+    }
+
+    print('═══════════════════════════════════════════════════════════');
+    print('📝 FORM POPULATION COMPLETE');
+    print('═══════════════════════════════════════════════════════════');
   }
 
   void _populateFormFromIssue(CustomerIssueItem issue) {
     // Map issue data to form fields
     // Note: CustomerIssueItem from list screen has limited fields
-    // In production, you'll need a full issue model with all fields
+    // We only populate what's available, other fields remain empty/null
     setState(() {
       _stNo = issue.issueNo.isNotEmpty ? issue.issueNo : issue.id;
       _stDate = issue.stDate;
       _fromStore = issue.fromStore;
-      // Other fields would come from a full issue API response
-      // For now, using mock data for missing fields
-      _populateFormFromMockData();
+      // Don't overwrite with mock data - keep other fields as they are
+      // Other fields will need to be loaded from a full API call if needed
     });
   }
 
@@ -334,19 +1003,20 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       _toStore = 'Customer Store';
       _referenceCtrl.text = '';
 
-      // Add mock item
-      _items.add(IssueItemDetail(
-        divisionCategory: 'Diagnostics',
-        itemDescription:
-            'CFX96 Touch Real-Time PCR Detection System with Starter Package - 1855195',
-        batchNo: 'EMR-25-12-0008-BTCH/2210',
-        qtyInStock: 230,
-        qtyIssued: 12,
-        uom: 'Each',
-        rate: 654.00,
-        amount: 7848.00,
-        remarks: '',
-      ));
+      // Add mock item to _itemDetails
+      final mockDetail = ItemDetail();
+      mockDetail.divisionCategory = 'Diagnostics';
+      mockDetail.itemDescription =
+          'CFX96 Touch Real-Time PCR Detection System with Starter Package - 1855195';
+      mockDetail.batchNo = 'EMR-25-12-0008-BTCH/2210';
+      mockDetail.qtyInStockCtrl.text = '230';
+      mockDetail.qtyIssuedCtrl.text = '12';
+      mockDetail.uomCtrl.text = 'Each';
+      mockDetail.rateCtrl.text = '654.00';
+      mockDetail.amountCtrl.text = '7848.00';
+      mockDetail.remarksCtrl.text = '';
+      _itemDetails = [mockDetail];
+      _expandedIndex = 0;
     });
   }
 
@@ -1751,182 +2421,468 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     );
   }
 
-  Widget _buildListCard(BuildContext context, bool isTablet) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Simple text header with Add Item button
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Item Details',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 18 : 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade900,
-              ),
-            ),
-            if (!_isViewMode)
-              ElevatedButton.icon(
-                onPressed: () {
-                  _showAddItemDialog(context);
-                },
-                icon: const Icon(Icons.add, size: 18, color: Colors.white),
-                label: const Text(
-                  'Add Item',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w500),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2196F3),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+  void _addAnotherItem() {
+    setState(() {
+      _itemDetails.add(ItemDetail());
+      // Expand the newly added item
+      _expandedIndex = _itemDetails.length - 1;
+    });
+  }
+
+  void _removeItemDetail(int index) {
+    if (_itemDetails.length > 1) {
+      setState(() {
+        _itemDetails[index].dispose();
+        _itemDetails.removeAt(index);
+
+        // Adjust expanded index after removal
+        if (_expandedIndex == index) {
+          _expandedIndex = 0;
+        } else if (_expandedIndex > index) {
+          _expandedIndex--;
+        }
+
+        // If only one item left, reset to always expanded
+        if (_itemDetails.length == 1) {
+          _expandedIndex = 0;
+        }
+      });
+    }
+  }
+
+  void _calculateAmountForItem(ItemDetail detail) {
+    final qty = int.tryParse(detail.qtyIssuedCtrl.text.trim()) ?? 0;
+    final rate = double.tryParse(detail.rateCtrl.text.trim()) ?? 0.0;
+    if (rate > 0 && qty > 0) {
+      setState(() {
+        detail.amountCtrl.text = (rate * qty).toStringAsFixed(2);
+      });
+    } else {
+      setState(() {
+        detail.amountCtrl.text = '0.00';
+      });
+    }
+  }
+
+  List<Widget> _buildItemDetailsSections() {
+    final List<Widget> sections = [];
+
+    for (int i = 0; i < _itemDetails.length; i++) {
+      final detail = _itemDetails[i];
+      final bool isExpanded = _itemDetails.length == 1 || _expandedIndex == i;
+
+      sections.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF7F7),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: const Color(0xFF4db1b3).withOpacity(0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header with expand/collapse functionality
+              InkWell(
+                onTap: _itemDetails.length > 1
+                    ? () {
+                        setState(() {
+                          _expandedIndex = isExpanded ? -1 : i;
+                        });
+                      }
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Text(
+                        _itemDetails.length > 1
+                            ? 'Item Detail ${i + 1}'
+                            : 'Item Details',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF4db1b3),
+                            ),
+                      ),
+                      if (detail.itemDescription != null &&
+                          detail.itemDescription!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '(${detail.itemDescription})',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: const Color(0xFF4db1b3),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (_itemDetails.length > 1) ...[
+                        Icon(
+                          isExpanded ? Icons.expand_less : Icons.expand_more,
+                          color: const Color(0xFF4db1b3),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () => _removeItemDetail(i),
+                          icon: const Icon(Icons.close, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        // Items table directly (no card wrapper, no collapsible)
-        _buildItemsTable(context, isTablet),
-      ],
-    );
-  }
 
-  Widget _buildItemsTable(BuildContext context, bool isTablet) {
-    const headerColor = Color(0xFFE3F2FD);
-
-    if (_items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: 48,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'No items added yet',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 16 : 15,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tap "Add Item" above to continue',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 14 : 13,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: () {
-                _showAddItemDialog(context);
-              },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Item'),
-              style: OutlinedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              // Expandable content
+              if (isExpanded) ...[
+                const Divider(height: 1, color: Color(0xFF4db1b3)),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildItemDetailForm(detail, i),
                 ),
-              ),
-            ),
-          ],
+              ],
+            ],
+          ),
         ),
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowColor:
-            MaterialStateProperty.all(headerColor.withOpacity(0.1)),
-        columns: [
-          if (!_isViewMode) const DataColumn(label: Text('Actions')),
-          DataColumn(label: Text('Division / Category')),
-          DataColumn(label: Text('Item Description')),
-          DataColumn(label: Text('Batch No')),
-          DataColumn(label: Text('Qty.InStock')),
-          DataColumn(label: Text('Qty.Issued')),
-          DataColumn(label: Text('UOM')),
-          DataColumn(label: Text('Rate')),
-          DataColumn(label: Text('Amount')),
-          DataColumn(label: Text('Remarks/Addl Description')),
-        ],
-        rows: _items.map((item) {
-          final cells = <DataCell>[];
-          if (!_isViewMode) {
-            cells.add(
-              DataCell(
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit,
-                          size: 20, color: Color(0xFF2196F3)),
-                      onPressed: () {
-                        // TODO: Edit item
-                      },
-                    ),
-                    IconButton(
-                      icon:
-                          const Icon(Icons.delete, size: 20, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          _items.remove(item);
-                        });
-                      },
-                    ),
-                  ],
+    return sections;
+  }
+
+  Widget _buildItemDetailForm(ItemDetail detail, int index) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Division/Category
+        _Labeled(
+          label: 'Division / Category',
+          required: true,
+          errorText: detail.divisionCategoryError,
+          child: SearchableDropdown(
+            options: _divisionCategoryOptions,
+            value: detail.divisionCategory,
+            hintText: 'Select Division/Category',
+            searchHintText: 'Search division/category...',
+            hasError: detail.divisionCategoryError != null,
+            onChanged: (v) {
+              setState(() {
+                detail.divisionCategory = v;
+                detail.divisionCategoryError = null;
+                detail.itemDescription =
+                    null; // Clear item description when division changes
+                detail.batchNo = null; // Clear batch no when division changes
+                detail.itemDescriptionOptions = [];
+                detail.batchNoOptions = [];
+              });
+              if (v != null) {
+                _loadItemDescriptionsForDivision(v, detail);
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Item Description
+        _Labeled(
+          label: 'Item Description',
+          required: true,
+          errorText: detail.itemDescriptionError,
+          child: SearchableDropdown(
+            options: detail.itemDescriptionOptions,
+            value: detail.itemDescription,
+            hintText: 'Select Item Description',
+            searchHintText: 'Search item description...',
+            hasError: detail.itemDescriptionError != null,
+            onChanged: (v) {
+              setState(() {
+                detail.itemDescription = v;
+                detail.itemDescriptionError = null;
+                detail.batchNo = null; // Clear batch no when item changes
+                detail.batchNoOptions = [];
+              });
+              if (v != null && detail.divisionCategory != null) {
+                _loadBatchNumbersForItem(v, detail);
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Batch No
+        _Labeled(
+          label: 'Batch No',
+          child: SearchableDropdown(
+            options: detail.batchNoOptions,
+            value: detail.batchNo,
+            hintText: 'Select Batch No',
+            searchHintText: 'Search batch no...',
+            onChanged: (v) {
+              setState(() {
+                detail.batchNo = v;
+                // Store batch ID when batch is selected
+                if (v != null && detail.itemDescription != null) {
+                  final batchList =
+                      _itemToBatchNumberList[detail.itemDescription!];
+                  if (batchList != null) {
+                    try {
+                      final batchItem = batchList.firstWhere(
+                        (item) => item.text.trim() == v.trim(),
+                      );
+                      detail.batchId = batchItem.id;
+                      print('✅ Batch selected: "$v" -> ID: ${batchItem.id}');
+                    } catch (e) {
+                      // Try case-insensitive match
+                      try {
+                        final batchItem = batchList.firstWhere(
+                          (item) =>
+                              item.text.trim().toLowerCase() ==
+                              v.trim().toLowerCase(),
+                        );
+                        detail.batchId = batchItem.id;
+                        print(
+                            '✅ Batch selected (case-insensitive): "$v" -> ID: ${batchItem.id}');
+                      } catch (e2) {
+                        print('⚠️ Batch not found in list: "$v"');
+                        detail.batchId = null;
+                      }
+                    }
+                    // Auto-fill qty in stock, UOM, and rate if available
+                    if (detail.batchId != null && detail.batchId! > 0) {
+                      try {
+                        // Find the batch item to get stock, UOM, and rate
+                        final batchItem = batchList.firstWhere(
+                          (item) => item.id == detail.batchId,
+                          orElse: () => batchList.firstWhere(
+                            (item) => item.text.trim() == v.trim(),
+                          ),
+                        );
+
+                        // Auto-fill Stock Quantity
+                        if (batchItem.stock > 0) {
+                          detail.qtyInStockCtrl.text =
+                              batchItem.stock.toString();
+                        } else {
+                          detail.qtyInStockCtrl.clear();
+                        }
+
+                        // Auto-fill UOM (Unit of Measure)
+                        // UOM is stored as ID, convert to string for display
+                        if (batchItem.uom > 0) {
+                          detail.uomCtrl.text = batchItem.uom.toString();
+                        } else {
+                          detail.uomCtrl.clear();
+                        }
+
+                        // Auto-fill Rate (if > 0)
+                        if (batchItem.rate > 0) {
+                          detail.rateCtrl.text = batchItem.rate.toString();
+                          // Recalculate amount if qty issued is already entered
+                          _calculateAmountForItem(detail);
+                        } else {
+                          detail.rateCtrl.clear();
+                          _calculateAmountForItem(
+                              detail); // Recalculate to set amount to 0
+                        }
+
+                        print('✅ Auto-filled from Batch No "$v":');
+                        print('   - Stock: ${batchItem.stock}');
+                        print('   - UOM: ${batchItem.uom}');
+                        print('   - Rate: ${batchItem.rate}');
+                      } catch (e) {
+                        print('⚠️ Error auto-filling from batch: $e');
+                      }
+                    } else {
+                      // Clear auto-filled fields when batch is cleared or invalid
+                      detail.qtyInStockCtrl.clear();
+                      detail.uomCtrl.clear();
+                      detail.rateCtrl.clear();
+                      _calculateAmountForItem(detail);
+                    }
+                  } else {
+                    print(
+                        '⚠️ Batch list not loaded for item: ${detail.itemDescription}');
+                    detail.batchId = null;
+                  }
+                } else {
+                  detail.batchId = null;
+                }
+              });
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Qty In Stock, Qty Issued, UOM in a row
+        Row(
+          children: [
+            Expanded(
+              child: _Labeled(
+                label: 'Qty In Stock',
+                child: TextFormField(
+                  controller: detail.qtyInStockCtrl,
+                  keyboardType: TextInputType.number,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    hintText: 'Auto-filled',
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                  ),
                 ),
               ),
-            );
-          }
-          cells.addAll([
-            DataCell(Text(item.divisionCategory)),
-            DataCell(Text(item.itemDescription)),
-            DataCell(Text(item.batchNo)),
-            DataCell(Text(item.qtyInStock.toString())),
-            DataCell(Text(item.qtyIssued.toString())),
-            DataCell(Text(item.uom)),
-            DataCell(Text(item.rate.toStringAsFixed(2))),
-            DataCell(Text(item.amount.toStringAsFixed(2))),
-            DataCell(Text(item.remarks)),
-          ]);
-          return DataRow(cells: cells);
-        }).toList(),
-      ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _Labeled(
+                label: 'Qty Issued',
+                required: true,
+                errorText: detail.qtyIssuedError,
+                child: TextFormField(
+                  controller: detail.qtyIssuedCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Enter quantity',
+                  ),
+                  onChanged: (_) {
+                    setState(() {
+                      detail.qtyIssuedError = null;
+                    });
+                    _calculateAmountForItem(detail);
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _Labeled(
+                label: 'UOM',
+                child: TextFormField(
+                  controller: detail.uomCtrl,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    hintText: 'Auto-filled',
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Rate
+        _Labeled(
+          label: 'Rate (LKR)',
+          child: TextFormField(
+            controller: detail.rateCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              hintText: 'Enter rate',
+              // prefixIcon: Icon(Icons.attach_money, size: 20),
+            ),
+            onChanged: (_) {
+              _calculateAmountForItem(detail);
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Amount (Read-only)
+        _Labeled(
+          label: 'Amount (LKR)',
+          child: TextFormField(
+            controller: detail.amountCtrl,
+            readOnly: true,
+            decoration: InputDecoration(
+              hintText: 'Auto-calculated',
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              prefixIcon: Icon(Icons.calculate, size: 20),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Remarks
+        _Labeled(
+          label: 'Remarks',
+          child: TextFormField(
+            controller: detail.remarksCtrl,
+            maxLines: 2,
+            decoration: InputDecoration(
+              hintText: 'Add remarks',
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  void _showAddItemDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => _AddItemDialog(
-        onAdd: (item) {
-          setState(() {
-            _items.add(item);
-          });
-        },
-      ),
+  Widget _buildListCard(BuildContext context, bool isTablet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Item Details',
+          style: GoogleFonts.inter(
+            fontSize: isTablet ? 18 : 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade900,
+          ),
+        ),
+        const SizedBox(height: 20),
+        // Multiple Item Details Section (like expense details)
+        ..._buildItemDetailsSections(),
+        const SizedBox(height: 16),
+        if (!_isViewMode)
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: _addAnotherItem,
+              icon: const Icon(Icons.add, size: 20),
+              label: const Text('Add Another Item'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF4db1b3),
+                side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Convert ItemDetail to IssueItemDetail for submission
+  IssueItemDetail _convertItemDetailToIssueItemDetail(ItemDetail detail) {
+    return IssueItemDetail(
+      divisionCategory: detail.divisionCategory ?? '',
+      itemDescription: detail.itemDescription ?? '',
+      batchNo: detail.batchNo ?? '',
+      batchId: detail.batchId, // Include batchId if available
+      qtyInStock: int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0,
+      qtyIssued: int.tryParse(detail.qtyIssuedCtrl.text.trim()) ?? 0,
+      uom: detail.uomCtrl.text.trim(),
+      rate: double.tryParse(detail.rateCtrl.text.trim()) ?? 0.0,
+      amount: double.tryParse(detail.amountCtrl.text.trim()) ?? 0.0,
+      remarks: detail.remarksCtrl.text.trim(),
     );
   }
 
   Widget _buildSubmitButton(BuildContext context, bool isTablet) {
     const tealGreen = Color(0xFF4db1b3);
+    // Convert _itemDetails to _items for validation
+    _items = _itemDetails
+        .map((detail) => _convertItemDetailToIssueItemDetail(detail))
+        .toList();
     final bool canSubmit = _items.isNotEmpty &&
         _issueAgainst != null &&
         _issueTo != null &&
@@ -1954,8 +2910,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   Expanded(
                     child: Text(
                       _items.isEmpty
-                          ? 'Add at least one item to enable submission'
-                          : 'Complete all required fields to submit',
+                          ? 'Add at least one item to enable save/submit'
+                          : 'Complete all required fields to save/submit',
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         color: Colors.orange.shade800,
@@ -1967,57 +2923,109 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
               ),
             ),
           ),
-        Tooltip(
-          message: canSubmit
-              ? 'Submit customer issue'
-              : (_items.isEmpty
-                  ? 'Add at least one item first'
-                  : 'Complete all required fields first'),
-          child: ElevatedButton.icon(
-            onPressed: canSubmit
-                ? _handleSubmit
-                : () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          _items.isEmpty
-                              ? 'Please add at least one item before submitting'
-                              : 'Please complete all required fields',
-                        ),
-                        backgroundColor: Colors.orange.shade700,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  },
-            icon: Icon(
-              canSubmit ? Icons.check_circle : Icons.info_outline,
-              size: 22,
-              color: canSubmit ? Colors.white : Colors.grey.shade700,
-            ),
-            label: Text(
-              'Submit Customer Issue',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 16 : 15,
-                fontWeight: FontWeight.w600,
-                color: canSubmit ? Colors.white : Colors.grey.shade700,
+        // Save and Submit buttons in a row
+        Row(
+          children: [
+            // Save button
+            Expanded(
+              child: Tooltip(
+                message: canSubmit
+                    ? 'Save customer issue (without workflow)'
+                    : (_items.isEmpty
+                        ? 'Add at least one item first'
+                        : 'Complete all required fields first'),
+                child: OutlinedButton.icon(
+                  onPressed: canSubmit && !_isLoading ? _handleSave : null,
+                  icon: Icon(
+                    Icons.save,
+                    size: 20,
+                    color: canSubmit && !_isLoading
+                        ? tealGreen
+                        : Colors.grey.shade700,
+                  ),
+                  label: Text(
+                    'Save',
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 15 : 14,
+                      fontWeight: FontWeight.w600,
+                      color: canSubmit && !_isLoading
+                          ? tealGreen
+                          : Colors.grey.shade700,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: tealGreen,
+                    side: BorderSide(
+                      color: canSubmit && !_isLoading
+                          ? tealGreen
+                          : Colors.grey.shade300,
+                      width: 1.5,
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 20 : 16,
+                      vertical: isTablet ? 16 : 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    minimumSize: const Size(0, 50),
+                  ),
+                ),
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: canSubmit ? tealGreen : Colors.grey.shade200,
-              disabledBackgroundColor: Colors.grey.shade200,
-              foregroundColor: canSubmit ? Colors.white : Colors.grey.shade700,
-              disabledForegroundColor: Colors.grey.shade700,
-              elevation: canSubmit ? 2 : 0,
-              padding: EdgeInsets.symmetric(
-                horizontal: isTablet ? 24 : 20,
-                vertical: isTablet ? 16 : 14,
+            const SizedBox(width: 12),
+            // Submit button
+            Expanded(
+              child: Tooltip(
+                message: canSubmit
+                    ? 'Submit customer issue (with workflow)'
+                    : (_items.isEmpty
+                        ? 'Add at least one item first'
+                        : 'Complete all required fields first'),
+                child: ElevatedButton.icon(
+                  onPressed: canSubmit && !_isLoading ? _handleSubmit : null,
+                  icon: Icon(
+                    _isLoading
+                        ? Icons.hourglass_empty
+                        : (canSubmit ? Icons.check_circle : Icons.info_outline),
+                    size: 22,
+                    color: canSubmit && !_isLoading
+                        ? Colors.white
+                        : Colors.grey.shade700,
+                  ),
+                  label: Text(
+                    _isLoading ? 'Submitting...' : 'Submit',
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 16 : 15,
+                      fontWeight: FontWeight.w600,
+                      color: canSubmit && !_isLoading
+                          ? Colors.white
+                          : Colors.grey.shade700,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: canSubmit && !_isLoading
+                        ? tealGreen
+                        : Colors.grey.shade200,
+                    disabledBackgroundColor: Colors.grey.shade200,
+                    foregroundColor: canSubmit && !_isLoading
+                        ? Colors.white
+                        : Colors.grey.shade700,
+                    disabledForegroundColor: Colors.grey.shade700,
+                    elevation: canSubmit && !_isLoading ? 2 : 0,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 24 : 20,
+                      vertical: isTablet ? 16 : 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    minimumSize: const Size(0, 50),
+                  ),
+                ),
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              minimumSize: const Size(double.infinity, 50),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -2134,48 +3142,585 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     );
   }
 
-  void _handleSubmit() {
-    if (_validateForm()) {
-      // Print Customer Issue Submission
-      print('═══════════════════════════════════════════════════════════');
-      print('📤 SUBMITTING CUSTOMER ISSUE');
-      print('═══════════════════════════════════════════════════════════');
-      print('Customer Issue Details:');
-      print('  - ST No: ${_stNo ?? "[NEW]"}');
-      print('  - ST Date: ${DateFormat('dd-MMM-yyyy').format(_stDate)}');
-      print('  - Issue Against: $_issueAgainst');
-      print('  - Issue To: $_issueTo');
-      print('  - From Store: $_fromStore');
-      print('  - To Store: $_toStore');
-      print('  - Reference/Remarks: ${_referenceCtrl.text}');
-      print('');
-      print('Items (${_items.length}):');
-      for (int i = 0; i < _items.length; i++) {
-        final item = _items[i];
-        print('  Item ${i + 1}:');
-        print('    - Division/Category: ${item.divisionCategory}');
-        print('    - Item Description: ${item.itemDescription}');
-        print('    - Batch No: ${item.batchNo}');
-        print('    - Qty In Stock: ${item.qtyInStock}');
-        print('    - Qty Issued: ${item.qtyIssued}');
-        print('    - UOM: ${item.uom}');
-        print('    - Rate: ${item.rate}');
-        print('    - Amount: ${item.amount}');
-        print('    - Remarks: ${item.remarks}');
+  /// Get ID from text value in a dropdown list
+  int _getIdFromText(String? text, List<CommonDropdownItem> list) {
+    if (text == null || list.isEmpty) return 0;
+    try {
+      final item = list.firstWhere(
+        (item) => item.text == text,
+      );
+      return item.id;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Get workflow process ID and action ID
+  Future<Map<String, int?>> _getWorkflowIds() async {
+    try {
+      // Get user info
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) {
+        throw Exception('User not available');
       }
+
+      final userId = user.userId ?? user.id ?? 1;
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      final bizUnit = (userStore?.userDetail?.sbuId != null &&
+              userStore!.userDetail!.sbuId! > 0)
+          ? userStore.userDetail!.sbuId!
+          : (user.sbuId ?? 1);
+
+      // Determine URL based on create or edit mode
+      final url =
+          _isEditMode ? '/Customeritemissue/edit' : '/Customeritemissue/create';
+
+      // MenuId: 1558 for workflow API (as per user requirements)
+      final menuId = 1558;
+      final module = 6;
+
+      final workflowRepo = getIt<WorkflowRepository>();
+      final request = WorkflowGetAllActionsRequest(
+        refId: null,
+        applicationId: null,
+        menuId: menuId,
+        userId: userId,
+        module: module,
+        bizUnit: bizUnit,
+        url: url,
+      );
+
+      final response = await workflowRepo.getAllActions(request);
+
+      print('✅ Workflow response received');
+      print('   Process ID: ${response.id}');
+      print('   Process Name: ${response.processName}');
+      print('   Action Details Count: ${response.processActionDetails.length}');
+
+      // Extract processId and processActionId from response
+      int? processId = response.id > 0 ? response.id : null;
+      int? processActionId;
+
+      // Find the "Submit" action
+      if (response.processActionDetails.isNotEmpty) {
+        final submitAction = response.processActionDetails.firstWhere(
+          (action) => action.name.toLowerCase() == 'submit',
+          orElse: () => response.processActionDetails.first,
+        );
+        processActionId = submitAction.processActionId;
+        print('   Found Submit Action ID: $processActionId');
+      } else {
+        print('⚠️ No workflow actions found - proceeding without workflow');
+      }
+
+      return {
+        'processId': processId,
+        'processActionId': processActionId,
+      };
+    } catch (e) {
+      print('Error getting workflow IDs: $e');
+      rethrow;
+    }
+  }
+
+  /// Build save request from form data
+  Future<ItemIssueSaveRequest> _buildSaveRequest({
+    required int workflowFlag,
+    int? processId,
+    int? processActionId,
+  }) async {
+    // Convert _itemDetails to _items for processing
+    _items = _itemDetails
+        .map((detail) => _convertItemDetailToIssueItemDetail(detail))
+        .toList();
+
+    // Get user info
+    final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+    final user = await sharedPrefHelper.getUser();
+    if (user == null) {
+      throw Exception('User not available');
+    }
+
+    final userId = user.userId ?? user.id ?? 1;
+    final createdBy = userId;
+    final modifiedBy = userId;
+
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final bizUnit = (userStore?.userDetail?.sbuId != null &&
+            userStore!.userDetail!.sbuId! > 0)
+        ? userStore.userDetail!.sbuId!
+        : (user.sbuId ?? 1);
+
+    // Get IDs from text values
+    final fromStoreId = _getIdFromText(_fromStore, _storeList);
+    final toStoreId = _getIdFromText(_toStore, _storeList);
+    final issueToId = _getIdFromText(_issueTo, _issueToList);
+    final issueAgainstId = _getIdFromText(_issueAgainst, _issueAgainstList);
+
+    // IssueAgainst needs to be sent as string (text value), not ID
+    final issueAgainstValue = _issueAgainst ?? '';
+
+    // Debug: Print ID mappings
+    print('═══════════════════════════════════════════════════════════');
+    print('🔍 ID MAPPINGS DEBUG');
+    print('═══════════════════════════════════════════════════════════');
+    print('From Store: "$_fromStore" -> ID: $fromStoreId');
+    print('To Store: "$_toStore" -> ID: $toStoreId');
+    print('Issue To: "$_issueTo" -> ID: $issueToId');
+    print('Issue Against: "$_issueAgainst" -> ID: $issueAgainstId');
+    print('Store List Count: ${_storeList.length}');
+    print('Issue To List Count: ${_issueToList.length}');
+    print('Issue Against List Count: ${_issueAgainstList.length}');
+    print('═══════════════════════════════════════════════════════════');
+
+    // Validate critical IDs
+    if (toStoreId == 0) {
+      throw Exception('To Store ID is 0. Please select a valid To Store.');
+    }
+    if (issueToId == 0) {
+      throw Exception('Issue To ID is 0. Please select a valid Issue To.');
+    }
+    if (fromStoreId == 0) {
+      throw Exception('From Store ID is 0. Please select a valid From Store.');
+    }
+
+    // Build details list
+    final List<ItemIssueDetailSaveRequest> details = [];
+    for (int i = 0; i < _items.length; i++) {
+      final item = _items[i];
+
+      // Get item description ID and item
+      final itemDescriptionList =
+          _divisionToItemDescriptionList[item.divisionCategory] ?? [];
+      final itemDescriptionId =
+          _getIdFromText(item.itemDescription, itemDescriptionList);
+
+      // Get the actual item object to extract UOM and other fields
+      CommonDropdownItem? itemDescriptionObj;
+      try {
+        itemDescriptionObj = itemDescriptionList.firstWhere(
+          (obj) => obj.text == item.itemDescription,
+        );
+      } catch (e) {
+        print(
+            'Warning: Item description object not found for: ${item.itemDescription}');
+      }
+
+      // Get batch ID - prefer stored batchId from IssueItemDetail, otherwise lookup
+      int batchId = 0;
+      CommonDropdownItem? batchObj;
+
+      // First, try to get batchId from the IssueItemDetail (stored when batch was selected)
+      if (item.batchId != null && item.batchId! > 0) {
+        batchId = item.batchId!;
+        print('✅ Using stored batch ID: $batchId for batch: "${item.batchNo}"');
+      } else {
+        // Fallback: lookup batch ID from batch list
+        final batchList = _itemToBatchNumberList[item.itemDescription];
+
+        if (batchList != null && batchList.isNotEmpty) {
+          // Try exact match first
+          try {
+            batchObj = batchList.firstWhere(
+              (obj) => obj.text.trim() == item.batchNo.trim(),
+            );
+            batchId = batchObj.id;
+          } catch (e) {
+            // Try case-insensitive match
+            try {
+              batchObj = batchList.firstWhere(
+                (obj) =>
+                    obj.text.trim().toLowerCase() ==
+                    item.batchNo.trim().toLowerCase(),
+              );
+              batchId = batchObj.id;
+            } catch (e2) {
+              // Try partial match (contains)
+              try {
+                batchObj = batchList.firstWhere(
+                  (obj) =>
+                      obj.text.trim().contains(item.batchNo.trim()) ||
+                      item.batchNo.trim().contains(obj.text.trim()),
+                );
+                batchId = batchObj.id;
+              } catch (e3) {
+                print('⚠️ Batch matching failed for: "${item.batchNo}"');
+                print('Available batches for "${item.itemDescription}":');
+                for (var batch in batchList) {
+                  print('  - "${batch.text}" (ID: ${batch.id})');
+                }
+                // Try using _getIdFromText as fallback
+                batchId = _getIdFromText(item.batchNo, batchList);
+                if (batchId == 0) {
+                  print(
+                      '⚠️ Batch ID lookup returned 0. Batch may not be required or needs to be reloaded.');
+                }
+              }
+            }
+          }
+        } else {
+          print(
+              '⚠️ Batch list is null or empty for item: ${item.itemDescription}');
+          print(
+              'Available item descriptions with batches: ${_itemToBatchNumberList.keys.toList()}');
+        }
+      }
+
+      // Get division category ID
+      final divisionCategoryId =
+          _getIdFromText(item.divisionCategory, _divisionCategoryList);
+
+      // Get UOM ID from batch object or item description object
+      int uomId = 0;
+      if (batchObj != null && batchObj.uom > 0) {
+        uomId = batchObj.uom;
+      } else if (itemDescriptionObj != null && itemDescriptionObj.uom > 0) {
+        uomId = itemDescriptionObj.uom;
+      }
+
+      // Get item ID from item description
+      final itemId = itemDescriptionId > 0
+          ? itemDescriptionId
+          : (itemDescriptionObj?.id ?? 0);
+
+      // Validate item details
+      if (itemId == 0) {
+        throw Exception(
+            'Item ID is 0 for item: ${item.itemDescription}. Please ensure the item is selected correctly.');
+      }
+      if (divisionCategoryId == 0) {
+        throw Exception(
+            'Division Category ID is 0 for: ${item.divisionCategory}. Please ensure the division category is selected correctly.');
+      }
+
+      // Batch ID validation - warn but don't fail if batch list wasn't loaded
+      // Some APIs might accept 0 for batch ID or handle it differently
+      if (batchId == 0 && item.batchNo.isNotEmpty) {
+        print('⚠️ WARNING: Batch ID is 0 for batch: "${item.batchNo}"');
+        print('   This might cause issues. Trying to continue anyway...');
+        // Don't throw exception - let API handle it, but log the warning
+        // If API requires batch ID, it will return a proper error message
+      }
+
+      // Debug: Print item details
+      print('Item $i Details:');
+      print('  - Item Description: ${item.itemDescription} -> ID: $itemId');
+      print('  - Batch No: ${item.batchNo} -> ID: $batchId');
+      print(
+          '  - Division Category: ${item.divisionCategory} -> ID: $divisionCategoryId');
+      print('  - UOM: ${item.uom} -> UOM ID: $uomId');
+      print('  - Qty Issued: ${item.qtyIssued}');
+      print('  - Rate: ${item.rate}');
+      print('  - Amount: ${item.amount}');
+
+      details.add(ItemIssueDetailSaveRequest(
+        id: null,
+        createdBy: null,
+        status: 0,
+        sbuId: 0,
+        displayOrder: i,
+        hasRight: false,
+        text: null,
+        rowNo: null,
+        itemCode: item.itemDescription,
+        batchNo: item.batchNo,
+        itemName: null,
+        itemDescription: null,
+        itemText: item.itemDescription,
+        minStk: null,
+        rolStk: null,
+        maxStk: null,
+        quantityInStock: item.qtyInStock.toDouble(),
+        quantityPnOrder: null,
+        quantityApproved: null,
+        quantityConsumed: item.qtyIssued.toDouble(), // Quantity Issued Value
+        requestQuantity: null,
+        uomCode: null,
+        categoryName: null,
+        categoryText: null,
+        itemIsPm: null,
+        requestSpec: null,
+        category: null,
+        code: null,
+        wholesaleRate: null,
+        retailRate: null,
+        name: null,
+        rate: item.rate,
+        description: null,
+        itemCategory: divisionCategoryId,
+        itemCategoryText: item.divisionCategory,
+        requestedQty: null,
+        specification: null,
+        requestedBy: null,
+        uomText: item.uom,
+        purchaseRequestHeaderId: 0,
+        no: null,
+        date: null,
+        version: 0,
+        select: null,
+        slNo: i,
+        item: itemId,
+        batchId: batchId,
+        stockBatch: null,
+        itemSpecification: null,
+        purpose: null,
+        quantityRequested: 0.0,
+        quantityRecieved: null,
+        quantityOrdered: null,
+        instruction: null,
+        uom: uomId > 0
+            ? uomId
+            : 44, // Default to 44 if not found (as per sample)
+        requiredDate: null,
+        remarks: item.remarks,
+        department: 0,
+        bizunit: 0,
+        oldItem: null,
+        editComments: null,
+        isChecked: false,
+        lotNo: null,
+        dateOfManufacture: null,
+        stock: item.qtyInStock.toDouble(),
+        stockText: item.qtyInStock.toString(),
+        expiryDate: null,
+        comments: null,
+        tax: null,
+        discount: null,
+        totalAmount: null,
+        netAmount: null,
+        adjAmount: null,
+        shippingAmount: null,
+        customerQty: null,
+        customerItem: 0,
+        action: 0,
+        amount: item.amount,
+        quantity: null,
+        valueText: null,
+        amountWise: null,
+        quantityWise: null,
+        pageName: null,
+        purchaseRequestId: null,
+        itemCount: null,
+        division: null,
+        divisionText: item.divisionCategory,
+        manufacturerText: null,
+        divisionName: null,
+        divisionGroupText: null,
+        divisionGroup: null,
+        taxId: null,
+        taxText: null,
+        isUpdate: null,
+        manufacturerCountry: null,
+        isFOC: false,
+        country: null,
+        rowIndex: null,
+        isReceiptBatchRequired: null,
+        detailId: null,
+        actualBatchNo: null,
+      ));
+    }
+
+    // Validate details
+    if (details.isEmpty) {
+      throw Exception(
+          'No items added. Please add at least one item before saving.');
+    }
+
+    // Format date
+    // Use ISO 8601 format which is compatible with System.Text.Json in .NET
+    // Example: "2025-12-30T15:08:02.222"
+    final dateStr = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(_stDate);
+
+    // MenuId: 1554 for save API (as per list screen)
+    final menuId = 1554;
+    final moduleId = 6;
+
+    return ItemIssueSaveRequest(
+      id: _isEditMode ? int.tryParse(widget.issueId ?? '') : null,
+      createdBy: createdBy,
+      status: 0,
+      sbuId: 0,
+      no: _stNo ?? '[NEW]',
+      version: null,
+      date: dateStr,
+      fromDate: null,
+      toDate: null,
+      type: null,
+      totalQty: null,
+      remarks: _referenceCtrl.text.trim().isEmpty
+          ? null
+          : _referenceCtrl.text.trim(),
+      comments: null,
+      department: fromStoreId, // Using fromStoreId as department
+      toStore: toStoreId,
+      issueTo: issueToId,
+      bizunit: bizUnit,
+      module: null,
+      company: 1,
+      modifiedBy: modifiedBy,
+      modifiedDate: null,
+      isWorkOrder: null,
+      isEdit: null,
+      confirmStockValueChange: null,
+      astDocMode: null,
+      aptCode: null,
+      isMultipleBatch: null,
+      multiBatchGroup: null,
+      transactionType: 14,
+      isCancelled: null,
+      workflowProcess: null,
+      reference: _referenceCtrl.text.trim().isEmpty
+          ? null
+          : _referenceCtrl.text.trim(),
+      workflowFlag: workflowFlag,
+      processId: processId,
+      processActionId: processActionId,
+      workflowComment: null,
+      workflowStatus: 0,
+      departmentText: null,
+      toStoreText: null,
+      companyText: null,
+      typeText: null,
+      statusText: null,
+      isSelected: false,
+      hasEdit: true,
+      edit: null,
+      action: null,
+      view: null,
+      delete: null,
+      details: details,
+      dateRequired: null,
+      departmentRequired: null,
+      toStoreRequired: null,
+      totalQtyNegative: null,
+      detailsRequired: null,
+      refid: null,
+      menuId: menuId,
+      moduleId: moduleId,
+      userId: userId,
+      divisionGroup: null,
+      issueAgainst: issueAgainstValue, // Send as string text value
+      issueReceiptType: 1,
+      itemText: null,
+    );
+  }
+
+  /// Handle save (without workflow)
+  Future<void> _handleSave() async {
+    if (!_validateForm()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Build save request with workflowFlag = 0 and null process IDs
+      final saveRequest = await _buildSaveRequest(
+        workflowFlag: 0,
+        processId: null,
+        processActionId: null,
+      );
+
+      // Debug: Print the request JSON
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 SAVE REQUEST JSON');
+      print('═══════════════════════════════════════════════════════════');
+      print(saveRequest.toJson());
       print('═══════════════════════════════════════════════════════════');
 
-      // TODO: Call API to submit/update
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isEditMode
-                ? 'Customer Issue updated successfully'
-                : 'Customer Issue submitted successfully',
+      // Call save API
+      final itemIssueRepo = getIt<ItemIssueRepository>();
+      await itemIssueRepo.saveItemIssue(saveRequest);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isEditMode
+                  ? 'Customer Issue saved successfully'
+                  : 'Customer Issue saved successfully',
+            ),
+            backgroundColor: Colors.green,
           ),
-        ),
+        );
+        Navigator.of(context).pop(true); // Return true to indicate success
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save customer issue: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  /// Handle submit (with workflow)
+  Future<void> _handleSubmit() async {
+    if (!_validateForm()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Step 1: Get workflow process ID and action ID
+      final workflowIds = await _getWorkflowIds();
+      final processId = workflowIds['processId'];
+      final processActionId = workflowIds['processActionId'];
+
+      // Step 2: Build save request with workflowFlag = 1 and process IDs
+      final saveRequest = await _buildSaveRequest(
+        workflowFlag: 1,
+        processId: processId,
+        processActionId: processActionId,
       );
-      Navigator.of(context).pop();
+
+      // Step 3: Call save API
+      final itemIssueRepo = getIt<ItemIssueRepository>();
+      await itemIssueRepo.saveItemIssue(saveRequest);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isEditMode
+                  ? 'Customer Issue submitted successfully'
+                  : 'Customer Issue submitted successfully',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true); // Return true to indicate success
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit customer issue: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -2805,7 +4350,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                           Expanded(
                             child: _buildPrimaryTextField(
                               controller: _rateCtrl,
-                              label: 'Rate',
+                              label: 'Rate (LKR)',
                               icon: Icons.attach_money,
                               keyboardType: TextInputType.numberWithOptions(
                                   decimal: true),
@@ -3200,7 +4745,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                                   _uomCtrl.clear();
                                 }
 
-                                // Auto-fill Rate
+                                // Auto-fill Rate (if > 0)
                                 if (selectedBatch.rate > 0) {
                                   _rateCtrl.text =
                                       selectedBatch.rate.toString();
@@ -3364,7 +4909,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         Row(
           children: [
             Text(
-              'Amount',
+              'Amount (LKR)',
               style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -3530,6 +5075,67 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   }
 }
 
+// Labeled widget matching expense screen pattern
+class _Labeled extends StatelessWidget {
+  const _Labeled({
+    this.label,
+    required this.child,
+    this.errorText,
+    this.required = false,
+  });
+  final String? label;
+  final Widget child;
+  final String? errorText;
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (label != null) ...[
+          RichText(
+            text: TextSpan(
+              text: label!,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey,
+                letterSpacing: 0.1,
+              ),
+              children: required
+                  ? [
+                      TextSpan(
+                        text: ' *',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: Colors.red.shade600,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        child,
+        if (errorText != null && errorText!.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            errorText!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.red.shade600,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 // LabeledField widget matching reference design
 class _LabeledField extends StatelessWidget {
   const _LabeledField({
@@ -3607,6 +5213,7 @@ class IssueItemDetail {
   final String divisionCategory;
   final String itemDescription;
   final String batchNo;
+  final int? batchId; // Optional batch ID
   final int qtyInStock;
   final int qtyIssued;
   final String uom;
@@ -3618,6 +5225,7 @@ class IssueItemDetail {
     required this.divisionCategory,
     required this.itemDescription,
     required this.batchNo,
+    this.batchId,
     required this.qtyInStock,
     required this.qtyIssued,
     required this.uom,

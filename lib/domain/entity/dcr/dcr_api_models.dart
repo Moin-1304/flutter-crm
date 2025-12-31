@@ -575,6 +575,41 @@ class AttachmentApiItem {
 }
 
 // DCR Save API Models
+class CoVisitorDetail {
+  final int? id;
+  final int? dcrDetailId;
+  final int coVisitorId;
+  final int coordinatorId;
+  final String? remarks;
+  final int active;
+  final int? slNo;
+  final String? coVisitorName;
+
+  CoVisitorDetail({
+    this.id,
+    this.dcrDetailId,
+    required this.coVisitorId,
+    required this.coordinatorId,
+    this.remarks,
+    this.active = 1,
+    this.slNo,
+    this.coVisitorName,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'Id': id,
+      'DcrDetailId': dcrDetailId,
+      'CoVisitorId': coVisitorId,
+      'CoordinatorId': coordinatorId,
+      'Remarks': remarks,
+      'Active': active,
+      'SlNo': slNo,
+      'CoVisitorName': coVisitorName,
+    };
+  }
+}
+
 class DcrSaveRequest {
   // Root payload fields (nullable/defaults allowed to match API contract)
   final int? id;
@@ -607,6 +642,8 @@ class DcrSaveRequest {
   final String? transactionType;
   final int? typeOfWorkId;
   final int? isGeneric;
+  final bool? coVisit;
+  final List<CoVisitorDetail>? coVisitorDetails;
 
   DcrSaveRequest({
     this.id,
@@ -639,7 +676,10 @@ class DcrSaveRequest {
     this.transactionType,
     this.typeOfWorkId,
     this.isGeneric,
-  }) : expenses = expenses ?? const [];
+    this.coVisit,
+    List<CoVisitorDetail>? coVisitorDetails,
+  }) : expenses = expenses ?? const [],
+       coVisitorDetails = coVisitorDetails ?? (coVisit == true ? const [] : const []);
 
   Map<String, dynamic> toJson() {
     return {
@@ -673,6 +713,10 @@ class DcrSaveRequest {
       'TransactionType': transactionType,
       'TypeOfWorkId': typeOfWorkId,
       'IsGeneric': isGeneric,
+      'CoVisit': coVisit ?? false,
+      'CoVisitorDetails': (coVisitorDetails?.isNotEmpty ?? false)
+          ? coVisitorDetails!.map((detail) => detail.toJson()).toList()
+          : [],
     };
   }
 }
@@ -709,6 +753,8 @@ class DcrUpdateRequest {
   final String? transactionType;
   final int? typeOfWorkId;
   final int? isGeneric;
+  final bool? coVisit;
+  final List<CoVisitorDetail>? coVisitorDetails;
 
   DcrUpdateRequest({
     this.id,
@@ -741,7 +787,9 @@ class DcrUpdateRequest {
     this.transactionType,
     this.typeOfWorkId,
     this.isGeneric,
-  });
+    this.coVisit,
+    List<CoVisitorDetail>? coVisitorDetails,
+  }) : coVisitorDetails = coVisitorDetails ?? const [];
 
   Map<String, dynamic> toJson() {
     return {
@@ -777,6 +825,10 @@ class DcrUpdateRequest {
       'TransactionType': transactionType,
       'TypeOfWorkId': typeOfWorkId,
       'IsGeneric': isGeneric,
+      'CoVisit': coVisit ?? false,
+      'CoVisitorDetails': (coVisitorDetails?.isNotEmpty ?? false)
+          ? coVisitorDetails!.map((detail) => detail.toJson()).toList()
+          : [],
     };
   }
 }

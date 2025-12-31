@@ -456,4 +456,21 @@ class CommonRepositoryImpl implements CommonRepository {
     // Fallback to empty list if API fails
     return [];
   }
+
+  @override
+  Future<List<CommonDropdownItem>> getReportingManagerList() async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+
+        final response = await commonApi.getReportingManagerList();
+        return response;
+      }
+    } catch (e) {
+      // API get reporting manager list failed
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
 }

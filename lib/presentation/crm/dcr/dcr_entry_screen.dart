@@ -26,7 +26,7 @@ class DcrEntryScreen extends StatefulWidget {
   final int? initialCustomerId;
   final int? initialClusterId; // AKA cityId in API
   final int? initialTypeOfWorkId;
-  
+
   const DcrEntryScreen({
     super.key,
     this.dcrId,
@@ -50,24 +50,28 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   bool _isSavingDraft = false; // Loading state for save draft
   bool _isSubmitting = false; // Loading state for submit
   bool _isLoadingClusters = false; // Loading state for clusters
-  bool _isLoadingDcrDetails = false; // Loading state for DCR details (edit mode)
+  bool _isLoadingDcrDetails =
+      false; // Loading state for DCR details (edit mode)
   List<String> _clusters = []; // Dynamic cluster list
-  final Map<String, int> _clusterNameToId = <String, int>{}; // Map cluster names to IDs
+  final Map<String, int> _clusterNameToId =
+      <String, int>{}; // Map cluster names to IDs
   String? _clusterError; // Error message for cluster loading
-  
+
   // Customer and purpose options (dynamic from API)
   List<String> _customerOptions = [];
   List<String> _purposeOptions = [];
   final Map<String, int> _typeOfWorkNameToId = <String, int>{};
-  final Map<int, String> _typeOfWorkIdToName = <int, String>{}; // Reverse mapping for pre-filling (same as tour plan form)
+  final Map<int, String> _typeOfWorkIdToName = <int,
+      String>{}; // Reverse mapping for pre-filling (same as tour plan form)
   final Map<String, int> _customerNameToId = <String, int>{};
   int _purposeVersion = 0; // Version counter to force dropdown rebuild
-  int? _loadedTypeOfWorkId; // Store typeOfWorkId from loaded DCR entry for editing
-  
+  int?
+      _loadedTypeOfWorkId; // Store typeOfWorkId from loaded DCR entry for editing
+
   final TextEditingController _durationCtrl = TextEditingController();
   final TextEditingController _samplesCtrl = TextEditingController();
   final TextEditingController _discussionCtrl = TextEditingController();
-  
+
   // Products to Discuss - Multi-select dropdown
   List<String> _productOptions = [];
   final Map<String, int> _productNameToId = <String, int>{};
@@ -80,7 +84,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   String? _purposeErrorText;
   String? _durationErrorText;
   String? _productsErrorText;
-  
+
   // Service Engineer specific fields
   bool _isServiceEngineer = false;
   List<String> _instrumentOptions = [];
@@ -93,19 +97,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   String? _complaintStatus; // "Resolved" or "Not Resolved"
   DateTime? _complaintDate;
   final TextEditingController _complaintRemarksCtrl = TextEditingController();
-  
+
   // Store loaded entry for preserving detailId and clusterId during updates
   DcrEntry? _loadedEntry;
 
   @override
   void initState() {
     super.initState();
-    
+
     // Show loader immediately if we're in edit mode (when edit icon is clicked)
     if (widget.dcrId != null || widget.id != null) {
       _isLoadingDcrDetails = true;
     }
-    
+
     // If initial entry is provided, prefill immediately (instant UX)
     // Same approach as edit tour plan form (new_tour_plan_screen.dart lines 237-251)
     if (widget.initialEntry != null) {
@@ -114,11 +118,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       _customer = e.customer;
       // Set purpose using reverse mapping if available, else mark as Loading... (EXACT same as tour plan form line 250)
       // This matches the edit tour plan form behavior exactly: _typeOfWorkIdToName[detail.typeOfWorkId] ?? (detail.typeOfWorkId > 0 ? 'Loading...' : null)
-      if (widget.initialTypeOfWorkId != null && widget.initialTypeOfWorkId! > 0) {
+      if (widget.initialTypeOfWorkId != null &&
+          widget.initialTypeOfWorkId! > 0) {
         // Try to get from mapping if already loaded (shouldn't happen in initState, but check anyway)
         // Otherwise, set to "Loading..." which will be resolved after typeOfWork list loads (same as tour plan form)
-        _purpose = _typeOfWorkIdToName[widget.initialTypeOfWorkId] ?? 'Loading...';
-        print('DcrEntryScreen: Set purpose to "${_purpose}" for initialTypeOfWorkId: ${widget.initialTypeOfWorkId} (will resolve after typeOfWork list loads)');
+        _purpose =
+            _typeOfWorkIdToName[widget.initialTypeOfWorkId] ?? 'Loading...';
+        print(
+            'DcrEntryScreen: Set purpose to "${_purpose}" for initialTypeOfWorkId: ${widget.initialTypeOfWorkId} (will resolve after typeOfWork list loads)');
       } else {
         // Fallback to purposeOfVisit from entry if no typeOfWorkId provided
         _purpose = e.purposeOfVisit.trim().isNotEmpty ? e.purposeOfVisit : null;
@@ -126,7 +133,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       _durationCtrl.text = e.callDurationMinutes.toString();
       // Parse products from comma-separated string (if any)
       if (e.productsDiscussed.trim().isNotEmpty) {
-        _selectedProducts = e.productsDiscussed.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty).toSet();
+        _selectedProducts = e.productsDiscussed
+            .split(',')
+            .map((p) => p.trim())
+            .where((p) => p.isNotEmpty)
+            .toSet();
       }
       _samplesCtrl.text = e.samplesDistributed;
       _discussionCtrl.text = e.keyDiscussionPoints;
@@ -135,13 +146,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     }
 
     // Seed name->ID maps early if upstream provided IDs so validation doesn't fail
-    if (_customer != null && _customer!.trim().isNotEmpty && widget.initialCustomerId != null) {
+    if (_customer != null &&
+        _customer!.trim().isNotEmpty &&
+        widget.initialCustomerId != null) {
       _customerNameToId[_customer!] = widget.initialCustomerId!;
       if (!_customerOptions.contains(_customer)) {
         _customerOptions = {..._customerOptions, _customer!}.toList();
       }
     }
-    if (_cluster != null && _cluster!.trim().isNotEmpty && widget.initialClusterId != null) {
+    if (_cluster != null &&
+        _cluster!.trim().isNotEmpty &&
+        widget.initialClusterId != null) {
       _clusterNameToId[_cluster!] = widget.initialClusterId!;
       if (!_clusters.contains(_cluster)) {
         _clusters = {..._clusters, _cluster!}.toList();
@@ -150,7 +165,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
 
     // Check if user is Service Engineer
     _checkServiceEngineer();
-    
+
     // Load lists first so when details arrive we can map reliably
     // IMPORTANT: Load typeOfWork list FIRST if we have initialTypeOfWorkId to resolve purpose immediately
     if (widget.initialTypeOfWorkId != null && widget.initialTypeOfWorkId! > 0) {
@@ -185,63 +200,75 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       });
     }
   }
-  
+
   void _checkServiceEngineer() {
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final String? serviceArea = userStore?.userDetail?.serviceArea;
-    _isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    print('DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
+    _isServiceEngineer =
+        serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    print(
+        'DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
   }
-  
+
   Future<void> _loadInstrumentsList() async {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+
         // Wait for user to be loaded
         int retry = 0;
         while (userStore?.isUserLoaded != true && retry < 20) {
           await Future.delayed(const Duration(milliseconds: 300));
           retry++;
         }
-        
+
         int? userId = userStore?.userDetail?.id;
         if (userId == null || userId <= 0) {
-          print('DcrEntryScreen: [Instruments] userId is null/0, skipping instruments load');
+          print(
+              'DcrEntryScreen: [Instruments] userId is null/0, skipping instruments load');
           return;
         }
-        
+
         // Get selected customer ID - instruments are loaded based on selected customer
         int? customerId = _customerNameToId[_customer];
         if (customerId == null || customerId <= 0) {
-          print('DcrEntryScreen: [Instruments] customerId is null/0, skipping instruments load');
+          print(
+              'DcrEntryScreen: [Instruments] customerId is null/0, skipping instruments load');
           setState(() {
             _instrumentOptions.clear();
             _instrumentNameToId.clear();
           });
           return;
         }
-        
-        print('DcrEntryScreen: [Instruments] Loading instruments with userId: $userId, customerId: $customerId');
-        final List<CommonDropdownItem> items = await repo.getMappedInstrumentsList(userId, customerId);
-        
+
+        print(
+            'DcrEntryScreen: [Instruments] Loading instruments with userId: $userId, customerId: $customerId');
+        final List<CommonDropdownItem> items =
+            await repo.getMappedInstrumentsList(userId, customerId);
+
         if (items.isNotEmpty) {
           setState(() {
             _instrumentOptions.clear();
             _instrumentNameToId.clear();
             for (final item in items) {
-              final String instrumentName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              final String instrumentName =
+                  (item.text.isNotEmpty ? item.text : item.name).trim();
               if (instrumentName.isNotEmpty) {
                 _instrumentOptions.add(instrumentName);
                 _instrumentNameToId[instrumentName] = item.id;
               }
             }
             _instrumentOptions.sort();
-            print('DcrEntryScreen: [Instruments] Loaded ${_instrumentOptions.length} instruments');
+            print(
+                'DcrEntryScreen: [Instruments] Loaded ${_instrumentOptions.length} instruments');
           });
         } else {
-          print('DcrEntryScreen: [Instruments] No instruments returned from API');
+          print(
+              'DcrEntryScreen: [Instruments] No instruments returned from API');
           setState(() {
             _instrumentOptions.clear();
             _instrumentNameToId.clear();
@@ -267,7 +294,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         if (permission == LocationPermission.denied) return;
       }
       if (permission == LocationPermission.deniedForever) return;
-      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+      final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.best);
       if (!mounted) return;
       setState(() {
         _position = pos;
@@ -280,20 +308,29 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
         const int countryId = 208;
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
-        final List<CommonDropdownItem> items = await repo.getClusterList(countryId, employeeId!);
-        final clusters = items.map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim()).where((s) => s.isNotEmpty).toSet();
+        final List<CommonDropdownItem> items =
+            await repo.getClusterList(countryId, employeeId!);
+        final clusters = items
+            .map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim())
+            .where((s) => s.isNotEmpty)
+            .toSet();
         if (clusters.isNotEmpty) {
           setState(() {
             _clusters = {..._clusters, ...clusters}.toList();
             // map names to ids for submit
             for (final item in items) {
-              final String key = (item.text.isNotEmpty ? item.text : item.cityName).trim();
+              final String key =
+                  (item.text.isNotEmpty ? item.text : item.cityName).trim();
               if (key.isNotEmpty) _clusterNameToId[key] = item.id;
             }
             // If editing and selected cluster not in list, add it so it shows up
-            if (_cluster != null && _cluster!.trim().isNotEmpty && !_clusters.contains(_cluster)) {
+            if (_cluster != null &&
+                _cluster!.trim().isNotEmpty &&
+                !_clusters.contains(_cluster)) {
               _clusters = {..._clusters, _cluster!}.toList();
             }
           });
@@ -308,55 +345,65 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+
         // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
         int retry = 0;
         while (userStore?.isUserLoaded != true && retry < 20) {
           await Future.delayed(const Duration(milliseconds: 300));
           retry++;
         }
-        
+
         int? userId = userStore?.userDetail?.id;
         int? employeeId = userStore?.userDetail?.employeeId;
         String? serviceArea = userStore?.userDetail?.serviceArea;
-        
+
         if (userId == null || userId <= 0) {
-          print('DcrEntryScreen: [Products] userId is still null/0, skipping products load');
+          print(
+              'DcrEntryScreen: [Products] userId is still null/0, skipping products load');
           return;
         }
-        
+
         // For Service Engineer: use employeeId as UserId
         // For others: use userId as UserId
         int? actualUserId = userId;
-        
+
         if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
           if (employeeId != null && employeeId > 0) {
             actualUserId = employeeId;
-            print('DcrEntryScreen: [Products] Service Engineer detected - using employeeId: $actualUserId as UserId');
+            print(
+                'DcrEntryScreen: [Products] Service Engineer detected - using employeeId: $actualUserId as UserId');
           } else {
-            print('DcrEntryScreen: [Products] Service Engineer but employeeId is null/0, using userId: $actualUserId');
+            print(
+                'DcrEntryScreen: [Products] Service Engineer but employeeId is null/0, using userId: $actualUserId');
           }
         } else {
-          print('DcrEntryScreen: [Products] Non-Service Engineer - using userId: $actualUserId');
+          print(
+              'DcrEntryScreen: [Products] Non-Service Engineer - using userId: $actualUserId');
         }
-        
+
         // IsFromAMCUser is always 0 in the request, only UserId is dynamic
-        print('DcrEntryScreen: [Products] Loading products with UserId: $actualUserId');
-        final List<CommonDropdownItem> items = await repo.getDcrProductsList(actualUserId);
+        print(
+            'DcrEntryScreen: [Products] Loading products with UserId: $actualUserId');
+        final List<CommonDropdownItem> items =
+            await repo.getDcrProductsList(actualUserId);
         if (items.isNotEmpty) {
           setState(() {
             _productOptions.clear();
             _productNameToId.clear();
             for (final item in items) {
-              final String productName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              final String productName =
+                  (item.text.isNotEmpty ? item.text : item.name).trim();
               if (productName.isNotEmpty) {
                 _productOptions.add(productName);
                 _productNameToId[productName] = item.id;
               }
             }
             _productOptions.sort();
-            print('DcrEntryScreen: [Products] Loaded ${_productOptions.length} products');
+            print(
+                'DcrEntryScreen: [Products] Loaded ${_productOptions.length} products');
           });
         } else {
           print('DcrEntryScreen: [Products] No products returned from API');
@@ -371,13 +418,15 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     try {
       print('DcrEntryScreen: [Customers] Start loading mapped customers');
       if (!getIt.isRegistered<TourPlanRepository>()) {
-        print('DcrEntryScreen: [Customers] TourPlanRepository not registered - skipping');
+        print(
+            'DcrEntryScreen: [Customers] TourPlanRepository not registered - skipping');
         return;
       }
-      
+
       // If no cluster is selected, clear customers and return
       if (_cluster == null || _cluster!.trim().isEmpty) {
-        print('DcrEntryScreen: [Customers] No cluster selected - clearing customers');
+        print(
+            'DcrEntryScreen: [Customers] No cluster selected - clearing customers');
         setState(() {
           _customerOptions = [];
           _customerNameToId.clear();
@@ -385,9 +434,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         });
         return;
       }
-      
+
       final repo = getIt<TourPlanRepository>();
-      final userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
       final int? employeeId = userStore?.userDetail?.employeeId;
       if (employeeId == null) {
         print('DcrEntryScreen: [Customers] employeeId is null - skipping');
@@ -397,7 +448,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
       // Get cluster ID from the selected cluster name
       final int? clusterId = _clusterNameToId[_cluster];
       if (clusterId == null || clusterId <= 0) {
-        print('DcrEntryScreen: [Customers] Invalid cluster ID for cluster: $_cluster');
+        print(
+            'DcrEntryScreen: [Customers] Invalid cluster ID for cluster: $_cluster');
         setState(() {
           _customerOptions = [];
           _customerNameToId.clear();
@@ -443,13 +495,15 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         selectedEmployeeId: null,
         date: dateStr,
       );
-      
+
       print('DcrEntryScreen: [Customers] Request body => ${req.toJson()}');
       final res = await repo.getMappedCustomersByEmployeeId(req);
-      print('DcrEntryScreen: [Customers] API returned ${res.customers.length} customers');
-      
+      print(
+          'DcrEntryScreen: [Customers] API returned ${res.customers.length} customers');
+
       if (res.customers.isEmpty) {
-        print('DcrEntryScreen: [Customers] No customers found for selected cluster');
+        print(
+            'DcrEntryScreen: [Customers] No customers found for selected cluster');
         setState(() {
           // Keep existing customer if it was set, but clear options
           _customerOptions = [];
@@ -463,17 +517,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         final String? existingCustomer = _customer;
         _customerOptions = [];
         _customerNameToId.clear();
-        
+
         // Populate with new customers from API
         for (final mc in res.customers) {
           _customerOptions.add(mc.customerName);
           _customerNameToId[mc.customerName] = mc.customerId;
         }
-        
+
         // Remove duplicates and sort
         _customerOptions = _customerOptions.toSet().toList();
         _customerOptions.sort();
-        
+
         // If editing and existing customer is in the new list, keep it selected
         // Otherwise, if it's not in the list, try to preserve it
         if (existingCustomer != null && existingCustomer.trim().isNotEmpty) {
@@ -491,8 +545,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
           }
         }
       });
-      
-      print('DcrEntryScreen: [Customers] Loaded ${_customerOptions.length} customers');
+
+      print(
+          'DcrEntryScreen: [Customers] Loaded ${_customerOptions.length} customers');
     } catch (e) {
       print('DcrEntryScreen: [Customers] Error loading customers: $e');
       // Silent fail - don't clear existing customers on error
@@ -501,12 +556,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
 
   /// Resolve purpose from typeOfWorkId (extracted as separate method for reusability)
   void _resolvePurposeFromTypeOfWorkId(int typeOfWorkId) {
-    print('DcrEntryScreen: Resolving purpose from typeOfWorkId (same as tour plan form)');
+    print(
+        'DcrEntryScreen: Resolving purpose from typeOfWorkId (same as tour plan form)');
     print('  - Current purpose: "$_purpose"');
     print('  - typeOfWorkId to resolve: $typeOfWorkId');
-    print('  - Source: ${widget.initialTypeOfWorkId == typeOfWorkId ? "initialTypeOfWorkId" : "loadedTypeOfWorkId (edit mode)"}');
+    print(
+        '  - Source: ${widget.initialTypeOfWorkId == typeOfWorkId ? "initialTypeOfWorkId" : "loadedTypeOfWorkId (edit mode)"}');
     print('  - typeOfWorkIdToName map: $_typeOfWorkIdToName');
-    
+
     // Get purpose name from reverse mapping
     final purposeName = _typeOfWorkIdToName[typeOfWorkId];
     if (purposeName != null && purposeName.isNotEmpty) {
@@ -514,30 +571,36 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         // ALWAYS set purpose from API value (ensures it's always correct)
         final previousPurpose = _purpose;
         _purpose = purposeName;
-        
+
         // Increment version to force dropdown rebuild
         _purposeVersion++;
-        
+
         // Ensure purpose is in options list
         if (!_purposeOptions.contains(purposeName)) {
           _purposeOptions = {..._purposeOptions, purposeName}.toList();
         }
-        
+
         // Update the name-to-ID map with correct ID
         _typeOfWorkNameToId[purposeName] = typeOfWorkId;
-        
+
         if (previousPurpose != purposeName) {
-          print('DcrEntryScreen: ✓ Updated purpose from "$previousPurpose" to "$purposeName" (ID: $typeOfWorkId)');
+          print(
+              'DcrEntryScreen: ✓ Updated purpose from "$previousPurpose" to "$purposeName" (ID: $typeOfWorkId)');
         } else {
-          print('DcrEntryScreen: ✓ Purpose already correct: "$purposeName" (ID: $typeOfWorkId)');
+          print(
+              'DcrEntryScreen: ✓ Purpose already correct: "$purposeName" (ID: $typeOfWorkId)');
         }
         print('DcrEntryScreen: Purpose set to: "$_purpose"');
-        print('DcrEntryScreen: Purpose in options: ${_purposeOptions.contains(purposeName)}');
-        print('DcrEntryScreen: Purpose version incremented to: $_purposeVersion');
+        print(
+            'DcrEntryScreen: Purpose in options: ${_purposeOptions.contains(purposeName)}');
+        print(
+            'DcrEntryScreen: Purpose version incremented to: $_purposeVersion');
       });
     } else {
-      print('DcrEntryScreen: ⚠ Could not find purpose name for typeOfWorkId: $typeOfWorkId');
-      print('DcrEntryScreen: Available IDs in map: ${_typeOfWorkIdToName.keys.toList()}');
+      print(
+          'DcrEntryScreen: ⚠ Could not find purpose name for typeOfWorkId: $typeOfWorkId');
+      print(
+          'DcrEntryScreen: Available IDs in map: ${_typeOfWorkIdToName.keys.toList()}');
       // Log all available mappings for debugging
       _typeOfWorkIdToName.forEach((id, name) {
         print('DcrEntryScreen:   ID $id -> "$name"');
@@ -549,42 +612,49 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+
         // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
         int retry = 0;
         while (userStore?.isUserLoaded != true && retry < 20) {
           await Future.delayed(const Duration(milliseconds: 300));
           retry++;
-          print('DcrEntryScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
+          print(
+              'DcrEntryScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
         }
-        
+
         int? userId = userStore?.userDetail?.id;
         String? serviceArea = userStore?.userDetail?.serviceArea;
-        
-        print('DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea"');
-        
+
+        print(
+            'DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea"');
+
         if (userId == null || userId <= 0) {
           print('DcrEntryScreen: [PurposeOfVisit] userId invalid, skipping');
           return;
         }
-        
+
         // Determine the text parameter based on serviceArea
         // Only "Service Engineer" gets "ServiceEng PurposeVisit"
         // All others (including null/empty serviceArea) get "Salesrep PurposeVisit"
         String purposeText;
         final String serviceAreaTrimmed = (serviceArea ?? '').trim();
-        
+
         if (serviceAreaTrimmed == 'Service Engineer') {
           purposeText = 'ServiceEng PurposeVisit';
         } else {
           // All other users (Sales, Manager, Field Coordinator, empty, null, etc.)
           purposeText = 'Salesrep PurposeVisit';
         }
-        
-        print('DcrEntryScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
-        final List<CommonDropdownItem> items = await repo.getPurposeOfVisitList(userId, purposeText);
-        print('DcrEntryScreen: [PurposeOfVisit] API returned ${items.length} items');
+
+        print(
+            'DcrEntryScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
+        final List<CommonDropdownItem> items =
+            await repo.getPurposeOfVisitList(userId, purposeText);
+        print(
+            'DcrEntryScreen: [PurposeOfVisit] API returned ${items.length} items');
         final works = items
             .map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim())
             .where((s) => s.isNotEmpty)
@@ -594,49 +664,61 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
             _purposeOptions = works.toList();
             // map names to ids for submit (same logic as tour plan form - line 828-833)
             for (final item in items) {
-              final String key = (item.text.isNotEmpty ? item.text : item.typeText).trim();
+              final String key =
+                  (item.text.isNotEmpty ? item.text : item.typeText).trim();
               if (key.isNotEmpty) {
                 _typeOfWorkNameToId[key] = item.id;
-                _typeOfWorkIdToName[item.id] = key; // Reverse mapping for pre-filling
+                _typeOfWorkIdToName[item.id] =
+                    key; // Reverse mapping for pre-filling
               }
             }
-            
+
             // Resolve purpose names from initialTypeOfWorkId OR loadedTypeOfWorkId (for editing)
             // ALWAYS resolve purpose from typeOfWorkId to ensure it matches API value
-            final int? typeOfWorkIdToResolve = widget.initialTypeOfWorkId ?? _loadedTypeOfWorkId;
+            final int? typeOfWorkIdToResolve =
+                widget.initialTypeOfWorkId ?? _loadedTypeOfWorkId;
             if (typeOfWorkIdToResolve != null && typeOfWorkIdToResolve > 0) {
               _resolvePurposeFromTypeOfWorkId(typeOfWorkIdToResolve);
             }
-            
+
             // Fallback: If purpose was set from initialEntry but not in options, try case-insensitive match
-            if (_purpose != null && _purpose!.trim().isNotEmpty && !_purposeOptions.contains(_purpose)) {
+            if (_purpose != null &&
+                _purpose!.trim().isNotEmpty &&
+                !_purposeOptions.contains(_purpose)) {
               // Try case-insensitive matching
               bool found = false;
               for (final option in _purposeOptions) {
                 if (_purpose!.trim().toLowerCase() == option.toLowerCase()) {
                   _purpose = option; // Use exact match from API
                   found = true;
-                  print('DcrEntryScreen: Matched purpose case-insensitively: "$option"');
+                  print(
+                      'DcrEntryScreen: Matched purpose case-insensitively: "$option"');
                   break;
                 }
               }
               // If still not found, add it to options (fallback)
               if (!found) {
                 _purposeOptions = {..._purposeOptions, _purpose!}.toList();
-                print('DcrEntryScreen: Added purpose to options list (fallback): $_purpose');
+                print(
+                    'DcrEntryScreen: Added purpose to options list (fallback): $_purpose');
               }
             }
-            
-            print('DcrEntryScreen: Final purpose value after resolution: "$_purpose"');
-            print('DcrEntryScreen: Purpose options count: ${_purposeOptions.length}');
-            print('DcrEntryScreen: Purpose is in options: ${_purpose != null && _purposeOptions.contains(_purpose)}');
+
+            print(
+                'DcrEntryScreen: Final purpose value after resolution: "$_purpose"');
+            print(
+                'DcrEntryScreen: Purpose options count: ${_purposeOptions.length}');
+            print(
+                'DcrEntryScreen: Purpose is in options: ${_purpose != null && _purposeOptions.contains(_purpose)}');
           });
         } else {
-          print('DcrEntryScreen: [PurposeOfVisit] No purpose options returned from API');
+          print(
+              'DcrEntryScreen: [PurposeOfVisit] No purpose options returned from API');
         }
       }
     } catch (e) {
-      print('DcrEntryScreen: [PurposeOfVisit] Error loading purpose of visit: $e');
+      print(
+          'DcrEntryScreen: [PurposeOfVisit] Error loading purpose of visit: $e');
       // Silent fail
     }
   }
@@ -656,16 +738,20 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
 
     // Loading state is already set in initState() when edit mode is detected
     try {
-      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+      final DcrRepository? dcrRepo =
+          getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
       if (dcrRepo != null && widget.id != null) {
         // For GET request: use widget.id (detail ID) as Id parameter, widget.dcrId as DCRId parameter
         // The API expects: Id=detailId&DCRId=dcrId
-        print('Loading DCR details - widget.id (detail): ${widget.id}, widget.dcrId (parent): ${widget.dcrId}');
-        final DcrEntry? dcrEntry = await dcrRepo.getById(widget.id!, dcrId: widget.dcrId);
+        print(
+            'Loading DCR details - widget.id (detail): ${widget.id}, widget.dcrId (parent): ${widget.dcrId}');
+        final DcrEntry? dcrEntry =
+            await dcrRepo.getById(widget.id!, dcrId: widget.dcrId);
         if (dcrEntry != null) {
           print('DCR Details loaded:');
           print('  Entry.id (DCR Parent ID): ${dcrEntry.id}');
-          print('  Entry.detailId (TourPlanDCRDetails ID): ${dcrEntry.detailId}');
+          print(
+              '  Entry.detailId (TourPlanDCRDetails ID): ${dcrEntry.detailId}');
           print('  Customer: ${dcrEntry.customer}');
           print('  Purpose: ${dcrEntry.purposeOfVisit}');
           print('  Cluster: ${dcrEntry.cluster}');
@@ -680,32 +766,42 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
           print('  TypeOfWorkId: ${dcrEntry.typeOfWorkId}');
           print('  CityId: ${dcrEntry.cityId}');
           print('  CustomerId: ${dcrEntry.customerId}');
-          
+
           // Store the loaded entry for preserving detailId and clusterId during updates
           _loadedEntry = dcrEntry;
-          
+
           // Store typeOfWorkId from loaded DCR entry to resolve purpose after typeOfWork list loads
           if (dcrEntry.typeOfWorkId != null && dcrEntry.typeOfWorkId! > 0) {
             _loadedTypeOfWorkId = dcrEntry.typeOfWorkId;
-            print('DcrEntryScreen: Stored typeOfWorkId from loaded DCR: $_loadedTypeOfWorkId (will resolve purpose after typeOfWork list loads)');
+            print(
+                'DcrEntryScreen: Stored typeOfWorkId from loaded DCR: $_loadedTypeOfWorkId (will resolve purpose after typeOfWork list loads)');
           }
-          
+
           // Populate the form fields with the loaded data
           setState(() {
-            _cluster = dcrEntry.cluster.isNotEmpty ? dcrEntry.cluster : _cluster;
-            _customer = dcrEntry.customer.isNotEmpty ? dcrEntry.customer : _customer;
+            _cluster =
+                dcrEntry.cluster.isNotEmpty ? dcrEntry.cluster : _cluster;
+            _customer =
+                dcrEntry.customer.isNotEmpty ? dcrEntry.customer : _customer;
             // Set purpose to "Loading..." if we have typeOfWorkId, otherwise use purposeOfVisit
             // This will be resolved after typeOfWork list loads (same as tour plan form)
             if (_loadedTypeOfWorkId != null && _loadedTypeOfWorkId! > 0) {
               _purpose = 'Loading...';
-              print('DcrEntryScreen: Set purpose to "Loading..." for typeOfWorkId: $_loadedTypeOfWorkId (will resolve after typeOfWork list loads)');
+              print(
+                  'DcrEntryScreen: Set purpose to "Loading..." for typeOfWorkId: $_loadedTypeOfWorkId (will resolve after typeOfWork list loads)');
             } else {
-              _purpose = dcrEntry.purposeOfVisit.isNotEmpty ? dcrEntry.purposeOfVisit : _purpose;
+              _purpose = dcrEntry.purposeOfVisit.isNotEmpty
+                  ? dcrEntry.purposeOfVisit
+                  : _purpose;
             }
             _durationCtrl.text = dcrEntry.callDurationMinutes.toString();
             // Parse products from comma-separated string
             if (dcrEntry.productsDiscussed.trim().isNotEmpty) {
-              _selectedProducts = dcrEntry.productsDiscussed.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty).toSet();
+              _selectedProducts = dcrEntry.productsDiscussed
+                  .split(',')
+                  .map((p) => p.trim())
+                  .where((p) => p.isNotEmpty)
+                  .toSet();
             } else {
               _selectedProducts.clear();
             }
@@ -713,11 +809,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
             _discussionCtrl.text = dcrEntry.keyDiscussionPoints;
             _date = dcrEntry.date;
             // Set time from date if available
-            _time = TimeOfDay(hour: dcrEntry.date.hour, minute: dcrEntry.date.minute);
-            
+            _time = TimeOfDay(
+                hour: dcrEntry.date.hour, minute: dcrEntry.date.minute);
+
             // Set location if available
-            if (dcrEntry.customerLatitude != null && dcrEntry.customerLongitude != null) {
-              print('Setting position from DCR data: Lat=${dcrEntry.customerLatitude}, Lng=${dcrEntry.customerLongitude}');
+            if (dcrEntry.customerLatitude != null &&
+                dcrEntry.customerLongitude != null) {
+              print(
+                  'Setting position from DCR data: Lat=${dcrEntry.customerLatitude}, Lng=${dcrEntry.customerLongitude}');
               _position = Position(
                 latitude: dcrEntry.customerLatitude!,
                 longitude: dcrEntry.customerLongitude!,
@@ -733,11 +832,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
             } else {
               print('No latitude/longitude data found in DCR entry');
             }
-            
+
             // Ensure current values appear in dropdowns and seed the name-to-ID maps
             if (_cluster != null && _cluster!.trim().isNotEmpty) {
-              if (!_clusters.contains(_cluster)) { 
-                _clusters = {..._clusters, _cluster!}.toList(); 
+              if (!_clusters.contains(_cluster)) {
+                _clusters = {..._clusters, _cluster!}.toList();
               }
               // Use the actual clusterId from the loaded entry if available
               if (!_clusterNameToId.containsKey(_cluster)) {
@@ -751,8 +850,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
               }
             }
             if (_customer != null && _customer!.trim().isNotEmpty) {
-              if (!_customerOptions.contains(_customer)) { 
-                _customerOptions = {..._customerOptions, _customer!}.toList(); 
+              if (!_customerOptions.contains(_customer)) {
+                _customerOptions = {..._customerOptions, _customer!}.toList();
               }
               // Use the actual customerId from the loaded entry if available
               if (!_customerNameToId.containsKey(_customer)) {
@@ -764,9 +863,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
               }
             }
             // Don't add "Loading..." to options - it will be resolved after typeOfWork list loads
-            if (_purpose != null && _purpose!.trim().isNotEmpty && _purpose != 'Loading...') {
-              if (!_purposeOptions.contains(_purpose)) { 
-                _purposeOptions = {..._purposeOptions, _purpose!}.toList(); 
+            if (_purpose != null &&
+                _purpose!.trim().isNotEmpty &&
+                _purpose != 'Loading...') {
+              if (!_purposeOptions.contains(_purpose)) {
+                _purposeOptions = {..._purposeOptions, _purpose!}.toList();
               }
               // If we have typeOfWorkId from loaded entry, use it to seed the map
               if (_loadedTypeOfWorkId != null && _loadedTypeOfWorkId! > 0) {
@@ -776,19 +877,22 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
               }
             }
           });
-          
+
           // Load customers for the selected cluster in edit mode
           if (_cluster != null && _cluster!.trim().isNotEmpty) {
             print('DcrEntryScreen: Loading customers for cluster: $_cluster');
             _loadMappedCustomers();
           }
-          
+
           // If we have _loadedTypeOfWorkId and typeOfWork list is already loaded, resolve purpose now
-          if (_loadedTypeOfWorkId != null && _loadedTypeOfWorkId! > 0 && _typeOfWorkIdToName.isNotEmpty) {
-            print('DcrEntryScreen: Resolving purpose from _loadedTypeOfWorkId after DCR details loaded');
+          if (_loadedTypeOfWorkId != null &&
+              _loadedTypeOfWorkId! > 0 &&
+              _typeOfWorkIdToName.isNotEmpty) {
+            print(
+                'DcrEntryScreen: Resolving purpose from _loadedTypeOfWorkId after DCR details loaded');
             _resolvePurposeFromTypeOfWorkId(_loadedTypeOfWorkId!);
           }
-          
+
           // Log the form field values after setting them
           print('Form fields set:');
           print('  _cluster: $_cluster');
@@ -842,18 +946,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > 600;
-    
+
     final InputBorder commonBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
       borderSide: BorderSide(color: Colors.grey.shade300),
     );
-    
+
     final screenTheme = theme.copyWith(
       inputDecorationTheme: theme.inputDecorationTheme.copyWith(
         filled: true,
@@ -877,7 +980,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         ),
       ),
     );
-    
+
     const Color tealGreen = Color(0xFF4db1b3);
     return Scaffold(
       appBar: AppBar(
@@ -903,7 +1006,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          theme.colorScheme.primary),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -918,437 +1022,610 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
             : Theme(
                 data: screenTheme,
                 child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              MediaQuery.of(context).size.width < 600 ? 12 : 16, 
-              12, 
-              MediaQuery.of(context).size.width < 600 ? 12 : 16, 
-              16 + MediaQuery.of(context).padding.bottom
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // DCR Details Card
-                    Card(
-                      color: Colors.white,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // 1. Date
-                            _LabeledField(
-                              label: 'Date',
-                              child: _DateField(
-                                initialDate: _date,
-                                onChanged: (d) => setState(() => _date = d),
-                              ),
+                  padding: EdgeInsets.fromLTRB(
+                      MediaQuery.of(context).size.width < 600 ? 12 : 16,
+                      12,
+                      MediaQuery.of(context).size.width < 600 ? 12 : 16,
+                      16 + MediaQuery.of(context).padding.bottom),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 800),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // DCR Details Card
+                          Card(
+                            color: Colors.white,
+                            surfaceTintColor: Colors.transparent,
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 2. Employee (read-only)
-                            _LabeledField(
-                              label: 'Employee',
-                              child: Builder(
-                                builder: (context) {
-                                  final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-                                  final String employeeName = userStore?.userDetail?.employeeName ?? '';
-                                  return TextFormField(
-                                    readOnly: true,
-                                    initialValue: employeeName,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Employee name',
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 3. Cluster / City *
-                            _LabeledField(
-                              label: 'Cluster / City',
-                              required: true,
-                              errorText: _clusterErrorText,
-                              child: SearchableDropdown(
-                                options: _clusters,
-                                value: _cluster,
-                                hintText: 'Type to search cluster/city...',
-                                searchHintText: 'Search cluster...',
-                                hasError: _clusterErrorText != null,
-                                onChanged: (v) {
-                                  setState(() {
-                                    _cluster = v;
-                                    _clusterErrorText = null;
-                                    // Clear customer selection when cluster changes
-                                    _customer = null;
-                                    _customerErrorText = null;
-                                  });
-                                  // Load customers for the selected cluster
-                                  _loadMappedCustomers();
-                                },
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 4. Time of Visit
-                            _LabeledField(
-                              label: 'Time of Visit',
-                              child: _TimeField(
-                                initial: _time,
-                                onChanged: (t) => setState(() => _time = t),
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 24),
-                            
-                            // 5. Actual Call Details (section header)
-                            Text(
-                              'Actual Call Details',
-                              style: GoogleFonts.inter(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF4db1b3),
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 20),
-                            
-                            // 6. Customer *
-                            _LabeledField(
-                              label: 'Customer',
-                              required: true,
-                              errorText: _customerErrorText,
-                              child: SearchableDropdown(
-                                options: _customerOptions,
-                                value: _customer,
-                                hintText: '-- Select Customer --',
-                                searchHintText: 'Search customer...',
-                                hasError: _customerErrorText != null,
-                                onChanged: (v) {
-                                  setState(() {
-                                    _customer = v;
-                                    _customerErrorText = null;
-                                    // Clear instruments when customer changes
-                                    if (_isServiceEngineer) {
-                                      _selectedInstruments.clear();
-                                      _instrumentOptions.clear();
-                                      _instrumentNameToId.clear();
-                                    }
-                                  });
-                                  // Load instruments for selected customer (Service Engineer only)
-                                  if (_isServiceEngineer && v != null && v.trim().isNotEmpty) {
-                                    _loadInstrumentsList();
-                                  }
-                                },
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 7. Type of Visit *
-                            _LabeledField(
-                              label: 'Type of Visit',
-                              required: true,
-                              errorText: _purposeErrorText,
-                              child: SearchableDropdown(
-                                key: ValueKey('purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
-                                options: _purposeOptions,
-                                value: _purpose,
-                                hintText: '-- Select Visit Type --',
-                                searchHintText: 'Search purpose...',
-                                hasError: _purposeErrorText != null,
-                                onChanged: (v) {
-                                  setState(() {
-                                    _purpose = v;
-                                    _purposeErrorText = null;
-                                  });
-                                },
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 8. Products Discussed *
-                            _LabeledField(
-                              label: 'Products Discussed',
-                              required: true,
+                            child: Padding(
+                              padding: EdgeInsets.all(
+                                  MediaQuery.of(context).size.width < 600
+                                      ? 16.0
+                                      : 20.0),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _MultiSelectDropdown(
-                                    options: _productOptions,
-                                    selectedValues: _selectedProducts,
-                                    hintText: 'Select Products',
-                                    onChanged: (Set<String> selected) {
-                                      setState(() {
-                                        _selectedProducts = selected;
-                                        if (selected.isNotEmpty) {
-                                          _productsErrorText = null;
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  if (_productsErrorText != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _productsErrorText!,
-                                      style: TextStyle(
-                                        color: Colors.red[700],
-                                        fontSize: 12,
-                                      ),
+                                  // 1. Date
+                                  _LabeledField(
+                                    label: 'Date',
+                                    child: _DateField(
+                                      initialDate: _date,
+                                      onChanged: (d) =>
+                                          setState(() => _date = d),
                                     ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            
-                            // 9. Mapped Instruments * (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Mapped Instruments',
-                                required: true,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _MultiSelectDropdown(
-                                      options: _instrumentOptions,
-                                      selectedValues: _selectedInstruments,
-                                      hintText: 'Mapped Instruments',
-                                      onChanged: (Set<String> selected) {
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // 2. Employee (read-only)
+                                  _LabeledField(
+                                    label: 'Employee',
+                                    child: Builder(
+                                      builder: (context) {
+                                        final UserDetailStore? userStore = getIt
+                                                .isRegistered<UserDetailStore>()
+                                            ? getIt<UserDetailStore>()
+                                            : null;
+                                        final String employeeName = userStore
+                                                ?.userDetail?.employeeName ??
+                                            '';
+                                        return TextFormField(
+                                          readOnly: true,
+                                          initialValue: employeeName,
+                                          decoration: const InputDecoration(
+                                            hintText: 'Employee name',
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // 3. Cluster / City *
+                                  _LabeledField(
+                                    label: 'Cluster / City',
+                                    required: true,
+                                    errorText: _clusterErrorText,
+                                    child: SearchableDropdown(
+                                      options: _clusters,
+                                      value: _cluster,
+                                      hintText:
+                                          'Type to search cluster/city...',
+                                      searchHintText: 'Search cluster...',
+                                      hasError: _clusterErrorText != null,
+                                      onChanged: (v) {
                                         setState(() {
-                                          _selectedInstruments = selected;
-                                          if (selected.isNotEmpty) {
-                                            _instrumentsErrorText = null;
+                                          _cluster = v;
+                                          _clusterErrorText = null;
+                                          // Clear customer selection when cluster changes
+                                          _customer = null;
+                                          _customerErrorText = null;
+                                        });
+                                        // Load customers for the selected cluster
+                                        _loadMappedCustomers();
+                                      },
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // 4. Time of Visit
+                                  _LabeledField(
+                                    label: 'Time of Visit',
+                                    child: _TimeField(
+                                      initial: _time,
+                                      onChanged: (t) =>
+                                          setState(() => _time = t),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 24),
+
+                                  // 5. Actual Call Details (section header)
+                                  Text(
+                                    'Actual Call Details',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF4db1b3),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 20),
+
+                                  // 6. Customer *
+                                  _LabeledField(
+                                    label: 'Customer',
+                                    required: true,
+                                    errorText: _customerErrorText,
+                                    child: SearchableDropdown(
+                                      options: _customerOptions,
+                                      value: _customer,
+                                      hintText: '-- Select Customer --',
+                                      searchHintText: 'Search customer...',
+                                      hasError: _customerErrorText != null,
+                                      onChanged: (v) {
+                                        setState(() {
+                                          _customer = v;
+                                          _customerErrorText = null;
+                                          // Clear instruments when customer changes
+                                          if (_isServiceEngineer) {
+                                            _selectedInstruments.clear();
+                                            _instrumentOptions.clear();
+                                            _instrumentNameToId.clear();
                                           }
+                                        });
+                                        // Load instruments for selected customer (Service Engineer only)
+                                        if (_isServiceEngineer &&
+                                            v != null &&
+                                            v.trim().isNotEmpty) {
+                                          _loadInstrumentsList();
+                                        }
+                                      },
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // 7. Type of Visit *
+                                  _LabeledField(
+                                    label: 'Type of Visit',
+                                    required: true,
+                                    errorText: _purposeErrorText,
+                                    child: SearchableDropdown(
+                                      key: ValueKey(
+                                          'purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
+                                      options: _purposeOptions,
+                                      value: _purpose,
+                                      hintText: '-- Select Visit Type --',
+                                      searchHintText: 'Search purpose...',
+                                      hasError: _purposeErrorText != null,
+                                      onChanged: (v) {
+                                        setState(() {
+                                          _purpose = v;
+                                          _purposeErrorText = null;
                                         });
                                       },
                                     ),
-                                    if (_instrumentsErrorText != null) ...[
-                                      const SizedBox(height: 4),
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // 8. Products Discussed *
+                                  _LabeledField(
+                                    label: 'Products Discussed',
+                                    required: true,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        _MultiSelectDropdown(
+                                          options: _productOptions,
+                                          selectedValues: _selectedProducts,
+                                          hintText: 'Select Products',
+                                          onChanged: (Set<String> selected) {
+                                            setState(() {
+                                              _selectedProducts = selected;
+                                              if (selected.isNotEmpty) {
+                                                _productsErrorText = null;
+                                              }
+                                            });
+                                          },
+                                        ),
+                                        if (_productsErrorText != null) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _productsErrorText!,
+                                            style: TextStyle(
+                                              color: Colors.red[700],
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+
+                                  // 9. Mapped Instruments * (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Mapped Instruments',
+                                      required: true,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _MultiSelectDropdown(
+                                            options: _instrumentOptions,
+                                            selectedValues:
+                                                _selectedInstruments,
+                                            hintText: 'Mapped Instruments',
+                                            onChanged: (Set<String> selected) {
+                                              setState(() {
+                                                _selectedInstruments = selected;
+                                                if (selected.isNotEmpty) {
+                                                  _instrumentsErrorText = null;
+                                                }
+                                              });
+                                            },
+                                          ),
+                                          if (_instrumentsErrorText !=
+                                              null) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _instrumentsErrorText!,
+                                              style: TextStyle(
+                                                color: Colors.red[700],
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+
+                                  const SizedBox(height: 16),
+
+                                  // 10. Call Duration (minutes)
+                                  _LabeledField(
+                                    label: 'Call Duration (minutes)',
+                                    errorText: _durationErrorText,
+                                    child: TextFormField(
+                                      controller: _durationCtrl,
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter duration in minutes',
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          borderSide: BorderSide(
+                                              color: _durationErrorText != null
+                                                  ? Colors.red.shade400
+                                                  : Colors.grey.shade300,
+                                              width: 1),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          borderSide: BorderSide(
+                                              color: _durationErrorText != null
+                                                  ? Colors.red.shade400
+                                                  : const Color(0xFF4db1b3),
+                                              width: 2),
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 12),
+                                      ),
+                                      onChanged: (_) => setState(
+                                          () => _durationErrorText = null),
+                                    ),
+                                  ),
+
+                                  // 11. Complaint (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Complaint',
+                                      child: TextFormField(
+                                        controller: _complaintCtrl,
+                                        maxLines: 4,
+                                        decoration: const InputDecoration(
+                                          hintText: 'Enter complaint details',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+
+                                  // 12. Action Taken (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Action Taken',
+                                      child: TextFormField(
+                                        controller: _actionTakenCtrl,
+                                        maxLines: 4,
+                                        decoration: const InputDecoration(
+                                          hintText: 'Enter action taken',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+
+                                  // 13. Result (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Result',
+                                      child: TextFormField(
+                                        controller: _resultCtrl,
+                                        maxLines: 4,
+                                        decoration: const InputDecoration(
+                                          hintText: 'Enter result',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+
+                                  // 14. Complaint Status (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Complaint Status',
+                                      child: SingleSelectDropdown(
+                                        options: const [
+                                          'Resolved',
+                                          'Not Resolved'
+                                        ],
+                                        value: _complaintStatus,
+                                        hintText: '-- Select Status --',
+                                        onChanged: (String? value) {
+                                          setState(() {
+                                            _complaintStatus = value;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ],
+
+                                  // 15. Complaint Date (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Complaint Date',
+                                      child: _DateField(
+                                        initialDate:
+                                            _complaintDate ?? DateTime.now(),
+                                        onChanged: (DateTime date) {
+                                          setState(() {
+                                            _complaintDate = date;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ],
+
+                                  // 16. Complaint Remarks (Service Engineer only)
+                                  if (_isServiceEngineer) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Complaint Remarks',
+                                      child: TextFormField(
+                                        controller: _complaintRemarksCtrl,
+                                        maxLines: 4,
+                                        decoration: const InputDecoration(
+                                          hintText: 'Enter complaint remarks',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+
+                                  const SizedBox(height: 16),
+
+                                  // 17. Key Discussion Points
+                                  _LabeledField(
+                                    label: 'Key Discussion Points',
+                                    child: TextFormField(
+                                      controller: _discussionCtrl,
+                                      maxLines: 4,
+                                      decoration: const InputDecoration(
+                                        hintText: 'Type discussion points',
+                                      ),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // 18. Co-Visit
+                                  Row(
+                                    children: [
+                                      Checkbox(
+                                        value: _coVisit,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _coVisit = value ?? false;
+                                          });
+                                        },
+                                        activeColor: const Color(0xFF4db1b3),
+                                      ),
+                                      const SizedBox(width: 8),
                                       Text(
-                                        _instrumentsErrorText!,
-                                        style: TextStyle(
-                                          color: Colors.red[700],
-                                          fontSize: 12,
+                                        'Co-Visit',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w400,
+                                          color: Colors.grey[900],
                                         ),
                                       ),
                                     ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 10. Call Duration (minutes)
-                            _LabeledField(
-                              label: 'Call Duration (minutes)',
-                              errorText: _durationErrorText,
-                              child: TextFormField(
-                                controller: _durationCtrl,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  hintText: 'Enter duration in minutes',
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(color: _durationErrorText != null ? Colors.red.shade400 : Colors.grey.shade300, width: 1),
                                   ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(color: _durationErrorText != null ? Colors.red.shade400 : const Color(0xFF4db1b3), width: 2),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                ),
-                                onChanged: (_) => setState(() => _durationErrorText = null),
-                              ),
-                            ),
-                            
-                            // 11. Complaint (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Complaint',
-                                child: TextFormField(
-                                  controller: _complaintCtrl,
-                                  maxLines: 4,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Enter complaint details',
-                                  ),
-                                ),
-                              ),
-                            ],
-                            
-                            // 12. Action Taken (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Action Taken',
-                                child: TextFormField(
-                                  controller: _actionTakenCtrl,
-                                  maxLines: 4,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Enter action taken',
-                                  ),
-                                ),
-                              ),
-                            ],
-                            
-                            // 13. Result (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Result',
-                                child: TextFormField(
-                                  controller: _resultCtrl,
-                                  maxLines: 4,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Enter result',
-                                  ),
-                                ),
-                              ),
-                            ],
-                            
-                            // 14. Complaint Status (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Complaint Status',
-                                child: SingleSelectDropdown(
-                                  options: const ['Resolved', 'Not Resolved'],
-                                  value: _complaintStatus,
-                                  hintText: '-- Select Status --',
-                                  onChanged: (String? value) {
-                                    setState(() {
-                                      _complaintStatus = value;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                            
-                            // 15. Complaint Date (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Complaint Date',
-                                child: _DateField(
-                                  initialDate: _complaintDate ?? DateTime.now(),
-                                  onChanged: (DateTime date) {
-                                    setState(() {
-                                      _complaintDate = date;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                            
-                            // 16. Complaint Remarks (Service Engineer only)
-                            if (_isServiceEngineer) ...[
-                              const SizedBox(height: 16),
-                              _LabeledField(
-                                label: 'Complaint Remarks',
-                                child: TextFormField(
-                                  controller: _complaintRemarksCtrl,
-                                  maxLines: 4,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Enter complaint remarks',
-                                  ),
-                                ),
-                              ),
-                            ],
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 17. Key Discussion Points
-                            _LabeledField(
-                              label: 'Key Discussion Points',
-                              child: TextFormField(
-                                controller: _discussionCtrl,
-                                maxLines: 4,
-                                decoration: const InputDecoration(
-                                  hintText: 'Type discussion points',
-                                ),
-                              ),
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            // 18. Co-Visit
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: _coVisit,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _coVisit = value ?? false;
-                                    });
-                                  },
-                                  activeColor: const Color(0xFF4db1b3),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Co-Visit',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w400,
-                                    color: Colors.grey[900],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            
-                            const SizedBox(height: 20),
-                            
-                            // Location picker - responsive layout
-                            _LabeledField(
-                              label: 'Location (optional)',
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final isMobile = constraints.maxWidth < 600;
-                                  
-                                  if (isMobile) {
-                                    // Mobile: Stack elements vertically
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _position == null
-                                              ? 'No location selected'
-                                              : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
-                                          style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: OutlinedButton(
+
+                                  const SizedBox(height: 20),
+
+                                  // Location picker - responsive layout
+                                  _LabeledField(
+                                    label: 'Location (optional)',
+                                    child: LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final isMobile =
+                                            constraints.maxWidth < 600;
+
+                                        if (isMobile) {
+                                          // Mobile: Stack elements vertically
+                                          return Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _position == null
+                                                    ? 'No location selected'
+                                                    : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
+                                                style: theme
+                                                    .textTheme.bodyMedium
+                                                    ?.copyWith(
+                                                        color: Colors
+                                                            .grey.shade700),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: OutlinedButton(
+                                                      onPressed: () async {
+                                                        final LatLng center =
+                                                            _position != null
+                                                                ? LatLng(
+                                                                    _position!
+                                                                        .latitude,
+                                                                    _position!
+                                                                        .longitude)
+                                                                : const LatLng(
+                                                                    6.927079,
+                                                                    79.861244);
+                                                        final LatLng? picked =
+                                                            await Navigator.of(
+                                                                    context)
+                                                                .push(
+                                                          MaterialPageRoute(
+                                                              builder: (_) =>
+                                                                  MapPickerScreen(
+                                                                      initial:
+                                                                          center,
+                                                                      title:
+                                                                          'Pick DCR Location',
+                                                                      limitTo1KmDefault:
+                                                                          true)),
+                                                        );
+                                                        if (picked != null &&
+                                                            mounted) {
+                                                          setState(() {
+                                                            _position =
+                                                                Position(
+                                                              latitude: picked
+                                                                  .latitude,
+                                                              longitude: picked
+                                                                  .longitude,
+                                                              timestamp:
+                                                                  DateTime
+                                                                      .now(),
+                                                              accuracy: 0,
+                                                              altitude: 0,
+                                                              heading: 0,
+                                                              speed: 0,
+                                                              speedAccuracy: 0,
+                                                              altitudeAccuracy:
+                                                                  0,
+                                                              headingAccuracy:
+                                                                  0,
+                                                            );
+                                                          });
+                                                        }
+                                                      },
+                                                      style: OutlinedButton
+                                                          .styleFrom(
+                                                        foregroundColor:
+                                                            tealGreen,
+                                                        side: const BorderSide(
+                                                            color: tealGreen,
+                                                            width: 1.5),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                vertical: 14),
+                                                        shape: RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        14)),
+                                                      ),
+                                                      child: const Text(
+                                                          'Pick on map'),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: TextButton(
+                                                      onPressed: () async {
+                                                        await _initLocation();
+                                                      },
+                                                      style:
+                                                          TextButton.styleFrom(
+                                                        foregroundColor:
+                                                            tealGreen,
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                vertical: 14),
+                                                      ),
+                                                      child: const Text(
+                                                          'Use current'),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          );
+                                        } else {
+                                          // Desktop: Keep horizontal layout
+                                          return Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _position == null
+                                                      ? 'No location selected'
+                                                      : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
+                                                  style: theme
+                                                      .textTheme.bodyMedium
+                                                      ?.copyWith(
+                                                          color: Colors
+                                                              .grey.shade700),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              OutlinedButton(
                                                 onPressed: () async {
-                                                  final LatLng center = _position != null
-                                                      ? LatLng(_position!.latitude, _position!.longitude)
-                                                      : const LatLng(6.927079, 79.861244);
-                                                  final LatLng? picked = await Navigator.of(context).push(
-                                                    MaterialPageRoute(builder: (_) => MapPickerScreen(initial: center, title: 'Pick DCR Location', limitTo1KmDefault: true)),
+                                                  final LatLng center =
+                                                      _position != null
+                                                          ? LatLng(
+                                                              _position!
+                                                                  .latitude,
+                                                              _position!
+                                                                  .longitude)
+                                                          : const LatLng(
+                                                              6.927079,
+                                                              79.861244);
+                                                  final LatLng? picked =
+                                                      await Navigator.of(
+                                                              context)
+                                                          .push(
+                                                    MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            MapPickerScreen(
+                                                                initial: center,
+                                                                title:
+                                                                    'Pick DCR Location',
+                                                                limitTo1KmDefault:
+                                                                    true)),
                                                   );
-                                                  if (picked != null && mounted) {
+                                                  if (picked != null &&
+                                                      mounted) {
                                                     setState(() {
                                                       _position = Position(
-                                                        latitude: picked.latitude,
-                                                        longitude: picked.longitude,
-                                                        timestamp: DateTime.now(),
+                                                        latitude:
+                                                            picked.latitude,
+                                                        longitude:
+                                                            picked.longitude,
+                                                        timestamp:
+                                                            DateTime.now(),
                                                         accuracy: 0,
                                                         altitude: 0,
                                                         heading: 0,
@@ -1362,186 +1639,151 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                                 },
                                                 style: OutlinedButton.styleFrom(
                                                   foregroundColor: tealGreen,
-                                                  side: const BorderSide(color: tealGreen, width: 1.5),
-                                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                                  side: const BorderSide(
+                                                      color: tealGreen,
+                                                      width: 1.5),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      vertical: 12,
+                                                      horizontal: 18),
+                                                  shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              14)),
                                                 ),
-                                                child: const Text('Pick on map'),
+                                                child:
+                                                    const Text('Pick on map'),
                                               ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: TextButton(
+                                              const SizedBox(width: 8),
+                                              TextButton(
                                                 onPressed: () async {
                                                   await _initLocation();
                                                 },
                                                 style: TextButton.styleFrom(
                                                   foregroundColor: tealGreen,
-                                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      vertical: 12,
+                                                      horizontal: 18),
                                                 ),
-                                                child: const Text('Use current'),
+                                                child:
+                                                    const Text('Use current'),
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    );
-                                  } else {
-                                    // Desktop: Keep horizontal layout
-                                    return Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            _position == null
-                                                ? 'No location selected'
-                                                : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
-                                            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade700),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        OutlinedButton(
-                                          onPressed: () async {
-                                            final LatLng center = _position != null
-                                                ? LatLng(_position!.latitude, _position!.longitude)
-                                                : const LatLng(6.927079, 79.861244);
-                                            final LatLng? picked = await Navigator.of(context).push(
-                                              MaterialPageRoute(builder: (_) => MapPickerScreen(initial: center, title: 'Pick DCR Location', limitTo1KmDefault: true)),
-                                            );
-                                            if (picked != null && mounted) {
-                                              setState(() {
-                                                _position = Position(
-                                                  latitude: picked.latitude,
-                                                  longitude: picked.longitude,
-                                                  timestamp: DateTime.now(),
-                                                  accuracy: 0,
-                                                  altitude: 0,
-                                                  heading: 0,
-                                                  speed: 0,
-                                                  speedAccuracy: 0,
-                                                  altitudeAccuracy: 0,
-                                                  headingAccuracy: 0,
-                                                );
-                                              });
-                                            }
-                                          },
+                                            ],
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 20),
+
+                                  // Action buttons - show in one row
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: _isSavingDraft
+                                              ? null
+                                              : _saveDraft,
                                           style: OutlinedButton.styleFrom(
                                             foregroundColor: tealGreen,
-                                            side: const BorderSide(color: tealGreen, width: 1.5),
-                                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                            side: BorderSide(
+                                                color: tealGreen, width: 1.5),
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 14),
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(14)),
                                           ),
-                                          child: const Text('Pick on map'),
+                                          child: _isSavingDraft
+                                              ? const SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                          strokeWidth: 2),
+                                                )
+                                              : const Text('Save Draft'),
                                         ),
-                                        const SizedBox(width: 8),
-                                        TextButton(
-                                          onPressed: () async {
-                                            await _initLocation();
-                                          },
-                                          style: TextButton.styleFrom(
-                                            foregroundColor: tealGreen,
-                                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 18),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: FilledButton(
+                                          onPressed:
+                                              _isSubmitting ? null : _submit,
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: tealGreen,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 14),
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(14)),
+                                            elevation: 2,
                                           ),
-                                          child: const Text('Use current'),
+                                          child: _isSubmitting
+                                              ? const SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                                Color>(
+                                                            Colors.white),
+                                                  ),
+                                                )
+                                              : const Text('Submit'),
                                         ),
-                                      ],
-                                    );
-                                  }
-                                },
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
-                            
-                            const SizedBox(height: 20),
-                            
-                            // Action buttons - show in one row
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: _isSavingDraft ? null : _saveDraft,
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: tealGreen,
-                                      side: BorderSide(color: tealGreen, width: 1.5),
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                    ),
-                                    child: _isSavingDraft 
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                          )
-                                        : const Text('Save Draft'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: FilledButton(
-                                    onPressed: _isSubmitting ? null : _submit,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: tealGreen,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                      elevation: 2,
-                                    ),
-                                    child: _isSubmitting 
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                            ),
-                                          )
-                                        : const Text('Submit'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                          ),
+
+                          // Location Status Card - Hidden
+                          // const SizedBox(height: 16),
+                          //
+                          // Card(
+                          //   color: Colors.white,
+                          //   surfaceTintColor: Colors.transparent,
+                          //   elevation: 2,
+                          //   shape: RoundedRectangleBorder(
+                          //     borderRadius: BorderRadius.circular(12),
+                          //   ),
+                          //   child: Padding(
+                          //     padding: const EdgeInsets.all(16.0),
+                          //     child: Row(
+                          //       children: [
+                          //         Icon(
+                          //           _atLocation ? Icons.place : Icons.place_outlined,
+                          //           color: _atLocation ? Colors.green : Colors.orange,
+                          //         ),
+                          //         const SizedBox(width: 8),
+                          //         Expanded(
+                          //           child: Text(
+                          //             _atLocation ? 'At location' : 'Away from planned location',
+                          //             style: theme.textTheme.bodyMedium,
+                          //           ),
+                          //         ),
+                          //         TextButton(
+                          //           onPressed: () => setState(() => _atLocation = !_atLocation),
+                          //           child: const Text('Toggle (Demo)'),
+                          //         ),
+                          //       ],
+                          //     ),
+                          //   ),
+                          // ),
+                        ],
                       ),
                     ),
-                    
-                    // Location Status Card - Hidden
-                    // const SizedBox(height: 16),
-                    // 
-                    // Card(
-                    //   color: Colors.white,
-                    //   surfaceTintColor: Colors.transparent,
-                    //   elevation: 2,
-                    //   shape: RoundedRectangleBorder(
-                    //     borderRadius: BorderRadius.circular(12),
-                    //   ),
-                    //   child: Padding(
-                    //     padding: const EdgeInsets.all(16.0),
-                    //     child: Row(
-                    //       children: [
-                    //         Icon(
-                    //           _atLocation ? Icons.place : Icons.place_outlined,
-                    //           color: _atLocation ? Colors.green : Colors.orange,
-                    //         ),
-                    //         const SizedBox(width: 8),
-                    //         Expanded(
-                    //           child: Text(
-                    //             _atLocation ? 'At location' : 'Away from planned location',
-                    //             style: theme.textTheme.bodyMedium,
-                    //           ),
-                    //         ),
-                    //         TextButton(
-                    //           onPressed: () => setState(() => _atLocation = !_atLocation),
-                    //           child: const Text('Toggle (Demo)'),
-                    //         ),
-                    //       ],
-                    //     ),
-                    //   ),
-                    // ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1558,7 +1800,7 @@ class _LabeledField extends StatelessWidget {
   final Widget child;
   final String? errorText;
   final bool required;
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1611,15 +1853,25 @@ class _DateField extends StatelessWidget {
   const _DateField({required this.initialDate, required this.onChanged});
   final DateTime initialDate;
   final ValueChanged<DateTime> onChanged;
-  
+
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${date.day.toString().padLeft(2, '0')}-${months[date.month - 1]}-${date.year}';
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -1662,7 +1914,7 @@ class _TimeField extends StatefulWidget {
   const _TimeField({required this.initial, required this.onChanged});
   final TimeOfDay initial;
   final ValueChanged<TimeOfDay> onChanged;
-  
+
   @override
   State<_TimeField> createState() => _TimeFieldState();
 }
@@ -1670,7 +1922,7 @@ class _TimeField extends StatefulWidget {
 class _TimeFieldState extends State<_TimeField> {
   late TextEditingController _controller;
   late TimeOfDay _currentTime;
-  
+
   @override
   void initState() {
     super.initState();
@@ -1678,7 +1930,7 @@ class _TimeFieldState extends State<_TimeField> {
     // Initialize controller with empty text, will be set in build when context is available
     _controller = TextEditingController();
   }
-  
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -1687,7 +1939,7 @@ class _TimeFieldState extends State<_TimeField> {
       _controller.text = _currentTime.format(context);
     }
   }
-  
+
   @override
   void didUpdateWidget(_TimeField oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1696,13 +1948,13 @@ class _TimeFieldState extends State<_TimeField> {
       _controller.text = _currentTime.format(context);
     }
   }
-  
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -1791,7 +2043,9 @@ extension on _DcrEntryScreenState {
     }
 
     String? purposeError;
-    if (_purpose == null || _purpose!.trim().isEmpty || _purpose == 'Loading...') {
+    if (_purpose == null ||
+        _purpose!.trim().isEmpty ||
+        _purpose == 'Loading...') {
       purposeError = 'Please select purpose of visit';
       isValid = false;
       firstMessage ??= 'Select purpose of visit';
@@ -1870,25 +2124,29 @@ extension on _DcrEntryScreenState {
 
     try {
       // Get user data from UserStore
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
       final userDetail = userStore?.userDetail;
-      
+
       if (userDetail == null) {
         throw Exception('User data not available. Please login again.');
       }
 
       // Get IDs from the name-to-ID maps, with fallbacks for editing
-      int? typeOfWorkId = _typeOfWorkNameToId[_purpose] ?? widget.initialTypeOfWorkId;
+      int? typeOfWorkId =
+          _typeOfWorkNameToId[_purpose] ?? widget.initialTypeOfWorkId;
       int? cityId = _clusterNameToId[_cluster] ?? widget.initialClusterId;
-      int? customerId = _customerNameToId[_customer] ?? widget.initialCustomerId;
-      
+      int? customerId =
+          _customerNameToId[_customer] ?? widget.initialCustomerId;
+
       // If we're editing and still don't have IDs, use fallback values
       if (widget.dcrId != null) {
         typeOfWorkId ??= 1; // Default fallback for editing
         cityId ??= 1; // Default fallback for editing
         customerId ??= 1; // Default fallback for editing
       }
-      
+
       // Debug logging
       print('DCR Validation Debug:');
       print('  Purpose: $_purpose');
@@ -1903,11 +2161,12 @@ extension on _DcrEntryScreenState {
       print('  CustomerId from map: ${_customerNameToId[_customer]}');
       print('  InitialCustomerId: ${widget.initialCustomerId}');
       print('  Final customerId: $customerId');
-      
+
       // Validate that we have all required IDs
       if (typeOfWorkId == null) {
         print('ERROR: No typeOfWorkId found for purpose: $_purpose');
-        print('Available purposes in map: ${_typeOfWorkNameToId.keys.toList()}');
+        print(
+            'Available purposes in map: ${_typeOfWorkNameToId.keys.toList()}');
         throw Exception('Please select a valid purpose of visit');
       }
       if (cityId == null) {
@@ -1921,9 +2180,10 @@ extension on _DcrEntryScreenState {
         throw Exception('Please select a valid customer');
       }
 
-      final DateTime visit = DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
+      final DateTime visit = DateTime(
+          _date.year, _date.month, _date.day, _time.hour, _time.minute);
       final repo = getIt<DcrRepository>();
-      
+
       // Create params with the IDs from UserStore and name-to-ID maps
       final params = CreateDcrParams(
         date: visit,
@@ -1948,26 +2208,32 @@ extension on _DcrEntryScreenState {
         latitude: _position?.latitude,
         longitude: _position?.longitude,
         // Service Engineer specific fields
-        mappedInstruments: _isServiceEngineer ? _selectedInstruments.join(', ') : null,
+        mappedInstruments:
+            _isServiceEngineer ? _selectedInstruments.join(', ') : null,
         complaint: _isServiceEngineer ? _complaintCtrl.text.trim() : null,
         actionTaken: _isServiceEngineer ? _actionTakenCtrl.text.trim() : null,
         result: _isServiceEngineer ? _resultCtrl.text.trim() : null,
         complaintStatus: _isServiceEngineer ? _complaintStatus : null,
         complaintDate: _isServiceEngineer ? _complaintDate : null,
-        complaintRemarks: _isServiceEngineer ? _complaintRemarksCtrl.text.trim() : null,
+        complaintRemarks:
+            _isServiceEngineer ? _complaintRemarksCtrl.text.trim() : null,
       );
-      
+
       print('Creating DCR: ${submit ? "Submit" : "Draft"}');
-      print('User Data - EmployeeId: ${userDetail.employeeId}, UserId: ${userDetail.id}, Name: ${userDetail.employeeName}');
-      print('Mapped IDs - TypeOfWorkId: $typeOfWorkId, CityId: $cityId, CustomerId: $customerId');
-      
+      print(
+          'User Data - EmployeeId: ${userDetail.employeeId}, UserId: ${userDetail.id}, Name: ${userDetail.employeeName}');
+      print(
+          'Mapped IDs - TypeOfWorkId: $typeOfWorkId, CityId: $cityId, CustomerId: $customerId');
+
       if (widget.id != null || widget.dcrId != null) {
         // Update existing DCR via API
         // Use dcrId for root ID if available, otherwise use id
         // The root ID should be the DCR parent ID, not the detail ID
         final String dcrIdToUpdate = widget.dcrId ?? widget.id!;
-        print('Updating DCR with detailId: ${_loadedEntry?.detailId}, clusterId: ${_loadedEntry?.clusterId}');
-        print('Using dcrIdToUpdate: $dcrIdToUpdate (from widget.dcrId: ${widget.dcrId}, widget.id: ${widget.id})');
+        print(
+            'Updating DCR with detailId: ${_loadedEntry?.detailId}, clusterId: ${_loadedEntry?.clusterId}');
+        print(
+            'Using dcrIdToUpdate: $dcrIdToUpdate (from widget.dcrId: ${widget.dcrId}, widget.id: ${widget.id})');
         final DcrEntry updated = DcrEntry(
           id: dcrIdToUpdate,
           date: visit, // Preserve the time component from visit DateTime
@@ -1979,7 +2245,7 @@ extension on _DcrEntryScreenState {
           samplesDistributed: _samplesCtrl.text.trim(),
           keyDiscussionPoints: _discussionCtrl.text.trim(),
           status: submit ? DcrStatus.submitted : DcrStatus.draft,
-          employeeId: userDetail.employeeId.toString(), 
+          employeeId: userDetail.employeeId.toString(),
           employeeName: userDetail.employeeName,
           linkedTourPlanId: _loadedEntry?.linkedTourPlanId,
           geoProximity: _atLocation ? GeoProximity.at : GeoProximity.away,
@@ -1993,17 +2259,21 @@ extension on _DcrEntryScreenState {
           detailId: _loadedEntry?.detailId,
           clusterId: _loadedEntry?.clusterId,
         );
-        print('Created DcrEntry for update with detailId: ${updated.detailId}, clusterId: ${updated.clusterId}');
+        print(
+            'Created DcrEntry for update with detailId: ${updated.detailId}, clusterId: ${updated.clusterId}');
         await repo.update(updated);
       } else {
         await repo.create(params);
       }
-      
+
       if (!mounted) return;
       if (widget.id != null || widget.dcrId != null) {
-        _showSuccessSnack(submit ? 'DCR updated & submitted successfully' : 'DCR updated successfully');
+        _showSuccessSnack(submit
+            ? 'DCR updated & submitted successfully'
+            : 'DCR updated successfully');
       } else {
-        _showSuccessSnack(submit ? 'DCR submitted successfully' : 'Draft saved successfully');
+        _showSuccessSnack(
+            submit ? 'DCR submitted successfully' : 'Draft saved successfully');
       }
       Navigator.of(context).maybePop();
     } catch (e) {
@@ -2150,13 +2420,15 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
   }
 
   void _updateDisplayText() {
-    final Set<String> currentValues = setEquals(_selected, widget.selectedValues) 
-        ? _selected 
-        : widget.selectedValues;
+    final Set<String> currentValues =
+        setEquals(_selected, widget.selectedValues)
+            ? _selected
+            : widget.selectedValues;
     final String display = _summary(currentValues);
     if (_displayController.text != display) {
       _displayController.text = display;
-      _displayController.selection = TextSelection.collapsed(offset: display.length);
+      _displayController.selection =
+          TextSelection.collapsed(offset: display.length);
     }
   }
 
@@ -2165,13 +2437,14 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     if (!setEquals(_selected, widget.selectedValues)) {
       _selected = {...widget.selectedValues};
     }
-    
+
     final String display = _summary(widget.selectedValues);
     if (_displayController.text != display) {
       _displayController.text = display;
-      _displayController.selection = TextSelection.collapsed(offset: display.length);
+      _displayController.selection =
+          TextSelection.collapsed(offset: display.length);
     }
-    
+
     return CompositedTransformTarget(
       link: _link,
       child: GestureDetector(
@@ -2190,7 +2463,9 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
             ),
             decoration: InputDecoration(
               hintText: display.isEmpty
-                  ? (widget.isLoading ? 'Loading...' : (widget.hintText ?? 'Select'))
+                  ? (widget.isLoading
+                      ? 'Loading...'
+                      : (widget.hintText ?? 'Select'))
                   : null,
               hintStyle: GoogleFonts.inter(
                 fontSize: 14,
@@ -2222,7 +2497,7 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     _searchFocusNode.unfocus();
     FocusScope.of(context).unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
-    
+
     if (_entry == null) {
       if (widget.onBeforeOpen != null) {
         await widget.onBeforeOpen!();
@@ -2242,12 +2517,12 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
       overlay.remove();
     }
     _dcrSharedOpenOverlays.clear();
-    
+
     _displayFocusNode.unfocus();
     _searchFocusNode.unfocus();
     FocusScope.of(context).unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
-    
+
     _selected = {...widget.selectedValues};
     _updateDisplayText();
     final RenderBox box = context.findRenderObject() as RenderBox;
@@ -2259,7 +2534,8 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
         return Stack(
           children: [
             Positioned.fill(
-              child: GestureDetector(onTap: _removeOverlay, behavior: HitTestBehavior.translucent),
+              child: GestureDetector(
+                  onTap: _removeOverlay, behavior: HitTestBehavior.translucent),
             ),
             CompositedTransformFollower(
               link: _link,
@@ -2273,16 +2549,22 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 18, offset: const Offset(0, 6)),
+                      BoxShadow(
+                          color: Colors.black.withOpacity(.10),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6)),
                     ],
                     border: Border.all(color: Colors.black.withOpacity(.06)),
                   ),
                   child: Theme(
                     data: theme.copyWith(
                       checkboxTheme: CheckboxThemeData(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                        side: BorderSide(color: Colors.black.withOpacity(.35), width: 1.4),
-                        fillColor: WidgetStateProperty.resolveWith((states) => const Color(0xFF4db1b3)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6)),
+                        side: BorderSide(
+                            color: Colors.black.withOpacity(.35), width: 1.4),
+                        fillColor: WidgetStateProperty.resolveWith(
+                            (states) => const Color(0xFF4db1b3)),
                       ),
                     ),
                     child: ConstrainedBox(
@@ -2292,11 +2574,10 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                         children: [
                           Padding(
                             padding: EdgeInsets.fromLTRB(
-                              isMobile ? 12 : 12, 
-                              isMobile ? 12 : 10, 
-                              isMobile ? 12 : 12, 
-                              isMobile ? 10 : 8
-                            ),
+                                isMobile ? 12 : 12,
+                                isMobile ? 12 : 10,
+                                isMobile ? 12 : 12,
+                                isMobile ? 10 : 8),
                             child: TextField(
                               controller: _searchCtrl,
                               focusNode: _searchFocusNode,
@@ -2312,10 +2593,12 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                   color: Colors.grey[500],
                                   fontSize: isMobile ? 14 : 13,
                                 ),
-                                prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                                prefixIcon:
+                                    Icon(Icons.search, color: Colors.grey[600]),
                                 suffixIcon: (_query.isNotEmpty)
                                     ? IconButton(
-                                        icon: Icon(Icons.close, color: Colors.grey[600]),
+                                        icon: Icon(Icons.close,
+                                            color: Colors.grey[600]),
                                         tooltip: 'Clear',
                                         onPressed: () {
                                           _searchCtrl.clear();
@@ -2325,22 +2608,25 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                       )
                                     : null,
                                 contentPadding: EdgeInsets.symmetric(
-                                  horizontal: isMobile ? 16 : 12, 
-                                  vertical: isMobile ? 16 : 10
-                                ),
+                                    horizontal: isMobile ? 16 : 12,
+                                    vertical: isMobile ? 16 : 10),
                                 filled: true,
                                 fillColor: const Color(0xFFF5F6F8),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: Colors.black.withOpacity(.10)),
+                                  borderSide: BorderSide(
+                                      color: Colors.black.withOpacity(.10)),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: Colors.black.withOpacity(.10)),
+                                  borderSide: BorderSide(
+                                      color: Colors.black.withOpacity(.10)),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                                  borderSide: BorderSide(
+                                      color: theme.colorScheme.primary,
+                                      width: 2),
                                 ),
                               ),
                               onChanged: (q) {
@@ -2360,7 +2646,8 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                   return Padding(
                                     padding: const EdgeInsets.all(24),
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         SizedBox(
                                           width: 24,
@@ -2387,7 +2674,8 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                   return Padding(
                                     padding: const EdgeInsets.all(20),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.info_outline,
@@ -2396,7 +2684,8 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          widget.emptyMessage ?? 'No data found',
+                                          widget.emptyMessage ??
+                                              'No data found',
                                           style: GoogleFonts.inter(
                                             color: Colors.grey.shade600,
                                             fontSize: 14,
@@ -2407,18 +2696,20 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                     ),
                                   );
                                 }
-                                
+
                                 final filtered = _query.isEmpty
                                     ? widget.options
                                     : widget.options
-                                        .where((o) => o.toLowerCase().contains(_query))
+                                        .where((o) =>
+                                            o.toLowerCase().contains(_query))
                                         .toList(growable: false);
-                                
+
                                 if (filtered.isEmpty) {
                                   return Padding(
                                     padding: const EdgeInsets.all(20),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.info_outline,
@@ -2438,7 +2729,7 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                     ),
                                   );
                                 }
-                                
+
                                 return ListView.separated(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 12),
@@ -2464,7 +2755,8 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                                     BorderRadius.circular(6),
                                                 border: Border.all(
                                                     color: selected
-                                                        ? const Color(0xFF4db1b3)
+                                                        ? const Color(
+                                                            0xFF4db1b3)
                                                         : Colors.black
                                                             .withOpacity(.42),
                                                     width: 1.6),
@@ -2511,7 +2803,7 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     );
     Overlay.of(context).insert(_entry!);
     _dcrSharedOpenOverlays.add(_entry!);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _searchFocusNode.unfocus();
@@ -2539,8 +2831,9 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     }
     final String display = _summary(_selected);
     _displayController.text = display;
-    _displayController.selection = TextSelection.collapsed(offset: display.length);
-    
+    _displayController.selection =
+        TextSelection.collapsed(offset: display.length);
+
     widget.onChanged({..._selected});
     _entry?.markNeedsBuild();
     setState(() {});
@@ -2553,5 +2846,3 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     return '$firstTwo +${values.length - 2}';
   }
 }
-
-
