@@ -136,6 +136,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   bool _isLoadingIssueAgainst = false;
   String? _issueAgainstLoadError;
 
+  // Workflow states
+  bool _isLoadingWorkflow = false;
+  bool _hasEdit = false; // Enable submit button only when true
+  int? _workflowProcessId;
+  int? _workflowProcessActionId;
+
   // Division/Category dropdown options (shared across all items)
   List<String> _divisionCategoryOptions = [];
   List<CommonDropdownItem> _divisionCategoryList = [];
@@ -198,7 +204,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('   - Issue Against: ${_issueAgainstList.length}');
       print('   - Division Categories: ${_divisionCategoryList.length}');
 
-      // Step 3: After both API data and dropdowns are loaded, populate form
+      // Step 3: Load workflow data to check hasEdit and get process IDs
+      await _loadWorkflowData();
+
+      // Step 4: After both API data and dropdowns are loaded, populate form
       // Check pending data first (loaded from API), then widget data
       print('🔍 Checking for API data to populate form...');
       print(
@@ -2883,11 +2892,14 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     _items = _itemDetails
         .map((detail) => _convertItemDetailToIssueItemDetail(detail))
         .toList();
+    // Submit button enabled only when hasEdit = true from workflow API
     final bool canSubmit = _items.isNotEmpty &&
         _issueAgainst != null &&
         _issueTo != null &&
         _fromStore != null &&
-        _toStore != null;
+        _toStore != null &&
+        _hasEdit && // Enable submit only when hasEdit is true
+        !_isLoadingWorkflow; // Disable while loading workflow
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2981,7 +2993,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                     ? 'Submit customer issue (with workflow)'
                     : (_items.isEmpty
                         ? 'Add at least one item first'
-                        : 'Complete all required fields first'),
+                        : (_hasEdit == false
+                            ? 'Submit is not allowed (workflow restriction)'
+                            : (_isLoadingWorkflow
+                                ? 'Loading workflow permissions...'
+                                : 'Complete all required fields first'))),
                 child: ElevatedButton.icon(
                   onPressed: canSubmit && !_isLoading ? _handleSubmit : null,
                   icon: Icon(
@@ -3155,8 +3171,14 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
   }
 
-  /// Get workflow process ID and action ID
-  Future<Map<String, int?>> _getWorkflowIds() async {
+  /// Get workflow process ID, action ID, and hasEdit status
+  Future<void> _loadWorkflowData() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingWorkflow = true;
+    });
+
     try {
       // Get user info
       final sharedPrefHelper = getIt<SharedPreferenceHelper>();
@@ -3179,8 +3201,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       final url =
           _isEditMode ? '/Customeritemissue/edit' : '/Customeritemissue/create';
 
-      // MenuId: 1558 for workflow API (as per user requirements)
-      final menuId = 1558;
+      // MenuId: 1589 for workflow API (as per user requirements)
+      final menuId = 1589;
       final module = 6;
 
       final workflowRepo = getIt<WorkflowRepository>();
@@ -3199,6 +3221,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('✅ Workflow response received');
       print('   Process ID: ${response.id}');
       print('   Process Name: ${response.processName}');
+      print('   HasEdit: ${response.hasEdit}');
       print('   Action Details Count: ${response.processActionDetails.length}');
 
       // Extract processId and processActionId from response
@@ -3217,14 +3240,34 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         print('⚠️ No workflow actions found - proceeding without workflow');
       }
 
-      return {
-        'processId': processId,
-        'processActionId': processActionId,
-      };
+      if (mounted) {
+        setState(() {
+          _hasEdit = response.hasEdit;
+          _workflowProcessId = processId;
+          _workflowProcessActionId = processActionId;
+          _isLoadingWorkflow = false;
+        });
+      }
     } catch (e) {
-      print('Error getting workflow IDs: $e');
-      rethrow;
+      print('Error loading workflow data: $e');
+      if (mounted) {
+        setState(() {
+          _hasEdit = false; // Disable submit on error
+          _workflowProcessId = null;
+          _workflowProcessActionId = null;
+          _isLoadingWorkflow = false;
+        });
+      }
     }
+  }
+
+  /// Get workflow process ID and action ID (for backward compatibility)
+  Future<Map<String, int?>> _getWorkflowIds() async {
+    // Return stored workflow IDs
+    return {
+      'processId': _workflowProcessId,
+      'processActionId': _workflowProcessActionId,
+    };
   }
 
   /// Build save request from form data
@@ -3672,15 +3715,25 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   Future<void> _handleSubmit() async {
     if (!_validateForm()) return;
 
+    // Check hasEdit before submitting
+    if (!_hasEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Submit is not allowed. Workflow restrictions apply.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // Step 1: Get workflow process ID and action ID
-      final workflowIds = await _getWorkflowIds();
-      final processId = workflowIds['processId'];
-      final processActionId = workflowIds['processActionId'];
+      // Use stored workflow process ID and action ID (already loaded in _loadWorkflowData)
+      final processId = _workflowProcessId;
+      final processActionId = _workflowProcessActionId;
 
       // Step 2: Build save request with workflowFlag = 1 and process IDs
       final saveRequest = await _buildSaveRequest(
