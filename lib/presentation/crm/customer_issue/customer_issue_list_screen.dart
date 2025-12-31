@@ -48,13 +48,11 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     'itemDetails': ColumnFilterState(),
   };
 
-  // Status filter state (multi-select checkbox)
-  final Set<String> _selectedStatusFilters = <String>{};
-  String _statusSearchText = '';
+  // Status filter state (single-select to match tour plan style)
+  String? _selectedStatus;
 
-  // Issue No filter state (multi-select checkbox)
-  final Set<String> _selectedIssueNoFilters = <String>{};
-  String _issueNoSearchText = '';
+  // Issue No filter state (single-select to match tour plan style)
+  String? _selectedIssueNo;
 
   // Old filter methods - keeping for compatibility but not used in new card-based layout
   String? _activeFilterColumn;
@@ -345,13 +343,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
   // Clear all filters
   Future<void> _clearAllFilters() async {
     setState(() {
-      _status = null;
-      _fromStore = null;
-      _issueNo = null;
-      _stDateFrom = null;
-      _stDateTo = null;
-      _selectedStatusFilters.clear();
-      _selectedIssueNoFilters.clear();
+      _selectedStatus = null;
+      _selectedIssueNo = null;
       for (var filter in _columnFilters.values) {
         filter.clear();
       }
@@ -364,12 +357,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
   // Get filter count
   int _getFilterCount() {
     int count = 0;
-    if (_status != null) count++;
-    if (_fromStore != null) count++;
-    if (_issueNo != null) count++;
-    if (_stDateFrom != null || _stDateTo != null) count++;
-    if (_selectedStatusFilters.isNotEmpty) count++;
-    if (_selectedIssueNoFilters.isNotEmpty) count++;
+    if (_selectedStatus != null) count++;
+    if (_selectedIssueNo != null) count++;
     for (var filter in _columnFilters.values) {
       if (filter.isActive) count++;
     }
@@ -385,39 +374,21 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     // Compute filtered list
     List<CustomerIssueItem> filtered = List.from(_issues);
 
-    // Apply status filter (multi-select)
-    if (_selectedStatusFilters.isNotEmpty) {
-      filtered = filtered.where((issue) {
-        return _selectedStatusFilters.contains(issue.status);
-      }).toList();
+    // Apply status filter (single-select)
+    if (_selectedStatus != null) {
+      filtered = filtered.where((issue) => issue.status == _selectedStatus).toList();
     }
 
-    // Apply simple status filter
-    if (_status != null) {
-      filtered = filtered.where((issue) => issue.status == _status).toList();
-    }
-
-    // Apply Issue No filter (multi-select)
-    if (_selectedIssueNoFilters.isNotEmpty) {
+    // Apply Issue No filter (single-select)
+    if (_selectedIssueNo != null) {
       filtered = filtered.where((issue) {
         final issueNo =
             issue.issueNo.isEmpty ? 'Issue #${issue.id}' : issue.issueNo;
-        return _selectedIssueNoFilters.contains(issueNo);
+        return issueNo == _selectedIssueNo;
       }).toList();
     }
 
-    // Apply simple issue no filter
-    if (_issueNo != null) {
-      filtered = filtered.where((issue) => issue.issueNo == _issueNo).toList();
-    }
-
-    // Apply from store filter
-    if (_fromStore != null) {
-      filtered =
-          filtered.where((issue) => issue.fromStore == _fromStore).toList();
-    }
-
-    // Apply column filters
+    // Apply column filters (with operators like "is equal to", "and/or", etc.)
     for (final entry in _columnFilters.entries) {
       final columnKey = entry.key;
       final filterState = entry.value;
@@ -839,150 +810,6 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     }
   }
 
-  void _showStatusFilter(BuildContext context, GlobalKey? buttonKey) {
-    final RenderBox? button =
-        buttonKey?.currentContext?.findRenderObject() as RenderBox?;
-    final isMobile = MediaQuery.of(context).size.width < 600;
-
-    // On mobile, show as bottom sheet or centered dialog
-    if (button == null || isMobile) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (BuildContext dialogContext) {
-          return Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: _StatusFilterPopup(
-              selectedStatuses: _selectedStatusFilters,
-              searchText: _statusSearchText,
-              onSearchChanged: (text) {
-                setState(() {
-                  _statusSearchText = text;
-                });
-              },
-              onStatusToggled: (status) {
-                setState(() {
-                  if (_selectedStatusFilters.contains(status)) {
-                    _selectedStatusFilters.remove(status);
-                  } else {
-                    _selectedStatusFilters.add(status);
-                  }
-                  _invalidateFilterCache();
-                });
-              },
-              onSelectAll: (selectAll) {
-                setState(() {
-                  if (selectAll) {
-                    _selectedStatusFilters.addAll(_statusOptions);
-                  } else {
-                    _selectedStatusFilters.clear();
-                  }
-                  _invalidateFilterCache();
-                });
-              },
-              onApply: () {
-                Navigator.of(context).pop();
-              },
-              onClear: () {
-                setState(() {
-                  _selectedStatusFilters.clear();
-                  _statusSearchText = '';
-                });
-                Navigator.of(context).pop();
-              },
-            ),
-          );
-        },
-      );
-      return;
-    }
-
-    final Offset buttonPosition = button.localToGlobal(Offset.zero);
-    final Size buttonSize = button.size;
-    final Size screenSize = MediaQuery.of(context).size;
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (BuildContext dialogContext) {
-        double left = buttonPosition.dx;
-        double top = buttonPosition.dy + buttonSize.height + 4;
-
-        const double popupWidth = 280;
-        if (left + popupWidth > screenSize.width) {
-          left = screenSize.width - popupWidth - 8;
-        }
-        if (left < 8) {
-          left = 8;
-        }
-
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(dialogContext).pop(),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(4),
-                child: _StatusFilterPopup(
-                  selectedStatuses: _selectedStatusFilters,
-                  searchText: _statusSearchText,
-                  onSearchChanged: (text) {
-                    setState(() {
-                      _statusSearchText = text;
-                    });
-                  },
-                  onStatusToggled: (status) {
-                    setState(() {
-                      if (_selectedStatusFilters.contains(status)) {
-                        _selectedStatusFilters.remove(status);
-                      } else {
-                        _selectedStatusFilters.add(status);
-                      }
-                    });
-                  },
-                  onSelectAll: (selectAll) {
-                    setState(() {
-                      if (selectAll) {
-                        _selectedStatusFilters.addAll(_statusOptions);
-                      } else {
-                        _selectedStatusFilters.clear();
-                      }
-                    });
-                  },
-                  onApply: () {
-                    Navigator.of(dialogContext).pop();
-                  },
-                  onClear: () {
-                    setState(() {
-                      _selectedStatusFilters.clear();
-                      _statusSearchText = '';
-                    });
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   List<String> get _statusOptions => ['Drafted', 'Approved', 'Cancelled'];
 
   List<String> get _issueNoOptions {
@@ -995,154 +822,69 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
       ..sort();
   }
 
-  void _showIssueNoFilter(BuildContext context, GlobalKey? buttonKey) {
-    final RenderBox? button =
-        buttonKey?.currentContext?.findRenderObject() as RenderBox?;
-    final isMobile = MediaQuery.of(context).size.width < 600;
-
-    // On mobile, show as bottom sheet
-    if (isMobile || button == null) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (BuildContext dialogContext) {
-          return Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: _IssueNoFilterPopup(
-              selectedIssueNos: _selectedIssueNoFilters,
-              searchText: _issueNoSearchText,
-              issueNoOptions: _issueNoOptions,
-              onSearchChanged: (text) {
-                setState(() {
-                  _issueNoSearchText = text;
-                });
-              },
-              onIssueNoToggled: (issueNo) {
-                setState(() {
-                  if (_selectedIssueNoFilters.contains(issueNo)) {
-                    _selectedIssueNoFilters.remove(issueNo);
+  // Helper methods to get display text for active filters
+  String? _getStDateFilterDisplayText() {
+    final filterState = _columnFilters['stDate']!;
+    if (!filterState.isActive) return null;
+    
+    final dateFormat = DateFormat('dd MMM yyyy');
+    String text = '';
+    
+    if (filterState.condition1Value.isNotEmpty) {
+      try {
+        final date = DateTime.tryParse(filterState.condition1Value);
+        if (date != null) {
+          text = '${filterState.condition1Operator} ${dateFormat.format(date)}';
                   } else {
-                    _selectedIssueNoFilters.add(issueNo);
-                  }
-                  _invalidateFilterCache();
-                });
-              },
-              onSelectAll: (selectAll) {
-                setState(() {
-                  if (selectAll) {
-                    _selectedIssueNoFilters.addAll(_issueNoOptions);
-                  } else {
-                    _selectedIssueNoFilters.clear();
-                  }
-                  _invalidateFilterCache();
-                });
-              },
-              onApply: () {
-                Navigator.of(context).pop();
-              },
-              onClear: () {
-                setState(() {
-                  _selectedIssueNoFilters.clear();
-                  _issueNoSearchText = '';
-                  _invalidateFilterCache();
-                });
-                Navigator.of(context).pop();
-              },
-            ),
-          );
-        },
-      );
-      return;
+          text = '${filterState.condition1Operator} ${filterState.condition1Value}';
+        }
+      } catch (e) {
+        text = '${filterState.condition1Operator} ${filterState.condition1Value}';
+      }
     }
-
-    final Offset buttonPosition = button.localToGlobal(Offset.zero);
-    final Size buttonSize = button.size;
-    final Size screenSize = MediaQuery.of(context).size;
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (BuildContext dialogContext) {
-        double left = buttonPosition.dx;
-        double top = buttonPosition.dy + buttonSize.height + 4;
-
-        const double popupWidth = 280;
-        if (left + popupWidth > screenSize.width) {
-          left = screenSize.width - popupWidth - 8;
+    
+    if (filterState.condition2Value.isNotEmpty && filterState.logicalOperator.isNotEmpty) {
+      try {
+        final date = DateTime.tryParse(filterState.condition2Value);
+        if (date != null) {
+          text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${dateFormat.format(date)}';
+                  } else {
+          text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
         }
-        if (left < 8) {
-          left = 8;
-        }
+      } catch (e) {
+        text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+      }
+    }
+    
+    return text.isEmpty ? 'Filter applied' : text;
+  }
 
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(dialogContext).pop(),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(4),
-                child: _IssueNoFilterPopup(
-                  selectedIssueNos: _selectedIssueNoFilters,
-                  searchText: _issueNoSearchText,
-                  issueNoOptions: _issueNoOptions,
-                  onSearchChanged: (text) {
-                    setState(() {
-                      _issueNoSearchText = text;
-                    });
-                  },
-                  onIssueNoToggled: (issueNo) {
-                    setState(() {
-                      if (_selectedIssueNoFilters.contains(issueNo)) {
-                        _selectedIssueNoFilters.remove(issueNo);
-                      } else {
-                        _selectedIssueNoFilters.add(issueNo);
-                      }
-                      _invalidateFilterCache();
-                    });
-                  },
-                  onSelectAll: (selectAll) {
-                    setState(() {
-                      if (selectAll) {
-                        _selectedIssueNoFilters.addAll(_issueNoOptions);
-                      } else {
-                        _selectedIssueNoFilters.clear();
-                      }
-                      _invalidateFilterCache();
-                    });
-                  },
-                  onApply: () {
-                    Navigator.of(dialogContext).pop();
-                  },
-                  onClear: () {
-                    setState(() {
-                      _selectedIssueNoFilters.clear();
-                      _issueNoSearchText = '';
-                      _invalidateFilterCache();
-                    });
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
+  String? _getFromStoreFilterDisplayText() {
+    final filterState = _columnFilters['fromStore']!;
+    if (!filterState.isActive) return null;
+    
+    String text = '';
+    if (filterState.condition1Value.isNotEmpty) {
+      text = '${filterState.condition1Operator} ${filterState.condition1Value}';
+    }
+    if (filterState.condition2Value.isNotEmpty && filterState.logicalOperator.isNotEmpty) {
+      text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+    }
+    return text.isEmpty ? 'Filter applied' : text;
+  }
+
+  String? _getItemDetailsFilterDisplayText() {
+    final filterState = _columnFilters['itemDetails']!;
+    if (!filterState.isActive) return null;
+    
+    String text = '';
+    if (filterState.condition1Value.isNotEmpty) {
+      text = '${filterState.condition1Operator} ${filterState.condition1Value}';
+    }
+    if (filterState.condition2Value.isNotEmpty && filterState.logicalOperator.isNotEmpty) {
+      text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+    }
+    return text.isEmpty ? 'Filter applied' : text;
   }
 
   void _showStDateFilter(BuildContext context, GlobalKey? buttonKey) {
@@ -1249,16 +991,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
 
   void _showColumnFilter(
       BuildContext context, String columnKey, GlobalKey buttonKey) {
-    // For status, use special multi-select filter
-    if (columnKey == 'status') {
-      _showStatusFilter(context, buttonKey);
-      return;
-    }
-    // For issueNo, use special multi-select filter
-    if (columnKey == 'issueNo') {
-      _showIssueNoFilter(context, buttonKey);
-      return;
-    }
+    // Note: Status and Issue No are now handled by _SearchableFilterDropdown in the main filter modal
     // For stDate, use date-specific filter
     if (columnKey == 'stDate') {
       _showStDateFilter(context, buttonKey);
@@ -1802,9 +1535,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
   Widget _buildFilterModal(bool isTablet, Color tealGreen) {
     final bool isMobile = !isTablet;
     // Temp selections that live during modal lifetime
-    String? _tempStatus = _status;
-    String? _tempFromStore = _fromStore;
-    String? _tempIssueNo = _issueNo;
+    String? _tempStatus = _selectedStatus;
+    String? _tempIssueNo = _selectedIssueNo;
 
     return GestureDetector(
       onTap: _closeFilterModal,
@@ -1836,16 +1568,20 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                     ),
                   ],
                 ),
-                child: Column(
+                child: StatefulBuilder(
+                  builder: (context, setModalState) {
+                    return Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header
+                        // Modal Header
                     Container(
                       padding: EdgeInsets.all(isMobile ? 16 : 20),
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
-                              color: Colors.grey.withOpacity(0.1), width: 1),
+                                color: Colors.grey.withOpacity(0.1),
+                                width: 1,
+                              ),
                         ),
                       ),
                       child: Row(
@@ -1859,15 +1595,27 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                               letterSpacing: -0.5,
                             ),
                           ),
+                              const Spacer(),
+                              IconButton(
+                                onPressed: _closeFilterModal,
+                                icon: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 18,
+                                    color: Colors.grey[700],
+                                  ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    // Content
-                    StatefulBuilder(
-                      builder: (context, setModalState) {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+                        // Modal Content
                             Flexible(
                               child: SingleChildScrollView(
                                 controller: _filterScrollController,
@@ -1875,95 +1623,94 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                   isMobile ? 16 : 20,
                                   isMobile ? 16 : 20,
                                   isMobile ? 16 : 20,
-                                  isMobile ? 16 : 20,
+                              MediaQuery.of(context).viewInsets.bottom +
+                                  (isMobile ? 16 : 20),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Status Filter (multi-select checkbox)
-                                    _buildFilterSection(
+                                    // Status Filter - Searchable Dropdown (matching tour plan style)
+                                    _SearchableFilterDropdown(
                                       title: 'Status',
-                                      icon: Icons.flag_outlined,
-                                      hasActiveFilter:
-                                          _selectedStatusFilters.isNotEmpty,
-                                      onTap: () =>
-                                          _showStatusFilter(context, null),
-                                      selectedCount:
-                                          _selectedStatusFilters.length,
+                                      icon: Icons.verified_outlined,
+                                      selectedValue: _tempStatus,
+                                      options: _statusOptions,
+                                      onChanged: (value) {
+                                        setModalState(() {
+                                          _tempStatus = value;
+                                        });
+                                      },
                                       isTablet: isTablet,
                                     ),
-                                    const SizedBox(height: 24),
-                                    // Issue No Filter (multi-select checkbox)
-                                    _buildFilterSection(
+                                    SizedBox(height: isTablet ? 24 : 20),
+                                    // Issue No Filter - Searchable Dropdown (matching tour plan style)
+                                    _SearchableFilterDropdown(
                                       title: 'Issue No',
                                       icon: Icons.numbers_outlined,
-                                      hasActiveFilter:
-                                          _selectedIssueNoFilters.isNotEmpty,
-                                      onTap: () =>
-                                          _showIssueNoFilter(context, null),
-                                      selectedCount:
-                                          _selectedIssueNoFilters.length,
+                                      selectedValue: _tempIssueNo,
+                                      options: _issueNoOptions,
+                                      onChanged: (value) {
+                                        setModalState(() {
+                                          _tempIssueNo = value;
+                                        });
+                                      },
                                       isTablet: isTablet,
                                     ),
-                                    const SizedBox(height: 24),
-                                    // ST Date Filter (date filter with operators)
-                                    _buildFilterSection(
+                                    SizedBox(height: isTablet ? 24 : 20),
+                                    // ST Date Filter - UI matching tour plan style, but opens existing filter popup
+                                    _FilterDropdownTrigger(
                                       title: 'ST Date',
                                       icon: Icons.calendar_today_outlined,
-                                      hasActiveFilter:
-                                          _columnFilters['stDate']!.isActive,
-                                      onTap: () =>
-                                          _showStDateFilter(context, null),
-                                      selectedCount:
-                                          _columnFilters['stDate']!.isActive
-                                              ? 1
-                                              : 0,
+                                      hasActiveFilter: _columnFilters['stDate']!.isActive,
+                                      selectedValue: _columnFilters['stDate']!.isActive
+                                          ? _getStDateFilterDisplayText()
+                                          : null,
+                                      onTap: () {
+                                        _showStDateFilter(context, null);
+                                      },
                                       isTablet: isTablet,
                                     ),
-                                    const SizedBox(height: 24),
-                                    // From Store Filter (column filter with operators)
-                                    _buildFilterSection(
+                                    SizedBox(height: isTablet ? 24 : 20),
+                                    // From Store Filter - UI matching tour plan style, but opens existing filter popup
+                                    _FilterDropdownTrigger(
                                       title: 'From Store',
                                       icon: Icons.store_outlined,
-                                      hasActiveFilter:
-                                          _columnFilters['fromStore']!.isActive,
-                                      onTap: () => _showColumnFilter(
-                                          context, 'fromStore', GlobalKey()),
-                                      selectedCount:
-                                          _columnFilters['fromStore']!.isActive
-                                              ? 1
-                                              : 0,
+                                      hasActiveFilter: _columnFilters['fromStore']!.isActive,
+                                      selectedValue: _columnFilters['fromStore']!.isActive
+                                          ? _getFromStoreFilterDisplayText()
+                                          : null,
+                                      onTap: () {
+                                        _showColumnFilter(context, 'fromStore', GlobalKey());
+                                      },
                                       isTablet: isTablet,
                                     ),
-                                    const SizedBox(height: 24),
-                                    // Item Details Filter (column filter with operators)
-                                    _buildFilterSection(
+                                    SizedBox(height: isTablet ? 24 : 20),
+                                    // Item Details Filter - UI matching tour plan style, but opens existing filter popup
+                                    _FilterDropdownTrigger(
                                       title: 'Item Details',
                                       icon: Icons.description_outlined,
-                                      hasActiveFilter:
-                                          _columnFilters['itemDetails']!
-                                              .isActive,
-                                      onTap: () => _showColumnFilter(
-                                          context, 'itemDetails', GlobalKey()),
-                                      selectedCount:
-                                          _columnFilters['itemDetails']!
-                                                  .isActive
-                                              ? 1
-                                              : 0,
+                                      hasActiveFilter: _columnFilters['itemDetails']!.isActive,
+                                      selectedValue: _columnFilters['itemDetails']!.isActive
+                                          ? _getItemDetailsFilterDisplayText()
+                                          : null,
+                                      onTap: () {
+                                        _showColumnFilter(context, 'itemDetails', GlobalKey());
+                                      },
                                       isTablet: isTablet,
                                     ),
                                   ],
                                 ),
                               ),
                             ),
-                            // Footer
+                        // Modal Footer Buttons
                             Container(
                               padding: EdgeInsets.all(isMobile ? 16 : 20),
                               decoration: BoxDecoration(
                                 border: Border(
                                   top: BorderSide(
                                       color: Colors.grey.withOpacity(0.1),
-                                      width: 1),
+                                width: 1,
+                              ),
                                 ),
                               ),
                               child: Row(
@@ -1973,32 +1720,18 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                       onPressed: () {
                                         setModalState(() {
                                           _tempStatus = null;
-                                          _tempFromStore = null;
                                           _tempIssueNo = null;
-                                          _selectedStatusFilters.clear();
-                                          _selectedIssueNoFilters.clear();
-                                          for (var filter
-                                              in _columnFilters.values) {
-                                            filter.clear();
-                                          }
-                                        });
+                                    });
+                                    _clearAllFilters();
+                                    _closeFilterModal();
                                       },
                                       style: OutlinedButton.styleFrom(
                                         padding: EdgeInsets.symmetric(
-                                          vertical: isMobile
-                                              ? 14
-                                              : isTablet
-                                                  ? 16
-                                                  : 18,
-                                          horizontal: isMobile ? 12 : 16,
-                                        ),
+                                        vertical: isMobile ? 14 : 16),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(12),
                                         ),
-                                        side: BorderSide(
-                                            color: tealGreen, width: 1.5),
-                                        foregroundColor: tealGreen,
+                                    side: BorderSide(color: tealGreen, width: 1.5),
                                       ),
                                       child: Text(
                                         'Clear',
@@ -2012,13 +1745,11 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                   ),
                                   SizedBox(width: isMobile ? 12 : 16),
                                   Expanded(
-                                    flex: 2,
                                     child: FilledButton(
                                       onPressed: () {
                                         setState(() {
-                                          _status = _tempStatus;
-                                          _fromStore = _tempFromStore;
-                                          _issueNo = _tempIssueNo;
+                                      _selectedStatus = _tempStatus;
+                                      _selectedIssueNo = _tempIssueNo;
                                         });
                                         _closeFilterModal();
                                         _loadItemIssues(refresh: true);
@@ -2027,23 +1758,18 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                         backgroundColor: tealGreen,
                                         foregroundColor: Colors.white,
                                         padding: EdgeInsets.symmetric(
-                                          vertical: isMobile
-                                              ? 14
-                                              : isTablet
-                                                  ? 16
-                                                  : 18,
-                                          horizontal: isMobile ? 12 : 16,
-                                        ),
+                                        vertical: isMobile ? 14 : 16),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(12),
                                         ),
+                                    elevation: 2,
                                       ),
                                       child: Text(
-                                        'Apply Filter',
+                                    'Apply Filters',
                                         style: GoogleFonts.inter(
                                           fontSize: isMobile ? 14 : 15,
                                           fontWeight: FontWeight.w700,
+                                      color: Colors.white,
                                         ),
                                       ),
                                     ),
@@ -2054,8 +1780,6 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                           ],
                         );
                       },
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -3418,4 +3142,499 @@ class CustomerIssueItem {
     required this.itemDetails,
     required this.status,
   });
+}
+
+// Searchable Filter Dropdown Widget (matching tour plan style)
+class _SearchableFilterDropdown extends StatefulWidget {
+  final String title;
+  final IconData icon;
+  final String? selectedValue;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+  final bool isTablet;
+  final VoidCallback? onExpanded;
+
+  const _SearchableFilterDropdown({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.selectedValue,
+    required this.options,
+    required this.onChanged,
+    required this.isTablet,
+    this.onExpanded,
+  });
+
+  @override
+  State<_SearchableFilterDropdown> createState() =>
+      _SearchableFilterDropdownState();
+}
+
+class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
+  late TextEditingController _searchController;
+  late List<String> _filteredOptions;
+  bool _isExpanded = false;
+
+  static const Color tealGreen = Color(0xFF4db1b3);
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _filteredOptions = widget.options;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredOptions = widget.options
+          .where((option) => option.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
+  void _toggleExpanded() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+      if (!_isExpanded) {
+        _searchController.clear();
+        _filteredOptions = widget.options;
+      }
+    });
+    if (_isExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onExpanded?.call();
+      });
+    }
+  }
+
+  void _selectOption(String? option) {
+    widget.onChanged(option);
+    setState(() {
+      _isExpanded = false;
+      _searchController.clear();
+      _filteredOptions = widget.options;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              widget.icon,
+              size: widget.isTablet ? 18 : 16,
+              color: tealGreen,
+            ),
+            SizedBox(width: widget.isTablet ? 10 : 8),
+            Text(
+              widget.title,
+              style: GoogleFonts.inter(
+                fontSize: widget.isTablet ? 16 : 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[900],
+                letterSpacing: -0.3,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: widget.isTablet ? 14 : 12),
+        // Selected Value Display / Dropdown Trigger
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _toggleExpanded,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: EdgeInsets.all(widget.isTablet ? 14 : 12),
+              decoration: BoxDecoration(
+                color: widget.selectedValue != null
+                    ? tealGreen.withOpacity(0.1)
+                    : Colors.grey[50],
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: widget.selectedValue != null
+                      ? tealGreen.withOpacity(0.3)
+                      : Colors.grey[200]!,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.selectedValue ?? 'Select ${widget.title}',
+                      style: GoogleFonts.inter(
+                        fontSize: widget.isTablet ? 14 : 13,
+                        fontWeight: widget.selectedValue != null
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: widget.selectedValue != null
+                            ? tealGreen
+                            : Colors.grey[600],
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ),
+                  if (widget.selectedValue != null)
+                    Padding(
+                      padding: EdgeInsets.only(right: widget.isTablet ? 8 : 6),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _selectOption(null),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: widget.isTablet ? 16 : 14,
+                              color: tealGreen,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Icon(
+                    _isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: widget.isTablet ? 20 : 18,
+                    color: tealGreen,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // Expanded Dropdown with Search
+        if (_isExpanded)
+          Container(
+            margin: EdgeInsets.only(top: widget.isTablet ? 12 : 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: tealGreen.withOpacity(0.2),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            constraints: BoxConstraints(
+              maxHeight: widget.isTablet ? 400 : 350,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Search Field
+                Padding(
+                  padding: EdgeInsets.all(widget.isTablet ? 12 : 10),
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _searchController,
+                    builder: (context, value, child) {
+                      return TextField(
+                        controller: _searchController,
+                        autofocus: false,
+                        style: GoogleFonts.inter(
+                          fontSize: widget.isTablet ? 14 : 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[900],
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Search ${widget.title.toLowerCase()}...',
+                          hintStyle: GoogleFonts.inter(
+                            fontSize: widget.isTablet ? 14 : 13,
+                            color: Colors.grey[400],
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: Colors.grey[500],
+                            size: widget.isTablet ? 20 : 18,
+                          ),
+                          suffixIcon: value.text.isNotEmpty
+                              ? IconButton(
+                                  icon: Icon(
+                                    Icons.clear_rounded,
+                                    size: widget.isTablet ? 18 : 16,
+                                    color: Colors.grey[500],
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _searchController.clear();
+                                    });
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.grey[200]!,
+                              width: 1,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.grey[200]!,
+                              width: 1,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: tealGreen,
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: widget.isTablet ? 14 : 12,
+                            vertical: widget.isTablet ? 12 : 10,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Options List
+                Flexible(
+                  child: _filteredOptions.isEmpty
+                      ? Padding(
+                          padding: EdgeInsets.all(widget.isTablet ? 20 : 18),
+                          child: Text(
+                            'No results found',
+                            style: GoogleFonts.inter(
+                              fontSize: widget.isTablet ? 13 : 12,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: widget.isTablet ? 12 : 10,
+                            vertical: widget.isTablet ? 8 : 6,
+                          ),
+                          itemCount: _filteredOptions.length,
+                          separatorBuilder: (_, __) =>
+                              SizedBox(height: widget.isTablet ? 6 : 4),
+                          itemBuilder: (context, index) {
+                            final option = _filteredOptions[index];
+                            final isSelected = widget.selectedValue == option;
+                            return Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () => _selectOption(option),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding:
+                                      EdgeInsets.all(widget.isTablet ? 12 : 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? tealGreen.withOpacity(0.1)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: isSelected
+                                        ? Border.all(
+                                            color: tealGreen.withOpacity(0.3),
+                                            width: 1,
+                                          )
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: widget.isTablet ? 18 : 16,
+                                        height: widget.isTablet ? 18 : 16,
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? tealGreen
+                                              : Colors.white,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isSelected
+                                                ? tealGreen
+                                                : Colors.grey[400]!,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: isSelected
+                                            ? Icon(
+                                                Icons.check_rounded,
+                                                size: widget.isTablet ? 12 : 11,
+                                                color: Colors.white,
+                                              )
+                                            : null,
+                                      ),
+                                      SizedBox(
+                                          width: widget.isTablet ? 12 : 10),
+                                      Expanded(
+                                        child: Text(
+                                          option,
+                                          style: GoogleFonts.inter(
+                                            fontSize: widget.isTablet ? 14 : 13,
+                                            fontWeight: isSelected
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: isSelected
+                                                ? tealGreen
+                                                : Colors.grey[700],
+                                            letterSpacing: -0.1,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// Filter Dropdown Trigger Widget - UI matching tour plan style, but triggers existing filter popups
+class _FilterDropdownTrigger extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final bool hasActiveFilter;
+  final String? selectedValue;
+  final VoidCallback onTap;
+  final bool isTablet;
+
+  const _FilterDropdownTrigger({
+    required this.title,
+    required this.icon,
+    required this.hasActiveFilter,
+    this.selectedValue,
+    required this.onTap,
+    required this.isTablet,
+  });
+
+  static const Color tealGreen = Color(0xFF4db1b3);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              icon,
+              size: isTablet ? 18 : 16,
+              color: tealGreen,
+            ),
+            SizedBox(width: isTablet ? 10 : 8),
+            Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 16 : 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[900],
+                letterSpacing: -0.3,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: isTablet ? 14 : 12),
+        // Dropdown Trigger
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: EdgeInsets.all(isTablet ? 14 : 12),
+              decoration: BoxDecoration(
+                color: hasActiveFilter
+                    ? tealGreen.withOpacity(0.1)
+                    : Colors.grey[50],
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: hasActiveFilter
+                      ? tealGreen.withOpacity(0.3)
+                      : Colors.grey[200]!,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      selectedValue ?? 'Select $title',
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 14 : 13,
+                        fontWeight: hasActiveFilter
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: hasActiveFilter
+                            ? tealGreen
+                            : Colors.grey[600],
+                        letterSpacing: -0.1,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (hasActiveFilter && selectedValue != null)
+                    Padding(
+                      padding: EdgeInsets.only(right: isTablet ? 8 : 6),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            // Clear filter - this will be handled by the filter popup's clear button
+                            onTap();
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: isTablet ? 16 : 14,
+                              color: tealGreen,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: isTablet ? 20 : 18,
+                    color: tealGreen,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
