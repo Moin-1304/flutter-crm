@@ -47,6 +47,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   String? _purpose;
   bool _atLocation = true; // mock geo indicator
   bool _coVisit = false; // Co Visit checkbox
+  // Co-visit manager selection
+  String? _selectedManager;
+  List<String> _managerOptions = [];
+  final Map<String, int> _managerNameToId = <String, int>{};
+  bool _isLoadingManagers = false;
+  String? _managerErrorText;
   bool _isSavingDraft = false; // Loading state for save draft
   bool _isSubmitting = false; // Loading state for submit
   bool _isLoadingClusters = false; // Loading state for clusters
@@ -209,6 +215,52 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         serviceArea != null && serviceArea.trim() == 'Service Engineer';
     print(
         'DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
+  }
+
+  Future<void> _loadManagerList() async {
+    if (!_coVisit) {
+      // Don't load if co-visit is not checked
+      return;
+    }
+
+    setState(() {
+      _isLoadingManagers = true;
+      _managerErrorText = null;
+    });
+
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final List<CommonDropdownItem> items =
+            await repo.getReportingManagerList();
+        if (items.isNotEmpty) {
+          setState(() {
+            _managerOptions = items
+                .map((e) => e.text.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            // Map names to IDs for submit
+            for (final item in items) {
+              final String key = item.text.trim();
+              if (key.isNotEmpty) _managerNameToId[key] = item.id;
+            }
+            _isLoadingManagers = false;
+          });
+        } else {
+          setState(() {
+            _managerOptions = [];
+            _isLoadingManagers = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [Managers] Error loading managers: $e');
+      setState(() {
+        _managerOptions = [];
+        _isLoadingManagers = false;
+        _managerErrorText = 'Failed to load managers';
+      });
+    }
   }
 
   Future<void> _loadInstrumentsList() async {
@@ -862,6 +914,28 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                 }
               }
             }
+            // Load co-visit data
+            _coVisit = dcrEntry.coVisit;
+            if (_coVisit &&
+                dcrEntry.coVisitorId != null &&
+                dcrEntry.coVisitorId! > 0) {
+              // Load manager list first, then find the manager name matching the ID
+              _loadManagerList().then((_) {
+                // Find manager name by ID
+                String? managerName;
+                _managerNameToId.forEach((name, id) {
+                  if (id == dcrEntry.coVisitorId) {
+                    managerName = name;
+                  }
+                });
+                if (managerName != null && mounted) {
+                  setState(() {
+                    _selectedManager = managerName;
+                  });
+                }
+              });
+            }
+
             // Don't add "Loading..." to options - it will be resolved after typeOfWork list loads
             if (_purpose != null &&
                 _purpose!.trim().isNotEmpty &&
@@ -1433,6 +1507,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                         onChanged: (value) {
                                           setState(() {
                                             _coVisit = value ?? false;
+                                            if (!_coVisit) {
+                                              // Clear manager selection when co-visit is unchecked
+                                              _selectedManager = null;
+                                              _managerErrorText = null;
+                                            } else {
+                                              // Load managers when co-visit is checked
+                                              _loadManagerList();
+                                            }
                                           });
                                         },
                                         activeColor: const Color(0xFF4db1b3),
@@ -1448,6 +1530,39 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                       ),
                                     ],
                                   ),
+
+                                  // Manager selection (shown when co-visit is checked)
+                                  if (_coVisit) ...[
+                                    const SizedBox(height: 16),
+                                    _LabeledField(
+                                      label: 'Select Manager',
+                                      required: true,
+                                      errorText: _managerErrorText,
+                                      child: _isLoadingManagers
+                                          ? const Center(
+                                              child: Padding(
+                                                padding: EdgeInsets.all(16.0),
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
+                                            )
+                                          : SearchableDropdown(
+                                              options: _managerOptions,
+                                              value: _selectedManager,
+                                              hintText: '-- Select Manager --',
+                                              searchHintText:
+                                                  'Search manager...',
+                                              hasError:
+                                                  _managerErrorText != null,
+                                              onChanged: (v) {
+                                                setState(() {
+                                                  _selectedManager = v;
+                                                  _managerErrorText = null;
+                                                });
+                                              },
+                                            ),
+                                    ),
+                                  ],
 
                                   const SizedBox(height: 20),
 
@@ -2077,6 +2192,15 @@ extension on _DcrEntryScreenState {
       firstMessage ??= 'Select at least one mapped instrument';
     }
 
+    // Co-visit manager validation
+    String? managerError;
+    if (_coVisit &&
+        (_selectedManager == null || _selectedManager!.trim().isEmpty)) {
+      managerError = 'Please select a manager for co-visit';
+      isValid = false;
+      firstMessage ??= 'Select a manager for co-visit';
+    }
+
     if (forSubmit && !_atLocation) {
       isValid = false;
       firstMessage ??= 'Mark your visit as "At location" before submitting';
@@ -2089,6 +2213,7 @@ extension on _DcrEntryScreenState {
       _durationErrorText = durationError;
       _productsErrorText = productsError;
       _instrumentsErrorText = instrumentsError;
+      _managerErrorText = managerError;
     });
 
     if (!isValid) {
@@ -2184,6 +2309,18 @@ extension on _DcrEntryScreenState {
           _date.year, _date.month, _date.day, _time.hour, _time.minute);
       final repo = getIt<DcrRepository>();
 
+      // Get manager ID if co-visit is selected
+      int? coVisitorId;
+      if (_coVisit &&
+          _selectedManager != null &&
+          _selectedManager!.trim().isNotEmpty) {
+        coVisitorId = _managerNameToId[_selectedManager];
+        if (coVisitorId == null || coVisitorId <= 0) {
+          throw Exception(
+              'Invalid manager selected. Please select a valid manager.');
+        }
+      }
+
       // Create params with the IDs from UserStore and name-to-ID maps
       final params = CreateDcrParams(
         date: visit,
@@ -2217,6 +2354,9 @@ extension on _DcrEntryScreenState {
         complaintDate: _isServiceEngineer ? _complaintDate : null,
         complaintRemarks:
             _isServiceEngineer ? _complaintRemarksCtrl.text.trim() : null,
+        // Co-visit fields
+        coVisit: _coVisit,
+        coVisitorId: coVisitorId,
       );
 
       print('Creating DCR: ${submit ? "Submit" : "Draft"}');
