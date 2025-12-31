@@ -4046,7 +4046,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
       print('═══════════════════════════════════════════════════════════');
       print('📦 BATCH NO API REQUEST (Customer Issue - Add Item)');
       print('═══════════════════════════════════════════════════════════');
-      print('API Endpoint: POST ${Endpoints.commonGetAuto}');
+      print('API Endpoint: POST ${Endpoints.commonGetAutoBigInt}');
       print('Request Parameters:');
       print('  - CommandType: 332');
       print('  - Id (ItemId): $itemId');

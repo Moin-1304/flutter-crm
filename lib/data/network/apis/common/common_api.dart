@@ -436,8 +436,9 @@ class CommonApi {
     try {
       final request = ItemDescriptionRequest(divisionId: divisionId);
       final requestJson = request.toJson();
-      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestJson);
-      
+      final requestJsonString =
+          const JsonEncoder.withIndent('  ').convert(requestJson);
+
       print('\n');
       print('═══════════════════════════════════════════════════════════════');
       print('🔵 ITEM DESCRIPTION API REQUEST');
@@ -478,35 +479,41 @@ class CommonApi {
         });
       }
       print('');
-      
+
       if (response.data != null) {
         print('📦 Response Data Type: ${response.data.runtimeType}');
-        
+
         if (response.data is List) {
           final responseList = response.data as List;
           print('📊 Total Items: ${responseList.length}');
           print('');
           print('📋 Response Body (JSON):');
-          
+
           // Pretty print the response
-          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          final responseJsonString =
+              const JsonEncoder.withIndent('  ').convert(response.data);
           print(responseJsonString);
           print('');
-          
+
           // Print first few items in detail
           if (responseList.isNotEmpty) {
-            print('📝 Sample Items (first ${responseList.length > 3 ? 3 : responseList.length}):');
+            print(
+                '📝 Sample Items (first ${responseList.length > 3 ? 3 : responseList.length}):');
             for (int i = 0; i < responseList.length && i < 3; i++) {
               final item = responseList[i];
               print('   Item ${i + 1}:');
               if (item is Map) {
                 print('     id: ${item['id']}');
                 print('     text: ${item['text']}');
-                if (item.containsKey('code')) print('     code: ${item['code']}');
-                if (item.containsKey('name')) print('     name: ${item['name']}');
+                if (item.containsKey('code'))
+                  print('     code: ${item['code']}');
+                if (item.containsKey('name'))
+                  print('     name: ${item['name']}');
                 if (item.containsKey('uom')) print('     uom: ${item['uom']}');
-                if (item.containsKey('stock')) print('     stock: ${item['stock']}');
-                if (item.containsKey('rate')) print('     rate: ${item['rate']}');
+                if (item.containsKey('stock'))
+                  print('     stock: ${item['stock']}');
+                if (item.containsKey('rate'))
+                  print('     rate: ${item['rate']}');
               } else {
                 print('     $item');
               }
@@ -519,7 +526,8 @@ class CommonApi {
           }
         } else {
           print('📋 Response Body:');
-          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          final responseJsonString =
+              const JsonEncoder.withIndent('  ').convert(response.data);
           print(responseJsonString);
         }
       } else {
@@ -574,13 +582,14 @@ class CommonApi {
 
       // Print API Request Details
       final requestJson = request.toJson();
-      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestJson);
-      
+      final requestJsonString =
+          const JsonEncoder.withIndent('  ').convert(requestJson);
+
       print('\n');
       print('═══════════════════════════════════════════════════════════════');
-      print('🔵 BATCH NO API REQUEST');
+      print('🔵 BATCH NO API REQUEST (GetAutoBigInt)');
       print('═══════════════════════════════════════════════════════════════');
-      print('📡 Endpoint: POST ${Endpoints.commonGetAuto}');
+      print('📡 Endpoint: POST ${Endpoints.commonGetAutoBigInt}');
       print('📋 Request Headers:');
       print('   Content-Type: application/json');
       print('');
@@ -600,7 +609,7 @@ class CommonApi {
       print('');
 
       final response = await _dioClient.dio.post(
-        Endpoints.commonGetAuto,
+        Endpoints.commonGetAutoBigInt,
         data: request.toJson(),
         options: Options(
           headers: {
@@ -621,33 +630,38 @@ class CommonApi {
         });
       }
       print('');
-      
+
       if (response.data != null) {
         print('📦 Response Data Type: ${response.data.runtimeType}');
-        
+
         if (response.data is List) {
           final responseList = response.data as List;
           print('📊 Total Items: ${responseList.length}');
           print('');
           print('📋 Response Body (JSON):');
-          
+
           // Pretty print the response
-          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          final responseJsonString =
+              const JsonEncoder.withIndent('  ').convert(response.data);
           print(responseJsonString);
           print('');
-          
+
           // Print first few items in detail
           if (responseList.isNotEmpty) {
-            print('📝 Sample Items (first ${responseList.length > 3 ? 3 : responseList.length}):');
+            print(
+                '📝 Sample Items (first ${responseList.length > 3 ? 3 : responseList.length}):');
             for (int i = 0; i < responseList.length && i < 3; i++) {
               final item = responseList[i];
               print('   Item ${i + 1}:');
               if (item is Map) {
                 print('     id: ${item['id']}');
                 print('     text: ${item['text']}');
-                if (item.containsKey('stock')) print('     stock: ${item['stock']}');
-                if (item.containsKey('expiryDate')) print('     expiryDate: ${item['expiryDate']}');
-                if (item.containsKey('name')) print('     name: ${item['name']}');
+                if (item.containsKey('stock'))
+                  print('     stock: ${item['stock']}');
+                if (item.containsKey('expiryDate'))
+                  print('     expiryDate: ${item['expiryDate']}');
+                if (item.containsKey('name'))
+                  print('     name: ${item['name']}');
               } else {
                 print('     $item');
               }
@@ -660,7 +674,8 @@ class CommonApi {
           }
         } else {
           print('📋 Response Body:');
-          final responseJsonString = const JsonEncoder.withIndent('  ').convert(response.data);
+          final responseJsonString =
+              const JsonEncoder.withIndent('  ').convert(response.data);
           print(responseJsonString);
         }
       } else {
