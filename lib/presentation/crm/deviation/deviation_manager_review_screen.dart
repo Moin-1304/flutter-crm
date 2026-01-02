@@ -1345,7 +1345,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.filter_alt_rounded,
+                        Icons.format_list_bulleted_outlined,
                         color: tealGreen,
                         size: isTablet ? 18 : 16,
                       ),

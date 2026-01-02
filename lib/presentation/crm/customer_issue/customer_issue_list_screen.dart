@@ -376,7 +376,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
 
     // Apply status filter (single-select)
     if (_selectedStatus != null) {
-      filtered = filtered.where((issue) => issue.status == _selectedStatus).toList();
+      filtered =
+          filtered.where((issue) => issue.status == _selectedStatus).toList();
     }
 
     // Apply Issue No filter (single-select)
@@ -590,22 +591,28 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                             Navigator.of(context).pop();
                             // Get full API item data for editing
                             final apiItem = _apiItemsById[issue.id];
-                            print('═══════════════════════════════════════════════════════════');
+                            print(
+                                '═══════════════════════════════════════════════════════════');
                             print('✏️ EDIT BUTTON CLICKED');
-                            print('═══════════════════════════════════════════════════════════');
+                            print(
+                                '═══════════════════════════════════════════════════════════');
                             print('Issue ID: ${issue.id}');
-                            print('API Items Map Size: ${_apiItemsById.length}');
-                            print('API Items Keys: ${_apiItemsById.keys.take(5).toList()}');
+                            print(
+                                'API Items Map Size: ${_apiItemsById.length}');
+                            print(
+                                'API Items Keys: ${_apiItemsById.keys.take(5).toList()}');
                             print('API Item Found: ${apiItem != null}');
                             if (apiItem != null) {
                               print('API Item ID: ${apiItem.id}');
                               print('API Item No: ${apiItem.no}');
-                              print('API Item Details Count: ${apiItem.details?.length ?? 0}');
+                              print(
+                                  'API Item Details Count: ${apiItem.details?.length ?? 0}');
                             } else {
                               print('⚠️ WARNING: API Item not found in map!');
                             }
-                            print('═══════════════════════════════════════════════════════════');
-                            
+                            print(
+                                '═══════════════════════════════════════════════════════════');
+
                             final result = await Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => CustomerIssueEntryScreen(
@@ -826,49 +833,57 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
   String? _getStDateFilterDisplayText() {
     final filterState = _columnFilters['stDate']!;
     if (!filterState.isActive) return null;
-    
+
     final dateFormat = DateFormat('dd MMM yyyy');
     String text = '';
-    
+
     if (filterState.condition1Value.isNotEmpty) {
       try {
         final date = DateTime.tryParse(filterState.condition1Value);
         if (date != null) {
           text = '${filterState.condition1Operator} ${dateFormat.format(date)}';
-                  } else {
-          text = '${filterState.condition1Operator} ${filterState.condition1Value}';
+        } else {
+          text =
+              '${filterState.condition1Operator} ${filterState.condition1Value}';
         }
       } catch (e) {
-        text = '${filterState.condition1Operator} ${filterState.condition1Value}';
+        text =
+            '${filterState.condition1Operator} ${filterState.condition1Value}';
       }
     }
-    
-    if (filterState.condition2Value.isNotEmpty && filterState.logicalOperator.isNotEmpty) {
+
+    if (filterState.condition2Value.isNotEmpty &&
+        filterState.logicalOperator.isNotEmpty) {
       try {
         final date = DateTime.tryParse(filterState.condition2Value);
         if (date != null) {
-          text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${dateFormat.format(date)}';
-                  } else {
-          text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+          text +=
+              ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${dateFormat.format(date)}';
+        } else {
+          text +=
+              ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
         }
       } catch (e) {
-        text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+        text +=
+            ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
       }
     }
-    
+
     return text.isEmpty ? 'Filter applied' : text;
   }
 
   String? _getFromStoreFilterDisplayText() {
     final filterState = _columnFilters['fromStore']!;
     if (!filterState.isActive) return null;
-    
+
     String text = '';
     if (filterState.condition1Value.isNotEmpty) {
       text = '${filterState.condition1Operator} ${filterState.condition1Value}';
     }
-    if (filterState.condition2Value.isNotEmpty && filterState.logicalOperator.isNotEmpty) {
-      text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+    if (filterState.condition2Value.isNotEmpty &&
+        filterState.logicalOperator.isNotEmpty) {
+      text +=
+          ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
     }
     return text.isEmpty ? 'Filter applied' : text;
   }
@@ -876,13 +891,15 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
   String? _getItemDetailsFilterDisplayText() {
     final filterState = _columnFilters['itemDetails']!;
     if (!filterState.isActive) return null;
-    
+
     String text = '';
     if (filterState.condition1Value.isNotEmpty) {
       text = '${filterState.condition1Operator} ${filterState.condition1Value}';
     }
-    if (filterState.condition2Value.isNotEmpty && filterState.logicalOperator.isNotEmpty) {
-      text += ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
+    if (filterState.condition2Value.isNotEmpty &&
+        filterState.logicalOperator.isNotEmpty) {
+      text +=
+          ' ${filterState.logicalOperator} ${filterState.condition2Operator} ${filterState.condition2Value}';
     }
     return text.isEmpty ? 'Filter applied' : text;
   }
@@ -896,35 +913,37 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     if (isMobile || button == null) {
       showModalBottomSheet(
         context: context,
+        showDragHandle: true,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (BuildContext dialogContext) {
-          return Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: _DateFilterPopup(
-              filterState: _columnFilters['stDate']!,
-              operators: _dateFilterOperators,
-              onApply: () {
-                setState(() {
-                  _columnFilters['stDate']!.isActive = true;
-                  _invalidateFilterCache();
-                });
-                Navigator.of(dialogContext).pop();
-              },
-              onClear: () {
-                setState(() {
-                  _columnFilters['stDate']!.clear();
-                  _invalidateFilterCache();
-                });
-                Navigator.of(dialogContext).pop();
-              },
+          return SafeArea(
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: _DateFilterPopup(
+                filterState: _columnFilters['stDate']!,
+                operators: _dateFilterOperators,
+                onApply: () {
+                  setState(() {
+                    _columnFilters['stDate']!.isActive = true;
+                    _invalidateFilterCache();
+                  });
+                  Navigator.of(dialogContext).pop();
+                },
+                onClear: () {
+                  setState(() {
+                    _columnFilters['stDate']!.clear();
+                    _invalidateFilterCache();
+                  });
+                  Navigator.of(dialogContext).pop();
+                },
+              ),
             ),
           );
         },
@@ -962,9 +981,22 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
             Positioned(
               left: left,
               top: top,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(4),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFF4db1b3).withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: _DateFilterPopup(
                   filterState: _columnFilters['stDate']!,
                   operators: _dateFilterOperators,
@@ -1005,35 +1037,37 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     if (isMobile || button == null) {
       showModalBottomSheet(
         context: context,
+        showDragHandle: true,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (BuildContext dialogContext) {
-          return Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: _ColumnFilterPopup(
-              filterState: _columnFilters[columnKey]!,
-              operators: _filterOperators,
-              onApply: () {
-                setState(() {
-                  _columnFilters[columnKey]!.isActive = true;
-                  _invalidateFilterCache();
-                });
-                Navigator.of(dialogContext).pop();
-              },
-              onClear: () {
-                setState(() {
-                  _columnFilters[columnKey]!.clear();
-                  _invalidateFilterCache();
-                });
-                Navigator.of(dialogContext).pop();
-              },
+          return SafeArea(
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: _ColumnFilterPopup(
+                filterState: _columnFilters[columnKey]!,
+                operators: _filterOperators,
+                onApply: () {
+                  setState(() {
+                    _columnFilters[columnKey]!.isActive = true;
+                    _invalidateFilterCache();
+                  });
+                  Navigator.of(dialogContext).pop();
+                },
+                onClear: () {
+                  setState(() {
+                    _columnFilters[columnKey]!.clear();
+                    _invalidateFilterCache();
+                  });
+                  Navigator.of(dialogContext).pop();
+                },
+              ),
             ),
           );
         },
@@ -1084,9 +1118,22 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
             Positioned(
               left: left,
               top: top,
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(4),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFF4db1b3).withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: _ColumnFilterPopup(
                   filterState: _columnFilters[columnKey]!,
                   operators: _filterOperators,
@@ -1246,7 +1293,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
         mainAxisSize: MainAxisSize.max,
         children: [
           Icon(
-            Icons.filter_alt_rounded,
+            Icons.format_list_bulleted_outlined,
             color: tealGreen,
             size: 18,
           ),
@@ -1571,30 +1618,30 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                 child: StatefulBuilder(
                   builder: (context, setModalState) {
                     return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         // Modal Header
-                    Container(
-                      padding: EdgeInsets.all(isMobile ? 16 : 20),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
+                        Container(
+                          padding: EdgeInsets.all(isMobile ? 16 : 20),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
                                 color: Colors.grey.withOpacity(0.1),
                                 width: 1,
                               ),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            'Filters',
-                            style: GoogleFonts.inter(
-                              fontSize: isMobile ? 18 : 20,
-                              fontWeight: FontWeight.normal,
-                              color: Colors.grey[900],
-                              letterSpacing: -0.5,
                             ),
                           ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Filters',
+                                style: GoogleFonts.inter(
+                                  fontSize: isMobile ? 18 : 20,
+                                  fontWeight: FontWeight.normal,
+                                  color: Colors.grey[900],
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
                               const Spacer(),
                               IconButton(
                                 onPressed: _closeFilterModal,
@@ -1610,176 +1657,185 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                     size: 18,
                                     color: Colors.grey[700],
                                   ),
-                            ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
                         // Modal Content
-                            Flexible(
-                              child: SingleChildScrollView(
-                                controller: _filterScrollController,
-                                padding: EdgeInsets.fromLTRB(
-                                  isMobile ? 16 : 20,
-                                  isMobile ? 16 : 20,
-                                  isMobile ? 16 : 20,
+                        Flexible(
+                          child: SingleChildScrollView(
+                            controller: _filterScrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              isMobile ? 16 : 20,
+                              isMobile ? 16 : 20,
+                              isMobile ? 16 : 20,
                               MediaQuery.of(context).viewInsets.bottom +
                                   (isMobile ? 16 : 20),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Status Filter - Searchable Dropdown (matching tour plan style)
+                                _SearchableFilterDropdown(
+                                  title: 'Status',
+                                  icon: Icons.verified_outlined,
+                                  selectedValue: _tempStatus,
+                                  options: _statusOptions,
+                                  onChanged: (value) {
+                                    setModalState(() {
+                                      _tempStatus = value;
+                                    });
+                                  },
+                                  isTablet: isTablet,
                                 ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Status Filter - Searchable Dropdown (matching tour plan style)
-                                    _SearchableFilterDropdown(
-                                      title: 'Status',
-                                      icon: Icons.verified_outlined,
-                                      selectedValue: _tempStatus,
-                                      options: _statusOptions,
-                                      onChanged: (value) {
-                                        setModalState(() {
-                                          _tempStatus = value;
-                                        });
-                                      },
-                                      isTablet: isTablet,
-                                    ),
-                                    SizedBox(height: isTablet ? 24 : 20),
-                                    // Issue No Filter - Searchable Dropdown (matching tour plan style)
-                                    _SearchableFilterDropdown(
-                                      title: 'Issue No',
-                                      icon: Icons.numbers_outlined,
-                                      selectedValue: _tempIssueNo,
-                                      options: _issueNoOptions,
-                                      onChanged: (value) {
-                                        setModalState(() {
-                                          _tempIssueNo = value;
-                                        });
-                                      },
-                                      isTablet: isTablet,
-                                    ),
-                                    SizedBox(height: isTablet ? 24 : 20),
-                                    // ST Date Filter - UI matching tour plan style, but opens existing filter popup
-                                    _FilterDropdownTrigger(
-                                      title: 'ST Date',
-                                      icon: Icons.calendar_today_outlined,
-                                      hasActiveFilter: _columnFilters['stDate']!.isActive,
-                                      selectedValue: _columnFilters['stDate']!.isActive
+                                SizedBox(height: isTablet ? 24 : 20),
+                                // Issue No Filter - Searchable Dropdown (matching tour plan style)
+                                _SearchableFilterDropdown(
+                                  title: 'Issue No',
+                                  icon: Icons.numbers_outlined,
+                                  selectedValue: _tempIssueNo,
+                                  options: _issueNoOptions,
+                                  onChanged: (value) {
+                                    setModalState(() {
+                                      _tempIssueNo = value;
+                                    });
+                                  },
+                                  isTablet: isTablet,
+                                ),
+                                SizedBox(height: isTablet ? 24 : 20),
+                                // ST Date Filter - UI matching tour plan style, but opens existing filter popup
+                                _FilterDropdownTrigger(
+                                  title: 'ST Date',
+                                  icon: Icons.calendar_today_outlined,
+                                  hasActiveFilter:
+                                      _columnFilters['stDate']!.isActive,
+                                  selectedValue:
+                                      _columnFilters['stDate']!.isActive
                                           ? _getStDateFilterDisplayText()
                                           : null,
-                                      onTap: () {
-                                        _showStDateFilter(context, null);
-                                      },
-                                      isTablet: isTablet,
-                                    ),
-                                    SizedBox(height: isTablet ? 24 : 20),
-                                    // From Store Filter - UI matching tour plan style, but opens existing filter popup
-                                    _FilterDropdownTrigger(
-                                      title: 'From Store',
-                                      icon: Icons.store_outlined,
-                                      hasActiveFilter: _columnFilters['fromStore']!.isActive,
-                                      selectedValue: _columnFilters['fromStore']!.isActive
+                                  onTap: () {
+                                    _showStDateFilter(context, null);
+                                  },
+                                  isTablet: isTablet,
+                                ),
+                                SizedBox(height: isTablet ? 24 : 20),
+                                // From Store Filter - UI matching tour plan style, but opens existing filter popup
+                                _FilterDropdownTrigger(
+                                  title: 'From Store',
+                                  icon: Icons.store_outlined,
+                                  hasActiveFilter:
+                                      _columnFilters['fromStore']!.isActive,
+                                  selectedValue:
+                                      _columnFilters['fromStore']!.isActive
                                           ? _getFromStoreFilterDisplayText()
                                           : null,
-                                      onTap: () {
-                                        _showColumnFilter(context, 'fromStore', GlobalKey());
-                                      },
-                                      isTablet: isTablet,
-                                    ),
-                                    SizedBox(height: isTablet ? 24 : 20),
-                                    // Item Details Filter - UI matching tour plan style, but opens existing filter popup
-                                    _FilterDropdownTrigger(
-                                      title: 'Item Details',
-                                      icon: Icons.description_outlined,
-                                      hasActiveFilter: _columnFilters['itemDetails']!.isActive,
-                                      selectedValue: _columnFilters['itemDetails']!.isActive
+                                  onTap: () {
+                                    _showColumnFilter(
+                                        context, 'fromStore', GlobalKey());
+                                  },
+                                  isTablet: isTablet,
+                                ),
+                                SizedBox(height: isTablet ? 24 : 20),
+                                // Item Details Filter - UI matching tour plan style, but opens existing filter popup
+                                _FilterDropdownTrigger(
+                                  title: 'Item Details',
+                                  icon: Icons.description_outlined,
+                                  hasActiveFilter:
+                                      _columnFilters['itemDetails']!.isActive,
+                                  selectedValue:
+                                      _columnFilters['itemDetails']!.isActive
                                           ? _getItemDetailsFilterDisplayText()
                                           : null,
-                                      onTap: () {
-                                        _showColumnFilter(context, 'itemDetails', GlobalKey());
-                                      },
-                                      isTablet: isTablet,
-                                    ),
-                                  ],
+                                  onTap: () {
+                                    _showColumnFilter(
+                                        context, 'itemDetails', GlobalKey());
+                                  },
+                                  isTablet: isTablet,
                                 ),
-                              ),
+                              ],
                             ),
+                          ),
+                        ),
                         // Modal Footer Buttons
-                            Container(
-                              padding: EdgeInsets.all(isMobile ? 16 : 20),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  top: BorderSide(
-                                      color: Colors.grey.withOpacity(0.1),
+                        Container(
+                          padding: EdgeInsets.all(isMobile ? 16 : 20),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(
+                                color: Colors.grey.withOpacity(0.1),
                                 width: 1,
                               ),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () {
-                                        setModalState(() {
-                                          _tempStatus = null;
-                                          _tempIssueNo = null;
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    setModalState(() {
+                                      _tempStatus = null;
+                                      _tempIssueNo = null;
                                     });
                                     _clearAllFilters();
                                     _closeFilterModal();
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        padding: EdgeInsets.symmetric(
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    padding: EdgeInsets.symmetric(
                                         vertical: isMobile ? 14 : 16),
-                                        shape: RoundedRectangleBorder(
+                                    shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                        ),
-                                    side: BorderSide(color: tealGreen, width: 1.5),
-                                      ),
-                                      child: Text(
-                                        'Clear',
-                                        style: GoogleFonts.inter(
-                                          color: tealGreen,
-                                          fontSize: isMobile ? 14 : 15,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
+                                    ),
+                                    side: BorderSide(
+                                        color: tealGreen, width: 1.5),
+                                  ),
+                                  child: Text(
+                                    'Clear',
+                                    style: GoogleFonts.inter(
+                                      color: tealGreen,
+                                      fontSize: isMobile ? 14 : 15,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  SizedBox(width: isMobile ? 12 : 16),
-                                  Expanded(
-                                    child: FilledButton(
-                                      onPressed: () {
-                                        setState(() {
+                                ),
+                              ),
+                              SizedBox(width: isMobile ? 12 : 16),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () {
+                                    setState(() {
                                       _selectedStatus = _tempStatus;
                                       _selectedIssueNo = _tempIssueNo;
-                                        });
-                                        _closeFilterModal();
-                                        _loadItemIssues(refresh: true);
-                                      },
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: tealGreen,
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.symmetric(
+                                    });
+                                    _closeFilterModal();
+                                    _loadItemIssues(refresh: true);
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: tealGreen,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(
                                         vertical: isMobile ? 14 : 16),
-                                        shape: RoundedRectangleBorder(
+                                    shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                        ),
+                                    ),
                                     elevation: 2,
-                                      ),
-                                      child: Text(
+                                  ),
+                                  child: Text(
                                     'Apply Filters',
-                                        style: GoogleFonts.inter(
-                                          fontSize: isMobile ? 14 : 15,
-                                          fontWeight: FontWeight.w700,
+                                    style: GoogleFonts.inter(
+                                      fontSize: isMobile ? 14 : 15,
+                                      fontWeight: FontWeight.w700,
                                       color: Colors.white,
-                                        ),
-                                      ),
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ],
-                        );
-                      },
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -2189,145 +2245,188 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    return Container(
-      width: isMobile ? screenWidth - 32 : 320,
-      constraints: BoxConstraints(
-        maxWidth: isMobile ? screenWidth - 32 : 320,
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
-      ),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Title
-          Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header with title and close button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Row(
             children: [
-              const Icon(Icons.filter_list, size: 18, color: Colors.grey),
-              const SizedBox(width: 8),
-              Text(
-                'Filter',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
+              Expanded(
+                child: Text(
+                  'Filter',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.normal),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(context).pop(),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-
-          // Condition 1
-          _buildConditionRow(
-            operator: _localState.condition1Operator,
-            value: _localState.condition1Value,
-            onOperatorChanged: (op) {
-              setState(() {
-                _localState.condition1Operator = op;
-              });
-            },
-            onValueChanged: (val) {
-              setState(() {
-                _localState.condition1Value = val;
-              });
-            },
-          ),
-
-          // Logical operator and Condition 2 (always shown)
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: DropdownButtonFormField<String>(
-              value: _localState.logicalOperator,
-              isExpanded: true,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'And', child: Text('And')),
-                DropdownMenuItem(value: 'Or', child: Text('Or')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _localState.logicalOperator = value;
-                  });
-                }
-              },
+        ),
+        const Divider(height: 1),
+        // Content
+        Flexible(
+          child: Container(
+            width: isMobile ? screenWidth - 32 : 320,
+            constraints: BoxConstraints(
+              maxWidth: isMobile ? screenWidth - 32 : 320,
+              maxHeight: MediaQuery.of(context).size.height * 0.7,
             ),
-          ),
-          const SizedBox(height: 12),
-          _buildConditionRow(
-            operator: _localState.condition2Operator,
-            value: _localState.condition2Value,
-            onOperatorChanged: (op) {
-              setState(() {
-                _localState.condition2Operator = op;
-              });
-            },
-            onValueChanged: (val) {
-              setState(() {
-                _localState.condition2Value = val;
-              });
-            },
-          ),
-
-          const SizedBox(height: 16),
-
-          // Buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: widget.onClear,
-                child: const Text(
-                  'Clear',
-                  style: TextStyle(color: Colors.grey),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Condition 1
+                _buildConditionRow(
+                  operator: _localState.condition1Operator,
+                  value: _localState.condition1Value,
+                  onOperatorChanged: (op) {
+                    setState(() {
+                      _localState.condition1Operator = op;
+                    });
+                  },
+                  onValueChanged: (val) {
+                    setState(() {
+                      _localState.condition1Value = val;
+                    });
+                  },
                 ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () {
-                  widget.filterState
-                    ..condition1Operator = _localState.condition1Operator
-                    ..condition1Value = _localState.condition1Value
-                    ..logicalOperator = _localState.logicalOperator
-                    ..condition2Operator = _localState.condition2Operator
-                    ..condition2Value = _localState.condition2Value;
-                  widget.onApply();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: blueColor,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+
+                // Logical operator and Condition 2 (always shown)
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: DropdownButtonFormField<String>(
+                    value: _localState.logicalOperator,
+                    isExpanded: true,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.normal,
+                      color: Colors.black87,
+                    ),
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'And',
+                        child: Text(
+                          'And',
+                          style: TextStyle(fontWeight: FontWeight.normal),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Or',
+                        child: Text(
+                          'Or',
+                          style: TextStyle(fontWeight: FontWeight.normal),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _localState.logicalOperator = value;
+                        });
+                      }
+                    },
                   ),
                 ),
-                child: const Text('Filter'),
-              ),
-            ],
+                const SizedBox(height: 12),
+                _buildConditionRow(
+                  operator: _localState.condition2Operator,
+                  value: _localState.condition2Value,
+                  onOperatorChanged: (op) {
+                    setState(() {
+                      _localState.condition2Operator = op;
+                    });
+                  },
+                  onValueChanged: (val) {
+                    setState(() {
+                      _localState.condition2Value = val;
+                    });
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: widget.onClear,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                              color: const Color(0xFF4db1b3), width: 1.5),
+                          padding: EdgeInsets.symmetric(
+                              vertical: isMobile ? 14 : 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFF4db1b3),
+                            fontSize: isMobile ? 14 : 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: isMobile ? 12 : 16),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          widget.filterState
+                            ..condition1Operator =
+                                _localState.condition1Operator
+                            ..condition1Value = _localState.condition1Value
+                            ..logicalOperator = _localState.logicalOperator
+                            ..condition2Operator =
+                                _localState.condition2Operator
+                            ..condition2Value = _localState.condition2Value;
+                          widget.onApply();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF4db1b3),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                              vertical: isMobile ? 14 : 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: Text(
+                          'Filter',
+                          style: GoogleFonts.inter(
+                            fontSize: isMobile ? 14 : 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -2355,6 +2454,10 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
               child: DropdownButtonFormField<String>(
                 value: operator,
                 isExpanded: true,
+                style: const TextStyle(
+                  fontWeight: FontWeight.normal,
+                  color: Colors.black87,
+                ),
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4),
@@ -2369,6 +2472,9 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                     child: Text(
                       op,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.normal,
+                      ),
                     ),
                   );
                 }).toList(),
@@ -2907,149 +3013,192 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    return Container(
-      width: isMobile ? screenWidth - 32 : 320,
-      constraints: BoxConstraints(
-        maxWidth: isMobile ? screenWidth - 32 : 320,
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
-      ),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Title
-          Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header with title and close button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Row(
             children: [
-              const Icon(Icons.filter_list, size: 18, color: Colors.grey),
-              const SizedBox(width: 8),
-              Text(
-                'Filter',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
+              Expanded(
+                child: Text(
+                  'Filter',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.normal),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(context).pop(),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-
-          // Condition 1
-          _buildDateConditionRow(
-            operator: _localState.condition1Operator,
-            dateValue: _localState.condition1Value,
-            controller: _condition1DateController,
-            onOperatorChanged: (op) {
-              setState(() {
-                _localState.condition1Operator = op;
-              });
-            },
-            onDateChanged: (date) {
-              setState(() {
-                _localState.condition1Value = date;
-              });
-            },
-            onDatePickerTap: () => _selectDate(context, true),
-          ),
-
-          // Logical operator and Condition 2 (always shown)
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: DropdownButtonFormField<String>(
-              value: _localState.logicalOperator,
-              isExpanded: true,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'And', child: Text('And')),
-                DropdownMenuItem(value: 'Or', child: Text('Or')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _localState.logicalOperator = value;
-                  });
-                }
-              },
+        ),
+        const Divider(height: 1),
+        // Content
+        Flexible(
+          child: Container(
+            width: isMobile ? screenWidth - 32 : 320,
+            constraints: BoxConstraints(
+              maxWidth: isMobile ? screenWidth - 32 : 320,
+              maxHeight: MediaQuery.of(context).size.height * 0.7,
             ),
-          ),
-          const SizedBox(height: 12),
-          _buildDateConditionRow(
-            operator: _localState.condition2Operator,
-            dateValue: _localState.condition2Value,
-            controller: _condition2DateController,
-            onOperatorChanged: (op) {
-              setState(() {
-                _localState.condition2Operator = op;
-              });
-            },
-            onDateChanged: (date) {
-              setState(() {
-                _localState.condition2Value = date;
-              });
-            },
-            onDatePickerTap: () => _selectDate(context, false),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: widget.onClear,
-                child: const Text(
-                  'Clear',
-                  style: TextStyle(color: Colors.grey),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Condition 1
+                _buildDateConditionRow(
+                  operator: _localState.condition1Operator,
+                  dateValue: _localState.condition1Value,
+                  controller: _condition1DateController,
+                  onOperatorChanged: (op) {
+                    setState(() {
+                      _localState.condition1Operator = op;
+                    });
+                  },
+                  onDateChanged: (date) {
+                    setState(() {
+                      _localState.condition1Value = date;
+                    });
+                  },
+                  onDatePickerTap: () => _selectDate(context, true),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () {
-                  widget.filterState
-                    ..condition1Operator = _localState.condition1Operator
-                    ..condition1Value = _localState.condition1Value
-                    ..logicalOperator = _localState.logicalOperator
-                    ..condition2Operator = _localState.condition2Operator
-                    ..condition2Value = _localState.condition2Value;
-                  widget.onApply();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: blueColor,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
+
+                // Logical operator and Condition 2 (always shown)
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: DropdownButtonFormField<String>(
+                    value: _localState.logicalOperator,
+                    isExpanded: true,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.normal,
+                      color: Colors.black87,
+                    ),
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'And',
+                        child: Text(
+                          'And',
+                          style: TextStyle(fontWeight: FontWeight.normal),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Or',
+                        child: Text(
+                          'Or',
+                          style: TextStyle(fontWeight: FontWeight.normal),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _localState.logicalOperator = value;
+                        });
+                      }
+                    },
                   ),
                 ),
-                child: const Text('Filter'),
-              ),
-            ],
+                const SizedBox(height: 12),
+                _buildDateConditionRow(
+                  operator: _localState.condition2Operator,
+                  dateValue: _localState.condition2Value,
+                  controller: _condition2DateController,
+                  onOperatorChanged: (op) {
+                    setState(() {
+                      _localState.condition2Operator = op;
+                    });
+                  },
+                  onDateChanged: (date) {
+                    setState(() {
+                      _localState.condition2Value = date;
+                    });
+                  },
+                  onDatePickerTap: () => _selectDate(context, false),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: widget.onClear,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                              color: const Color(0xFF4db1b3), width: 1.5),
+                          padding: EdgeInsets.symmetric(
+                              vertical: isMobile ? 14 : 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFF4db1b3),
+                            fontSize: isMobile ? 14 : 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: isMobile ? 12 : 16),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          widget.filterState
+                            ..condition1Operator =
+                                _localState.condition1Operator
+                            ..condition1Value = _localState.condition1Value
+                            ..logicalOperator = _localState.logicalOperator
+                            ..condition2Operator =
+                                _localState.condition2Operator
+                            ..condition2Value = _localState.condition2Value;
+                          widget.onApply();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF4db1b3),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                              vertical: isMobile ? 14 : 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: Text(
+                          'Filter',
+                          style: GoogleFonts.inter(
+                            fontSize: isMobile ? 14 : 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -3070,6 +3219,10 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
           child: DropdownButtonFormField<String>(
             value: operator,
             isExpanded: true,
+            style: const TextStyle(
+              fontWeight: FontWeight.normal,
+              color: Colors.black87,
+            ),
             decoration: InputDecoration(
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(4),
@@ -3084,6 +3237,7 @@ class _DateFilterPopupState extends State<_DateFilterPopup> {
                 child: Text(
                   op,
                   overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.normal),
                 ),
               );
             }).toList(),
@@ -3590,12 +3744,9 @@ class _FilterDropdownTrigger extends StatelessWidget {
                       selectedValue ?? 'Select $title',
                       style: GoogleFonts.inter(
                         fontSize: isTablet ? 14 : 13,
-                        fontWeight: hasActiveFilter
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                        color: hasActiveFilter
-                            ? tealGreen
-                            : Colors.grey[600],
+                        fontWeight:
+                            hasActiveFilter ? FontWeight.w600 : FontWeight.w500,
+                        color: hasActiveFilter ? tealGreen : Colors.grey[600],
                         letterSpacing: -0.1,
                       ),
                       maxLines: 1,

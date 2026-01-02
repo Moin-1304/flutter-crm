@@ -2944,105 +2944,48 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           children: [
             // Save button
             Expanded(
-              child: Tooltip(
-                message: canSave
-                    ? 'Save customer issue (without workflow)'
-                    : (_items.isEmpty
-                        ? 'Add at least one item first'
-                        : 'Complete all required fields first'),
-                child: OutlinedButton.icon(
-                  onPressed: canSave && !_isLoading ? _handleSave : null,
-                  icon: Icon(
-                    Icons.save,
-                    size: 20,
-                    color: canSave && !_isLoading
-                        ? tealGreen
-                        : Colors.grey.shade700,
-                  ),
-                  label: Text(
-                    'Save',
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 15 : 14,
-                      fontWeight: FontWeight.w600,
-                      color: canSave && !_isLoading
-                          ? tealGreen
-                          : Colors.grey.shade700,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: tealGreen,
-                    side: BorderSide(
-                      color: canSave && !_isLoading
-                          ? tealGreen
-                          : Colors.grey.shade300,
-                      width: 1.5,
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 20 : 16,
-                      vertical: isTablet ? 16 : 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 50),
-                  ),
+              child: OutlinedButton(
+                onPressed: canSave && !_isLoading ? _handleSave : null,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: tealGreen,
+                  side: BorderSide(color: tealGreen, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
               ),
             ),
             const SizedBox(width: 12),
             // Submit button
             Expanded(
-              child: Tooltip(
-                message: canSubmit
-                    ? 'Submit customer issue (with workflow)'
-                    : (_items.isEmpty
-                        ? 'Add at least one item first'
-                        : (_hasEdit == false
-                            ? 'Submit is not allowed (workflow restriction)'
-                            : (_isLoadingWorkflow
-                                ? 'Loading workflow permissions...'
-                                : 'Complete all required fields first'))),
-                child: ElevatedButton.icon(
-                  onPressed: canSubmit && !_isLoading ? _handleSubmit : null,
-                  icon: Icon(
-                    _isLoading
-                        ? Icons.hourglass_empty
-                        : (canSubmit ? Icons.check_circle : Icons.info_outline),
-                    size: 22,
-                    color: canSubmit && !_isLoading
-                        ? Colors.white
-                        : Colors.grey.shade700,
-                  ),
-                  label: Text(
-                    _isLoading ? 'Submitting...' : 'Submit',
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 16 : 15,
-                      fontWeight: FontWeight.w600,
-                      color: canSubmit && !_isLoading
-                          ? Colors.white
-                          : Colors.grey.shade700,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: canSubmit && !_isLoading
-                        ? tealGreen
-                        : Colors.grey.shade200,
-                    disabledBackgroundColor: Colors.grey.shade200,
-                    foregroundColor: canSubmit && !_isLoading
-                        ? Colors.white
-                        : Colors.grey.shade700,
-                    disabledForegroundColor: Colors.grey.shade700,
-                    elevation: canSubmit && !_isLoading ? 2 : 0,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 24 : 20,
-                      vertical: isTablet ? 16 : 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 50),
-                  ),
+              child: FilledButton(
+                onPressed: canSubmit && !_isLoading ? _handleSubmit : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: tealGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  elevation: 2,
                 ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text('Submit'),
               ),
             ),
           ],

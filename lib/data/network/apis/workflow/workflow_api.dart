@@ -9,14 +9,15 @@ class WorkflowApi {
   WorkflowApi(this._dioClient);
 
   /// Get all workflow actions
-  Future<WorkflowGetAllActionsResponse> getAllActions(WorkflowGetAllActionsRequest request) async {
+  Future<WorkflowGetAllActionsResponse> getAllActions(
+      WorkflowGetAllActionsRequest request) async {
     try {
       print('═══════════════════════════════════════════════════════════');
       print('📤 Workflow GetAllActions API Request');
       print('═══════════════════════════════════════════════════════════');
       print('URL: ${Endpoints.workflowGetAllActions}');
       print('Request: ${request.toJson()}');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.workflowGetAllActions,
         data: request.toJson(),
@@ -120,4 +121,3 @@ class WorkflowApi {
     }
   }
 }
-

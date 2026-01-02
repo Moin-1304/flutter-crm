@@ -103,8 +103,9 @@ class ItemIssueListResponse {
   factory ItemIssueListResponse.fromJson(Map<String, dynamic> json) {
     return ItemIssueListResponse(
       items: (json['items'] as List<dynamic>?)
-          ?.map((item) => ItemIssueApiItem.fromJson(item))
-          .toList() ?? [],
+              ?.map((item) => ItemIssueApiItem.fromJson(item))
+              .toList() ??
+          [],
       totalRecords: json['totalRecords'],
       filteredRecords: json['filteredRecords'],
     );
@@ -274,8 +275,8 @@ class ItemIssueApiItem {
       isMultipleBatch: json['isMultipleBatch'],
       multiBatchGroup: json['multiBatchGroup'],
       transactionType: json['transactionType'] ?? 14,
-      isCancelled: json['isCancelled'] is bool 
-          ? json['isCancelled'] 
+      isCancelled: json['isCancelled'] is bool
+          ? json['isCancelled']
           : (json['isCancelled'] == 1 || json['isCancelled'] == true),
       workflowProcess: json['workflowProcess'],
       reference: json['reference'],
@@ -845,4 +846,3 @@ class ItemIssueSaveResponse {
     );
   }
 }
-

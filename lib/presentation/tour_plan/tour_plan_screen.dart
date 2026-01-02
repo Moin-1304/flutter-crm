@@ -583,7 +583,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
-                                        Icons.filter_alt_rounded,
+                                        Icons.format_list_bulleted_outlined,
                                         color: tealGreen,
                                         size: isTablet ? 18 : 16,
                                       ),
@@ -2658,7 +2658,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
         return false; // Disable edit if validation fails
       }
     }
-    
+
     // Allow editing for Draft (status 0), Pending (status 1 or 2), and Sent Back (status 4) tour plans
     // Status 4 = Sent Back - user should be able to edit and resubmit
     return item.status == 0 ||
