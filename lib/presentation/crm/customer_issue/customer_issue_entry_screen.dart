@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -13,6 +14,7 @@ import 'package:boilerplate/domain/repository/workflow/workflow_repository.dart'
 import 'package:boilerplate/domain/entity/workflow/workflow_api_models.dart';
 import 'package:boilerplate/domain/repository/item_issue/item_issue_repository.dart';
 import 'package:boilerplate/domain/entity/item_issue/item_issue_api_models.dart';
+import 'package:dio/dio.dart';
 
 class ItemDetail {
   String? divisionCategory;
@@ -138,9 +140,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
   // Workflow states
   bool _isLoadingWorkflow = false;
-  bool _hasEdit = false; // Enable submit button only when true
+  // Workflow action details for rendering buttons
+  List<ProcessActionDetail> _workflowActionDetails = [];
   int? _workflowProcessId;
   int? _workflowProcessActionId;
+  bool _hasWorkflowSubmitAction = false;
 
   // Division/Category dropdown options (shared across all items)
   List<String> _divisionCategoryOptions = [];
@@ -204,7 +208,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('   - Issue Against: ${_issueAgainstList.length}');
       print('   - Division Categories: ${_divisionCategoryList.length}');
 
-      // Step 3: Load workflow data to check hasEdit and get process IDs
+      // Step 3: Load workflow data and get process IDs
       await _loadWorkflowData();
 
       // Step 4: After both API data and dropdowns are loaded, populate form
@@ -2886,6 +2890,68 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     );
   }
 
+  void _handleWorkflowAction(ProcessActionDetail action) {
+    // Here you can invoke the submit logic, using action.processActionId
+    _handleSubmitWithProcessActionId(action.processActionId);
+  }
+
+  Future<void> _handleSubmitWithProcessActionId(int processActionId) async {
+    print('>>>>> [CUSTOMER ISSUE] handleSubmitWithProcessActionId CALLED');
+    print(
+        '     isEditMode: _isEditMode, processActionId: $processActionId, items.length: ${_items.length}');
+    if (!_validateForm()) return;
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final processId = _workflowProcessId;
+      // Build save request using the processActionId from the button
+      final saveRequest = await _buildSaveRequest(
+        workflowFlag: 1,
+        processId: processId,
+        processActionId: processActionId,
+      );
+
+      print('SAVE REQUEST: ' + saveRequest.toJson().toString());
+      final itemIssueRepo = getIt<ItemIssueRepository>();
+      await itemIssueRepo.saveItemIssue(saveRequest);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isEditMode
+                  ? 'Customer Issue submitted successfully'
+                  : 'Customer Issue submitted successfully',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      // If using Dio or a similar network error
+      try {
+        print('❌ Exception caught during submit: ' + e.toString());
+
+      } catch (ee) {}
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit customer issue: e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Widget _buildSubmitButton(BuildContext context, bool isTablet) {
     const tealGreen = Color(0xFF4db1b3);
     // Convert _itemDetails to _items for validation
@@ -2893,7 +2959,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         .map((detail) => _convertItemDetailToIssueItemDetail(detail))
         .toList();
 
-    // Save button enabled when form is valid (doesn't require hasEdit since it doesn't use workflow)
+    // Save button enabled when form is valid (doesn't depend on workflow)
     // Note: Save doesn't need to wait for workflow to load since it doesn't use workflow
     final bool canSave = _items.isNotEmpty &&
         _issueAgainst != null &&
@@ -2901,44 +2967,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         _fromStore != null &&
         _toStore != null;
 
-    // Submit button enabled only when hasEdit = true from workflow API AND form is valid
-    final bool canSubmit =
-        canSave && _hasEdit; // Enable submit only when hasEdit is true
+    // Submit button enabled only if processAction exists and is valid
+    final bool canSubmit = canSave && _hasWorkflowSubmitAction;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // if (!canSubmit)
-        // Padding(
-        //   padding: const EdgeInsets.only(bottom: 12),
-        //   child: Container(
-        //     padding: const EdgeInsets.all(12),
-        //     decoration: BoxDecoration(
-        //       color: Colors.orange.shade50,
-        //       borderRadius: BorderRadius.circular(8),
-        //       border: Border.all(color: Colors.orange.shade200, width: 1),
-        //     ),
-        // child: Row(
-        //   children: [
-        //     Icon(Icons.info_outline,
-        //         size: 20, color: Colors.orange.shade700),
-        //     const SizedBox(width: 8),
-        //     Expanded(
-        //       child: Text(
-        //         _items.isEmpty
-        //             ? 'Add at least one item to enable save/submit'
-        //             : 'Complete all required fields to save/submit',
-        //         style: GoogleFonts.inter(
-        //           fontSize: 13,
-        //           color: Colors.orange.shade800,
-        //           fontWeight: FontWeight.w500,
-        //         ),
-        //       ),
-        //     ),
-        //   ],
-        // ),
-        //   ),
-        // ),
+
         // Save and Submit buttons in a row
         Row(
           children: [
@@ -2963,31 +2998,37 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            // Submit button
-            Expanded(
-              child: FilledButton(
-                onPressed: canSubmit && !_isLoading ? _handleSubmit : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: tealGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                  elevation: 2,
+            // Workflow action buttons (Submit, ACK, etc.)
+            for (final action in _workflowActionDetails)
+              Expanded(
+                child: FilledButton(
+                  onPressed: !_isLoading &&
+                          canSubmit &&
+                          action.processAction != null &&
+                          action.processAction!.isNotEmpty
+                      ? () => _handleWorkflowAction(action)
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: tealGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    elevation: 2,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(action.name),
                 ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Text('Submit'),
               ),
-            ),
           ],
         ),
       ],
@@ -3118,7 +3159,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
   }
 
-  /// Get workflow process ID, action ID, and hasEdit status
+  /// Get workflow process ID and action ID
   Future<void> _loadWorkflowData() async {
     if (!mounted) return;
 
@@ -3168,7 +3209,6 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('✅ Workflow response received');
       print('   Process ID: ${response.id}');
       print('   Process Name: ${response.processName}');
-      print('   HasEdit: ${response.hasEdit}');
       print('   Action Details Count: ${response.processActionDetails.length}');
 
       // Extract processId and processActionId from response
@@ -3189,17 +3229,23 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
       if (mounted) {
         setState(() {
-          _hasEdit = response.hasEdit;
+          _workflowActionDetails = response.processActionDetails;
           _workflowProcessId = processId;
           _workflowProcessActionId = processActionId;
           _isLoadingWorkflow = false;
+
+          // Enable submit only if any processAction array exists and is not empty
+          _hasWorkflowSubmitAction = response.processActionDetails.any(
+              (action) =>
+                  action.processAction != null &&
+                  action.processAction!.isNotEmpty);
         });
       }
     } catch (e) {
       print('Error loading workflow data: $e');
       if (mounted) {
         setState(() {
-          _hasEdit = false; // Disable submit on error
+          _workflowActionDetails = []; // Disable all actions on error
           _workflowProcessId = null;
           _workflowProcessActionId = null;
           _isLoadingWorkflow = false;
@@ -3218,11 +3264,16 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   }
 
   /// Build save request from form data
-  Future<ItemIssueSaveRequest> _buildSaveRequest({
-    required int workflowFlag,
-    int? processId,
-    int? processActionId,
-  }) async {
+  Future<ItemIssueSaveRequest> _buildSaveRequest(
+      {required int workflowFlag, int? processId, int? processActionId}) async {
+    print('[CUSTOMER ISSUE] _buildSaveRequest CALLED');
+    print('  workflowFlag: $workflowFlag');
+    print('  processId: $processId');
+    print('  processActionId: $processActionId');
+    print('  isEditMode: $_isEditMode');
+    print('  issueId: ${widget.issueId ?? 'NULL'}');
+    print('  items count: ${_itemDetails.length}');
+
     // Convert _itemDetails to _items for processing
     _items = _itemDetails
         .map((detail) => _convertItemDetailToIssueItemDetail(detail))
@@ -3253,7 +3304,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     final issueAgainstId = _getIdFromText(_issueAgainst, _issueAgainstList);
 
     // IssueAgainst needs to be sent as string (text value), not ID
-    final issueAgainstValue = _issueAgainst ?? '';
+    final issueAgainstValue = _issueAgainst;
 
     // Debug: Print ID mappings
     print('═══════════════════════════════════════════════════════════');
@@ -3284,11 +3335,17 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     for (int i = 0; i < _items.length; i++) {
       final item = _items[i];
 
-      // Get item description ID and item
+      // Validate: itemId cannot be 0 or null!
       final itemDescriptionList =
           _divisionToItemDescriptionList[item.divisionCategory] ?? [];
+      print('itemDescriptionList: $itemDescriptionList');
       final itemDescriptionId =
           _getIdFromText(item.itemDescription, itemDescriptionList);
+      print('itemDescriptionId: $itemDescriptionId');
+      if (itemDescriptionId == 0) {
+        throw Exception(
+            'Item ID is 0 for item: \'${item.itemDescription}\'. Please ensure the item is selected properly.');
+      }
 
       // Get the actual item object to extract UOM and other fields
       CommonDropdownItem? itemDescriptionObj;
@@ -3425,7 +3482,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         minStk: null,
         rolStk: null,
         maxStk: null,
-        quantityInStock: item.qtyInStock.toDouble(),
+        quantityInStock: null,
         quantityPnOrder: null,
         quantityApproved: null,
         quantityConsumed: item.qtyIssued.toDouble(), // Quantity Issued Value
@@ -3511,7 +3568,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         rowIndex: null,
         isReceiptBatchRequired: null,
         detailId: null,
-        actualBatchNo: null,
+        actualBatchNo: (item.batchNo.trim().split(' ').isNotEmpty)
+            ? item.batchNo.trim().split(' ').last
+            : '',
       ));
     }
 
@@ -3530,12 +3589,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     final menuId = 1554;
     final moduleId = 6;
 
-    return ItemIssueSaveRequest(
+    final request = ItemIssueSaveRequest(
       id: _isEditMode ? int.tryParse(widget.issueId ?? '') : null,
       createdBy: createdBy,
       status: 0,
       sbuId: 0,
-      no: _stNo ?? '[NEW]',
+      no: _isEditMode ? (_stNo ?? '') : '[NEW]',
       version: null,
       date: dateStr,
       fromDate: null,
@@ -3598,6 +3657,17 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       issueReceiptType: 1,
       itemText: null,
     );
+
+    // Debug: Print final request JSON
+    print('═══════════════════════════════════════════════════════════');
+    print('🚀 FINAL SAVE REQUEST PAYLOAD');
+    print('═══════════════════════════════════════════════════════════');
+    final jsonMap = request.toJson();
+    final jsonStr = jsonEncode(jsonMap);
+    print(jsonStr);
+    print('═══════════════════════════════════════════════════════════');
+
+    return request;
   }
 
   /// Handle save (without workflow)
@@ -3663,15 +3733,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     if (!_validateForm()) return;
 
     // Check hasEdit before submitting
-    if (!_hasEdit) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Submit is not allowed. Workflow restrictions apply.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+    // This logic is now handled by button enable/disable, so this check is obsolete.
 
     setState(() {
       _isLoading = true;
@@ -3688,6 +3750,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         processId: processId,
         processActionId: processActionId,
       );
+      print('SAVE REQUEST: ' + saveRequest.toJson().toString());
 
       // Step 3: Call save API
       final itemIssueRepo = getIt<ItemIssueRepository>();
@@ -3706,11 +3769,27 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         );
         Navigator.of(context).pop(true); // Return true to indicate success
       }
-    } catch (e) {
+    } catch (e, stack) {
+      print('❌ Exception caught during submit: ' + e.toString());
+      print('Stacktrace:');
+      print(stack);
+      String detailedMessage = e.toString();
+      // If using Dio or a similar network error
+      try {
+        if (e is DioError) {
+          detailedMessage = e.response?.data?.toString() ?? e.toString();
+          print('DioError type: ' + e.type.toString());
+          print('DioError response: ' + e.response.toString());
+          print('DioError data: ' + (e.response?.data?.toString() ?? 'null'));
+          print('DioError headers: ' +
+              (e.response?.headers?.toString() ?? 'null'));
+        }
+      } catch (ee) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to submit customer issue: ${e.toString()}'),
+            content:
+                Text('Failed to submit customer issue: ' + detailedMessage),
             backgroundColor: Colors.red,
           ),
         );
