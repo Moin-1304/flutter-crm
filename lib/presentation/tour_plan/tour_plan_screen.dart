@@ -380,9 +380,12 @@ class _TourPlanScreenState extends State<TourPlanScreen>
           ),
         ),
         // Filter Modal
-        if (_showFilterModal)
-          _buildFilterModal(
+        Visibility(
+          visible: _showFilterModal,
+          maintainState: true,
+          child: _buildFilterModal(
               isMobile: !isTablet, isTablet: isTablet, tealGreen: tealGreen),
+        ),
       ],
     );
   }

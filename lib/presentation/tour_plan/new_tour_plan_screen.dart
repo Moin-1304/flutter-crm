@@ -13,6 +13,7 @@ import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart';
 import 'package:boilerplate/utils/routes/routes.dart';
 import 'package:boilerplate/domain/entity/user/user_detail.dart';
+import 'package:boilerplate/presentation/crm/tour_plan/tour_plan_list_screen.dart';
 
 void main() {
   runApp(const MaterialApp(
@@ -44,10 +45,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   final Map<String, int> _typeOfWorkNameToId = <String, int>{};
   final Map<int, String> _typeOfWorkIdToName =
       <int, String>{}; // Reverse mapping for editing
+  bool _isLoadingPurpose = false;
 
   // Products options for multi-select dropdown
   List<String> _productOptions = [];
   final Map<String, int> _productNameToId = <String, int>{};
+  bool _isLoadingProducts = false;
   final Map<String, int> _customerNameToId = <String, int>{};
   final Map<int, String> _customerIdToName =
       <int, String>{}; // Added: reverse mapping id -> name
@@ -59,6 +62,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   final Map<String, int> _customerTypeNameToId = <String, int>{};
   String? _selectedCustomerType;
   String? _customerTypeError;
+  bool _isLoadingCustomerType = false;
 
   // Employee dropdown for managers/field managers
   List<String> _employeeOptions = [];
@@ -106,10 +110,19 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       _loadTourPlanDetails();
     } else {
       // For new tour plan, initialize with basic data
-      // Load all data when screen opens
-      _loadInitialData().catchError((e) {
-        print('NewTourPlanScreen: Error loading initial data: $e');
-      });
+      // Load data only when allowed:
+      // - Non-managers: load immediately
+      // - Managers (role 1/2): wait until an employee is selected
+      final shouldLoadNow =
+          !_isManagerOrFieldManager || (_selectedEmployeeId != null);
+      if (shouldLoadNow) {
+        _loadInitialData().catchError((e) {
+          print('NewTourPlanScreen: Error loading initial data: $e');
+        });
+      } else {
+        print(
+            'NewTourPlanScreen: Skipping initial data load until employee is selected (role 1/2)');
+      }
     }
     _clearCallErrors();
   }
@@ -247,6 +260,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   /// Load basic data (clusters, customers, type of work, products, customer type) for new tour plans
   Future<void> _loadInitialData() async {
+    // For managers/field managers, do not load until an employee is selected
+    if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+      print(
+          'NewTourPlanScreen: [InitialData] Manager role without selected employee - skipping');
+      return;
+    }
     // Load all data in parallel for faster loading
     await Future.wait([
       _ensureClustersLoaded(),
@@ -298,9 +317,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         response = await repo.getTourPlanDetails(
           tourPlanId: effectiveTourPlanId,
           id: effectiveId,
-        );
+        ).timeout(const Duration(seconds: 15));
       } catch (e) {
-        print('NewTourPlanScreen: API call failed with error: $e');
+        print('NewTourPlanScreen: API call failed or timed out with error: $e');
         rethrow;
       }
 
@@ -334,8 +353,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print('NewTourPlanScreen: Populating form with tour plan data...');
         await _populateFormFromTourPlan(fullTourPlan);
         print('NewTourPlanScreen: Form populated successfully');
-        // Ensure customers are loaded so we can resolve names
-        _loadMappedCustomers();
       }
     } catch (e) {
       print('Error loading tour plan details: $e');
@@ -352,15 +369,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   /// Populate form fields from TourPlanItem data
   Future<void> _populateFormFromTourPlan(TourPlanItem tourPlan) async {
-    // Load all data in parallel for faster loading
-    await Future.wait([
-      _ensureClustersLoaded(),
-      _loadTypeOfWorkList(),
-      _loadProductsList(),
-      _loadCustomerTypeList(),
-    ]);
+    // 1. Set Employee ID for Managers (CRITICAL for dependent dropdowns)
+    if (_isManagerOrFieldManager) {
+      if (tourPlan.employeeId > 0) {
+        setState(() {
+          _selectedEmployeeId = tourPlan.employeeId;
+          _selectedEmployee = tourPlan.employeeName ?? 'Unknown Employee';
+        });
+        print(
+            'NewTourPlanScreen: [Edit] Set employee to $_selectedEmployee (ID: $_selectedEmployeeId)');
+      } else {
+        print(
+            'NewTourPlanScreen: [Edit] Warning - No employee ID in tour plan data');
+      }
+    }
 
-    // Set tour plan date - use first detail's planDate if available
+    // 2. Set tour plan date - use first detail's planDate if available
     if (tourPlan.tourPlanDetails != null &&
         tourPlan.tourPlanDetails!.isNotEmpty) {
       final detail = tourPlan.tourPlanDetails!.first;
@@ -376,7 +400,28 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           'NewTourPlanScreen: Set date from tourPlan.planDate: ${tourPlan.planDate}');
     }
 
-    // Set clusters - use comma-split so dropdown can pre-check individual items
+    // 3. Set Customer Type if available in header (CRITICAL for customers load)
+    if (tourPlan.tourPlanType != null && tourPlan.tourPlanType!.isNotEmpty) {
+      setState(() {
+        _selectedCustomerType = tourPlan.tourPlanType;
+        print(
+            'NewTourPlanScreen: [Edit] Set customer type to $_selectedCustomerType');
+      });
+    } else if (tourPlan.statusText != null &&
+        (tourPlan.statusText!.contains('Retailer') ||
+            tourPlan.statusText!.contains('Distributor'))) {
+      setState(() {
+        if (tourPlan.statusText!.contains('Retailer')) {
+          _selectedCustomerType = 'Retailer';
+        } else if (tourPlan.statusText!.contains('Distributor')) {
+          _selectedCustomerType = 'Distributor';
+        }
+        print(
+            'NewTourPlanScreen: [Edit] Inferred customer type to $_selectedCustomerType from statusText');
+      });
+    }
+
+    // 4. Set clusters - use comma-split
     Set<String> _parseClusters(String s) {
       return s
           .split(',')
@@ -385,56 +430,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           .toSet();
     }
 
-    // First, ensure clusters are loaded so we can use clusterId from tourPlanDetails
-    await _ensureClustersLoaded(force: true);
-
-    // Extract cluster information from tourPlanDetails
-    int? clusterIdFromDetail;
     if (tourPlan.tourPlanDetails != null &&
         tourPlan.tourPlanDetails!.isNotEmpty) {
       final detail = tourPlan.tourPlanDetails!.first;
-      // Get clusterId from detail if available
-      if (detail.clusterId != null && detail.clusterId! > 0) {
-        clusterIdFromDetail = detail.clusterId;
-        print(
-            'NewTourPlanScreen: Found clusterId from detail: $clusterIdFromDetail');
-      }
-
-      // Set cluster names from detail
       if (detail.clusterNames != null && detail.clusterNames!.isNotEmpty) {
         _selectedClusters = _parseClusters(detail.clusterNames!);
         print(
             'NewTourPlanScreen: Set clusters from detail: ${_selectedClusters.toList()}');
-
-        // If we have clusterId from detail, use it to directly map the cluster name(s)
-        if (clusterIdFromDetail != null && _selectedClusters.isNotEmpty) {
-          // Map the first cluster name to the clusterId from detail
-          final firstClusterName = _selectedClusters.first;
-          final clusterId =
-              clusterIdFromDetail!; // Non-null assertion since we checked above
-          if (!_clusterNameToId.containsKey(firstClusterName) ||
-              _clusterNameToId[firstClusterName] == null) {
-            print(
-                'NewTourPlanScreen: Mapping cluster name "$firstClusterName" to clusterId $clusterId from detail');
-            setState(() {
-              _clusterNameToId[firstClusterName] = clusterId;
-              // Also add to clusters list if not present
-              if (!_clusters.contains(firstClusterName)) {
-                _clusters.add(firstClusterName);
-              }
-            });
-          } else {
-            // Update existing mapping to use the ID from detail (more reliable)
-            print(
-                'NewTourPlanScreen: Updating cluster mapping "$firstClusterName" to clusterId $clusterId from detail');
-            setState(() {
-              _clusterNameToId[firstClusterName] = clusterId;
-            });
-          }
-        }
       }
     }
-    // Fallback to header-level clusters if detail didn't provide
     if (_selectedClusters.isEmpty &&
         tourPlan.clusters != null &&
         tourPlan.clusters!.isNotEmpty) {
@@ -443,25 +447,40 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           'NewTourPlanScreen: Set clusters from header: ${_selectedClusters.toList()}');
     }
 
-    // Verify that all selected cluster names have corresponding IDs
+    // 5. Load basic dependent data lists in parallel
+    await Future.wait([
+      _ensureClustersLoaded(force: true),
+      _loadTypeOfWorkList(),
+      _loadProductsList(),
+      _loadCustomerTypeList(),
+    ]);
+
+    // 6. Map clusterId from details to names if we have it
+    if (tourPlan.tourPlanDetails != null &&
+        tourPlan.tourPlanDetails!.isNotEmpty) {
+      final detail = tourPlan.tourPlanDetails!.first;
+      if (detail.clusterId != null &&
+          detail.clusterId! > 0 &&
+          _selectedClusters.isNotEmpty) {
+        final firstClusterName = _selectedClusters.first;
+        print(
+            'NewTourPlanScreen: Mapping "$firstClusterName" to clusterId ${detail.clusterId} from detail');
+        setState(() {
+          _clusterNameToId[firstClusterName] = detail.clusterId!;
+          if (!_clusters.contains(firstClusterName)) {
+            _clusters.add(firstClusterName);
+          }
+        });
+      }
+    }
+
+    // 7. Verify cluster names have IDs (case-insensitive fallback)
     final missingClusterIds = _selectedClusters.where((clusterName) {
       final clusterId = _clusterNameToId[clusterName];
-      if (clusterId == null || clusterId <= 0) {
-        print(
-            'NewTourPlanScreen: Warning - Cluster "$clusterName" does not have a valid ID in map');
-        print(
-            'NewTourPlanScreen: Available cluster names in map: ${_clusterNameToId.keys.toList()}');
-        return true;
-      }
-      return false;
+      return clusterId == null || clusterId <= 0;
     }).toList();
 
     if (missingClusterIds.isNotEmpty) {
-      print(
-          'NewTourPlanScreen: Some clusters are missing IDs: $missingClusterIds');
-      print(
-          'NewTourPlanScreen: Attempting to match cluster names (case-insensitive)...');
-      // Try case-insensitive matching
       for (final missingCluster in missingClusterIds) {
         final matchedKey = _clusterNameToId.keys.firstWhere(
           (key) =>
@@ -469,34 +488,18 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           orElse: () => '',
         );
         if (matchedKey.isNotEmpty) {
-          print(
-              'NewTourPlanScreen: Found case-insensitive match: "$missingCluster" -> "$matchedKey"');
           _selectedClusters.remove(missingCluster);
           _selectedClusters.add(matchedKey);
         }
       }
     }
 
-    // Load customers based on selected clusters (for edit mode)
-    if (_selectedClusters.isNotEmpty) {
-      print(
-          'NewTourPlanScreen: Loading customers for selected clusters during edit');
-      print(
-          'NewTourPlanScreen: Selected clusters: ${_selectedClusters.toList()}');
-      final clusterIds = _selectedClusters
-          .map((c) => _clusterNameToId[c])
-          .where((id) => id != null && id! > 0)
-          .toList();
-      print('NewTourPlanScreen: Cluster IDs: $clusterIds');
-      if (clusterIds.isNotEmpty) {
-        await _loadMappedCustomers();
-      } else {
-        print(
-            'NewTourPlanScreen: Warning - No valid cluster IDs found, cannot load customers');
-      }
+    // 8. Load customers based on selected clusters and customer type
+    if (_selectedClusters.isNotEmpty && _selectedCustomerType != null) {
+      await _loadMappedCustomers();
     }
 
-    // Load tour plan details into calls
+    // 9. Load tour plan details into calls
     if (tourPlan.tourPlanDetails != null &&
         tourPlan.tourPlanDetails!.isNotEmpty) {
       _calls.clear();
@@ -724,6 +727,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                               _customerNameToClusterName
                                                   .clear();
                                               _autoSelectedClusters.clear();
+                                              // Clear other dependent dropdowns
+                                              _purposeOptions.clear();
+                                              _typeOfWorkNameToId.clear();
+                                              _typeOfWorkIdToName.clear();
+                                              _productOptions.clear();
+                                              _productNameToId.clear();
+                                              _customerTypeOptions.clear();
+                                              _customerTypeNameToId.clear();
+                                              _selectedCustomerType = null;
                                               for (final call in _calls) {
                                                 call.customers = {};
                                               }
@@ -732,6 +744,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             // Reload clusters and customers for selected employee
                                             if (_selectedEmployeeId != null) {
                                               _loadClusterList(force: true);
+                                              // Reload other dependent sources with selected employee
+                                              _loadTypeOfWorkList();
+                                              _loadProductsList();
+                                              _loadCustomerTypeList();
+                                              // Customers load only after cluster + customer type chosen
+                                              if (_selectedClusters.isNotEmpty &&
+                                                  _selectedCustomerType != null) {
+                                                _loadMappedCustomers();
+                                              }
+
                                             }
                                           },
                                         )
@@ -795,7 +817,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                               child: _SingleSelectDropdown(
                                 options: _customerTypeOptions,
                                 value: _selectedCustomerType,
-                                hintText: 'Select customer type',
+                                hintText: _isLoadingCustomerType ? 'Loading customer types...' : 'Select customer type',
+                                isLoading: _isLoadingCustomerType,
                                 onChanged: (v) {
                                   setState(() {
                                     _selectedCustomerType = v;
@@ -1166,8 +1189,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'CustomerId': 0,
         'CustomerName': "",
         'Clusters': "",
-        'SamplesToDistribute': null,
-        'ProductsToDiscuss': null,
+        'SamplesToDistribute': aggregatedSamples.isNotEmpty ? aggregatedSamples : null,
+        'ProductsToDiscuss': aggregatedProducts.isNotEmpty ? aggregatedProducts : null,
         'Notes': null,
         'FromDeviation': null,
         'TotalCustomers': null,
@@ -1315,11 +1338,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           } catch (_) {}
         } catch (_) {}
 
-        // Only navigate back for edit mode, stay on screen for create mode
-        if (isEditing) {
-          Navigator.of(context).pop(true);
-        }
-        // For create mode, stay on screen so user can create another tour plan
+        // Redirect to refreshed Tour Plan listing screen after success
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const TourPlanListScreen()),
+          (route) => route.isFirst,
+        );
       }
     } catch (e, stackTrace) {
       final bool isEditing = widget.tourPlanToEdit != null;
@@ -1675,6 +1698,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     if (_isLoadingClusters) return;
     if (_clusters.isNotEmpty && !force) return;
 
+    // Manager/Field Manager must select employee first
+    if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+      print(
+          'NewTourPlanScreen: [Clusters] Manager role without selected employee - skipping cluster load');
+      return;
+    }
+
     if (mounted) {
       setState(() => _isLoadingClusters = true);
     } else {
@@ -1717,7 +1747,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       // At this point, employeeIdNullable is guaranteed to be non-null
       final int employeeId = employeeIdNullable!;
       final List<CommonDropdownItem> items =
-          await repo.getClusterList(countryId, employeeId);
+          await repo.getClusterList(countryId, employeeId).timeout(const Duration(seconds: 15));
       final Set<String> clusters = items
           .map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim())
           .where((s) => s.isNotEmpty)
@@ -1772,15 +1802,23 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   Future<void> _loadTypeOfWorkList() async {
     try {
+      _isLoadingPurpose = true;
+      // Manager/Field Manager must select employee first
+      if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+        print(
+            'NewTourPlanScreen: [PurposeOfVisit] Manager role without selected employee - skipping');
+        _isLoadingPurpose = false;
+        return;
+      }
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
         final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
             ? getIt<UserDetailStore>()
             : null;
 
-        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        // Wait for user to be loaded (retry up to 10 times = 3 seconds max)
         int retry = 0;
-        while (userStore?.isUserLoaded != true && retry < 20) {
+        while (userStore?.isUserLoaded != true && retry < 10) {
           await Future.delayed(const Duration(milliseconds: 300));
           retry++;
           print(
@@ -1788,6 +1826,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
 
         int? userId = userStore?.userDetail?.id;
+        if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
+          userId = _selectedEmployeeId;
+          print(
+              'NewTourPlanScreen: [PurposeOfVisit] Using selected employeeId as userId: $userId');
+        }
         String? serviceArea = userStore?.userDetail?.serviceArea;
 
         print(
@@ -1795,6 +1838,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
         if (userId == null || userId <= 0) {
           print('NewTourPlanScreen: [PurposeOfVisit] userId invalid, skipping');
+          _isLoadingPurpose = false;
           return;
         }
 
@@ -1814,7 +1858,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print(
             'NewTourPlanScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
         final List<CommonDropdownItem> items =
-            await repo.getPurposeOfVisitList(userId, purposeText);
+            await repo.getPurposeOfVisitList(userId, purposeText).timeout(const Duration(seconds: 15));
         print(
             'NewTourPlanScreen: [PurposeOfVisit] API returned ${items.length} items');
 
@@ -1877,20 +1921,30 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('NewTourPlanScreen: [PurposeOfVisit] Error: $e');
+    } finally {
+      _isLoadingPurpose = false;
     }
   }
 
   Future<void> _loadProductsList() async {
     try {
+      _isLoadingProducts = true;
+      // Manager/Field Manager must select employee first
+      if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+        print(
+            'NewTourPlanScreen: [Products] Manager role without selected employee - skipping');
+        _isLoadingProducts = false;
+        return;
+      }
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
         final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
             ? getIt<UserDetailStore>()
             : null;
 
-        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        // Wait for user to be loaded (retry up to 10 times = 3 seconds max)
         int retry = 0;
-        while (userStore?.isUserLoaded != true && retry < 20) {
+        while (userStore?.isUserLoaded != true && retry < 10) {
           await Future.delayed(const Duration(milliseconds: 300));
           retry++;
         }
@@ -1902,6 +1956,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (userId == null || userId <= 0) {
           print(
               'NewTourPlanScreen: [Products] userId is still null/0, skipping products load');
+          _isLoadingProducts = false;
           return;
         }
 
@@ -1910,7 +1965,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         int? actualUserId = userId;
         int? isFromAMCUser;
 
-        if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+        if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
+          actualUserId = _selectedEmployeeId;
+          print(
+              'NewTourPlanScreen: [Products] Manager/Field Manager - using selected employeeId: $actualUserId');
+        } else if (serviceArea != null &&
+            serviceArea.trim() == 'Service Engineer') {
           if (employeeId != null && employeeId > 0) {
             actualUserId = employeeId;
             isFromAMCUser = 0;
@@ -1929,8 +1989,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print(
             'NewTourPlanScreen: [Products] Loading products with userId: $actualUserId, isFromAMCUser: $isFromAMCUser');
         final List<CommonDropdownItem> items =
-            await repo.getTourPlanProductsList(actualUserId,
-                isFromAMCUser: isFromAMCUser);
+            await repo.getTourPlanProductsList(actualUserId ?? 0,
+                isFromAMCUser: isFromAMCUser).timeout(const Duration(seconds: 15));
         if (items.isNotEmpty) {
           setState(() {
             _productOptions.clear();
@@ -1950,29 +2010,45 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('NewTourPlanScreen: [Products] Error loading products: $e');
+    } finally {
+      _isLoadingProducts = false;
     }
   }
 
   Future<void> _loadCustomerTypeList() async {
     try {
+      _isLoadingCustomerType = true;
+      // Manager/Field Manager must select employee first
+      if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+        print(
+            'NewTourPlanScreen: [CustomerType] Manager role without selected employee - skipping');
+        _isLoadingCustomerType = false;
+        return;
+      }
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
         final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
             ? getIt<UserDetailStore>()
             : null;
 
-        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+        // Wait for user to be loaded (retry up to 10 times = 3 seconds max)
         int retry = 0;
-        while (userStore?.isUserLoaded != true && retry < 20) {
+        while (userStore?.isUserLoaded != true && retry < 10) {
           await Future.delayed(const Duration(milliseconds: 300));
           retry++;
         }
 
         int? userId = userStore?.userDetail?.id;
+        if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
+          userId = _selectedEmployeeId;
+          print(
+              'NewTourPlanScreen: [CustomerType] Using selected employeeId as userId: $userId');
+        }
         String? serviceArea = userStore?.userDetail?.serviceArea;
         if (userId == null || userId <= 0) {
           print(
               'NewTourPlanScreen: [CustomerType] userId is still null/0, skipping');
+          _isLoadingCustomerType = false;
           return;
         }
 
@@ -1981,7 +2057,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print(
             'NewTourPlanScreen: [CustomerType] Loading customer types with userId: $userId, type: "$typeParam"');
         final List<CommonDropdownItem> items =
-            await repo.getCustomerTypeList(userId, type: typeParam);
+            await repo.getCustomerTypeList(userId, type: typeParam).timeout(const Duration(seconds: 15));
         print(
             'NewTourPlanScreen: [CustomerType] API returned ${items.length} items');
         if (items.isNotEmpty) {
@@ -2008,6 +2084,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     } catch (e) {
       print(
           'NewTourPlanScreen: [CustomerType] Error loading customer types: $e');
+    } finally {
+      _isLoadingCustomerType = false;
     }
   }
 
@@ -2058,18 +2136,35 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print(
           'NewTourPlanScreen: [Customers] Cluster IDs: ${selectedClusterIds.map((c) => c.clusterId).toList()}');
 
-      // Get selected customer type ID
-      final int? customerTypeId = _selectedCustomerType != null &&
-              _customerTypeNameToId.containsKey(_selectedCustomerType!)
-          ? _customerTypeNameToId[_selectedCustomerType!]
-          : null;
+      // Get selected customer type ID (with case-insensitive fallback)
+      int? customerTypeId;
+      if (_selectedCustomerType != null) {
+        if (_customerTypeNameToId.containsKey(_selectedCustomerType!)) {
+          customerTypeId = _customerTypeNameToId[_selectedCustomerType!];
+        } else {
+          // Try case-insensitive match
+          final String normalized = _selectedCustomerType!.toLowerCase().trim();
+          for (final entry in _customerTypeNameToId.entries) {
+            if (entry.key.toLowerCase().trim() == normalized) {
+              customerTypeId = entry.value;
+              print(
+                  'NewTourPlanScreen: [Customers] Found case-insensitive customer type match: "${entry.key}" for "$_selectedCustomerType"');
+              break;
+            }
+          }
+        }
+      }
 
       // If no clusters are selected OR no customer type is selected, clear all customers
       if (selectedClusterIds.isEmpty || customerTypeId == null) {
         print(
             'NewTourPlanScreen: [Customers] Cluster or CustomerType not selected - clearing customers');
         print(
-            'NewTourPlanScreen: [Customers] Clusters empty: ${selectedClusterIds.isEmpty}, CustomerTypeId: $customerTypeId');
+            'NewTourPlanScreen: [Customers] Clusters empty: ${selectedClusterIds.isEmpty}, CustomerType: $_selectedCustomerType, CustomerTypeId: $customerTypeId');
+        if (customerTypeId == null && _selectedCustomerType != null) {
+          print(
+              'NewTourPlanScreen: [Customers] Available Customer Types: ${_customerTypeNameToId.keys.toList()}');
+        }
         setState(() {
           _customerOptions = [];
           _customerNameToId.clear();
@@ -2120,7 +2215,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         customerTypeId: customerTypeId,
       );
       print('NewTourPlanScreen: [Customers] Request body => ${req.toJson()}');
-      final res = await repo.getMappedCustomersByEmployeeId(req);
+      final res = await repo.getMappedCustomersByEmployeeId(req).timeout(const Duration(seconds: 15));
       print(
           'NewTourPlanScreen: [Customers] API returned ${res.customers.length} customers');
       if (res.customers.isNotEmpty) {
@@ -2293,7 +2388,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         _updateAutoSelectedClusters();
       });
     } catch (e) {
-      // Silent fail
+      print('NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
     }
   }
 }
@@ -2411,6 +2506,8 @@ class _CallCard extends StatelessWidget {
     required this.customerOptions,
     required this.purposeOptions,
     required this.productOptions,
+    this.isLoadingPurpose = false,
+    this.isLoadingProducts = false,
     this.customerError,
     this.purposeError,
     this.onCustomersChanged,
@@ -2425,6 +2522,8 @@ class _CallCard extends StatelessWidget {
   final List<String> customerOptions;
   final List<String> purposeOptions;
   final List<String> productOptions;
+  final bool isLoadingPurpose;
+  final bool isLoadingProducts;
   final String? customerError;
   final String? purposeError;
   final ValueChanged<Set<String>>? onCustomersChanged;
@@ -2546,7 +2645,8 @@ class _CallCard extends StatelessWidget {
                 child: _SingleSelectDropdown(
                   options: purposeOptions,
                   value: data.purpose,
-                  hintText: 'Select purpose',
+                  hintText: isLoadingPurpose ? 'Loading purpose...' : 'Select purpose',
+                  isLoading: isLoadingPurpose,
                   onChanged: (value) {
                     if (onPurposeChanged != null) {
                       onPurposeChanged!(value);
@@ -2562,8 +2662,9 @@ class _CallCard extends StatelessWidget {
                 child: _MultiSelectDropdown(
                   options: productOptions,
                   selectedValues: data.products,
-                  hintText: 'Select products',
-                  emptyMessage: 'No products found',
+                  hintText: isLoadingProducts ? 'Loading products...' : 'Select products',
+                  emptyMessage: isLoadingProducts ? 'Loading products...' : 'No products found',
+                  isLoading: isLoadingProducts,
                   onChanged: (set) {
                     if (onProductsChanged != null) {
                       onProductsChanged!(set);
@@ -3236,11 +3337,13 @@ class _SingleSelectDropdown extends StatefulWidget {
       {required this.options,
       required this.value,
       required this.onChanged,
-      this.hintText});
+      this.hintText,
+      this.isLoading = false});
   final List<String> options;
   final String? value;
   final ValueChanged<String?> onChanged;
   final String? hintText;
+  final bool isLoading;
 
   @override
   State<_SingleSelectDropdown> createState() => _SingleSelectDropdownState();
@@ -3277,6 +3380,22 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isLoading) {
+      return TextFormField(
+        readOnly: true,
+        decoration: InputDecoration(
+          hintText: widget.hintText ?? 'Loading...',
+          suffixIcon: const SizedBox(
+            width: 20,
+            height: 20,
+            child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ),
+      );
+    }
     final controller = TextEditingController(text: _value ?? '');
     return CompositedTransformTarget(
       link: _link,

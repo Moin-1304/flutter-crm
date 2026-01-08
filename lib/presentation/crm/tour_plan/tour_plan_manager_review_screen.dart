@@ -14,6 +14,8 @@ import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dar
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobx/mobx.dart';
 import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart';
+import 'package:boilerplate/presentation/crm/tour_plan/tour_plan_entry_screen.dart';
+import 'package:boilerplate/presentation/tour_plan/new_tour_plan_screen.dart';
 
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/calendar_view_data.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
@@ -802,7 +804,15 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
             ),
           ),
           // Filter Modal
-          if (_showFilterModal) _buildFilterModal(isMobile: isMobile, isTablet: isTablet, tealGreen: tealGreen),
+          Visibility(
+            visible: _showFilterModal,
+            maintainState: true,
+            child: _buildFilterModal(
+              isMobile: isMobile,
+              isTablet: isTablet,
+              tealGreen: tealGreen,
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: _selectedIds.isNotEmpty
@@ -1181,7 +1191,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   /// View detailed information for a tour plan
   void _viewPlanDetails(TourPlanItem item) {
-    final isTablet = MediaQuery.of(context).size.width >= 600;
+    final isTablet = MediaQuery.sizeOf(context).width >= 600;
     final statusText = _getStatusDisplayText(item);
     final statusColor = _getStatusColor(item.status);
     final statusBgColor = _getStatusBackgroundColor(item.status);
@@ -1194,13 +1204,13 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
+          maxWidth: isTablet ? 600 : MediaQuery.sizeOf(context).width,
+          maxHeight: MediaQuery.sizeOf(context).height * (isTablet ? 0.85 : 0.9),
         ),
         margin: isTablet
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
+                horizontal: (MediaQuery.sizeOf(context).width - 600) / 2,
+                vertical: MediaQuery.sizeOf(context).height * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -1479,11 +1489,10 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (_shouldShowDeleteButton(item))
+                      if (_shouldShowDeleteButton(item)) ...[
                         OutlinedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
@@ -1499,6 +1508,35 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         ),
+                        const SizedBox(width: 12),
+                      ],
+                      // Modify Button
+                      if (_shouldShowModifyButton(item))
+                        OutlinedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(context).pop(); // Close bottom sheet
+                          
+                          // Navigate to NewTourPlanScreen directly
+                          // NewTourPlanScreen handles fetching full details in its initState
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => NewTourPlanScreen(tourPlanToEdit: item),
+                            ),
+                          );
+                          
+                          // Refresh list on return
+                          _refreshAllWithLoader();
+                        },
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Modify'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: tealGreen,
+                          side: const BorderSide(color: tealGreen),
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1507,6 +1545,47 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
           ),
         ),
       ),
+    );
+  }
+
+  /// Convert TourPlanItem to domain.TourPlanEntry for editing
+  domain.TourPlanEntry _convertToTourPlanEntry(TourPlanItem item) {
+    // Status mapping: 5=Approved, 4=Sent Back, 3=Rejected, 2=Submitted, 1=Pending, 0=Draft
+    domain.TourPlanEntryStatus status;
+    switch (item.status) {
+      case 5:
+        status = domain.TourPlanEntryStatus.approved;
+        break;
+      case 4:
+        status = domain.TourPlanEntryStatus.sentBack;
+        break;
+      case 3:
+        status = domain.TourPlanEntryStatus.rejected;
+        break;
+      case 2:
+      case 1:
+        status = domain.TourPlanEntryStatus.pending;
+        break;
+      default:
+        status = domain.TourPlanEntryStatus.draft;
+    }
+
+    return domain.TourPlanEntry(
+      id: item.id.toString(),
+      date: item.planDate,
+      cluster: item.cluster ?? item.clusters ?? '',
+      customer: item.customerName ?? '',
+      employeeId: item.employeeId.toString(),
+      employeeName: item.employeeName ?? '',
+      status: status,
+      callDetails: domain.TourPlanCallDetails(
+        purposes: item.objective != null ? [item.objective!] : [],
+        productsToDiscuss: item.productsToDiscuss,
+        samplesToDistribute: item.samplesToDistribute,
+        remarks: item.remarks ?? item.notes,
+      ),
+      createdAt: item.createdDate,
+      updatedAt: item.modifiedDate,
     );
   }
   
@@ -1563,6 +1642,16 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     
     // For other roles, show delete for pending status
     return isPending;
+  }
+
+  /// Check if modify button should be shown for a tour plan item
+  /// Show only for managers (roleCategory == 1) and on approved plans (status == 5)
+  bool _shouldShowModifyButton(TourPlanItem item) {
+    final roleCategory = _userDetailStore.userDetail?.roleCategory;
+    final bool isManager = roleCategory == 1;
+    final bool isApproved = item.status == 5;
+
+    return isManager && isApproved;
   }
 
   /// Delete tour plan
@@ -3014,7 +3103,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                 'Filters',
                                 style: GoogleFonts.inter(
                                   fontSize: isMobile ? 18 : 20,
-                                  fontWeight: FontWeight.normal,
+                                  fontWeight: FontWeight.w900,
                                   color: Colors.grey[900],
                                   letterSpacing: -0.5,
                                 ),
@@ -3906,7 +3995,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               widget.title,
               style: GoogleFonts.inter(
                 fontSize: widget.isTablet ? 16 : 14,
-                fontWeight: FontWeight.normal,
+                fontWeight: FontWeight.w700,
                 color: Colors.grey[900],
                 letterSpacing: -0.3,
               ),

@@ -36,7 +36,7 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
   DateTime? _selectedDay;
   late final TourPlanStore _store;
   late final UserDetailStore _userDetailStore;
-  final bool _isManager = false; // TODO: wire with real role/permission
+  bool _showEmployeeFilter = false;
   List<domain.TourPlanEntry> _allEntries = <domain.TourPlanEntry>[];
   
   // Customer options loaded from API
@@ -80,7 +80,12 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
     _refreshAll();
     _getTourPlanStatusList();
     _loadMappedCustomersByEmployeeId(); // Load customer list using API
-    _getEmployeeList();
+    final int? roleCategory = _userDetailStore.userDetail?.roleCategory;
+    // Hide employee filter for all roles as per requirement
+    _showEmployeeFilter = false;
+    if (_showEmployeeFilter) {
+      _getEmployeeList();
+    }
   }
 
   @override
@@ -139,6 +144,26 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Builder(builder: (context) {
+                      final int? roleCategory = _userDetailStore.userDetail?.roleCategory;
+                      if (roleCategory == 1 || roleCategory == 2) {
+                        final String code = _userDetailStore.userDetail?.code ?? '';
+                        final String name = _userDetailStore.userDetail?.employeeName ?? '';
+                        final String display = code.isNotEmpty ? '$code - $name' : name;
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Employee: $display',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
                     const SizedBox(height: 16),
                     
                     // Responsive Filters Layout
@@ -242,7 +267,7 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
                               const SizedBox(width: 12),
                               
                               // Employee Filter (only for managers)
-                              if (_isManager) ...[
+                              if (_showEmployeeFilter) ...[
                                 Expanded(
                                   child: _EnhancedActionPill(
                                     icon: Icons.badge_outlined,
@@ -393,7 +418,7 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
                               // Second row: Employee (if manager) and Clear button
                               Row(
                                 children: [
-                                  if (_isManager) ...[
+                                  if (_showEmployeeFilter) ...[
                                     Expanded(
                                       flex: 2,
                                       child: _EnhancedActionPill(
@@ -834,11 +859,6 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
       final int? userId = _userDetailStore.userDetail?.userId;
       final managerId = _userDetailStore.userDetail?.id ?? 0;
       
-      // Determine EmployeeId and SelectedEmployeeId based on filters
-      final int? filteredEmployeeId = (_employee != null && _employee!.isNotEmpty && _employeeNameToId.containsKey(_employee))
-          ? _employeeNameToId[_employee!]
-          : null;
-      
       // Get user's employeeId - ensure it's not null/0
       final int? userEmployeeId = _userDetailStore.userDetail?.employeeId;
       if (userEmployeeId == null || userEmployeeId == 0) {
@@ -846,9 +866,9 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
         return;
       }
       
-      // Use filtered employeeId if available, otherwise use user's employeeId
-      final int finalEmployeeId = filteredEmployeeId ?? userEmployeeId;
-      final int finalSelectedEmployeeId = filteredEmployeeId ?? userEmployeeId;
+      // Always use logged-in user's employeeId as per requirement
+      final int finalEmployeeId = userEmployeeId;
+      final int finalSelectedEmployeeId = userEmployeeId;
       
       print('TourPlanListScreen: Calendar View - EmployeeId: $finalEmployeeId, SelectedEmployeeId: $finalSelectedEmployeeId');
       
@@ -890,14 +910,9 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
         return;
       }
       
-      // Determine EmployeeId and SelectedEmployeeId based on filters
-      final int? filteredEmployeeId = (_employee != null && _employee!.isNotEmpty && _employeeNameToId.containsKey(_employee))
-          ? _employeeNameToId[_employee!]
-          : null;
-      
-      // Use filtered employeeId if available, otherwise use user's employeeId
-      final int finalEmployeeId = filteredEmployeeId ?? employeeId;
-      final int finalSelectedEmployeeId = filteredEmployeeId ?? employeeId;
+      // Always use logged-in user's employeeId as per requirement
+      final int finalEmployeeId = employeeId;
+      final int finalSelectedEmployeeId = employeeId;
       
       // Get customerId and status from filters
       final int? customerId = (_customer != null && _customer!.isNotEmpty && _customerNameToId.containsKey(_customer))
@@ -942,11 +957,8 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
         return;
       }
       
-      // Use filtered employeeId if available, otherwise use user's employeeId
-      final int? filteredEmployeeId = (_employee != null && _employeeNameToId.containsKey(_employee))
-          ? _employeeNameToId[_employee!]
-          : null;
-      final int finalEmployeeId = filteredEmployeeId ?? userEmployeeId;
+      // Always use logged-in user's employeeId as per requirement
+      final int finalEmployeeId = userEmployeeId;
       
       await _store.loadTourPlanEmployeeListSummary(
         employeeId: finalEmployeeId,
@@ -2263,6 +2275,3 @@ class _ClearFiltersButton extends StatelessWidget {
     );
   }
 }
-
-
-

@@ -3,8 +3,12 @@ import 'package:boilerplate/constants/strings.dart';
 import 'package:boilerplate/presentation/home/store/language/language_store.dart';
 import 'package:boilerplate/presentation/home/store/theme/theme_store.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart';
+import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/data/network/interceptors/error_interceptor.dart';
+import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/utils/locale/app_localization.dart';
 import 'package:boilerplate/utils/routes/routes.dart';
+import 'package:event_bus/event_bus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -25,10 +29,38 @@ class _MyAppState extends State<MyApp> {
   final ThemeStore _themeStore = getIt<ThemeStore>();
   final LanguageStore _languageStore = getIt<LanguageStore>();
   final UserStore _userStore = getIt<UserStore>();
+  final UserDetailStore _userDetailStore = getIt<UserDetailStore>();
+  final EventBus _eventBus = getIt<EventBus>();
   
   @override
   void initState() {
     super.initState();
+    _eventBus.on<UnauthorizedEvent>().listen((event) {
+      _handleUnauthorized();
+    });
+  }
+
+  void _handleUnauthorized() async {
+    // 1. Clear user data from stores
+    _userStore.logout();
+    _userDetailStore.clearUserData();
+    
+    // 2. Clear user data from shared preferences
+    await getIt<SharedPreferenceHelper>().clearUser();
+
+    // 3. Navigate to login screen and clear backstack
+    Routes.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      Routes.login,
+      (Route<dynamic> route) => false,
+    );
+    
+    // 4. Show a message to the user
+    ScaffoldMessenger.of(Routes.navigatorKey.currentContext!).showSnackBar(
+      const SnackBar(
+        content: Text('Session expired. Please login again.'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   @override
@@ -37,6 +69,7 @@ class _MyAppState extends State<MyApp> {
       builder: (context) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
+          navigatorKey: Routes.navigatorKey,
           title: Strings.appName,
           theme: _themeStore.darkMode
               ? AppThemeData.darkThemeData

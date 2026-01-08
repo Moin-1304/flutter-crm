@@ -97,6 +97,12 @@ abstract class TourPlanRepository {
     int? userId,
   });
 
+  /// Get specific tour plan by ID (GET request)
+  Future<TourPlanItem> getTourPlanById({
+    required int tourPlanId,
+    required int id,
+  });
+
   /// Save tour plan comment
   Future<TourPlanCommentSaveResponse> saveTourPlanComment(TourPlanCommentSaveRequest request);
 

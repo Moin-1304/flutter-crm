@@ -257,7 +257,7 @@ class CommonRepositoryImpl implements CommonRepository {
         return response;
       }
     } catch (e) {
-      // API get tour plan products list failed
+      print('CommonRepositoryImpl: Error getting tour plan products: $e');
     }
 
     // Fallback to empty list if API fails
@@ -274,7 +274,7 @@ class CommonRepositoryImpl implements CommonRepository {
         return response;
       }
     } catch (e) {
-      // API get DCR products list failed
+      print('CommonRepositoryImpl: Error getting DCR products: $e');
     }
 
     // Fallback to empty list if API fails

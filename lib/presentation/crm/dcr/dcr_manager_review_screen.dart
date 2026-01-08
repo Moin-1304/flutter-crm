@@ -733,7 +733,11 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
               ],
                 ),
                 // Filter Modal overlay
-                if (_showFilterModal) _buildFilterModal(isMobile, isTablet, tealGreen),
+                Visibility(
+                  visible: _showFilterModal,
+                  maintainState: true,
+                  child: _buildFilterModal(isMobile, isTablet, tealGreen),
+                ),
               ],
             ),
           );

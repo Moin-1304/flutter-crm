@@ -108,7 +108,12 @@ class _DcrListScreenState extends State<DcrListScreen>
     );
 
     _load();
-    _getEmployeeList(); // Load employee list for filter
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int? roleCategory = userStore?.userDetail?.roleCategory;
+    if (!(roleCategory == 1 || roleCategory == 2)) {
+      _getEmployeeList();
+    }
     _getDcrDetailStatusList(); // Load status list for filter
     _initLocation();
     _startAutoRefresh();
@@ -177,6 +182,7 @@ class _DcrListScreenState extends State<DcrListScreen>
           ? getIt<UserDetailStore>()
           : null;
       final int? employeeId = userStore?.userDetail?.employeeId;
+      final int? roleCategory = userStore?.userDetail?.roleCategory;
 
       if (employeeId == null) {
         print(
@@ -206,7 +212,9 @@ class _DcrListScreenState extends State<DcrListScreen>
       }
 
       // Use selected employee if provided, else current user
-      final int effectiveEmployeeId = _selectedEmployeeId() ?? employeeId;
+      final bool forceLoggedIn = roleCategory == 1 || roleCategory == 2;
+      final int effectiveEmployeeId =
+          forceLoggedIn ? employeeId : (_selectedEmployeeId() ?? employeeId);
       final int? selectedStatusId = _statusIdFromText(_status);
 
       // Load unified DCR list (includes both DCR and Expense items)
@@ -399,6 +407,13 @@ class _DcrListScreenState extends State<DcrListScreen>
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     return userStore?.userDetail?.roleCategory == 3;
+  }
+
+  bool _shouldHideEmployeeFilter() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int? roleCategory = userStore?.userDetail?.roleCategory;
+    return roleCategory == 1 || roleCategory == 2;
   }
 
   /// Build empty state widget when no DCR data is available
@@ -1440,30 +1455,31 @@ class _DcrListScreenState extends State<DcrListScreen>
 
                                 const SizedBox(height: 24),
                                 // Employee Section (Searchable)
-                                AbsorbPointer(
-                                  absorbing: _shouldDisableEmployeeFilter(),
-                                  child: Opacity(
-                                    opacity: _shouldDisableEmployeeFilter()
-                                        ? 0.6
-                                        : 1.0,
-                                    child: _SearchableFilterDropdown(
-                                      key: _employeeFilterSectionKey,
-                                      title: 'Employee',
-                                      icon: Icons.badge_outlined,
-                                      selectedValue: _tempEmployee,
-                                      options: _employeeOptions,
-                                      onChanged: (value) {
-                                        setModalState(() {
-                                          _tempEmployee = value;
-                                        });
-                                      },
-                                      isTablet: isTablet,
-                                      onExpanded: () =>
-                                          _scrollFilterSectionIntoView(
-                                              _employeeFilterSectionKey),
+                                if (!_shouldHideEmployeeFilter())
+                                  AbsorbPointer(
+                                    absorbing: _shouldDisableEmployeeFilter(),
+                                    child: Opacity(
+                                      opacity: _shouldDisableEmployeeFilter()
+                                          ? 0.6
+                                          : 1.0,
+                                      child: _SearchableFilterDropdown(
+                                        key: _employeeFilterSectionKey,
+                                        title: 'Employee',
+                                        icon: Icons.badge_outlined,
+                                        selectedValue: _tempEmployee,
+                                        options: _employeeOptions,
+                                        onChanged: (value) {
+                                          setModalState(() {
+                                            _tempEmployee = value;
+                                          });
+                                        },
+                                        isTablet: isTablet,
+                                        onExpanded: () =>
+                                            _scrollFilterSectionIntoView(
+                                                _employeeFilterSectionKey),
+                                      ),
                                     ),
                                   ),
-                                ),
 
                                 const SizedBox(height: 8),
                                 // Apply changes to outer state when pressing footer button

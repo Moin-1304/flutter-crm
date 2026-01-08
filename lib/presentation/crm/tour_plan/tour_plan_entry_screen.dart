@@ -8,6 +8,8 @@ import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 
+import 'package:google_fonts/google_fonts.dart';
+
 class TourPlanEntryScreen extends StatefulWidget {
   const TourPlanEntryScreen({super.key, this.entry});
   final domain.TourPlanEntry? entry; // if provided, edit mode
@@ -68,43 +70,78 @@ class _TourPlanEntryScreenState extends State<TourPlanEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const Color tealGreen = Color(0xFF4db1b3);
+    const Color lightMint = Color(0xFFEAF7F7);
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.entry == null ? 'New Tour Plan' : 'Edit Tour Plan')),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          widget.entry == null ? 'New Tour Plan' : 'Edit Tour Plan',
+          style: GoogleFonts.inter(
+            color: Colors.black87,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+          ),
+        ),
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AppTextField(
+            // Tour Plan Date Section
+            _Labeled(
               label: 'Tour Plan Date',
-              hint: 'dd-MMM-yyyy',
-              controller: _dateCtrl,
-              readOnly: true,
-              onTap: _pickDate,
+              isRequired: true,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: AppTextField(
+                  label: '',
+                  hint: 'dd-MMM-yyyy',
+                  controller: _dateCtrl,
+                  readOnly: true,
+                  onTap: _pickDate,
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+
+            // Location Section
             _Labeled(
               label: 'Cluster / City (multi-select)',
+              isRequired: true,
               child: MultiSelectDropdown(
-                options: const ['Andheri East','Bandra West','Powai','Goregaon East','Adhoc'],
+                options: const ['Andheri East', 'Bandra West', 'Powai', 'Goregaon East', 'Adhoc'],
                 selectedValues: _clusters,
-                hintText: 'Select one or more clusters/cities',
+                hintText: 'Select clusters',
                 onChanged: (values) => setState(() {
                   _clusters
                     ..clear()
                     ..addAll(values);
-                  // Reset customers if clusters changed
                   _customers.clear();
                 }),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+
             _Labeled(
               label: 'Customer (multi-select)',
+              isRequired: true,
               child: MultiSelectDropdown(
                 options: _customerOptionsForClusters(_clusters),
                 selectedValues: _customers,
-                hintText: _clusters.isEmpty ? 'Select clusters first' : 'Select one or more customers',
+                hintText: _clusters.isEmpty ? 'Select clusters first' : 'Select customers',
                 onChanged: (values) => setState(() {
                   _customers
                     ..clear()
@@ -112,53 +149,110 @@ class _TourPlanEntryScreenState extends State<TourPlanEntryScreen> {
                 }),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
+
+            // Call Cards
             ..._calls.asMap().entries.map((e) => _CallCard(
                   key: ValueKey('call_${e.key}_${e.value.hashCode}'),
                   index: e.key,
                   model: e.value,
                   onRemove: () => setState(() => _calls.removeAt(e.key)),
+                  tealGreen: tealGreen,
+                  lightMint: lightMint,
                 )),
+
             const SizedBox(height: 12),
-            AppOutlinedButton(
+            
+            // Add Another Call Button
+            OutlinedButton.icon(
               onPressed: () => setState(() => _calls.add(_CallModel(dateLabel: _format(_date), status: 'Draft'))),
-              label: '+ Add Another Call',
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: const [
-                  Text('Manager Approval', style: TextStyle(fontWeight: FontWeight.w700)),
-                  SizedBox(height: 6),
-                  Text('Status: Not Submitted'),
-                ]),
+              icon: const Icon(Icons.add, size: 20),
+              label: Text(
+                'Add Another Call',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: tealGreen,
+                side: const BorderSide(color: tealGreen, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(children: [
-              if (widget.entry != null) ...[
+            
+            const SizedBox(height: 24),
+
+            // Manager Approval Status Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F7FF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD0E3FF)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.info_outline, size: 18, color: Color(0xFF0066FF)),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Manager Approval',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0044AA),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Status: Not Submitted',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF0066FF),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+
+            // Footer Buttons
+            Row(
+              children: [
+                if (widget.entry != null) ...[
+                  Expanded(
+                    child: _FooterButton(
+                      label: 'Delete',
+                      onPressed: _delete,
+                      color: Colors.red,
+                      isOutlined: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
-                  child: AppTonalButton(
-                    label: 'Delete',
-                    onPressed: _delete,
+                  child: _FooterButton(
+                    label: 'Save Draft',
+                    onPressed: _saveDraft,
+                    color: tealGreen,
+                    isOutlined: true,
                   ),
                 ),
                 const SizedBox(width: 12),
-              ],
-              Expanded(child: AppTonalButton(label: 'Save as Draft', onPressed: _saveDraft)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Theme(
-                  data: Theme.of(context).copyWith(
-                    filledButtonTheme: FilledButtonThemeData(
-                      style: FilledButton.styleFrom(foregroundColor: Colors.white),
-                    ),
+                Expanded(
+                  child: _FooterButton(
+                    label: 'Submit',
+                    onPressed: _submit,
+                    color: tealGreen,
+                    isOutlined: false,
                   ),
-                  child: AppPrimaryButton(label: 'Submit for Approval', onPressed: _submit),
                 ),
-              ),
-            ]),
+              ],
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -402,8 +496,21 @@ class _CallModel {
 }
 
 class _CallCard extends StatefulWidget {
-  const _CallCard({super.key, required this.index, required this.model, required this.onRemove});
-  final int index; final _CallModel model; final VoidCallback onRemove;
+  const _CallCard({
+    super.key,
+    required this.index,
+    required this.model,
+    required this.onRemove,
+    required this.tealGreen,
+    required this.lightMint,
+  });
+
+  final int index;
+  final _CallModel model;
+  final VoidCallback onRemove;
+  final Color tealGreen;
+  final Color lightMint;
+
   @override
   State<_CallCard> createState() => _CallCardState();
 }
@@ -437,104 +544,292 @@ class _CallCardState extends State<_CallCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header Row
           Row(
             children: [
-              Expanded(
-                child: Text('${widget.model.dateLabel} | Call ${widget.index + 1}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.yellow[100], borderRadius: BorderRadius.circular(8)),
-                child: Text(widget.model.status, style: const TextStyle(fontWeight: FontWeight.w700)),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: widget.tealGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.phone_in_talk_rounded,
+                  color: widget.tealGreen,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
-              TextButton(onPressed: widget.onRemove, child: const Text('Remove', style: TextStyle(color: Colors.red))),
+              Expanded(
+                child: Text(
+                  '${widget.model.dateLabel} | Call ${widget.index + 1}',
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey[800],
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: widget.lightMint,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  widget.model.status,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: widget.tealGreen,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                onPressed: widget.onRemove,
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+                visualDensity: VisualDensity.compact,
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const Divider(height: 32),
+
+          // Customer
           _Labeled(
             label: 'Customer',
-            child: SingleSelectDropdown(
-              options: const ['Apollo Hospital','Fortis Healthcare','Medanta Clinic'],
-              value: widget.model.customer,
-              hintText: 'Select customer',
-              onChanged: (v) {
-                widget.model.customer = v;
-                _customerCtrl.text = v ?? '';
-              },
+            isRequired: true,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: SingleSelectDropdown(
+                options: const ['Apollo Hospital', 'Fortis Healthcare', 'Medanta Clinic'],
+                value: widget.model.customer,
+                hintText: 'Select customer',
+                onChanged: (v) {
+                  setState(() {
+                    widget.model.customer = v;
+                    _customerCtrl.text = v ?? '';
+                  });
+                },
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
+
+          // Purpose
           _Labeled(
             label: 'Purpose of Visit',
-            child: SingleSelectDropdown(
-              options: const ['Field Visit','Product Detailing','Follow-up'],
-              value: widget.model.purpose,
-              hintText: 'Select purpose',
-              onChanged: (v) {
-                widget.model.purpose = v;
-                _purposeCtrl.text = v ?? '';
-              },
+            isRequired: true,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: SingleSelectDropdown(
+                options: const ['Field Visit', 'Product Detailing', 'Follow-up'],
+                value: widget.model.purpose,
+                hintText: 'Select purpose',
+                onChanged: (v) {
+                  setState(() {
+                    widget.model.purpose = v;
+                    _purposeCtrl.text = v ?? '';
+                  });
+                },
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
+
+          // Products
           _Labeled(
             label: 'Products to Discuss',
-            child: TextField(
-              controller: _productsCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Enter products to discuss',
-                border: OutlineInputBorder(),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
               ),
-              onChanged: (v) => widget.model.productsToDiscuss = v,
+              child: TextField(
+                controller: _productsCtrl,
+                maxLines: 3,
+                style: GoogleFonts.inter(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Enter products to discuss',
+                  hintStyle: GoogleFonts.inter(color: Colors.grey[400], fontSize: 14),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(16),
+                ),
+                onChanged: (v) => widget.model.productsToDiscuss = v,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
+
+          // Samples
           _Labeled(
             label: 'Samples to Distribute',
-            child: TextField(
-              controller: _samplesCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Enter samples to distribute',
-                border: OutlineInputBorder(),
+            isRequired: true,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
               ),
-              onChanged: (v) => widget.model.samplesToDistribute = v,
+              child: TextField(
+                controller: _samplesCtrl,
+                maxLines: 3,
+                style: GoogleFonts.inter(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Enter samples to distribute',
+                  hintStyle: GoogleFonts.inter(color: Colors.grey[400], fontSize: 14),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(16),
+                ),
+                onChanged: (v) => widget.model.samplesToDistribute = v,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
+
+          // Remarks
           _Labeled(
-            label: 'Notes/Remarks',
-            child: TextField(
-              controller: _remarksCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Enter notes or remarks',
-                border: OutlineInputBorder(),
+            label: 'Notes / Remarks',
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
               ),
-              onChanged: (v) => widget.model.remarks = v,
+              child: TextField(
+                controller: _remarksCtrl,
+                maxLines: 3,
+                style: GoogleFonts.inter(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Enter notes or remarks',
+                  hintStyle: GoogleFonts.inter(color: Colors.grey[400], fontSize: 14),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(16),
+                ),
+                onChanged: (v) => widget.model.remarks = v,
+              ),
             ),
           ),
-        ]),
+        ],
       ),
     );
   }
 }
 
 class _Labeled extends StatelessWidget {
-  const _Labeled({this.label, required this.child});
-  final String? label; final Widget child;
+  const _Labeled({this.label, required this.child, this.isRequired = false});
+  final String? label;
+  final Widget child;
+  final bool isRequired;
+
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [if (label != null) ...[Text(label!, style: Theme.of(context).textTheme.labelMedium), const SizedBox(height: 6)], child]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (label != null) ...[
+          RichText(
+            text: TextSpan(
+              text: label!,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+                letterSpacing: 0.1,
+              ),
+              children: isRequired
+                  ? [
+                      TextSpan(
+                        text: ' *',
+                        style: GoogleFonts.inter(
+                          color: Colors.red.shade600,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        child,
+      ],
+    );
+  }
+}
+
+class _FooterButton extends StatelessWidget {
+  const _FooterButton({
+    required this.label,
+    required this.onPressed,
+    required this.color,
+    this.isOutlined = false,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final Color color;
+  final bool isOutlined;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isOutlined) {
+      return OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
+        ),
+        child: Text(label),
+      );
+    }
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
+      ),
+      child: Text(label),
+    );
   }
 }
 

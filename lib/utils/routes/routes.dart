@@ -11,6 +11,9 @@ import '../../presentation/sales/sale_screen.dart';
 class Routes {
   Routes._();
 
+  // navigator key
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   //static variables
   static const String splash = '/splash';
   static const String login = '/login';

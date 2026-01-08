@@ -295,10 +295,24 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
         print('No status filter applied - showing all ${_deviations.length} deviations');
       } else {
         _filteredDeviations = _deviations.where((deviation) {
-          final matches = deviation.deviationStatus != null && 
-                 deviation.deviationStatus!.trim().toLowerCase() == _selectedStatus!.trim().toLowerCase();
+          // Use deviationStatus1 if available (actual status text), otherwise fall back to deviationStatus
+          final statusText = deviation.deviationStatus1 ?? deviation.deviationStatus;
+          final apiStatus = statusText.trim().toLowerCase();
+          final filterStatus = _selectedStatus!.trim().toLowerCase();
+          
+          bool matches;
+          // If filtering by "Pending" and status is empty, treat as pending
+          if (filterStatus == 'pending' && apiStatus.isEmpty) {
+            matches = true;
+          } else {
+            // Normalize both strings (remove hyphens, extra spaces)
+            final normalizedApiStatus = apiStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+            final normalizedFilterStatus = filterStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+            matches = normalizedApiStatus == normalizedFilterStatus;
+          }
+          
           if (matches) {
-            print('Status match: ${deviation.deviationStatus} == $_selectedStatus');
+            print('Status match: $statusText == $_selectedStatus');
           }
           return matches;
         }).toList();
@@ -716,7 +730,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
       city: apiItem.clusterName,
       type: apiItem.deviationType,
       description: apiItem.description,
-      status: apiItem.deviationStatus,
+      status: apiItem.deviationStatus1 ?? apiItem.deviationStatus,
     );
   }
 
@@ -758,13 +772,18 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   void _showDeviationDetails(DeviationApiItem data) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final String typeLabel = data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
-    final String statusLabel = data.deviationStatus.isNotEmpty ? data.deviationStatus : 'Status';
+    
+    // Use deviationStatus1 if available (actual status text), otherwise fall back to deviationStatus
+    final String statusText = data.deviationStatus1 ?? data.deviationStatus;
+    final String statusLabel = statusText.isNotEmpty ? statusText : 'Pending';
+    
     final String statusLower = statusLabel.toLowerCase();
     final bool isApproved = statusLower.contains('approved');
     final bool isSentBack = statusLower.contains('sent back') || statusLower.contains('sentback');
-    final bool isOpen = statusLower.contains('open') || statusLower.contains('pending');
-    // Enable buttons only if status is "Open" (or "Pending")
-    final bool buttonsEnabled = isOpen && !isApproved && !isSentBack;
+    
+    // Buttons should be enabled if it's not already approved or sent back
+    // This includes "Open", "Pending", or empty status
+    final bool buttonsEnabled = !isApproved && !isSentBack;
     
     showModalBottomSheet(
       context: context,

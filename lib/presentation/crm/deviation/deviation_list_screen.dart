@@ -118,7 +118,12 @@ class _DeviationListScreenState extends State<DeviationListScreen>
     _checkManagerStatus();
     _loadDeviations();
     _loadDeviationStatusList();
-    _getEmployeeList();
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int? roleCategory = userStore?.userDetail?.roleCategory;
+    if (!(roleCategory == 1 || roleCategory == 2)) {
+      _getEmployeeList();
+    }
     _loadCustomerList();
     _hasLoadedInitialData = true;
 
@@ -181,19 +186,17 @@ class _DeviationListScreenState extends State<DeviationListScreen>
             ? getIt<UserDetailStore>()
             : null;
         final int? employeeId = userStore?.userDetail?.employeeId;
+        final int? roleCategory = userStore?.userDetail?.roleCategory;
 
         if (user != null && employeeId != null) {
           // Get the selected employee ID for filtering
-          int? filterEmployeeId = employeeId; // Default to current user
-          if (_employee != null) {
+          int? filterEmployeeId = employeeId;
+          final bool forceLoggedIn = roleCategory == 1 || roleCategory == 2;
+          if (!forceLoggedIn && _employee != null) {
             filterEmployeeId = _employeeNameToId[_employee];
-            print('Filtering by employee: $_employee (ID: $filterEmployeeId)');
             if (filterEmployeeId == null) {
               print('ERROR: Employee ID not found for $_employee');
-              print('Available employees: $_employeeNameToId');
             }
-          } else {
-            print('Showing all employees (current user: $employeeId)');
           }
 
           print(
@@ -389,6 +392,13 @@ class _DeviationListScreenState extends State<DeviationListScreen>
     return userStore?.userDetail?.roleCategory == 3;
   }
 
+  bool _shouldHideEmployeeFilter() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int? roleCategory = userStore?.userDetail?.roleCategory;
+    return roleCategory == 1 || roleCategory == 2;
+  }
+
   bool _hasActiveFilters() {
     return _employee != null ||
         _status != null ||
@@ -400,7 +410,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
   int _getFilterCount() {
     int count = 0;
     if (_status != null) count++;
-    if (_employee != null) count++;
+    if (_employee != null && !_shouldHideEmployeeFilter()) count++;
     if (_customer != null) count++;
     return count;
   }
@@ -631,7 +641,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
         data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
     // Use deviationStatus1 (actual status text) if available, otherwise fall back to deviationStatus
     final String statusText = data.deviationStatus1 ?? data.deviationStatus;
-    final String statusLabel = statusText.isNotEmpty ? statusText : 'Status';
+    final String statusLabel = statusText.isNotEmpty ? statusText : 'Pending';
     final bool isApproved = statusLabel.toLowerCase().contains('approved');
 
     showModalBottomSheet(
@@ -1508,7 +1518,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                 ),
                                 const SizedBox(height: 24),
                                 // Employee
-                                if (!_shouldDisableEmployeeFilter())
+                                if (!_shouldHideEmployeeFilter() && !_shouldDisableEmployeeFilter())
                                   _SearchableFilterDropdown(
                                     key: _employeeFilterSectionKey,
                                     title: 'Employee',
@@ -1520,7 +1530,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                     isTablet: isTablet,
                                     // Removed onExpanded to prevent layout conflicts
                                   ),
-                                if (!_shouldDisableEmployeeFilter())
+                                if (!_shouldHideEmployeeFilter() && !_shouldDisableEmployeeFilter())
                                   const SizedBox(height: 24),
                                 // Customer (only for managers)
                                 if (_isManager) ...[
@@ -1545,7 +1555,7 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                     _pendingFilterApply = () {
                                       setState(() {
                                         _status = _tempStatus;
-                                        _employee = _tempEmployee;
+                                        _employee = _shouldHideEmployeeFilter() ? null : _tempEmployee;
                                         _customer = _tempCustomer;
                                       });
                                     };

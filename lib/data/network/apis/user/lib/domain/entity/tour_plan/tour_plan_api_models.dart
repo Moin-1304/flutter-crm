@@ -283,6 +283,10 @@ class TourPlanItem {
       fromDeviation: json['fromDeviation'] ?? 0,
     );
   }
+  @override
+  String toString() {
+    return 'TourPlanItem(createdDate: $createdDate, modifiedBy: $modifiedBy, modifiedDate: $modifiedDate, id: $id, tourPlanId: $tourPlanId, createdBy: $createdBy, status: $status, sbuId: $sbuId, employee: $employee, month: $month, year: $year, statusId: $statusId, submittedDate: $submittedDate, remarks: $remarks, active: $active, userId: $userId, employeeId: $employeeId, date: $date, territory: $territory, cluster: $cluster, clusterId: $clusterId, tourPlanType: $tourPlanType, objective: $objective, tourPlanStatus: $tourPlanStatus, tourPlanHeaderStatus: $tourPlanHeaderStatus, summary: $summary, tourPlanDetails: $tourPlanDetails, createdAt: $createdAt, updatedAt: $updatedAt, submittedAt: $submittedAt, approvedAt: $approvedAt, rejectedAt: $rejectedAt, rejectionReason: $rejectionReason, managerComments: $managerComments, actionComments: $actionComments, comments: $comments, bizunit: $bizunit, isSelected: $isSelected, employeeName: $employeeName, designation: $designation, statusText: $statusText, planDate: $planDate, customerId: $customerId, customerName: $customerName, clusters: $clusters, samplesToDistribute: $samplesToDistribute, productsToDiscuss: $productsToDiscuss, notes: $notes, fromDeviation: $fromDeviation)';
+  }
 }
 
 class TourPlanDetail {

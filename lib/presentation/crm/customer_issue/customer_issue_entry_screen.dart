@@ -2965,7 +2965,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         _issueAgainst != null &&
         _issueTo != null &&
         _fromStore != null &&
-        _toStore != null;
+        _toStore != null &&
+        (
+          !_isEditMode ||
+          (_pendingApiIssueData != null
+              ? _pendingApiIssueData!.statusText?.toLowerCase() != 'approved'
+              : true)
+        );
 
     // Submit button enabled only if processAction exists and is valid
     final bool canSubmit = canSave && _hasWorkflowSubmitAction;
@@ -3654,7 +3660,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       userId: userId,
       divisionGroup: null,
       issueAgainst: issueAgainstValue, // Send as string text value
-      issueReceiptType: 1,
+      issueReceiptType: issueAgainstId,
       itemText: null,
     );
 
