@@ -618,119 +618,115 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                   ),
                   const SizedBox(height: 12),
                   // Calendar with API loading indicator
-                  Observer(
-                    builder: (_) {
-                      return Card(
-                        margin: EdgeInsets.zero,
-                        color: Colors.white,
-                        surfaceTintColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(28),
-                          side:
-                              BorderSide(color: Colors.black.withOpacity(.06)),
-                        ),
-                        elevation: 12,
-                        child: Stack(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 12),
-                              child: Observer(
-                                builder: (_) {
-                                  // Rebuild decorations when calendar view data changes or filters change
-                                  final Map<DateTime, CalendarDayDecoration>
-                                      decorations = _buildApiDayDecorations(
-                                          _store.calendarViewData);
-                                  final bool isLoading = _store.calendarLoading;
-                                  return LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      return Stack(
-                                        children: [
-                                          MonthCalendar(
-                                            width: constraints.maxWidth,
-                                            key: ValueKey(
-                                                'month-cal-$_dataVersion-${_employee}-${_customer}-${_status}'),
-                                            visibleMonth: _month,
-                                            selectedDate: _selectedDay,
-                                            onDateTap: (d) {
-                                              setState(() {
-                                                // Toggle selection: if same date is tapped again, deselect it
-                                                _selectedDay = _selectedDay !=
-                                                            null &&
-                                                        _isSameDate(
-                                                            _selectedDay!, d)
-                                                    ? null
-                                                    : d;
-                                              });
-                                              // No need to reload data - filtering is handled in the UI
-                                            },
-                                            onMonthChanged: (m) async {
-                                              setState(() {
-                                                _month = DateTime(
-                                                    m.year, m.month, 1);
-                                                _selectedDay =
-                                                    null; // Clear selection when month changes
-                                                _store.month = _month;
-                                              });
+                  Card(
+                    margin: EdgeInsets.zero,
+                    color: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      side:
+                          BorderSide(color: Colors.black.withOpacity(.06)),
+                    ),
+                    elevation: 12,
+                    child: Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 12),
+                          child: Observer(
+                            builder: (_) {
+                              // Rebuild decorations when calendar view data changes or filters change
+                              final Map<DateTime, CalendarDayDecoration>
+                                  decorations = _buildApiDayDecorations(
+                                      _store.calendarViewData);
+                              final bool isLoading = _store.calendarLoading;
+                              return LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return Stack(
+                                    children: [
+                                      MonthCalendar(
+                                        width: constraints.maxWidth,
+                                        key: ValueKey(
+                                            'month-cal-$_dataVersion-${_employee}-${_customer}-${_status}'),
+                                        visibleMonth: _month,
+                                        selectedDate: _selectedDay,
+                                        onDateTap: (d) {
+                                          setState(() {
+                                            // Toggle selection: if same date is tapped again, deselect it
+                                            _selectedDay = _selectedDay !=
+                                                        null &&
+                                                    _isSameDate(
+                                                        _selectedDay!, d)
+                                                ? null
+                                                : d;
+                                          });
+                                          // No need to reload data - filtering is handled in the UI
+                                        },
+                                        onMonthChanged: (m) async {
+                                          setState(() {
+                                            _month = DateTime(
+                                                m.year, m.month, 1);
+                                            _selectedDay =
+                                                null; // Clear selection when month changes
+                                            _store.month = _month;
+                                          });
 
-                                              // Call API when month changes
-                                              await _loadCalendarViewData();
-                                              await _loadCalendarItemListData();
-                                              await _loadTourPlanEmployeeListSummary();
-                                              await _loadTourPlanSummary();
+                                          // Call API when month changes
+                                          await _loadCalendarViewData();
+                                          await _loadCalendarItemListData();
+                                          await _loadTourPlanEmployeeListSummary();
+                                          await _loadTourPlanSummary();
 
-                                              // Force UI update after all data is loaded
-                                              if (mounted) {
-                                                setState(() {});
-                                              }
-                                            },
-                                            summaryText:
-                                                _daysAndHolidaysLabel(_month),
-                                            cellSpacing: 10,
-                                            cellCornerRadius: 12,
-                                            dayDecorations: decorations,
-                                            legendItems: _buildLegendItems(),
-                                          ),
-                                          // Calendar loading overlay - reactive to loading state
-                                          if (isLoading)
-                                            Positioned.fill(
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white
-                                                      .withOpacity(0.8),
-                                                  borderRadius:
-                                                      BorderRadius.circular(28),
-                                                ),
-                                                child: Center(
-                                                  child: Column(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      CircularProgressIndicator(
-                                                        valueColor:
-                                                            AlwaysStoppedAnimation<
-                                                                    Color>(
-                                                                tealGreen),
-                                                      ),
-                                                      const SizedBox(height: 8),
-                                                      const Text(
-                                                          'Loading calendar...'),
-                                                    ],
+                                          // Force UI update after all data is loaded
+                                          if (mounted) {
+                                            setState(() {});
+                                          }
+                                        },
+                                        summaryText:
+                                            _daysAndHolidaysLabel(_month),
+                                        cellSpacing: 10,
+                                        cellCornerRadius: 12,
+                                        dayDecorations: decorations,
+                                        legendItems: _buildLegendItems(),
+                                      ),
+                                      // Calendar loading overlay - reactive to loading state
+                                      if (isLoading)
+                                        Positioned.fill(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.white
+                                                  .withOpacity(0.8),
+                                              borderRadius:
+                                                  BorderRadius.circular(28),
+                                            ),
+                                            child: Center(
+                                              child: Column(
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  CircularProgressIndicator(
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                                Color>(
+                                                            tealGreen),
                                                   ),
-                                                ),
+                                                  const SizedBox(height: 8),
+                                                  const Text(
+                                                      'Loading calendar...'),
+                                                ],
                                               ),
                                             ),
-                                        ],
-                                      );
-                                    },
+                                          ),
+                                        ),
+                                    ],
                                   );
                                 },
-                              ),
-                            ),
-                          ],
+                              );
+                            },
+                          ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   // Day plans list with quick edit (only show when a date is selected)

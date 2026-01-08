@@ -154,10 +154,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               employeeCode != null && employeeCode.isNotEmpty
                   ? '$employeeCode - $employeeName'
                   : employeeName;
-          setState(() {
-            _selectedEmployee = displayName;
-            _selectedEmployeeId = employeeId;
-          });
+          if (mounted) {
+            setState(() {
+              _selectedEmployee = displayName;
+              _selectedEmployeeId = employeeId;
+            });
+          }
           print(
               'NewTourPlanScreen: [Employee] Set current employee: $_selectedEmployee (ID: $_selectedEmployeeId)');
         }
@@ -178,10 +180,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             employeeCode != null && employeeCode.isNotEmpty
                 ? '$employeeCode - $employeeName'
                 : employeeName;
-        setState(() {
-          _selectedEmployee = displayName;
-          _selectedEmployeeId = employeeId;
-        });
+        if (mounted) {
+          setState(() {
+            _selectedEmployee = displayName;
+            _selectedEmployeeId = employeeId;
+          });
+        }
       }
     }
   }
@@ -190,19 +194,31 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   Future<void> _loadReportingStaffList() async {
     if (!_isManagerOrFieldManager) return;
 
-    setState(() {
-      _isLoadingEmployees = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingEmployees = true;
+      });
+    }
 
     try {
       final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
           ? getIt<UserDetailStore>()
           : null;
+
+      // Wait for user to be loaded (retry up to 10 times = 3 seconds max)
+      int retry = 0;
+      while (userStore?.isUserLoaded != true && retry < 10) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        retry++;
+        print(
+            'NewTourPlanScreen: [Employee] Waiting for user to load... retry $retry');
+      }
+
       final int? loginEmployeeId = userStore?.userDetail?.employeeId;
 
       if (loginEmployeeId == null || loginEmployeeId <= 0) {
         print(
-            'NewTourPlanScreen: [Employee] Login employeeId is null or invalid');
+            'NewTourPlanScreen: [Employee] Login employeeId is null or invalid after waiting');
         return;
       }
 
@@ -220,41 +236,47 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       if (items.isEmpty) {
         print('NewTourPlanScreen: [Employee] No reporting staff found');
-        setState(() {
-          _employeeOptions = [];
-          _employeeNameToId.clear();
-        });
+        if (mounted) {
+          setState(() {
+            _employeeOptions = [];
+            _employeeNameToId.clear();
+          });
+        }
         return;
       }
 
-      setState(() {
-        _employeeOptions.clear();
-        _employeeNameToId.clear();
+      if (mounted) {
+        setState(() {
+          _employeeOptions.clear();
+          _employeeNameToId.clear();
 
-        for (final item in items) {
-          // Format: "CODE - NAME" or just "NAME" if no code
-          final String employeeName =
-              item.employeeName.isNotEmpty ? item.employeeName : item.text;
-          final String employeeCode = item.code ?? '';
-          final String displayName = employeeCode.isNotEmpty
-              ? '$employeeCode - $employeeName'
-              : employeeName;
+          for (final item in items) {
+            // Format: "CODE - NAME" or just "NAME" if no code
+            final String employeeName =
+                item.employeeName.isNotEmpty ? item.employeeName : item.text;
+            final String employeeCode = item.code ?? '';
+            final String displayName = employeeCode.isNotEmpty
+                ? '$employeeCode - $employeeName'
+                : employeeName;
 
-          if (displayName.trim().isNotEmpty) {
-            _employeeOptions.add(displayName);
-            _employeeNameToId[displayName] = item.id;
+            if (displayName.trim().isNotEmpty) {
+              _employeeOptions.add(displayName);
+              _employeeNameToId[displayName] = item.id;
+            }
           }
-        }
 
-        print(
-            'NewTourPlanScreen: [Employee] Loaded ${_employeeOptions.length} reporting staff');
-      });
+          print(
+              'NewTourPlanScreen: [Employee] Loaded ${_employeeOptions.length} reporting staff');
+        });
+      }
     } catch (e) {
       print('NewTourPlanScreen: [Employee] Error loading reporting staff: $e');
     } finally {
-      setState(() {
-        _isLoadingEmployees = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingEmployees = false;
+        });
+      }
     }
   }
 
@@ -281,9 +303,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   Future<void> _loadTourPlanDetails() async {
     if (widget.tourPlanToEdit == null) return;
 
-    setState(() {
-      _isLoadingDetails = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingDetails = true;
+      });
+    }
 
     try {
       print(
@@ -314,10 +338,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       TourPlanGetResponse response;
       try {
-        response = await repo.getTourPlanDetails(
-          tourPlanId: effectiveTourPlanId,
-          id: effectiveId,
-        ).timeout(const Duration(seconds: 15));
+        response = await repo
+            .getTourPlanDetails(
+              tourPlanId: effectiveTourPlanId,
+              id: effectiveId,
+            )
+            .timeout(const Duration(seconds: 15));
       } catch (e) {
         print('NewTourPlanScreen: API call failed or timed out with error: $e');
         rethrow;
@@ -361,23 +387,58 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         await _populateFormFromTourPlan(widget.tourPlanToEdit!);
       }
     } finally {
-      setState(() {
-        _isLoadingDetails = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingDetails = false;
+        });
+      }
     }
   }
 
   /// Populate form fields from TourPlanItem data
   Future<void> _populateFormFromTourPlan(TourPlanItem tourPlan) async {
+    print('NewTourPlanScreen: [Edit] Starting _populateFormFromTourPlan');
+
     // 1. Set Employee ID for Managers (CRITICAL for dependent dropdowns)
     if (_isManagerOrFieldManager) {
       if (tourPlan.employeeId > 0) {
-        setState(() {
-          _selectedEmployeeId = tourPlan.employeeId;
-          _selectedEmployee = tourPlan.employeeName ?? 'Unknown Employee';
-        });
+        if (mounted) {
+          setState(() {
+            _selectedEmployeeId = tourPlan.employeeId;
+            // Initial name, will be refined once options load
+            _selectedEmployee = tourPlan.employeeName ?? 'Unknown Employee';
+          });
+        }
         print(
-            'NewTourPlanScreen: [Edit] Set employee to $_selectedEmployee (ID: $_selectedEmployeeId)');
+            'NewTourPlanScreen: [Edit] Set initial employee to $_selectedEmployee (ID: $_selectedEmployeeId)');
+
+        // Wait for employee options to load so we can set the correctly formatted name
+        int retry = 0;
+        while (_isLoadingEmployees && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          retry++;
+        }
+
+        // Try to find the correctly formatted name from the options
+        String? correctlyFormattedName;
+        _employeeNameToId.forEach((name, id) {
+          if (id == tourPlan.employeeId) {
+            correctlyFormattedName = name;
+          }
+        });
+
+        if (correctlyFormattedName != null) {
+          if (mounted) {
+            setState(() {
+              _selectedEmployee = correctlyFormattedName;
+            });
+          }
+          print(
+              'NewTourPlanScreen: [Edit] Refined employee name to: $_selectedEmployee');
+        } else {
+          print(
+              'NewTourPlanScreen: [Edit] Could not find employee ID ${tourPlan.employeeId} in loaded options. Options count: ${_employeeOptions.length}');
+        }
       } else {
         print(
             'NewTourPlanScreen: [Edit] Warning - No employee ID in tour plan data');
@@ -401,7 +462,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     }
 
     // 3. Set Customer Type if available in header (CRITICAL for customers load)
-    if (tourPlan.tourPlanType != null && tourPlan.tourPlanType!.isNotEmpty) {
+    if (tourPlan.tourPlanType != null &&
+        tourPlan.tourPlanType!.isNotEmpty &&
+        tourPlan.tourPlanType != 'Select customer type') {
       setState(() {
         _selectedCustomerType = tourPlan.tourPlanType;
         print(
@@ -496,6 +559,31 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
     // 8. Load customers based on selected clusters and customer type
     if (_selectedClusters.isNotEmpty && _selectedCustomerType != null) {
+      // Ensure customer type ID mapping is available before loading customers
+      if (!_customerTypeNameToId.containsKey(_selectedCustomerType!)) {
+        print(
+            'NewTourPlanScreen: [Edit] Customer type mapping not found for "$_selectedCustomerType". Waiting for CustomerType list...');
+        // Wait a bit more if needed
+        int retry = 0;
+        while (!_customerTypeNameToId.containsKey(_selectedCustomerType!) &&
+            retry < 10) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+
+          // Case-insensitive check during retry
+          final String normalized = _selectedCustomerType!.toLowerCase().trim();
+          bool found = false;
+          for (final entry in _customerTypeNameToId.entries) {
+            if (entry.key.toLowerCase().trim() == normalized) {
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+
+      print('NewTourPlanScreen: [Edit] Triggering _loadMappedCustomers');
       await _loadMappedCustomers();
     }
 
@@ -749,11 +837,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                               _loadProductsList();
                                               _loadCustomerTypeList();
                                               // Customers load only after cluster + customer type chosen
-                                              if (_selectedClusters.isNotEmpty &&
-                                                  _selectedCustomerType != null) {
+                                              if (_selectedClusters
+                                                      .isNotEmpty &&
+                                                  _selectedCustomerType !=
+                                                      null) {
                                                 _loadMappedCustomers();
                                               }
-
                                             }
                                           },
                                         )
@@ -817,7 +906,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                               child: _SingleSelectDropdown(
                                 options: _customerTypeOptions,
                                 value: _selectedCustomerType,
-                                hintText: _isLoadingCustomerType ? 'Loading customer types...' : 'Select customer type',
+                                hintText: _isLoadingCustomerType
+                                    ? 'Loading customer types...'
+                                    : 'Select customer type',
                                 isLoading: _isLoadingCustomerType,
                                 onChanged: (v) {
                                   setState(() {
@@ -1189,8 +1280,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'CustomerId': 0,
         'CustomerName': "",
         'Clusters': "",
-        'SamplesToDistribute': aggregatedSamples.isNotEmpty ? aggregatedSamples : null,
-        'ProductsToDiscuss': aggregatedProducts.isNotEmpty ? aggregatedProducts : null,
+        'SamplesToDistribute':
+            aggregatedSamples.isNotEmpty ? aggregatedSamples : null,
+        'ProductsToDiscuss':
+            aggregatedProducts.isNotEmpty ? aggregatedProducts : null,
         'Notes': null,
         'FromDeviation': null,
         'TotalCustomers': null,
@@ -1746,8 +1839,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       // At this point, employeeIdNullable is guaranteed to be non-null
       final int employeeId = employeeIdNullable!;
-      final List<CommonDropdownItem> items =
-          await repo.getClusterList(countryId, employeeId).timeout(const Duration(seconds: 15));
+      final List<CommonDropdownItem> items = await repo
+          .getClusterList(countryId, employeeId)
+          .timeout(const Duration(seconds: 15));
       final Set<String> clusters = items
           .map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim())
           .where((s) => s.isNotEmpty)
@@ -1802,12 +1896,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   Future<void> _loadTypeOfWorkList() async {
     try {
-      _isLoadingPurpose = true;
+      if (mounted) {
+        setState(() {
+          _isLoadingPurpose = true;
+        });
+      }
       // Manager/Field Manager must select employee first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
             'NewTourPlanScreen: [PurposeOfVisit] Manager role without selected employee - skipping');
-        _isLoadingPurpose = false;
+        if (mounted) {
+          setState(() {
+            _isLoadingPurpose = false;
+          });
+        }
         return;
       }
       if (getIt.isRegistered<CommonRepository>()) {
@@ -1838,7 +1940,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
         if (userId == null || userId <= 0) {
           print('NewTourPlanScreen: [PurposeOfVisit] userId invalid, skipping');
-          _isLoadingPurpose = false;
+          if (mounted) {
+            setState(() {
+              _isLoadingPurpose = false;
+            });
+          }
           return;
         }
 
@@ -1857,8 +1963,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
         print(
             'NewTourPlanScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
-        final List<CommonDropdownItem> items =
-            await repo.getPurposeOfVisitList(userId, purposeText).timeout(const Duration(seconds: 15));
+        final List<CommonDropdownItem> items = await repo
+            .getPurposeOfVisitList(userId, purposeText)
+            .timeout(const Duration(seconds: 15));
         print(
             'NewTourPlanScreen: [PurposeOfVisit] API returned ${items.length} items');
 
@@ -1867,53 +1974,55 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             .where((s) => s.isNotEmpty)
             .toSet();
         if (works.isNotEmpty) {
-          setState(() {
-            _purposeOptions = works.toList();
-            _typeOfWorkNameToId.clear();
-            _typeOfWorkIdToName.clear();
-            // map names to ids for submit
-            for (final item in items) {
-              final String key =
-                  (item.text.isNotEmpty ? item.text : item.typeText).trim();
-              if (key.isNotEmpty) {
-                _typeOfWorkNameToId[key] = item.id;
-                _typeOfWorkIdToName[item.id] =
-                    key; // Reverse mapping for editing
+          if (mounted) {
+            setState(() {
+              _purposeOptions = works.toList();
+              _typeOfWorkNameToId.clear();
+              _typeOfWorkIdToName.clear();
+              // map names to ids for submit
+              for (final item in items) {
+                final String key =
+                    (item.text.isNotEmpty ? item.text : item.typeText).trim();
+                if (key.isNotEmpty) {
+                  _typeOfWorkNameToId[key] = item.id;
+                  _typeOfWorkIdToName[item.id] =
+                      key; // Reverse mapping for editing
+                }
               }
-            }
 
-            // Resolve purpose names for existing calls if editing
-            if (_fullTourPlanData != null || widget.tourPlanToEdit != null) {
-              print(
-                  'NewTourPlanScreen: Resolving purpose names from typeOfWorkId');
-              print('  - Number of calls: ${_calls.length}');
-              print('  - typeOfWorkIdToName map: $_typeOfWorkIdToName');
+              // Resolve purpose names for existing calls if editing
+              if (_fullTourPlanData != null || widget.tourPlanToEdit != null) {
+                print(
+                    'NewTourPlanScreen: Resolving purpose names from typeOfWorkId');
+                print('  - Number of calls: ${_calls.length}');
+                print('  - typeOfWorkIdToName map: $_typeOfWorkIdToName');
 
-              for (final call in _calls) {
-                if (call.purpose == 'Loading...') {
-                  print('  - Found call with Loading... purpose');
-                  // Find the corresponding typeOfWorkId from tourPlanDetails
-                  // Use full tour plan data if available, otherwise fallback to widget data
-                  final tourPlan = _fullTourPlanData ?? widget.tourPlanToEdit;
-                  if (tourPlan != null && tourPlan.tourPlanDetails != null) {
-                    print(
-                        '  - tourPlanDetails count: ${tourPlan.tourPlanDetails!.length}');
-                    for (final detail in tourPlan.tourPlanDetails!) {
+                for (final call in _calls) {
+                  if (call.purpose == 'Loading...') {
+                    print('  - Found call with Loading... purpose');
+                    // Find the corresponding typeOfWorkId from tourPlanDetails
+                    // Use full tour plan data if available, otherwise fallback to widget data
+                    final tourPlan = _fullTourPlanData ?? widget.tourPlanToEdit;
+                    if (tourPlan != null && tourPlan.tourPlanDetails != null) {
                       print(
-                          '    - Checking detail with typeOfWorkId: ${detail.typeOfWorkId}');
-                      if (detail.typeOfWorkId > 0) {
-                        final purposeName =
-                            _typeOfWorkIdToName[detail.typeOfWorkId];
-                        print('    - Found purpose name: $purposeName');
-                        call.purpose = purposeName;
-                        break;
+                          '  - tourPlanDetails count: ${tourPlan.tourPlanDetails!.length}');
+                      for (final detail in tourPlan.tourPlanDetails!) {
+                        print(
+                            '    - Checking detail with typeOfWorkId: ${detail.typeOfWorkId}');
+                        if (detail.typeOfWorkId > 0) {
+                          final purposeName =
+                              _typeOfWorkIdToName[detail.typeOfWorkId];
+                          print('    - Found purpose name: $purposeName');
+                          call.purpose = purposeName;
+                          break;
+                        }
                       }
                     }
                   }
                 }
               }
-            }
-          });
+            });
+          }
 
           print(
               'NewTourPlanScreen: [PurposeOfVisit] Loaded ${_purposeOptions.length} options');
@@ -1922,18 +2031,30 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     } catch (e) {
       print('NewTourPlanScreen: [PurposeOfVisit] Error: $e');
     } finally {
-      _isLoadingPurpose = false;
+      if (mounted) {
+        setState(() {
+          _isLoadingPurpose = false;
+        });
+      }
     }
   }
 
   Future<void> _loadProductsList() async {
     try {
-      _isLoadingProducts = true;
+      if (mounted) {
+        setState(() {
+          _isLoadingProducts = true;
+        });
+      }
       // Manager/Field Manager must select employee first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
             'NewTourPlanScreen: [Products] Manager role without selected employee - skipping');
-        _isLoadingProducts = false;
+        if (mounted) {
+          setState(() {
+            _isLoadingProducts = false;
+          });
+        }
         return;
       }
       if (getIt.isRegistered<CommonRepository>()) {
@@ -1956,7 +2077,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (userId == null || userId <= 0) {
           print(
               'NewTourPlanScreen: [Products] userId is still null/0, skipping products load');
-          _isLoadingProducts = false;
+          if (mounted) {
+            setState(() {
+              _isLoadingProducts = false;
+            });
+          }
           return;
         }
 
@@ -1988,22 +2113,25 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
         print(
             'NewTourPlanScreen: [Products] Loading products with userId: $actualUserId, isFromAMCUser: $isFromAMCUser');
-        final List<CommonDropdownItem> items =
-            await repo.getTourPlanProductsList(actualUserId ?? 0,
-                isFromAMCUser: isFromAMCUser).timeout(const Duration(seconds: 15));
+        final List<CommonDropdownItem> items = await repo
+            .getTourPlanProductsList(actualUserId ?? 0,
+                isFromAMCUser: isFromAMCUser)
+            .timeout(const Duration(seconds: 15));
         if (items.isNotEmpty) {
-          setState(() {
-            _productOptions.clear();
-            _productNameToId.clear();
-            for (final item in items) {
-              final String productName =
-                  (item.text.isNotEmpty ? item.text : item.name).trim();
-              if (productName.isNotEmpty) {
-                _productOptions.add(productName);
-                _productNameToId[productName] = item.id;
+          if (mounted) {
+            setState(() {
+              _productOptions.clear();
+              _productNameToId.clear();
+              for (final item in items) {
+                final String productName =
+                    (item.text.isNotEmpty ? item.text : item.name).trim();
+                if (productName.isNotEmpty) {
+                  _productOptions.add(productName);
+                  _productNameToId[productName] = item.id;
+                }
               }
-            }
-          });
+            });
+          }
           print(
               'NewTourPlanScreen: [Products] Loaded ${_productOptions.length} products');
         }
@@ -2011,18 +2139,30 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     } catch (e) {
       print('NewTourPlanScreen: [Products] Error loading products: $e');
     } finally {
-      _isLoadingProducts = false;
+      if (mounted) {
+        setState(() {
+          _isLoadingProducts = false;
+        });
+      }
     }
   }
 
   Future<void> _loadCustomerTypeList() async {
     try {
-      _isLoadingCustomerType = true;
+      if (mounted) {
+        setState(() {
+          _isLoadingCustomerType = true;
+        });
+      }
       // Manager/Field Manager must select employee first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
             'NewTourPlanScreen: [CustomerType] Manager role without selected employee - skipping');
-        _isLoadingCustomerType = false;
+        if (mounted) {
+          setState(() {
+            _isLoadingCustomerType = false;
+          });
+        }
         return;
       }
       if (getIt.isRegistered<CommonRepository>()) {
@@ -2048,7 +2188,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (userId == null || userId <= 0) {
           print(
               'NewTourPlanScreen: [CustomerType] userId is still null/0, skipping');
-          _isLoadingCustomerType = false;
+          if (mounted) {
+            setState(() {
+              _isLoadingCustomerType = false;
+            });
+          }
           return;
         }
 
@@ -2056,25 +2200,28 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         final String typeParam = serviceArea ?? '';
         print(
             'NewTourPlanScreen: [CustomerType] Loading customer types with userId: $userId, type: "$typeParam"');
-        final List<CommonDropdownItem> items =
-            await repo.getCustomerTypeList(userId, type: typeParam).timeout(const Duration(seconds: 15));
+        final List<CommonDropdownItem> items = await repo
+            .getCustomerTypeList(userId, type: typeParam)
+            .timeout(const Duration(seconds: 15));
         print(
             'NewTourPlanScreen: [CustomerType] API returned ${items.length} items');
         if (items.isNotEmpty) {
-          setState(() {
-            _customerTypeOptions.clear();
-            _customerTypeNameToId.clear();
-            for (final item in items) {
-              final String typeName =
-                  (item.text.isNotEmpty ? item.text : item.name).trim();
-              if (typeName.isNotEmpty) {
-                _customerTypeOptions.add(typeName);
-                _customerTypeNameToId[typeName] = item.id;
-                print(
-                    'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
+          if (mounted) {
+            setState(() {
+              _customerTypeOptions.clear();
+              _customerTypeNameToId.clear();
+              for (final item in items) {
+                final String typeName =
+                    (item.text.isNotEmpty ? item.text : item.name).trim();
+                if (typeName.isNotEmpty) {
+                  _customerTypeOptions.add(typeName);
+                  _customerTypeNameToId[typeName] = item.id;
+                  print(
+                      'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
+                }
               }
-            }
-          });
+            });
+          }
           print(
               'NewTourPlanScreen: [CustomerType] Loaded ${_customerTypeOptions.length} customer types');
           print(
@@ -2085,7 +2232,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print(
           'NewTourPlanScreen: [CustomerType] Error loading customer types: $e');
     } finally {
-      _isLoadingCustomerType = false;
+      if (mounted) {
+        setState(() {
+          _isLoadingCustomerType = false;
+        });
+      }
     }
   }
 
@@ -2124,17 +2275,33 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             'NewTourPlanScreen: [Customers] Using current user employeeId: $employeeId');
       }
 
-      // Build ClusterIds from selected clusters in dropdown
-      final List<ClusterIdModel> selectedClusterIds = _selectedClusters
-          .map((clusterName) => _clusterNameToId[clusterName])
-          .where((clusterId) => clusterId != null && clusterId > 0)
-          .map((clusterId) => ClusterIdModel(clusterId: clusterId!))
-          .toList();
+      // Build ClusterIds from selected clusters in dropdown (with case-insensitive fallback)
+      final List<ClusterIdModel> selectedClusterIds = [];
+      for (final clusterName in _selectedClusters) {
+        int? clusterId = _clusterNameToId[clusterName];
+
+        if (clusterId == null || clusterId <= 0) {
+          // Try case-insensitive lookup
+          final String normalized = clusterName.toLowerCase().trim();
+          for (final entry in _clusterNameToId.entries) {
+            if (entry.key.toLowerCase().trim() == normalized) {
+              clusterId = entry.value;
+              print(
+                  'NewTourPlanScreen: [Customers] Found case-insensitive cluster match: "${entry.key}" for "$clusterName"');
+              break;
+            }
+          }
+        }
+
+        if (clusterId != null && clusterId > 0) {
+          selectedClusterIds.add(ClusterIdModel(clusterId: clusterId));
+        }
+      }
 
       print(
           'NewTourPlanScreen: [Customers] Selected clusters: $_selectedClusters');
       print(
-          'NewTourPlanScreen: [Customers] Cluster IDs: ${selectedClusterIds.map((c) => c.clusterId).toList()}');
+          'NewTourPlanScreen: [Customers] Cluster IDs built: ${selectedClusterIds.map((c) => c.clusterId).toList()}');
 
       // Get selected customer type ID (with case-insensitive fallback)
       int? customerTypeId;
@@ -2160,23 +2327,25 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print(
             'NewTourPlanScreen: [Customers] Cluster or CustomerType not selected - clearing customers');
         print(
-            'NewTourPlanScreen: [Customers] Clusters empty: ${selectedClusterIds.isEmpty}, CustomerType: $_selectedCustomerType, CustomerTypeId: $customerTypeId');
+            'NewTourPlanScreen: [Customers] ClusterIds empty: ${selectedClusterIds.isEmpty}, CustomerType: $_selectedCustomerType, CustomerTypeId: $customerTypeId');
         if (customerTypeId == null && _selectedCustomerType != null) {
           print(
               'NewTourPlanScreen: [Customers] Available Customer Types: ${_customerTypeNameToId.keys.toList()}');
         }
-        setState(() {
-          _customerOptions = [];
-          _customerNameToId.clear();
-          _customerIdToName.clear();
-          _customerNameToClusterName.clear();
-          _autoSelectedClusters.clear();
-          // Clear all customer selections when requirements not met
-          for (final call in _calls) {
-            call.customers = {};
-          }
-          _updateAutoSelectedClusters();
-        });
+        if (mounted) {
+          setState(() {
+            _customerOptions = [];
+            _customerNameToId.clear();
+            _customerIdToName.clear();
+            _customerNameToClusterName.clear();
+            _autoSelectedClusters.clear();
+            // Clear all customer selections when requirements not met
+            for (final call in _calls) {
+              call.customers = {};
+            }
+            _updateAutoSelectedClusters();
+          });
+        }
         return;
       }
 
@@ -2203,7 +2372,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         filterExpression: null,
         monthNumber: null,
         year: null,
-        id: employeeId,
+        id: dynamicId,
         action: null,
         comment: null,
         status: null,
@@ -2215,7 +2384,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         customerTypeId: customerTypeId,
       );
       print('NewTourPlanScreen: [Customers] Request body => ${req.toJson()}');
-      final res = await repo.getMappedCustomersByEmployeeId(req).timeout(const Duration(seconds: 15));
+      final res = await repo
+          .getMappedCustomersByEmployeeId(req)
+          .timeout(const Duration(seconds: 15));
       print(
           'NewTourPlanScreen: [Customers] API returned ${res.customers.length} customers');
       if (res.customers.isNotEmpty) {
@@ -2235,160 +2406,165 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       if (res.customers.isEmpty) {
         print(
             'NewTourPlanScreen: [Customers] No customers returned - clearing list');
+        if (mounted) {
+          setState(() {
+            _customerOptions.clear();
+            _customerNameToId.clear();
+            _customerIdToName.clear();
+            _customerNameToClusterName.clear();
+            for (final call in _calls) {
+              call.customers = {};
+            }
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
         setState(() {
+          // Clear any old data so only new API values appear
           _customerOptions.clear();
           _customerNameToId.clear();
           _customerIdToName.clear();
           _customerNameToClusterName.clear();
-          for (final call in _calls) {
-            call.customers = {};
-          }
-        });
-        return;
-      }
 
-      setState(() {
-        // Clear any old data so only new API values appear
-        _customerOptions.clear();
-        _customerNameToId.clear();
-        _customerIdToName.clear();
-        _customerNameToClusterName.clear();
-
-        // Store customers and update cluster mapping from API response
-        final Set<String> clusterNamesFromApi = {};
-        for (final mc in res.customers) {
-          _customerOptions.add(mc.customerName);
-          _customerNameToId[mc.customerName] = mc.customerId;
-          _customerIdToName[mc.customerId] = mc.customerName;
-          final String clusterName = mc.clusterName.trim();
-          if (clusterName.isNotEmpty) {
-            _customerNameToClusterName[mc.customerName] = clusterName;
-          }
-
-          // Store cluster names from API response
-          if (clusterName.isNotEmpty && mc.clusterId > 0) {
-            clusterNamesFromApi.add(clusterName);
-            // Update cluster name to ID mapping if not already present
-            if (!_clusterNameToId.containsKey(clusterName)) {
-              _clusterNameToId[clusterName] = mc.clusterId;
-              print(
-                  'NewTourPlanScreen: [Customers] Added cluster from API: $clusterName (ID: ${mc.clusterId})');
+          // Store customers and update cluster mapping from API response
+          final Set<String> clusterNamesFromApi = {};
+          for (final mc in res.customers) {
+            _customerOptions.add(mc.customerName);
+            _customerNameToId[mc.customerName] = mc.customerId;
+            _customerIdToName[mc.customerId] = mc.customerName;
+            final String clusterName = mc.clusterName.trim();
+            if (clusterName.isNotEmpty) {
+              _customerNameToClusterName[mc.customerName] = clusterName;
             }
-            // Update cluster list if not already present
-            if (!_clusters.contains(clusterName)) {
-              _clusters.add(clusterName);
-              print(
-                  'NewTourPlanScreen: [Customers] Added cluster to list: $clusterName');
-            }
-          }
-        }
-        _customerOptions = _customerOptions.toSet().toList();
-        _clusters = _clusters.toSet().toList();
 
-        // Update selected clusters to match cluster names from API
-        // This ensures cluster names from API are properly associated when submitting
-        if (clusterNamesFromApi.isNotEmpty) {
-          print(
-              'NewTourPlanScreen: [Customers] Cluster names from API: ${clusterNamesFromApi.toList()}');
-          print(
-              'NewTourPlanScreen: [Customers] Currently selected clusters: ${_selectedClusters.toList()}');
-
-          // Sync selected clusters with API cluster names (case-insensitive match)
-          final Set<String> updatedSelectedClusters = {};
-          for (final selectedCluster in _selectedClusters) {
-            // Try to find matching cluster name from API (case-insensitive)
-            String? matchedCluster;
-            for (final apiCluster in clusterNamesFromApi) {
-              if (apiCluster.toLowerCase().trim() ==
-                  selectedCluster.toLowerCase().trim()) {
-                matchedCluster = apiCluster;
-                break;
-              }
-            }
-            // Use API cluster name if found, otherwise keep original
-            if (matchedCluster != null) {
-              updatedSelectedClusters.add(matchedCluster);
-              if (matchedCluster != selectedCluster) {
+            // Store cluster names from API response
+            if (clusterName.isNotEmpty && mc.clusterId > 0) {
+              clusterNamesFromApi.add(clusterName);
+              // Update cluster name to ID mapping if not already present
+              if (!_clusterNameToId.containsKey(clusterName)) {
+                _clusterNameToId[clusterName] = mc.clusterId;
                 print(
-                    'NewTourPlanScreen: [Customers] Updated cluster name: "$selectedCluster" -> "$matchedCluster"');
+                    'NewTourPlanScreen: [Customers] Added cluster from API: $clusterName (ID: ${mc.clusterId})');
               }
-            } else {
-              // Keep original if no match found (might be from cluster list API)
-              updatedSelectedClusters.add(selectedCluster);
+              // Update cluster list if not already present
+              if (!_clusters.contains(clusterName)) {
+                _clusters.add(clusterName);
+                print(
+                    'NewTourPlanScreen: [Customers] Added cluster to list: $clusterName');
+              }
             }
           }
+          _customerOptions = _customerOptions.toSet().toList();
+          _clusters = _clusters.toSet().toList();
 
-          // Update selected clusters if there were any changes
-          if (!setEquals(_selectedClusters, updatedSelectedClusters)) {
-            _selectedClusters = updatedSelectedClusters;
+          // Update selected clusters to match cluster names from API
+          // This ensures cluster names from API are properly associated when submitting
+          if (clusterNamesFromApi.isNotEmpty) {
             print(
-                'NewTourPlanScreen: [Customers] Updated selected clusters to match API: ${_selectedClusters.toList()}');
-          }
-        }
+                'NewTourPlanScreen: [Customers] Cluster names from API: ${clusterNamesFromApi.toList()}');
+            print(
+                'NewTourPlanScreen: [Customers] Currently selected clusters: ${_selectedClusters.toList()}');
 
-        // Create a set of valid customer names for quick lookup
-        final Set<String> validCustomerNames = _customerOptions.toSet();
+            // Sync selected clusters with API cluster names (case-insensitive match)
+            final Set<String> updatedSelectedClusters = {};
+            for (final selectedCluster in _selectedClusters) {
+              // Try to find matching cluster name from API (case-insensitive)
+              String? matchedCluster;
+              for (final apiCluster in clusterNamesFromApi) {
+                if (apiCluster.toLowerCase().trim() ==
+                    selectedCluster.toLowerCase().trim()) {
+                  matchedCluster = apiCluster;
+                  break;
+                }
+              }
+              // Use API cluster name if found, otherwise keep original
+              if (matchedCluster != null) {
+                updatedSelectedClusters.add(matchedCluster);
+                if (matchedCluster != selectedCluster) {
+                  print(
+                      'NewTourPlanScreen: [Customers] Updated cluster name: "$selectedCluster" -> "$matchedCluster"');
+                }
+              } else {
+                // Keep original if no match found (might be from cluster list API)
+                updatedSelectedClusters.add(selectedCluster);
+              }
+            }
 
-        // Resolve customer names in existing calls, aligning by index with details if available
-        final tourPlan = _fullTourPlanData ?? widget.tourPlanToEdit;
-        if (tourPlan?.tourPlanDetails != null &&
-            tourPlan!.tourPlanDetails!.isNotEmpty) {
-          final int count = (tourPlan.tourPlanDetails!.length < _calls.length)
-              ? tourPlan.tourPlanDetails!.length
-              : _calls.length;
-          for (int i = 0; i < count; i++) {
-            final detail = tourPlan.tourPlanDetails![i];
-            final name = _customerIdToName[detail.customerId];
-            if (name != null &&
-                name.isNotEmpty &&
-                validCustomerNames.contains(name)) {
-              _calls[i].customers = {name};
-            } else {
-              // Clear customer if not found in new list (cluster changed)
-              _calls[i].customers = {};
+            // Update selected clusters if there were any changes
+            if (!setEquals(_selectedClusters, updatedSelectedClusters)) {
+              _selectedClusters = updatedSelectedClusters;
+              print(
+                  'NewTourPlanScreen: [Customers] Updated selected clusters to match API: ${_selectedClusters.toList()}');
             }
           }
-        } else {
-          // If no details, try to replace placeholders like 'Customer ID: X'
-          // Also clear invalid customers when cluster changes
-          for (final call in _calls) {
-            if (call.customers.length == 1) {
-              final only = call.customers.first;
-              if (only.startsWith('Customer ID:')) {
-                final idStr = only.split(':').last.trim();
-                final int? cid = int.tryParse(idStr);
-                if (cid != null && _customerIdToName[cid] != null) {
-                  final resolvedName = _customerIdToName[cid]!;
-                  if (validCustomerNames.contains(resolvedName)) {
-                    call.customers = {resolvedName};
+
+          // Create a set of valid customer names for quick lookup
+          final Set<String> validCustomerNames = _customerOptions.toSet();
+
+          // Resolve customer names in existing calls, aligning by index with details if available
+          final tourPlan = _fullTourPlanData ?? widget.tourPlanToEdit;
+          if (tourPlan?.tourPlanDetails != null &&
+              tourPlan!.tourPlanDetails!.isNotEmpty) {
+            final int count = (tourPlan.tourPlanDetails!.length < _calls.length)
+                ? tourPlan.tourPlanDetails!.length
+                : _calls.length;
+            for (int i = 0; i < count; i++) {
+              final detail = tourPlan.tourPlanDetails![i];
+              final name = _customerIdToName[detail.customerId];
+              if (name != null &&
+                  name.isNotEmpty &&
+                  validCustomerNames.contains(name)) {
+                _calls[i].customers = {name};
+              } else {
+                // Clear customer if not found in new list (cluster changed)
+                _calls[i].customers = {};
+              }
+            }
+          } else {
+            // If no details, try to replace placeholders like 'Customer ID: X'
+            // Also clear invalid customers when cluster changes
+            for (final call in _calls) {
+              if (call.customers.length == 1) {
+                final only = call.customers.first;
+                if (only.startsWith('Customer ID:')) {
+                  final idStr = only.split(':').last.trim();
+                  final int? cid = int.tryParse(idStr);
+                  if (cid != null && _customerIdToName[cid] != null) {
+                    final resolvedName = _customerIdToName[cid]!;
+                    if (validCustomerNames.contains(resolvedName)) {
+                      call.customers = {resolvedName};
+                    } else {
+                      // Clear if resolved customer is not in new list
+                      call.customers = {};
+                    }
                   } else {
-                    // Clear if resolved customer is not in new list
+                    // Clear if customer ID not found
                     call.customers = {};
                   }
                 } else {
-                  // Clear if customer ID not found
-                  call.customers = {};
+                  // Check if customer name is still valid in new cluster
+                  if (!validCustomerNames.contains(only)) {
+                    // Clear customer if not in new list (cluster changed)
+                    call.customers = {};
+                  }
                 }
-              } else {
-                // Check if customer name is still valid in new cluster
-                if (!validCustomerNames.contains(only)) {
-                  // Clear customer if not in new list (cluster changed)
-                  call.customers = {};
-                }
+              } else if (call.customers.length > 1) {
+                // For multiple customers, filter to only valid ones
+                call.customers = call.customers
+                    .where((c) => validCustomerNames.contains(c))
+                    .toSet();
               }
-            } else if (call.customers.length > 1) {
-              // For multiple customers, filter to only valid ones
-              call.customers = call.customers
-                  .where((c) => validCustomerNames.contains(c))
-                  .toSet();
             }
           }
-        }
-        _syncCallErrorsLength();
-        _updateAutoSelectedClusters();
-      });
+          _syncCallErrorsLength();
+          _updateAutoSelectedClusters();
+        });
+      }
     } catch (e) {
-      print('NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
+      print(
+          'NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
     }
   }
 }
@@ -2645,7 +2821,9 @@ class _CallCard extends StatelessWidget {
                 child: _SingleSelectDropdown(
                   options: purposeOptions,
                   value: data.purpose,
-                  hintText: isLoadingPurpose ? 'Loading purpose...' : 'Select purpose',
+                  hintText: isLoadingPurpose
+                      ? 'Loading purpose...'
+                      : 'Select purpose',
                   isLoading: isLoadingPurpose,
                   onChanged: (value) {
                     if (onPurposeChanged != null) {
@@ -2662,8 +2840,12 @@ class _CallCard extends StatelessWidget {
                 child: _MultiSelectDropdown(
                   options: productOptions,
                   selectedValues: data.products,
-                  hintText: isLoadingProducts ? 'Loading products...' : 'Select products',
-                  emptyMessage: isLoadingProducts ? 'Loading products...' : 'No products found',
+                  hintText: isLoadingProducts
+                      ? 'Loading products...'
+                      : 'Select products',
+                  emptyMessage: isLoadingProducts
+                      ? 'Loading products...'
+                      : 'No products found',
                   isLoading: isLoadingProducts,
                   onChanged: (set) {
                     if (onProductsChanged != null) {
