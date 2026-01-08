@@ -41,12 +41,16 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _handleUnauthorized() async {
+    final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+    // Check both the store state and the persistent flag
+    final bool wasLoggedIn = _userStore.isUserLoggedIn;
+    
     // 1. Clear user data from stores
     _userStore.logout();
     _userDetailStore.clearUserData();
     
     // 2. Clear user data from shared preferences
-    await getIt<SharedPreferenceHelper>().clearUser();
+    await sharedPrefHelper.clearUser();
 
     // 3. Navigate to login screen and clear backstack
     Routes.navigatorKey.currentState?.pushNamedAndRemoveUntil(
@@ -54,13 +58,15 @@ class _MyAppState extends State<MyApp> {
       (Route<dynamic> route) => false,
     );
     
-    // 4. Show a message to the user
-    ScaffoldMessenger.of(Routes.navigatorKey.currentContext!).showSnackBar(
-      const SnackBar(
-        content: Text('Session expired. Please login again.'),
-        backgroundColor: Colors.red,
-      ),
-    );
+    // 4. Show a message to the user ONLY if they were previously logged in
+    if (wasLoggedIn) {
+      ScaffoldMessenger.of(Routes.navigatorKey.currentContext!).showSnackBar(
+        const SnackBar(
+          content: Text('Session expired. Please login again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
