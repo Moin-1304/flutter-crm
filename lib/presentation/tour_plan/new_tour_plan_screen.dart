@@ -13,7 +13,6 @@ import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart';
 import 'package:boilerplate/utils/routes/routes.dart';
 import 'package:boilerplate/domain/entity/user/user_detail.dart';
-import 'package:boilerplate/presentation/crm/tour_plan/tour_plan_list_screen.dart';
 
 void main() {
   runApp(const MaterialApp(
@@ -1080,25 +1079,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                           const Color(0xFF4db1b3)
                                               .withOpacity(0.6),
                                     ),
-                                    child: _isSubmitting
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : Text(
-                                            widget.tourPlanToEdit != null
-                                                ? 'Update'
-                                                : 'Submit',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              letterSpacing: 0.3,
-                                            ),
-                                          ),
+                                    child: Text(
+                                      widget.tourPlanToEdit != null
+                                          ? 'Update'
+                                          : 'Submit',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1485,11 +1475,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           } catch (_) {}
         } catch (_) {}
 
-        // Redirect to refreshed Tour Plan listing screen after success
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const TourPlanListScreen()),
-          (route) => route.isFirst,
-        );
+        // Pop back to the previous screen (My Tour Plan screen)
+        // The data has already been refreshed above, so the previous screen will show updated data
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       }
     } catch (e, stackTrace) {
       final bool isEditing = widget.tourPlanToEdit != null;
@@ -2648,7 +2638,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         });
       }
     } catch (e) {
-      print('NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
+      print(
+          'NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
       if (mounted) {
         ToastMessage.show(context,
             message: 'Error loading customers: ${e.toString()}',
