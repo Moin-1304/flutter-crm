@@ -420,7 +420,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
 
         // For Service Engineer: use employeeId as UserId
         // For others: use userId as UserId
-        int? actualUserId = userId;
+        int? actualUserId = employeeId;
 
         if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
           if (employeeId != null && employeeId > 0) {
@@ -440,7 +440,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         print(
             'DcrEntryScreen: [Products] Loading products with UserId: $actualUserId');
         final List<CommonDropdownItem> items =
-            await repo.getDcrProductsList(actualUserId);
+            await repo.getDcrProductsList(actualUserId ?? 0);
         if (items.isNotEmpty) {
           setState(() {
             _productOptions.clear();

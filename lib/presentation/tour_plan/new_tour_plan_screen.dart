@@ -63,6 +63,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   String? _selectedCustomerType;
   String? _customerTypeError;
   bool _isLoadingCustomerType = false;
+  bool _isLoadingCustomers = false;
 
   // Employee dropdown for managers/field managers
   List<String> _employeeOptions = [];
@@ -271,6 +272,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('NewTourPlanScreen: [Employee] Error loading reporting staff: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading reporting staff: ${e.toString()}',
+            type: ToastType.error);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -382,6 +388,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('Error loading tour plan details: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading details: ${e.toString()}',
+            type: ToastType.error);
+      }
       // Fallback to using the provided data
       if (widget.tourPlanToEdit != null) {
         await _populateFormFromTourPlan(widget.tourPlanToEdit!);
@@ -462,26 +473,38 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     }
 
     // 3. Set Customer Type if available in header (CRITICAL for customers load)
+    int? customerTypeIdFromDetails;
+    if (tourPlan.tourPlanDetails != null &&
+        tourPlan.tourPlanDetails!.isNotEmpty) {
+      customerTypeIdFromDetails = tourPlan.tourPlanDetails!.first.customerType;
+      print(
+          'NewTourPlanScreen: [Edit] Found customerTypeId in details: $customerTypeIdFromDetails');
+    }
+
     if (tourPlan.tourPlanType != null &&
         tourPlan.tourPlanType!.isNotEmpty &&
         tourPlan.tourPlanType != 'Select customer type') {
-      setState(() {
-        _selectedCustomerType = tourPlan.tourPlanType;
-        print(
-            'NewTourPlanScreen: [Edit] Set customer type to $_selectedCustomerType');
-      });
+      if (mounted) {
+        setState(() {
+          _selectedCustomerType = tourPlan.tourPlanType;
+          print(
+              'NewTourPlanScreen: [Edit] Set customer type to $_selectedCustomerType');
+        });
+      }
     } else if (tourPlan.statusText != null &&
         (tourPlan.statusText!.contains('Retailer') ||
             tourPlan.statusText!.contains('Distributor'))) {
-      setState(() {
-        if (tourPlan.statusText!.contains('Retailer')) {
-          _selectedCustomerType = 'Retailer';
-        } else if (tourPlan.statusText!.contains('Distributor')) {
-          _selectedCustomerType = 'Distributor';
-        }
-        print(
-            'NewTourPlanScreen: [Edit] Inferred customer type to $_selectedCustomerType from statusText');
-      });
+      if (mounted) {
+        setState(() {
+          if (tourPlan.statusText!.contains('Retailer')) {
+            _selectedCustomerType = 'Retailer';
+          } else if (tourPlan.statusText!.contains('Distributor')) {
+            _selectedCustomerType = 'Distributor';
+          }
+          print(
+              'NewTourPlanScreen: [Edit] Inferred customer type to $_selectedCustomerType from statusText');
+        });
+      }
     }
 
     // 4. Set clusters - use comma-split
@@ -518,6 +541,35 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       _loadCustomerTypeList(),
     ]);
 
+    // 5.1 Resolve customer type from ID if header was empty
+    if ((_selectedCustomerType == null ||
+            _selectedCustomerType == 'Select customer type') &&
+        customerTypeIdFromDetails != null &&
+        customerTypeIdFromDetails > 0) {
+      print(
+          'NewTourPlanScreen: [Edit] Resolving customer type ID $customerTypeIdFromDetails to name');
+      String? matchedTypeName;
+      for (final entry in _customerTypeNameToId.entries) {
+        if (entry.value == customerTypeIdFromDetails) {
+          matchedTypeName = entry.key;
+          break;
+        }
+      }
+
+      if (matchedTypeName != null) {
+        print(
+            'NewTourPlanScreen: [Edit] Resolved ID $customerTypeIdFromDetails to "$matchedTypeName"');
+        if (mounted) {
+          setState(() {
+            _selectedCustomerType = matchedTypeName;
+          });
+        }
+      } else {
+        print(
+            'NewTourPlanScreen: [Edit] Could not resolve ID $customerTypeIdFromDetails in $_customerTypeNameToId');
+      }
+    }
+
     // 6. Map clusterId from details to names if we have it
     if (tourPlan.tourPlanDetails != null &&
         tourPlan.tourPlanDetails!.isNotEmpty) {
@@ -528,12 +580,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         final firstClusterName = _selectedClusters.first;
         print(
             'NewTourPlanScreen: Mapping "$firstClusterName" to clusterId ${detail.clusterId} from detail');
-        setState(() {
-          _clusterNameToId[firstClusterName] = detail.clusterId!;
-          if (!_clusters.contains(firstClusterName)) {
-            _clusters.add(firstClusterName);
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _clusterNameToId[firstClusterName] = detail.clusterId!;
+            if (!_clusters.contains(firstClusterName)) {
+              _clusters.add(firstClusterName);
+            }
+          });
+        }
       }
     }
 
@@ -1880,6 +1934,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('NewTourPlanScreen: [Clusters] Error loading clusters: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading clusters: ${e.toString()}',
+            type: ToastType.error);
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoadingClusters = false);
@@ -2030,6 +2089,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('NewTourPlanScreen: [PurposeOfVisit] Error: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading purpose of visit: ${e.toString()}',
+            type: ToastType.error);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -2086,14 +2150,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
 
         // For Service Engineers: use employeeId as userId and set IsFromAMCUser = 0
-        // For others: use userId and set IsFromAMCUser = null
-        int? actualUserId = userId;
-        int? isFromAMCUser;
+        // For others: use userId and set IsFromAMCUser = 0
+        int? actualUserId = employeeId;
+        int? isFromAMCUser = 0; // Default to 0
 
         if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
           actualUserId = _selectedEmployeeId;
+          isFromAMCUser = 0;
           print(
-              'NewTourPlanScreen: [Products] Manager/Field Manager - using selected employeeId: $actualUserId');
+              'NewTourPlanScreen: [Products] Manager/Field Manager - using selected employeeId: $actualUserId, IsFromAMCUser: 0');
         } else if (serviceArea != null &&
             serviceArea.trim() == 'Service Engineer') {
           if (employeeId != null && employeeId > 0) {
@@ -2102,13 +2167,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             print(
                 'NewTourPlanScreen: [Products] Service Engineer detected - using employeeId: $actualUserId, IsFromAMCUser: $isFromAMCUser');
           } else {
+            actualUserId = userId;
             print(
                 'NewTourPlanScreen: [Products] Service Engineer but employeeId is null/0, using userId: $actualUserId');
           }
         } else {
-          isFromAMCUser = null;
+          isFromAMCUser = 0;
           print(
-              'NewTourPlanScreen: [Products] Non-Service Engineer - using userId: $actualUserId, IsFromAMCUser: null');
+              'NewTourPlanScreen: [Products] Non-Service Engineer - using userId: $actualUserId, IsFromAMCUser: $isFromAMCUser');
         }
 
         print(
@@ -2138,6 +2204,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } catch (e) {
       print('NewTourPlanScreen: [Products] Error loading products: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading products: ${e.toString()}',
+            type: ToastType.error);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -2231,6 +2302,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     } catch (e) {
       print(
           'NewTourPlanScreen: [CustomerType] Error loading customer types: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading customer types: ${e.toString()}',
+            type: ToastType.error);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -2241,7 +2317,19 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   }
 
   Future<void> _loadMappedCustomers() async {
+    if (_isLoadingCustomers) {
+      print(
+          'NewTourPlanScreen: [Customers] Already loading customers - skipping');
+      return;
+    }
+
     try {
+      if (mounted) {
+        setState(() => _isLoadingCustomers = true);
+      } else {
+        _isLoadingCustomers = true;
+      }
+
       print('NewTourPlanScreen: [Customers] Start loading mapped customers');
       if (!getIt.isRegistered<TourPlanRepository>()) {
         print(
@@ -2349,9 +2437,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         return;
       }
 
-      // Dynamic Id: use tour plan Id if editing; otherwise fall back to employeeId
-      final int? dynamicId = widget.tourPlanToEdit?.id ?? employeeId;
-
       // Use current plan date (yyyy-MM-dd)
       final String dateStr = _tourPlanDate.toIso8601String().split('T').first;
 
@@ -2362,7 +2447,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         sortOrder: 0,
         sortDir: 0,
         sortField: null,
-        employeeId: null,
+        employeeId: employeeId,
         clusterId: null,
         customerId: null,
         month: null,
@@ -2372,7 +2457,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         filterExpression: null,
         monthNumber: null,
         year: null,
-        id: dynamicId,
+        id: employeeId, // Pass as both Id and EmployeeId for compatibility
         action: null,
         comment: null,
         status: null,
@@ -2386,7 +2471,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: [Customers] Request body => ${req.toJson()}');
       final res = await repo
           .getMappedCustomersByEmployeeId(req)
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 20));
       print(
           'NewTourPlanScreen: [Customers] API returned ${res.customers.length} customers');
       if (res.customers.isNotEmpty) {
@@ -2563,8 +2648,18 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         });
       }
     } catch (e) {
-      print(
-          'NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
+      print('NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
+      if (mounted) {
+        ToastMessage.show(context,
+            message: 'Error loading customers: ${e.toString()}',
+            type: ToastType.error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingCustomers = false);
+      } else {
+        _isLoadingCustomers = false;
+      }
     }
   }
 }

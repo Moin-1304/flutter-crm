@@ -304,6 +304,7 @@ class TourPlanDetail {
   final String? productsToDiscuss;
   final String? clusterNames;
   final List<Customer> customers;
+  final int? customerType;
 
   TourPlanDetail({
     required this.id,
@@ -320,6 +321,7 @@ class TourPlanDetail {
     this.productsToDiscuss,
     this.clusterNames,
     required this.customers,
+    this.customerType,
   });
 
   factory TourPlanDetail.fromJson(Map<String, dynamic> json) {
@@ -340,6 +342,7 @@ class TourPlanDetail {
       customers: (json['customers'] as List?)
           ?.map((e) => Customer.fromJson(e))
           .toList() ?? [],
+      customerType: json['customerType'],
     );
   }
 }

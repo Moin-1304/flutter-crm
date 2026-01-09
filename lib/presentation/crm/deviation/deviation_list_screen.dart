@@ -410,8 +410,10 @@ class _DeviationListScreenState extends State<DeviationListScreen>
   int _getFilterCount() {
     int count = 0;
     if (_status != null) count++;
-    if (_employee != null && !_shouldHideEmployeeFilter()) count++;
-    if (_customer != null) count++;
+    if (_employee != null &&
+        !_shouldHideEmployeeFilter() &&
+        !_shouldDisableEmployeeFilter()) count++;
+    if (_customer != null && _isManager) count++;
     return count;
   }
 
