@@ -153,7 +153,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   String _formatCurrency(double value) {
 // Simple INR-like formatting without extra dependencies
-    return '₹${value.toStringAsFixed(2)}';
+    return 'LKR${value.toStringAsFixed(2)}';
   }
 
   Future<void> _pickDate({

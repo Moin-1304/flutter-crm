@@ -26,6 +26,8 @@ import 'package:boilerplate/domain/repository/item_issue/item_issue_repository.d
 import 'package:boilerplate/data/repository/item_issue/item_issue_repository_impl.dart';
 import 'package:boilerplate/domain/repository/workflow/workflow_repository.dart';
 import 'package:boilerplate/data/repository/workflow/workflow_repository_impl.dart';
+import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
+import 'package:boilerplate/data/repository/sales/sales_repository_impl.dart';
 
 import '../../../di/service_locator.dart';
 import '../../network/apis/attendance/punch_in_out_api.dart';
@@ -52,21 +54,25 @@ class RepositoryModule {
 
     // DCR & Expense in-memory repositories
     getIt.registerSingleton<DcrRepository>(DcrRepositoryImpl());
-    getIt.registerSingleton<ExpenseRepository>(ExpenseRepositoryImpl(getIt<ExpenseApi>()));
-    
+    getIt.registerSingleton<ExpenseRepository>(
+        ExpenseRepositoryImpl(getIt<ExpenseApi>()));
+
     // Deviation repository
     getIt.registerSingleton<DeviationRepository>(DeviationRepositoryImpl());
     getIt.registerSingleton<CommonRepository>(CommonRepositoryImpl());
-    
+
     // PunchInOut repository
     getIt.registerSingleton<PunchInOutRepository>(PunchInOutRepositoryImpl(
       getIt<PunchInOutApi>(),
     ));
-    
+
     // ItemIssue repository
     getIt.registerSingleton<ItemIssueRepository>(ItemIssueRepositoryImpl());
-    
+
     // Workflow repository
     getIt.registerSingleton<WorkflowRepository>(WorkflowRepositoryImpl());
+
+    // Sales repository
+    getIt.registerSingleton<SalesRepository>(SalesRepositoryImpl());
   }
 }

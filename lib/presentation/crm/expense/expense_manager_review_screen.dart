@@ -1886,7 +1886,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                             const SizedBox(height: 20),
                             _DetailRow('Expense Head', item.expenseHead),
                             const SizedBox(height: 12),
-                            _DetailRow('Amount', 'Rs. ${(expenseDetails?.expenseAmount ?? item.amount).toStringAsFixed(2)}'),
+                            _DetailRow('Amount', 'LKR ${(expenseDetails?.expenseAmount ?? item.amount).toStringAsFixed(2)}'),
                             if ((expenseDetails?.remarks ?? item.remarks).isNotEmpty) ...[
                               const SizedBox(height: 20),
                               Divider(height: 1, color: Colors.grey.shade300),
@@ -2667,7 +2667,7 @@ class _ManagerReviewExpenseItemCard extends StatelessWidget {
                   _getStatusChipForExpense(item),
                   const Spacer(),
                   Text(
-                    'Rs. ${item.amount.toStringAsFixed(0)}',
+                    'LKR ${item.amount.toStringAsFixed(0)}',
                     style: GoogleFonts.inter(
                       fontSize: isTablet ? 12 : 11,
                       fontWeight: FontWeight.w600,

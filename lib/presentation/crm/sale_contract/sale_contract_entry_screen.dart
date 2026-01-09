@@ -151,7 +151,7 @@ class _SaleContractEntryScreenState extends State<SaleContractEntryScreen> {
                             const SizedBox(height: 8),
                             Align(
                               alignment: Alignment.centerRight,
-                              child: Text('Total Amount: ₹${_totalAmount.toStringAsFixed(2)}', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                              child: Text('Total Amount: LKR ${_totalAmount.toStringAsFixed(2)}', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                             ),
                           ],
                         ),
@@ -250,7 +250,7 @@ class _ItemRowState extends State<_ItemRow> {
               _MiniField(label: 'Required by Date', child: DatePickerField(initialDate: DateTime.now(), onChanged: (d) => setState(() { widget.model.requiredBy = d; widget.onChanged(); }))),
               _MiniNumber(label: 'Qty', value: widget.model.qty.toString(), onChanged: (v) => setState(() { widget.model.qty = int.tryParse(v) ?? 0; widget.onChanged(); })),
               _MiniNumber(label: 'Rate', value: widget.model.rate.toStringAsFixed(2), onChanged: (v) => setState(() { widget.model.rate = double.tryParse(v) ?? 0; widget.onChanged(); })),
-              _MiniRead(label: 'Amount', value: '₹${widget.model.amount.toStringAsFixed(2)}'),
+              _MiniRead(label: 'Amount', value: 'LKR ${widget.model.amount.toStringAsFixed(2)}'),
               _MiniNumber(label: 'Bonus Qty', value: widget.model.bonusQty.toString(), onChanged: (v) => setState(() { widget.model.bonusQty = int.tryParse(v) ?? 0; })),
               _MiniNumber(label: 'Addl. Bonus Qty', value: widget.model.addlBonusQty.toString(), onChanged: (v) => setState(() { widget.model.addlBonusQty = int.tryParse(v) ?? 0; })),
             ],

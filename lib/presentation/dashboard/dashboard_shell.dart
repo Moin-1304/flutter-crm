@@ -16,6 +16,7 @@ import '../attendance/punch_home_screen.dart';
 import '../tour_plan/tour_plan_screen.dart';
 import 'package:boilerplate/presentation/crm/crm_shell.dart';
 import '../crm/customer_issue/customer_issue_list_screen.dart';
+import '../sales/sales_order_list.dart';
 
 class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key});
@@ -33,14 +34,67 @@ class _DashboardShellState extends State<DashboardShell>
   bool _isKeyboardVisible = false;
 
   // Pages are instance-scoped and non-const to avoid stale state reuse across sessions
-  List<Widget> _pages = <Widget>[
-    PunchHomeScreen(key: UniqueKey()),
-    TourPlanScreen(key: UniqueKey()),
-    CRMShell(key: UniqueKey(), initialIndex: 0, showBottomNav: false), // DCR
-    CRMShell(
-        key: UniqueKey(), initialIndex: 1, showBottomNav: false), // Deviations
-    CustomerIssueListScreen(key: UniqueKey()), // Customer Issue (Index 4)
-  ];
+  late final List<Widget> _pages = _initializePages();
+
+  List<Widget> _initializePages() {
+    print('🚀 [DashboardShell] Initializing pages array...');
+    final pages = <Widget>[];
+
+    try {
+      print('  Adding PunchHomeScreen...');
+      pages.add(PunchHomeScreen(key: UniqueKey()));
+    } catch (e) {
+      print('  ❌ Error adding PunchHomeScreen: $e');
+    }
+
+    try {
+      print('  Adding TourPlanScreen...');
+      pages.add(TourPlanScreen(key: UniqueKey()));
+    } catch (e) {
+      print('  ❌ Error adding TourPlanScreen: $e');
+    }
+
+    try {
+      print('  Adding CRMShell (DCR)...');
+      pages.add(
+          CRMShell(key: UniqueKey(), initialIndex: 0, showBottomNav: false));
+    } catch (e) {
+      print('  ❌ Error adding CRMShell (DCR): $e');
+    }
+
+    try {
+      print('  Adding CRMShell (Deviations)...');
+      pages.add(
+          CRMShell(key: UniqueKey(), initialIndex: 1, showBottomNav: false));
+    } catch (e) {
+      print('  ❌ Error adding CRMShell (Deviations): $e');
+    }
+
+    try {
+      print('  Adding CustomerIssueListScreen...');
+      pages.add(CustomerIssueListScreen(key: UniqueKey()));
+    } catch (e) {
+      print('  ❌ Error adding CustomerIssueListScreen: $e');
+    }
+
+    print('  Created ${pages.length} pages, now adding Sales...');
+    try {
+      print('  Attempting to create SaleOrderListScreen...');
+      final salesScreen = SaleOrderListScreen(key: UniqueKey());
+      print('  ✅ SaleOrderListScreen created successfully');
+      pages.add(salesScreen);
+      print(
+          '  ✅ Successfully added SaleOrderListScreen. Total pages: ${pages.length}');
+    } catch (e, stackTrace) {
+      print('  ❌❌❌ ERROR creating SaleOrderListScreen: $e');
+      print('  Stack trace: $stackTrace');
+    }
+
+    print('🏁 [DashboardShell] Final pages count: ${pages.length}');
+    print(
+        '🏁 [DashboardShell] Pages: ${pages.map((p) => p.runtimeType.toString()).toList()}');
+    return pages;
+  }
 
   @override
   void initState() {
@@ -133,13 +187,23 @@ class _DashboardShellState extends State<DashboardShell>
   }
 
   void _onNavSelect(int i) {
+    print('Navigation selected: $i, Total pages: ${_pages.length}');
+    print(
+        'Pages list: ${_pages.map((p) => p.runtimeType.toString()).toList()}');
     if (_selected != i) {
-      setState(() {
-        _selected = i;
-      });
-      // Re-validate user when switching to a different screen
-      // This ensures buttons are properly enabled/disabled based on current validation
-      _validateUser();
+      // Ensure index is within bounds
+      if (i >= 0 && i < _pages.length) {
+        setState(() {
+          _selected = i;
+        });
+        print('Current selected index: $_selected');
+        // Re-validate user when switching to a different screen
+        // This ensures buttons are properly enabled/disabled based on current validation
+        _validateUser();
+      } else {
+        print(
+            'ERROR: Index $i is out of bounds! Array length: ${_pages.length}');
+      }
     }
   }
 
@@ -154,6 +218,9 @@ class _DashboardShellState extends State<DashboardShell>
     final baseBottomPadding = isTablet ? 12.0 : 10.0;
     final bottomSpacing =
         safeBottom > 0 ? baseBottomPadding + 8 : baseBottomPadding;
+
+    // Clamp selected index to valid range for bottom nav
+    final clampedSelected = selected < destinations.length ? selected : -1;
 
     return Container(
       decoration: BoxDecoration(
@@ -183,7 +250,7 @@ class _DashboardShellState extends State<DashboardShell>
           crossAxisAlignment: CrossAxisAlignment.center,
           children: List.generate(destinations.length, (index) {
             final dest = destinations[index];
-            final isSelected = selected == index;
+            final isSelected = clampedSelected == index;
             final iconWidget = isSelected
                 ? (dest.selectedIcon ?? dest.icon ?? const Icon(Icons.circle))
                 : (dest.icon ?? const Icon(Icons.circle));
@@ -247,7 +314,7 @@ class _DashboardShellState extends State<DashboardShell>
           userDetailStore: _userDetailStore,
           userStore: _userStore,
         ),
-        child: _pages[_selected],
+        child: _selected < _pages.length ? _pages[_selected] : _pages[0],
         userDetailStore: _userDetailStore,
       );
     }
@@ -263,11 +330,11 @@ class _DashboardShellState extends State<DashboardShell>
         userStore: _userStore,
       ),
       userDetailStore: _userDetailStore,
-      bottomNav: _isKeyboardVisible
+      bottomNav: _isKeyboardVisible || _selected >= destinations.length
           ? null
           : _buildModernBottomNav(
               context, _selected, _onNavSelect, destinations),
-      child: _pages[_selected],
+      child: _selected < _pages.length ? _pages[_selected] : _pages[0],
     );
   }
 }
@@ -608,6 +675,15 @@ class _SideMenu extends StatelessWidget {
                     label: 'Customer Issue',
                     selected: selected == 4,
                     onTap: () => onSelect(4),
+                    isTablet: isTablet,
+                  ),
+                  SizedBox(height: isTablet ? 8 : 6),
+                  _ModernDrawerItem(
+                    icon: Icons.sell_outlined,
+                    selectedIcon: Icons.sell,
+                    label: 'Sales',
+                    selected: selected == 5,
+                    onTap: () => onSelect(5),
                     isTablet: isTablet,
                   ),
 

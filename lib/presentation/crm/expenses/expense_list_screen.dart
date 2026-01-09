@@ -30,7 +30,7 @@ class ExpenseManagerReviewList extends StatelessWidget {
         child: ListTile(
           leading: const Icon(Icons.verified_user_outlined),
           title: Text('Approve Expense #${index + 1}'),
-          subtitle: const Text('Employee: Jane • Amount: Rs 980'),
+          subtitle: const Text('Employee: Jane • Amount: LKR 980'),
           trailing: Wrap(
             spacing: 8,
             children: [

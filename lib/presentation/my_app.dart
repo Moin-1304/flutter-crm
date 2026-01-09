@@ -8,7 +8,12 @@ import 'package:boilerplate/data/network/interceptors/error_interceptor.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/utils/locale/app_localization.dart';
 import 'package:boilerplate/utils/routes/routes.dart';
+<<<<<<< Updated upstream
 import 'package:event_bus/event_bus.dart';
+=======
+import 'package:boilerplate/presentation/sales/detail/sale_order_view_screen.dart';
+import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
+>>>>>>> Stashed changes
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -81,6 +86,30 @@ class _MyAppState extends State<MyApp> {
               ? AppThemeData.darkThemeData
               : AppThemeData.lightThemeData,
           routes: Routes.routes,
+          onGenerateRoute: (settings) {
+            // Handle routes with arguments
+            if (settings.name == Routes.saleView) {
+              final args = settings.arguments as Map<String, dynamic>?;
+              print('🔍 [MyApp] onGenerateRoute for saleView');
+              print('   Arguments: $args');
+              print('   orderId: ${args?['orderId']}');
+              print('   orderData type: ${args?['orderData']?.runtimeType}');
+              print('   orderData id: ${args?['orderData']?.id}');
+              
+              return MaterialPageRoute(
+                builder: (context) => SaleOrderViewScreen(
+                  orderId: args?['orderId'] as String?,
+                  orderData: args?['orderData'] as SalesOrderApiItem?,
+                ),
+              );
+            }
+            // For other routes, use the routes map
+            final builder = Routes.routes[settings.name];
+            if (builder != null) {
+              return MaterialPageRoute(builder: builder, settings: settings);
+            }
+            return null;
+          },
           initialRoute: Routes.splash, // Always start with splash screen
           locale: Locale(_languageStore.locale),
           supportedLocales: _languageStore.supportedLanguages

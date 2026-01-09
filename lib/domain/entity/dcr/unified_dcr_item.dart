@@ -140,7 +140,7 @@ class UnifiedDcrItem {
   double? get expenseAmount {
     if (isExpense && typeOfWork.contains('Amount:')) {
       try {
-        final amountStr = typeOfWork.replaceAll('Amount:', '').replaceAll('Rs.', '').trim();
+        final amountStr = typeOfWork.replaceAll('Amount:', '').replaceAll('LKR', '').trim();
         return double.parse(amountStr);
       } catch (e) {
         return null;

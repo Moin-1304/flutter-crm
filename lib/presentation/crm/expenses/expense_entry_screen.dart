@@ -513,7 +513,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '(${detail.expenseType} - ₹${detail.amountController.text})',
+                            '(${detail.expenseType} - ${detail.amountController.text})',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: const Color(0xFF4db1b3),

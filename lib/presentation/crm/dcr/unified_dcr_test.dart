@@ -175,7 +175,7 @@ class UnifiedDcrTestScreen extends StatelessWidget {
                     Text('Purpose: ${item.displaySubtitle}'),
                   ] else ...[
                     Text('Expense Type: ${item.expenseType ?? 'Unknown'}'),
-                    Text('Amount: ${item.expenseAmount != null ? 'Rs. ${item.expenseAmount!.toStringAsFixed(0)}' : 'Unknown'}'),
+                    Text('Amount: ${item.expenseAmount != null ? 'LKR ${item.expenseAmount!.toStringAsFixed(0)}' : 'Unknown'}'),
                     if (item.remarks.isNotEmpty) Text('Remarks: ${item.remarks}'),
                   ],
                   const SizedBox(height: 8),

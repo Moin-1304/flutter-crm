@@ -1134,7 +1134,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                         const SizedBox(height: 20),
                         _DetailRow('Expense Type', item.expenseType ?? 'Unknown'),
                         const SizedBox(height: 12),
-                        _DetailRow('Amount', item.expenseAmount != null ? 'Rs. ${item.expenseAmount!.toStringAsFixed(2)}' : 'Unknown'),
+                        _DetailRow('Amount', item.expenseAmount != null ? 'LKR ${item.expenseAmount!.toStringAsFixed(2)}' : 'Unknown'),
                       ],
                       if (item.remarks.isNotEmpty) ...[
                         const SizedBox(height: 20),
@@ -2316,7 +2316,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
                     ),
                 ] else if (item.expenseAmount != null) ...[
                   Text(
-                    'Rs. ${item.expenseAmount!.toStringAsFixed(0)}',
+                    'LKR ${item.expenseAmount!.toStringAsFixed(0)}',
                     style: GoogleFonts.inter(
                       fontSize: isTablet ? 12 : 11,
                       fontWeight: FontWeight.w600,

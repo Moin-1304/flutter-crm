@@ -131,7 +131,7 @@ class _SaleOrderScreenState extends State<SaleOrderScreen> {
       }
     }
     final grouped = buf.toString().split('').reversed.join();
-    return '₹$grouped';
+    return 'LKR$grouped';
   }
 
   Future<void> _pickFromDate() async {

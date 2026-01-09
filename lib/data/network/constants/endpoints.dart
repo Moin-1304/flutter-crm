@@ -176,4 +176,8 @@ class Endpoints {
   // Workflow endpoints
   static const String workflowGetAllActions =
       "$baseUrl/WorkflowMaster/GetAllActions";
+
+  // Sales endpoints
+  static const String salesOrderList = "$baseUrl/SaleOrder/List";
+  static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
 }

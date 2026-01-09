@@ -5,7 +5,6 @@ import 'package:boilerplate/presentation/crm/crm_shell.dart';
 import 'package:boilerplate/presentation/splash/splash_screen.dart';
 import 'package:flutter/material.dart';
 import '../../presentation/sales/detail/sale_creation.dart';
-import '../../presentation/sales/detail/sale_order_creation_screen.dart';
 import '../../presentation/sales/sale_screen.dart';
 
 class Routes {
@@ -27,8 +26,9 @@ class Routes {
   static const String crmTourPlan = '/crm/tour_plan';
   static const String crmContracts = '/crm/contracts';
   static const String punch = '/attendance/punch';
-  static const String saleCreate = 'sells-create';
-  static const String saleList = 'sells-list';
+  static const String saleCreate = '/sells-create';
+  static const String saleList = '/sells-list';
+  static const String saleView = '/sells-view';
 
   static final routes = <String, WidgetBuilder>{
     splash: (BuildContext context) => const SplashScreen(),

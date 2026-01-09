@@ -677,7 +677,7 @@ final List<DCRItem> _mockData = [
   DCRItem(
     cluster: 'Andheri East',
     customer: 'Expense: Travel',
-    purpose: 'Amount: Rs. 1,200',
+    purpose: 'Amount: LKR 1,200',
     type: 'EXP',
     status: 'Pending',
   ),
@@ -693,7 +693,7 @@ final List<DCRItem> _mockData = [
   DCRItem(
     cluster: 'Bandra West',
     customer: 'Expense: Food',
-    purpose: 'Amount: Rs. 900',
+    purpose: 'Amount: LKR 900',
     type: 'EXP',
     status: 'Draft',
   ),
@@ -727,7 +727,7 @@ final List<DCRItem> _mockData = [
   DCRItem(
     cluster: 'Adhoc',
     customer: 'Expense: Miscellaneous',
-    purpose: 'Amount: Rs. 500',
+    purpose: 'Amount: LKR 500',
     type: 'EXP',
     status: 'Pending',
   ),
