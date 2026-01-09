@@ -63,21 +63,38 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   final GlobalKey _employeeFilterSectionKey = GlobalKey();
 
   void _scrollFilterSectionIntoView(GlobalKey key) {
+    // Use multiple post-frame callbacks to ensure layout is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = key.currentContext;
-      if (context == null || !_filterScrollController.hasClients) return;
-      final RenderObject? renderObject = context.findRenderObject();
-      if (renderObject == null || !renderObject.attached) return;
-      final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
-      if (viewport == null) return;
-      final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
-      final position = _filterScrollController.position;
-      final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
-      _filterScrollController.animateTo(
-        clamped,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOutCubic,
-      );
+      // Wait for another frame to ensure layout is stable
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          final context = key.currentContext;
+          if (context == null || !_filterScrollController.hasClients) return;
+          final RenderObject? renderObject = context.findRenderObject();
+          if (renderObject == null || !renderObject.attached) return;
+          
+          // Check if layout is needed
+          if (renderObject.debugNeedsLayout) return;
+          
+          final RenderAbstractViewport? viewport = RenderAbstractViewport.of(renderObject);
+          if (viewport == null) return;
+          
+          final double target = viewport.getOffsetToReveal(renderObject, 0.05).offset;
+          final position = _filterScrollController.position;
+          if (!position.hasContentDimensions) return;
+          
+          final double clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+          _filterScrollController.animateTo(
+            clamped,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+          );
+        } catch (e) {
+          // Silently handle any scroll errors to prevent layout issues
+          print('Error scrolling to filter section: $e');
+        }
+      });
     });
   }
   
@@ -278,10 +295,24 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
         print('No status filter applied - showing all ${_deviations.length} deviations');
       } else {
         _filteredDeviations = _deviations.where((deviation) {
-          final matches = deviation.deviationStatus != null && 
-                 deviation.deviationStatus!.trim().toLowerCase() == _selectedStatus!.trim().toLowerCase();
+          // Use deviationStatus1 if available (actual status text), otherwise fall back to deviationStatus
+          final statusText = deviation.deviationStatus1 ?? deviation.deviationStatus;
+          final apiStatus = statusText.trim().toLowerCase();
+          final filterStatus = _selectedStatus!.trim().toLowerCase();
+          
+          bool matches;
+          // If filtering by "Pending" and status is empty, treat as pending
+          if (filterStatus == 'pending' && apiStatus.isEmpty) {
+            matches = true;
+          } else {
+            // Normalize both strings (remove hyphens, extra spaces)
+            final normalizedApiStatus = apiStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+            final normalizedFilterStatus = filterStatus.replaceAll('-', ' ').replaceAll(RegExp(r'\s+'), ' ');
+            matches = normalizedApiStatus == normalizedFilterStatus;
+          }
+          
           if (matches) {
-            print('Status match: ${deviation.deviationStatus} == $_selectedStatus');
+            print('Status match: $statusText == $_selectedStatus');
           }
           return matches;
         }).toList();
@@ -699,21 +730,60 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
       city: apiItem.clusterName,
       type: apiItem.deviationType,
       description: apiItem.description,
-      status: apiItem.deviationStatus,
+      status: apiItem.deviationStatus1 ?? apiItem.deviationStatus,
     );
+  }
+
+  /// Parse From Cluster from Tour Plan name (format: "text | customer | date")
+  /// Returns the text part which represents the cluster
+  String _parseFromClusterFromTourPlan(String? tourPlanName) {
+    if (tourPlanName == null || tourPlanName.trim().isEmpty) {
+      return 'Not Available';
+    }
+    try {
+      final parts = tourPlanName.split('|');
+      if (parts.isNotEmpty) {
+        return parts[0].trim().isEmpty ? 'Not Available' : parts[0].trim();
+      }
+    } catch (e) {
+      // If parsing fails, return original
+    }
+    return 'Not Available';
+  }
+
+  /// Parse From Customer from Tour Plan name (format: "text | customer | date")
+  /// Returns the customer part
+  String _parseFromCustomerFromTourPlan(String? tourPlanName) {
+    if (tourPlanName == null || tourPlanName.trim().isEmpty) {
+      return 'Not Available';
+    }
+    try {
+      final parts = tourPlanName.split('|');
+      if (parts.length >= 2) {
+        return parts[1].trim().isEmpty ? 'Not Available' : parts[1].trim();
+      }
+    } catch (e) {
+      // If parsing fails, return original
+    }
+    return 'Not Available';
   }
 
   /// Show deviation details modal (same as deviation list screen)
   void _showDeviationDetails(DeviationApiItem data) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final String typeLabel = data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
-    final String statusLabel = data.deviationStatus.isNotEmpty ? data.deviationStatus : 'Status';
+    
+    // Use deviationStatus1 if available (actual status text), otherwise fall back to deviationStatus
+    final String statusText = data.deviationStatus1 ?? data.deviationStatus;
+    final String statusLabel = statusText.isNotEmpty ? statusText : 'Pending';
+    
     final String statusLower = statusLabel.toLowerCase();
     final bool isApproved = statusLower.contains('approved');
     final bool isSentBack = statusLower.contains('sent back') || statusLower.contains('sentback');
-    final bool isOpen = statusLower.contains('open') || statusLower.contains('pending');
-    // Enable buttons only if status is "Open" (or "Pending")
-    final bool buttonsEnabled = isOpen && !isApproved && !isSentBack;
+    
+    // Buttons should be enabled if it's not already approved or sent back
+    // This includes "Open", "Pending", or empty status
+    final bool buttonsEnabled = !isApproved && !isSentBack;
     
     showModalBottomSheet(
       context: context,
@@ -825,10 +895,40 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                       const SizedBox(height: 20),
                       Divider(height: 1, color: Colors.grey.shade300),
                       const SizedBox(height: 20),
-                      // Show cluster only for "UnPlanned Visit"
+                      // Show From and To Area/Customer for "UnPlanned Visit"
                       if (typeLabel.toLowerCase().contains('unplanned visit')) ...[
-                        _DetailRow('Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
+                        // From Area / Customer (from Tour Plan) - Only show if Tour Plan is linked
+                        if (data.tourPlanName.isNotEmpty) ...[
+                          Text(
+                            'From Area / Customer',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _DetailRow('From Cluster', _parseFromClusterFromTourPlan(data.tourPlanName)),
+                          const SizedBox(height: 12),
+                          _DetailRow('From Customer', _parseFromCustomerFromTourPlan(data.tourPlanName)),
+                          const SizedBox(height: 20),
+                        ],
+                        // To Area / Customer
+                        Text(
+                          'To Area / Customer',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _DetailRow('To Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
                         const SizedBox(height: 12),
+                        _DetailRow('To Customer', data.customerId > 0 ? 'Customer ID: ${data.customerId}' : 'Not Assigned'),
+                        const SizedBox(height: 20),
                       ],
                       _DetailRow('Tour Plan', _EnhancedDeviationCard._valueOrPlaceholder(data.tourPlanName, placeholder: 'Not Linked')),
                       const SizedBox(height: 20),
@@ -1264,7 +1364,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.filter_alt_rounded,
+                        Icons.format_list_bulleted_outlined,
                         color: tealGreen,
                         size: isTablet ? 18 : 16,
                       ),
@@ -1385,7 +1485,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                             'Filters',
                             style: GoogleFonts.inter(
                                   fontSize: isMobile ? 18 : 20,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.normal,
                                   color: Colors.grey[900],
                                   letterSpacing: -0.5,
                                 ),
@@ -1430,7 +1530,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                   options: _statusOptions,
                                   onChanged: (v) => setModalState(() => _tempStatus = v),
                                   isTablet: isTablet,
-                                  onExpanded: () => _scrollFilterSectionIntoView(_statusFilterSectionKey),
+                                  // Removed onExpanded to prevent layout conflicts during scrolling
                                 ),
                                 const SizedBox(height: 24),
                                 // Employee
@@ -1443,7 +1543,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                     options: _employeeOptions,
                                     onChanged: (v) => setModalState(() => _tempEmployee = v),
                                     isTablet: isTablet,
-                                    onExpanded: () => _scrollFilterSectionIntoView(_employeeFilterSectionKey),
+                                    // Removed onExpanded to prevent layout conflicts during scrolling
                                   ),
                                 if (!_shouldDisableEmployeeFilter()) const SizedBox(height: 24),
                               ],
@@ -1998,11 +2098,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
         _filteredOptions = widget.options;
       }
     });
-    if (_isExpanded) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onExpanded?.call();
-    });
-    }
+    // Removed onExpanded callback to prevent layout conflicts during scrolling
   }
   
   void _selectOption(String? option) {
@@ -2033,7 +2129,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               widget.title,
               style: GoogleFonts.inter(
                 fontSize: isTablet ? 16 : 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.normal,
                 color: Colors.grey[900],
                 letterSpacing: -0.3,
               ),
@@ -2130,7 +2226,6 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               maxHeight: isTablet ? 400 : 350,
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
                   padding: EdgeInsets.all(isTablet ? 12 : 10),
@@ -2146,8 +2241,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           color: Colors.grey[900],
                         ),
                         decoration: InputDecoration(
-                          hintText:
-                              'Search ${widget.title.toLowerCase()}...',
+                          hintText: 'Search ${widget.title.toLowerCase()}...',
                           hintStyle: GoogleFonts.inter(
                             fontSize: isTablet ? 14 : 13,
                             color: Colors.grey[400],
@@ -2216,7 +2310,6 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
-                          shrinkWrap: true,
                           padding: EdgeInsets.symmetric(
                             horizontal: isTablet ? 12 : 10,
                             vertical: isTablet ? 8 : 6,

@@ -13,6 +13,7 @@ import 'package:boilerplate/presentation/post/store/post_store.dart';
 import 'package:boilerplate/presentation/crm/tour_plan/store/tour_plan_store.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:boilerplate/data/network/apis/user/user_api_client.dart';
 import 'package:boilerplate/presentation/dashboard/store/menu_store.dart';
 
@@ -106,5 +107,8 @@ class StoreModule {
 
     // Menu Store
     getIt.registerSingleton<MenuStore>(MenuStore());
+
+    // User Validation Store
+    getIt.registerSingleton<UserValidationStore>(UserValidationStore());
   }
 }

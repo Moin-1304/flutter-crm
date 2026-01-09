@@ -30,6 +30,8 @@ class DcrEntry {
     this.customerId,
     this.detailId,
     this.clusterId,
+    this.coVisit = false,
+    this.coVisitorId,
   });
 
   final String id;
@@ -55,6 +57,8 @@ class DcrEntry {
   final int? customerId;
   final int? detailId; // TourPlanDCRDetails child Id for edit
   final int? clusterId; // ClusterId from detail
+  final bool coVisit;
+  final int? coVisitorId; // Reporting manager ID for co-visit
 
   DcrEntry copyWith({
     String? id,
@@ -80,6 +84,8 @@ class DcrEntry {
     int? customerId,
     int? detailId,
     int? clusterId,
+    bool? coVisit,
+    int? coVisitorId,
   }) {
     return DcrEntry(
       id: id ?? this.id,
@@ -105,6 +111,8 @@ class DcrEntry {
       customerId: customerId ?? this.customerId,
       detailId: detailId ?? this.detailId,
       clusterId: clusterId ?? this.clusterId,
+      coVisit: coVisit ?? this.coVisit,
+      coVisitorId: coVisitorId ?? this.coVisitorId,
     );
   }
 }
@@ -139,6 +147,8 @@ class CreateDcrParams {
     this.complaintStatus,
     this.complaintDate,
     this.complaintRemarks,
+    this.coVisit = false,
+    this.coVisitorId,
   });
 
   final DateTime date;
@@ -170,6 +180,8 @@ class CreateDcrParams {
   final String? complaintStatus;
   final DateTime? complaintDate;
   final String? complaintRemarks;
+  final bool coVisit;
+  final int? coVisitorId; // Reporting manager ID for co-visit
 }
 
 

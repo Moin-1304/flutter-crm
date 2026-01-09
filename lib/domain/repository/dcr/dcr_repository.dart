@@ -33,6 +33,9 @@ abstract class DcrRepository {
   
   // Expense operations
   Future<ExpenseSaveResponse> saveExpense(ExpenseSaveRequest request);
+  
+  // User validation
+  Future<DcrValidateUserResponse> validateUser(int userId);
 }
 
 

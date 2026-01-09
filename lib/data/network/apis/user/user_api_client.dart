@@ -13,7 +13,8 @@ class UserApiClient {
 
   UserApiClient(this._dioClient);
 
-  Future<Response> get(String endpoint, {Map<String, dynamic>? queryParams, String? token}) async {
+  Future<Response> get(String endpoint,
+      {Map<String, dynamic>? queryParams, String? token}) async {
     return await _dioClient.dio.get(
       endpoint,
       queryParameters: queryParams,
@@ -34,7 +35,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return UserDetail.fromJson(response.data);
       } else {
@@ -63,7 +64,6 @@ class UserApiClient {
           },
         ),
       );
-      
 
       // Accept response as List or wrapped in a Map
       if (response.data == null) {
@@ -72,18 +72,74 @@ class UserApiClient {
 
       dynamic payload = response.data;
       if (payload is Map) {
-        payload = payload['items'] ?? payload['data'] ?? payload['result'] ?? payload['Records'] ?? [];
+        payload = payload['items'] ??
+            payload['data'] ??
+            payload['result'] ??
+            payload['Records'] ??
+            [];
       }
 
       if (payload is! List) {
-        throw Exception('Unexpected calendar view response shape: ${response.data.runtimeType}');
+        throw Exception(
+            'Unexpected calendar view response shape: ${response.data.runtimeType}');
       }
 
       return payload
-          .map<CalendarViewData>((json) => CalendarViewData.fromJson(json as Map<String, dynamic>))
+          .map<CalendarViewData>(
+              (json) => CalendarViewData.fromJson(json as Map<String, dynamic>))
           .toList();
     } catch (e) {
       throw Exception('Failed to fetch calendar view data: ${e.toString()}');
+    }
+  }
+
+  /// Get tour plan by ID (GET request with query params)
+  Future<TourPlanItem> getTourPlanById(
+      int tourPlanId, int id, String token) async {
+    try {
+      final response = await _dioClient.dio.get(
+        Endpoints.tourPlanGet,
+        queryParameters: {
+          'TourPlanId': tourPlanId,
+          'Id': id,
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        // Handle various response shapes (direct object, or wrapped in data/result)
+        dynamic data = response.data;
+        print('===========================================');
+        print('Raw response data: $data');
+        if (data is Map<String, dynamic>) {
+          // Check if wrapped
+          if (data.containsKey('data'))
+            data = data['data'];
+          else if (data.containsKey('result'))
+            data = data['result'];
+          else if (data.containsKey('item')) data = data['item'];
+
+          // If data is a list, take first item
+          if (data is List && data.isNotEmpty) {
+            return TourPlanItem.fromJson(data.first);
+          } else if (data is Map<String, dynamic>) {
+            return TourPlanItem.fromJson(data);
+          }
+        } else if (data is List && data.isNotEmpty) {
+          return TourPlanItem.fromJson(data.first);
+        }
+
+        throw Exception('Unexpected response format');
+      } else {
+        throw Exception('No data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to fetch tour plan details: ${e.toString()}');
     }
   }
 
@@ -103,7 +159,9 @@ class UserApiClient {
           },
         ),
       );
-      
+
+      print('===========================================');
+      print('getTourPlanDetail: response: ${response.data}');
       if (response.data != null) {
         return TourPlanGetResponse.fromJson(response.data);
       } else {
@@ -130,7 +188,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanGetResponse.fromJson(response.data);
       } else {
@@ -165,7 +223,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         // Check if response is a single TourPlanItem or TourPlanGetResponse
         if (response.data is Map && response.data['items'] != null) {
@@ -218,7 +276,6 @@ class UserApiClient {
     String token,
   ) async {
     try {
-
       final response = await _dioClient.dio.post(
         Endpoints.tourPlanUpdate,
         data: requestBody,
@@ -229,7 +286,6 @@ class UserApiClient {
           },
         ),
       );
-
 
       final data = response.data;
       if (data is Map<String, dynamic>) {
@@ -263,14 +319,15 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanAggregateCountResponse.fromJson(response.data);
       } else {
         throw Exception('No aggregate count data received');
       }
     } catch (e) {
-      throw Exception('Failed to fetch aggregate count summary: ${e.toString()}');
+      throw Exception(
+          'Failed to fetch aggregate count summary: ${e.toString()}');
     }
   }
 
@@ -290,7 +347,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanGetSummaryResponse.fromJson(response.data);
       } else {
@@ -317,14 +374,15 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanGetManagerSummaryResponse.fromJson(response.data);
       } else {
         throw Exception('No tour plan manager summary data received');
       }
     } catch (e) {
-      throw Exception('Failed to fetch tour plan manager summary: ${e.toString()}');
+      throw Exception(
+          'Failed to fetch tour plan manager summary: ${e.toString()}');
     }
   }
 
@@ -344,14 +402,15 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanGetEmployeeListSummaryResponse.fromJson(response.data);
       } else {
         throw Exception('No tour plan employee list summary data received');
       }
     } catch (e) {
-      throw Exception('Failed to fetch tour plan employee list summary: ${e.toString()}');
+      throw Exception(
+          'Failed to fetch tour plan employee list summary: ${e.toString()}');
     }
   }
 
@@ -371,7 +430,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanActionResponse.fromJson(response.data);
       } else {
@@ -398,7 +457,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanActionResponse.fromJson(response.data);
       } else {
@@ -425,7 +484,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanActionResponse.fromJson(response.data);
       } else {
@@ -452,7 +511,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanActionResponse.fromJson(response.data);
       } else {
@@ -479,7 +538,9 @@ class UserApiClient {
           },
         ),
       );
-      
+      print('===========================================');
+      print('getMappedCustomersByEmployeeId: response: ${response.data}');
+
       if (response.data != null) {
         return GetMappedCustomersByEmployeeIdResponse.fromJson(response.data);
       } else {
@@ -506,7 +567,7 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         return TourPlanCommentSaveResponse.fromJson(response.data);
       } else {
@@ -537,18 +598,20 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         // Try to parse as TourPlanActionResponse
         if (response.data is Map) {
           return TourPlanActionResponse.fromJson(response.data);
         } else {
           // If response is not in expected format, return success
-          return TourPlanActionResponse(status: true, message: 'Tour plan deleted successfully');
+          return TourPlanActionResponse(
+              status: true, message: 'Tour plan deleted successfully');
         }
       } else {
         // If no response data, assume success
-        return TourPlanActionResponse(status: true, message: 'Tour plan deleted successfully');
+        return TourPlanActionResponse(
+            status: true, message: 'Tour plan deleted successfully');
       }
     } catch (e) {
       throw Exception('Failed to delete tour plan: ${e.toString()}');
@@ -571,40 +634,41 @@ class UserApiClient {
           },
         ),
       );
-      
+
       if (response.data != null) {
         // Handle array response (expected format)
         if (response.data is List) {
           final List<dynamic> dataList = response.data as List;
-          
-          final comments = dataList
-              .map((item) {
-                try {
-                  return TourPlanCommentItem.fromJson(item as Map<String, dynamic>);
-                } catch (e) {
-                  rethrow;
-                }
-              })
-              .toList();
-          
+
+          final comments = dataList.map((item) {
+            try {
+              return TourPlanCommentItem.fromJson(item as Map<String, dynamic>);
+            } catch (e) {
+              rethrow;
+            }
+          }).toList();
+
           return comments;
-        } 
+        }
         // Handle single object response (unexpected but handle gracefully)
         else if (response.data is Map) {
-          return [TourPlanCommentItem.fromJson(response.data as Map<String, dynamic>)];
-        } 
+          return [
+            TourPlanCommentItem.fromJson(response.data as Map<String, dynamic>)
+          ];
+        }
         // Handle empty response
         else if (response.data.toString().isEmpty) {
           return [];
-        }
-        else {
-          throw Exception('Unexpected response format: ${response.data.runtimeType}');
+        } else {
+          throw Exception(
+              'Unexpected response format: ${response.data.runtimeType}');
         }
       } else {
         throw Exception('No tour plan comments list response received');
       }
     } catch (e, stackTrace) {
-      throw Exception('Failed to fetch tour plan comments list: ${e.toString()}');
+      throw Exception(
+          'Failed to fetch tour plan comments list: ${e.toString()}');
     }
   }
 }

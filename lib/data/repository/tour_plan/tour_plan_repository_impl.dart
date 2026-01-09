@@ -567,6 +567,25 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
     }
   }
 
+  @override
+  Future<TourPlanItem> getTourPlanById({
+    required int tourPlanId,
+    required int id,
+  }) async {
+    try {
+      // Get auth token from SharedPreferenceHelper
+      final String? token = await _sharedPreferenceHelper.authToken;
+      if (token == null || token.isEmpty) {
+        throw Exception('Authentication token not found. Please login again.');
+      }
+      
+      final res = await _apiClientInstance.getTourPlanById(tourPlanId, id, token);
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
 }
 
 class _SeedItem {

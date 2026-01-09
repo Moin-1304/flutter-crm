@@ -8,12 +8,18 @@ class ErrorInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    _eventBus.fire(
-      ErrorEvent(path: err.requestOptions.path, response: err.response),
-    );
+    if (err.response?.statusCode == 401) {
+      _eventBus.fire(UnauthorizedEvent());
+    } else {
+      _eventBus.fire(
+        ErrorEvent(path: err.requestOptions.path, response: err.response),
+      );
+    }
     super.onError(err, handler);
   }
 }
+
+class UnauthorizedEvent {}
 
 class ErrorEvent {
   final String path;

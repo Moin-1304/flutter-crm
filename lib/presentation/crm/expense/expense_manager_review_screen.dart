@@ -1163,7 +1163,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                             'Filters',
                             style: GoogleFonts.inter(
                                   fontSize: isMobile ? 18 : 20,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.normal,
                                   color: Colors.grey[900],
                                   letterSpacing: -0.5,
                                 ),
@@ -3424,7 +3424,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               widget.title,
               style: GoogleFonts.inter(
                 fontSize: widget.isTablet ? 15 : 13,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.normal,
                 color: Colors.grey[900],
               ),
             ),
