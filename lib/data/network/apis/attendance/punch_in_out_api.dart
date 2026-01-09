@@ -74,8 +74,59 @@ class PunchInOutApi {
       } else {
         throw Exception('No response data received');
       }
+    } on DioException catch (e) {
+      // Enhanced error handling for DioException
+      String errorMessage = 'Failed to save punch in/out';
+      
+      if (e.response != null) {
+        final statusCode = e.response?.statusCode;
+        final responseData = e.response?.data;
+        
+        // Try to extract error message from response
+        if (responseData is Map<String, dynamic>) {
+          final message = responseData['message'] ?? 
+                         responseData['Message'] ?? 
+                         responseData['errorMessage'] ?? 
+                         responseData['error'] ?? 
+                         responseData['Error'];
+          if (message != null && message.toString().isNotEmpty) {
+            errorMessage = message.toString();
+          } else if (statusCode != null) {
+            if (statusCode == 500) {
+              errorMessage = 'Server error occurred. Please try again later.';
+            } else if (statusCode == 400) {
+              errorMessage = 'Invalid request. Please check your input and try again.';
+            } else if (statusCode == 401) {
+              errorMessage = 'Authentication failed. Please login again.';
+            } else {
+              errorMessage = 'Failed to save punch in/out. Please try again.';
+            }
+          }
+        } else if (responseData is String && responseData.isNotEmpty) {
+          errorMessage = responseData;
+        } else if (statusCode != null) {
+          if (statusCode == 500) {
+            errorMessage = 'Server error occurred. Please try again later.';
+          } else {
+            errorMessage = 'Failed to save punch in/out (Status $statusCode). Please try again.';
+          }
+        }
+      } else {
+        // No response - connection/timeout errors
+        if (e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.sendTimeout ||
+            e.type == DioExceptionType.receiveTimeout) {
+          errorMessage = 'Connection error. Please check your internet connection and try again.';
+        } else {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        }
+      }
+      
+      throw Exception(errorMessage);
     } catch (e) {
-      throw Exception('Failed to save punch in/out: ${e.toString()}');
+      // For non-DioException errors, provide a generic message
+      throw Exception('Failed to save punch in/out. Please try again.');
     }
   }
 
@@ -117,8 +168,35 @@ class PunchInOutApi {
       } else {
         throw Exception('No response data received');
       }
+    } on DioException catch (e) {
+      // Enhanced error handling for DioException
+      String errorMessage = 'Failed to load punch records';
+      
+      if (e.response != null) {
+        final statusCode = e.response?.statusCode;
+        if (statusCode == 500) {
+          errorMessage = 'Server error occurred. Please try again later.';
+        } else if (statusCode == 400) {
+          errorMessage = 'Invalid request. Please try again.';
+        } else if (statusCode == 401) {
+          errorMessage = 'Authentication failed. Please login again.';
+        } else {
+          errorMessage = 'Failed to load punch records. Please try again.';
+        }
+      } else {
+        // No response - connection/timeout errors
+        if (e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.connectionTimeout) {
+          errorMessage = 'Connection error. Please check your internet connection.';
+        } else {
+          errorMessage = 'Network error. Please check your connection.';
+        }
+      }
+      
+      throw Exception(errorMessage);
     } catch (e) {
-      throw Exception('Failed to get punch in/out list: ${e.toString()}');
+      // For non-DioException errors, provide a generic message
+      throw Exception('Failed to load punch records. Please try again.');
     }
   }
 }

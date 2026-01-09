@@ -12,7 +12,16 @@ class PunchInOutRepositoryImpl implements PunchInOutRepository {
     try {
       return await _punchInOutApi.savePunchInOut(request);
     } catch (e) {
-      throw Exception('Failed to save punch in/out: ${e.toString()}');
+      // Preserve the user-friendly error message from API layer
+      final errorString = e.toString();
+      if (e is Exception && (errorString.contains('Server error') || 
+          errorString.contains('Connection error') ||
+          errorString.contains('Network error') ||
+          errorString.contains('Authentication failed'))) {
+        // Re-throw as-is if it's already a user-friendly message
+        rethrow;
+      }
+      throw Exception('Failed to save punch in/out. Please try again.');
     }
   }
 
@@ -21,7 +30,15 @@ class PunchInOutRepositoryImpl implements PunchInOutRepository {
     try {
       return await _punchInOutApi.getPunchInOutList(request);
     } catch (e) {
-      throw Exception('Failed to get punch in/out list: ${e.toString()}');
+      // Preserve the user-friendly error message from API layer
+      if (e is Exception && (e.toString().contains('Server error') || 
+          e.toString().contains('Connection error') ||
+          e.toString().contains('Network error') ||
+          e.toString().contains('Authentication failed'))) {
+        // Re-throw as-is if it's already a user-friendly message
+        rethrow;
+      }
+      throw Exception('Failed to load punch records. Please try again.');
     }
   }
 }

@@ -839,11 +839,17 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
 
       final isPunchIn = !_punchedIn;
       
+      // Get sbuId from userDetail (preferred) or fallback to user.sbuId or default to 1
+      // Priority: primarySBUId > userDetail.sbuId > user.sbuId > 1
+      final int sbuIdValue = userDetail.primarySBUId ?? 
+                            (userDetail.sbuId > 0 ? userDetail.sbuId : 
+                            (user.sbuId > 0 ? user.sbuId : 1));
+      
       // Call API to save punch in/out
       final result = await _punchInOutUseCase.savePunchInOut(
         userId: user.userId,
         employeeId: userDetail.employeeId, // Get from user detail store
-        sbuId: user.sbuId,
+        sbuId: sbuIdValue, // Use correct sbuId from userDetail
         createdBy: user.createdBy,
         status: 1, // Active status
         bizUnit: 1, // Default business unit
@@ -880,7 +886,20 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
       setState(() {
         _isLoading = false;
       });
-      _showToast('Error: ${e.toString()}', isError: true);
+      // Extract user-friendly error message
+      String errorMessage = 'Failed to save punch record. Please try again.';
+      final errorString = e.toString();
+      if (errorString.contains('Server error')) {
+        errorMessage = 'Server error occurred. Please try again later.';
+      } else if (errorString.contains('Connection error') || errorString.contains('Network error')) {
+        errorMessage = 'Connection error. Please check your internet connection and try again.';
+      } else if (errorString.contains('Authentication failed')) {
+        errorMessage = 'Authentication failed. Please login again.';
+      } else if (errorString.isNotEmpty && !errorString.contains('Exception:') && !errorString.contains('DioException')) {
+        // Use the error message if it's already user-friendly
+        errorMessage = errorString;
+      }
+      _showToast(errorMessage, isError: true);
     }
     
     _loadLocation();
@@ -906,11 +925,17 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
         return false; // Can't punch out without user details
       }
       
+      // Get sbuId from userDetail (preferred) or fallback to user.sbuId or default to 1
+      // Priority: primarySBUId > userDetail.sbuId > user.sbuId > 1
+      final int sbuIdValue = userDetail.primarySBUId ?? 
+                            (userDetail.sbuId > 0 ? userDetail.sbuId : 
+                            (user.sbuId > 0 ? user.sbuId : 1));
+      
       // Call API to save punch out
       final result = await _punchInOutUseCase.savePunchInOut(
         userId: user.userId,
         employeeId: userDetail.employeeId,
-        sbuId: user.sbuId,
+        sbuId: sbuIdValue, // Use correct sbuId from userDetail
         createdBy: user.createdBy,
         status: 1, // Active status
         bizUnit: 1, // Default business unit
