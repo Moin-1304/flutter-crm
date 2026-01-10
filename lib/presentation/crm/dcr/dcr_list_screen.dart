@@ -775,7 +775,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                                       DeviationEntryScreen(
                                                     dcrId: item.dcrId,
                                                     tourPlanId: item.tourPlanId,
-                                                    initialDate: _date,
+                                                    initialDate: item.parsedDate ?? DateTime.now(),
                                                   ),
                                                 ),
                                               );
@@ -2370,7 +2370,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                     builder: (_) => DeviationEntryScreen(
                                       dcrId: item.dcrId,
                                       tourPlanId: item.tourPlanId,
-                                      initialDate: _date,
+                                      initialDate: item.parsedDate ?? DateTime.now(),
                                     ),
                                   ),
                                 );

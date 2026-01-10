@@ -515,15 +515,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           .toSet();
     }
 
+    // Collect clusters from all tourPlanDetails
     if (tourPlan.tourPlanDetails != null &&
         tourPlan.tourPlanDetails!.isNotEmpty) {
-      final detail = tourPlan.tourPlanDetails!.first;
-      if (detail.clusterNames != null && detail.clusterNames!.isNotEmpty) {
-        _selectedClusters = _parseClusters(detail.clusterNames!);
+      final Set<String> allClusters = <String>{};
+      for (final detail in tourPlan.tourPlanDetails!) {
+        if (detail.clusterNames != null && detail.clusterNames!.isNotEmpty) {
+          allClusters.addAll(_parseClusters(detail.clusterNames!));
+        }
+      }
+      if (allClusters.isNotEmpty) {
+        _selectedClusters = allClusters;
         print(
-            'NewTourPlanScreen: Set clusters from detail: ${_selectedClusters.toList()}');
+            'NewTourPlanScreen: Set clusters from all details: ${_selectedClusters.toList()}');
       }
     }
+    // Fallback to header clusters if no clusters found in details
     if (_selectedClusters.isEmpty &&
         tourPlan.clusters != null &&
         tourPlan.clusters!.isNotEmpty) {
@@ -693,15 +700,33 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               'NewTourPlanScreen: Using fallback customer name (no customerId): $fallbackCustomerName');
         }
 
-        // Parse products from comma-separated string
+        // Parse products from productsToBeDiscussed array (preferred) or productsToDiscuss string (fallback)
         Set<String> parsedProducts = <String>{};
-        if (detail.productsToDiscuss != null &&
+        if (detail.productsToBeDiscussed != null &&
+            detail.productsToBeDiscussed!.isNotEmpty) {
+          // Use productsToBeDiscussed array - map productName to product name
+          for (final product in detail.productsToBeDiscussed!) {
+            if (product.productName.isNotEmpty) {
+              parsedProducts.add(product.productName);
+              // Also ensure the product is in the mapping if we have the ID
+              if (product.productId > 0 &&
+                  !_productNameToId.containsKey(product.productName)) {
+                _productNameToId[product.productName] = product.productId;
+              }
+            }
+          }
+          print(
+              'NewTourPlanScreen: Loaded ${parsedProducts.length} products from productsToBeDiscussed array');
+        } else if (detail.productsToDiscuss != null &&
             detail.productsToDiscuss!.isNotEmpty) {
+          // Fallback to comma-separated string
           parsedProducts = detail.productsToDiscuss!
               .split(',')
               .map((e) => e.trim())
               .where((e) => e.isNotEmpty)
               .toSet();
+          print(
+              'NewTourPlanScreen: Loaded ${parsedProducts.length} products from productsToDiscuss string');
         }
 
         final callData = _CallData(
@@ -1473,12 +1498,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               bizunit: bizunit2,
             );
           } catch (_) {}
+
+          // Add a small delay to ensure API has processed the new tour plan
+          await Future.delayed(const Duration(milliseconds: 500));
         } catch (_) {}
 
-        // Pop back to the previous screen (My Tour Plan screen)
-        // The data has already been refreshed above, so the previous screen will show updated data
+        // Pop back to the previous screen (My Tour Plan screen) with success result
+        // Return true to trigger refresh on the previous screen with its current filters/parameters
+        // This ensures the list is refreshed with the screen's current view parameters
         if (mounted) {
-          Navigator.of(context).pop();
+          Navigator.of(context).pop(true);
         }
       }
     } catch (e, stackTrace) {
@@ -3443,12 +3472,24 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                   );
                                 }
 
+                                // Filter options and show selected items on top
                                 final filtered = _query.isEmpty
                                     ? widget.options
                                     : widget.options
                                         .where((o) =>
                                             o.toLowerCase().contains(_query))
                                         .toList(growable: false);
+
+                                // Sort to show selected items on top
+                                final sortedFiltered =
+                                    List<String>.from(filtered);
+                                sortedFiltered.sort((a, b) {
+                                  final aSelected = _selected.contains(a);
+                                  final bSelected = _selected.contains(b);
+                                  if (aSelected && !bSelected) return -1;
+                                  if (!aSelected && bSelected) return 1;
+                                  return 0;
+                                });
 
                                 // Check if filtered list is empty (after search)
                                 if (filtered.isEmpty) {
@@ -3480,11 +3521,11 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                 return ListView.separated(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 12),
-                                  itemCount: filtered.length,
+                                  itemCount: sortedFiltered.length,
                                   separatorBuilder: (_, __) =>
                                       const SizedBox(height: 12),
                                   itemBuilder: (context, i) {
-                                    final opt = filtered[i];
+                                    final opt = sortedFiltered[i];
                                     final selected = _selected.contains(opt);
                                     return InkWell(
                                       borderRadius: BorderRadius.circular(12),

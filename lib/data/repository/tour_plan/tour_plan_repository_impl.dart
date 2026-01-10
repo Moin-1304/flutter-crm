@@ -16,17 +16,18 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   final List<TourPlanEntry> _entries = <TourPlanEntry>[];
   final UserApiClient? _apiClient;
   final SharedPreferenceHelper _sharedPreferenceHelper;
-  
+
   TourPlanRepositoryImpl({
     UserApiClient? apiClient,
     required SharedPreferenceHelper sharedPreferenceHelper,
-  }) : _apiClient = apiClient, _sharedPreferenceHelper = sharedPreferenceHelper {
+  })  : _apiClient = apiClient,
+        _sharedPreferenceHelper = sharedPreferenceHelper {
     _seedDemoData();
   }
 
   UserApiClient get _apiClientInstance {
     if (_apiClient != null) return _apiClient!;
-    
+
     // Create a default API client if none provided
     final dioConfigs = DioConfigs(
       baseUrl: Endpoints.baseUrl,
@@ -42,8 +43,9 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
     final DateTime now = DateTime.now();
     TourPlanEntry? last;
     for (final String customer in params.customers) {
-      final TourPlanCallDetails details = params.callDetailsByCustomer[customer] ??
-          const TourPlanCallDetails(purposes: <String>[]);
+      final TourPlanCallDetails details =
+          params.callDetailsByCustomer[customer] ??
+              const TourPlanCallDetails(purposes: <String>[]);
       final entry = TourPlanEntry(
         id: _genId(),
         date: DateTime(params.date.year, params.date.month, params.date.day),
@@ -70,15 +72,16 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       // Convert string ID to int
       final int tourPlanId = int.tryParse(id) ?? 0;
       if (tourPlanId == 0) {
         throw Exception('Invalid tour plan ID: $id');
       }
-      
-      final response = await _apiClientInstance.deleteTourPlan(tourPlanId, token);
-      
+
+      final response =
+          await _apiClientInstance.deleteTourPlan(tourPlanId, token);
+
       if (!response.status) {
         throw Exception(response.message);
       }
@@ -96,7 +99,7 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final response = await _apiClientInstance.deleteTourPlan(id, token);
       return response;
     } catch (e) {
@@ -128,7 +131,8 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
     required DateTime month,
     required String employeeId,
   }) async {
-    final List<TourPlanEntry> items = await listMonth(month: month, employeeId: employeeId);
+    final List<TourPlanEntry> items =
+        await listMonth(month: month, employeeId: employeeId);
     final Map<TourPlanMonthlyStatusBucket, int> counts = {
       TourPlanMonthlyStatusBucket.planned: 0,
       TourPlanMonthlyStatusBucket.pending: 0,
@@ -163,7 +167,8 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
           break;
       }
     }
-    return TourPlanMonthSummary(month: DateTime(month.year, month.month, 1), counts: counts);
+    return TourPlanMonthSummary(
+        month: DateTime(month.year, month.month, 1), counts: counts);
   }
 
   @override
@@ -198,17 +203,19 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<List<CalendarViewData>> getCalendarViewData(CalendarViewRequest request) async {
+  Future<List<CalendarViewData>> getCalendarViewData(
+      CalendarViewRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       // Call the actual API
-      final apiData = await _apiClientInstance.getTourPlanCalendarViewData(request, token);
-      
+      final apiData =
+          await _apiClientInstance.getTourPlanCalendarViewData(request, token);
+
       return apiData;
     } catch (e) {
       // Fallback to mock data if API fails
@@ -218,35 +225,40 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanGetResponse> getTourPlanDetail(TourPlanGetRequest request) async {
+  Future<TourPlanGetResponse> getTourPlanDetail(
+      TourPlanGetRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       // Call the actual API
-      final apiResponse = await _apiClientInstance.getTourPlanDetail(request, token);
-      
+      final apiResponse =
+          await _apiClientInstance.getTourPlanDetail(request, token);
+
       return apiResponse;
     } catch (e) {
-      return TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0);
+      return TourPlanGetResponse(
+          items: [], totalRecords: 0, filteredRecords: 0);
     }
   }
 
   @override
-  Future<TourPlanGetResponse> getTourPlanListData(TourPlanGetRequest request) async {
+  Future<TourPlanGetResponse> getTourPlanListData(
+      TourPlanGetRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       // Call the actual API using /List endpoint
-      final apiResponse = await _apiClientInstance.getTourPlanListData(request, token);
-      
+      final apiResponse =
+          await _apiClientInstance.getTourPlanListData(request, token);
+
       return apiResponse;
     } catch (e) {
       rethrow;
@@ -265,7 +277,7 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final res = await _apiClientInstance.getTourPlanDetails(
         tourPlanId: tourPlanId,
         id: id,
@@ -279,14 +291,15 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanCommentSaveResponse> saveTourPlanComment(TourPlanCommentSaveRequest request) async {
+  Future<TourPlanCommentSaveResponse> saveTourPlanComment(
+      TourPlanCommentSaveRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final res = await _apiClientInstance.saveTourPlanComment(request, token);
       return res;
     } catch (e) {
@@ -295,15 +308,17 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<List<TourPlanCommentItem>> getTourPlanCommentsList(TourPlanCommentGetListRequest request) async {
+  Future<List<TourPlanCommentItem>> getTourPlanCommentsList(
+      TourPlanCommentGetListRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.getTourPlanCommentsList(request, token);
+
+      final res =
+          await _apiClientInstance.getTourPlanCommentsList(request, token);
       return res;
     } catch (e) {
       rethrow;
@@ -311,14 +326,15 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> saveTourPlan(Map<String, dynamic> requestBody) async {
+  Future<Map<String, dynamic>> saveTourPlan(
+      Map<String, dynamic> requestBody) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final res = await _apiClientInstance.saveTourPlan(requestBody, token);
       return res;
     } catch (e) {
@@ -334,7 +350,7 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final Map<String, dynamic> requestBody = body;
       final res = await _apiClientInstance.updateTourPlan(requestBody, token);
       return {
@@ -347,15 +363,17 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanAggregateCountResponse> getTourPlanAggregateCountSummary(TourPlanAggregateCountRequest request) async {
+  Future<TourPlanAggregateCountResponse> getTourPlanAggregateCountSummary(
+      TourPlanAggregateCountRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.getTourPlanAggregateCountSummary(request, token);
+
+      final res = await _apiClientInstance.getTourPlanAggregateCountSummary(
+          request, token);
       return res;
     } catch (e) {
       rethrow;
@@ -363,14 +381,15 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanGetSummaryResponse> getTourPlanSummary(TourPlanGetSummaryRequest request) async {
+  Future<TourPlanGetSummaryResponse> getTourPlanSummary(
+      TourPlanGetSummaryRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final res = await _apiClientInstance.getTourPlanSummary(request, token);
       return res;
     } catch (e) {
@@ -379,15 +398,17 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanGetManagerSummaryResponse> getTourPlanManagerSummary(TourPlanGetManagerSummaryRequest request) async {
+  Future<TourPlanGetManagerSummaryResponse> getTourPlanManagerSummary(
+      TourPlanGetManagerSummaryRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.getTourPlanManagerSummary(request, token);
+
+      final res =
+          await _apiClientInstance.getTourPlanManagerSummary(request, token);
       return res;
     } catch (e) {
       rethrow;
@@ -395,15 +416,17 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanGetEmployeeListSummaryResponse> getTourPlanEmployeeListSummary(TourPlanGetEmployeeListSummaryRequest request) async {
+  Future<TourPlanGetEmployeeListSummaryResponse> getTourPlanEmployeeListSummary(
+      TourPlanGetEmployeeListSummaryRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.getTourPlanEmployeeListSummary(request, token);
+
+      final res = await _apiClientInstance.getTourPlanEmployeeListSummary(
+          request, token);
       return res;
     } catch (e) {
       rethrow;
@@ -411,15 +434,17 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanActionResponse> approveSingleTourPlan(TourPlanActionRequest request) async {
+  Future<TourPlanActionResponse> approveSingleTourPlan(
+      TourPlanActionRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.approveSingleTourPlan(request, token);
+
+      final res =
+          await _apiClientInstance.approveSingleTourPlan(request, token);
       return res;
     } catch (e) {
       rethrow;
@@ -427,14 +452,15 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanActionResponse> rejectSingleTourPlan(TourPlanActionRequest request) async {
+  Future<TourPlanActionResponse> rejectSingleTourPlan(
+      TourPlanActionRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final res = await _apiClientInstance.rejectSingleTourPlan(request, token);
       return res;
     } catch (e) {
@@ -443,14 +469,15 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanActionResponse> bulkApproveTourPlans(TourPlanBulkActionRequest request) async {
+  Future<TourPlanActionResponse> bulkApproveTourPlans(
+      TourPlanBulkActionRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
+
       final res = await _apiClientInstance.bulkApproveTourPlans(request, token);
       return res;
     } catch (e) {
@@ -459,15 +486,17 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<TourPlanActionResponse> bulkSendBackTourPlans(TourPlanBulkActionRequest request) async {
+  Future<TourPlanActionResponse> bulkSendBackTourPlans(
+      TourPlanBulkActionRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.bulkSendBackTourPlans(request, token);
+
+      final res =
+          await _apiClientInstance.bulkSendBackTourPlans(request, token);
       return res;
     } catch (e) {
       rethrow;
@@ -475,38 +504,42 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
-  Future<GetMappedCustomersByEmployeeIdResponse> getMappedCustomersByEmployeeId(GetMappedCustomersByEmployeeIdRequest request) async {
+  Future<GetMappedCustomersByEmployeeIdResponse> getMappedCustomersByEmployeeId(
+      GetMappedCustomersByEmployeeIdRequest request) async {
     try {
       // Get auth token from SharedPreferenceHelper
       final String? token = await _sharedPreferenceHelper.authToken;
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.getMappedCustomersByEmployeeId(request, token);
+
+      final res = await _apiClientInstance.getMappedCustomersByEmployeeId(
+          request, token);
       return res;
     } catch (e) {
       rethrow;
     }
   }
 
-
-  List<CalendarViewData> _generateMockCalendarData(CalendarViewRequest request) {
+  List<CalendarViewData> _generateMockCalendarData(
+      CalendarViewRequest request) {
     final List<CalendarViewData> mockData = [];
     final DateTime firstDay = DateTime(request.year, request.month, 1);
     final DateTime lastDay = DateTime(request.year, request.month + 1, 0);
-    
+
     for (int day = firstDay.day; day <= lastDay.day; day++) {
       final DateTime currentDate = DateTime(request.year, request.month, day);
-      final bool isWeekend = currentDate.weekday == DateTime.saturday || currentDate.weekday == DateTime.sunday;
-      
+      final bool isWeekend = currentDate.weekday == DateTime.saturday ||
+          currentDate.weekday == DateTime.sunday;
+
       mockData.add(CalendarViewData(
         planDate: currentDate,
-        plannedCount: _entries.where((e) => 
-          e.date.year == request.year && 
-          e.date.month == request.month && 
-          e.date.day == day
-        ).length,
+        plannedCount: _entries
+            .where((e) =>
+                e.date.year == request.year &&
+                e.date.month == request.month &&
+                e.date.day == day)
+            .length,
         weekend: isWeekend ? 1 : 0,
         isHoliday: 0, // Mock: no holidays for now
         plannedCalls: null,
@@ -514,7 +547,7 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
         isHolidayDay: false,
       ));
     }
-    
+
     return mockData;
   }
 
@@ -535,16 +568,56 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
     final DateTime now = DateTime.now();
     final DateTime month = DateTime(now.year, now.month, 1);
     final List<_SeedItem> seeds = <_SeedItem>[
-      _SeedItem(day: 1, customer: 'Apollo Hospital', status: TourPlanEntryStatus.approved, purposes: ['Product Detailing']),
-      _SeedItem(day: 2, customer: 'Fortis Healthcare', status: TourPlanEntryStatus.pending, purposes: ['Field Visit']),
-      _SeedItem(day: 5, customer: 'Global Care', status: TourPlanEntryStatus.draft, purposes: ['Onboarding']),
-      _SeedItem(day: 6, customer: 'Medanta Clinic', status: TourPlanEntryStatus.draft, purposes: ['Follow-up']),
-      _SeedItem(day: 9, customer: 'LifeLine Hospital', status: TourPlanEntryStatus.pending, purposes: ['Device Trial']),
-      _SeedItem(day: 12, customer: 'Prime Health', status: TourPlanEntryStatus.rejected, purposes: ['Adhoc Visit']),
-      _SeedItem(day: 15, customer: 'City Pharma', status: TourPlanEntryStatus.sentBack, purposes: ['Sample Collection']),
-      _SeedItem(day: 18, customer: 'Care & Cure Center', status: TourPlanEntryStatus.pending, purposes: ['Prescription Follow-up']),
-      _SeedItem(day: 21, customer: 'Sunrise Clinic', status: TourPlanEntryStatus.approved, purposes: ['Sample Collection']),
-      _SeedItem(day: 24, customer: 'Hiranandani Hospital', status: TourPlanEntryStatus.pending, purposes: ['Product Detailing']),
+      _SeedItem(
+          day: 1,
+          customer: 'Apollo Hospital',
+          status: TourPlanEntryStatus.approved,
+          purposes: ['Product Detailing']),
+      _SeedItem(
+          day: 2,
+          customer: 'Fortis Healthcare',
+          status: TourPlanEntryStatus.pending,
+          purposes: ['Field Visit']),
+      _SeedItem(
+          day: 5,
+          customer: 'Global Care',
+          status: TourPlanEntryStatus.draft,
+          purposes: ['Onboarding']),
+      _SeedItem(
+          day: 6,
+          customer: 'Medanta Clinic',
+          status: TourPlanEntryStatus.draft,
+          purposes: ['Follow-up']),
+      _SeedItem(
+          day: 9,
+          customer: 'LifeLine Hospital',
+          status: TourPlanEntryStatus.pending,
+          purposes: ['Device Trial']),
+      _SeedItem(
+          day: 12,
+          customer: 'Prime Health',
+          status: TourPlanEntryStatus.rejected,
+          purposes: ['Adhoc Visit']),
+      _SeedItem(
+          day: 15,
+          customer: 'City Pharma',
+          status: TourPlanEntryStatus.sentBack,
+          purposes: ['Sample Collection']),
+      _SeedItem(
+          day: 18,
+          customer: 'Care & Cure Center',
+          status: TourPlanEntryStatus.pending,
+          purposes: ['Prescription Follow-up']),
+      _SeedItem(
+          day: 21,
+          customer: 'Sunrise Clinic',
+          status: TourPlanEntryStatus.approved,
+          purposes: ['Sample Collection']),
+      _SeedItem(
+          day: 24,
+          customer: 'Hiranandani Hospital',
+          status: TourPlanEntryStatus.pending,
+          purposes: ['Product Detailing']),
     ];
     for (final s in seeds) {
       _entries.add(TourPlanEntry(
@@ -578,22 +651,24 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
       if (token == null || token.isEmpty) {
         throw Exception('Authentication token not found. Please login again.');
       }
-      
-      final res = await _apiClientInstance.getTourPlanById(tourPlanId, id, token);
+
+      final res =
+          await _apiClientInstance.getTourPlanById(tourPlanId, id, token);
       return res;
     } catch (e) {
       rethrow;
     }
   }
-
 }
 
 class _SeedItem {
-  _SeedItem({required this.day, required this.customer, required this.status, required this.purposes});
+  _SeedItem(
+      {required this.day,
+      required this.customer,
+      required this.status,
+      required this.purposes});
   final int day;
   final String customer;
   final TourPlanEntryStatus status;
   final List<String> purposes;
 }
-
-

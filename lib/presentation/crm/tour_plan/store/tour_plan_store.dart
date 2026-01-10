@@ -31,55 +31,67 @@ abstract class _TourPlanStore with Store {
 
   @observable
   ObservableFuture<List<CalendarViewData>> fetchCalendarDataFuture =
-      ObservableFuture<List<CalendarViewData>>.value(const <CalendarViewData>[]);
+      ObservableFuture<List<CalendarViewData>>.value(
+          const <CalendarViewData>[]);
 
   @observable
   List<TourPlanItem> tourPlanListItems = <TourPlanItem>[];
 
   @observable
   ObservableFuture<TourPlanGetResponse> fetchTourPlanDetailsFuture =
-      ObservableFuture<TourPlanGetResponse>.value(TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0));
+      ObservableFuture<TourPlanGetResponse>.value(
+          TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0));
 
   @observable
   List<TourPlanItem> tourPlanDetailsItems = <TourPlanItem>[];
 
   @observable
   ObservableFuture<TourPlanGetResponse> fetchTourPlanListFuture =
-      ObservableFuture<TourPlanGetResponse>.value(TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0));
+      ObservableFuture<TourPlanGetResponse>.value(
+          TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0));
 
   @observable
   List<TourPlanItem> calendarItemListData = <TourPlanItem>[];
 
   @observable
   ObservableFuture<TourPlanGetResponse> fetchCalendarItemListDataFuture =
-      ObservableFuture<TourPlanGetResponse>.value(TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0));
+      ObservableFuture<TourPlanGetResponse>.value(
+          TourPlanGetResponse(items: [], totalRecords: 0, filteredRecords: 0));
 
   @computed
   bool get loading => fetchMonthFuture.status == FutureStatus.pending;
 
   @computed
-  bool get calendarLoading => fetchCalendarDataFuture.status == FutureStatus.pending;
+  bool get calendarLoading =>
+      fetchCalendarDataFuture.status == FutureStatus.pending;
 
   @computed
-  bool get tourPlanListLoading => fetchTourPlanListFuture.status == FutureStatus.pending;
+  bool get tourPlanListLoading =>
+      fetchTourPlanListFuture.status == FutureStatus.pending;
 
   @computed
-  bool get calendarItemListDataLoading => fetchCalendarItemListDataFuture.status == FutureStatus.pending;
+  bool get calendarItemListDataLoading =>
+      fetchCalendarItemListDataFuture.status == FutureStatus.pending;
 
   @computed
-  bool get aggregateCountLoading => fetchAggregateCountFuture.status == FutureStatus.pending;
+  bool get aggregateCountLoading =>
+      fetchAggregateCountFuture.status == FutureStatus.pending;
 
   @computed
-  bool get tourPlanSummaryLoading => fetchTourPlanSummaryFuture?.status == FutureStatus.pending;
+  bool get tourPlanSummaryLoading =>
+      fetchTourPlanSummaryFuture?.status == FutureStatus.pending;
 
   @computed
-  bool get managerSummaryLoading => fetchManagerSummaryFuture.status == FutureStatus.pending;
+  bool get managerSummaryLoading =>
+      fetchManagerSummaryFuture.status == FutureStatus.pending;
 
   @computed
-  bool get employeeListSummaryLoading => fetchEmployeeListSummaryFuture.status == FutureStatus.pending;
+  bool get employeeListSummaryLoading =>
+      fetchEmployeeListSummaryFuture.status == FutureStatus.pending;
 
   @computed
-  bool get mappedCustomersLoading => fetchMappedCustomersFuture.status == FutureStatus.pending;
+  bool get mappedCustomersLoading =>
+      fetchMappedCustomersFuture.status == FutureStatus.pending;
 
   @observable
   Map<String, dynamic>? saveResponse;
@@ -88,7 +100,8 @@ abstract class _TourPlanStore with Store {
   TourPlanAggregateCountResponse? aggregateCountData;
 
   @observable
-  ObservableFuture<TourPlanAggregateCountResponse> fetchAggregateCountFuture = ObservableFuture.value(TourPlanAggregateCountResponse(
+  ObservableFuture<TourPlanAggregateCountResponse> fetchAggregateCountFuture =
+      ObservableFuture.value(TourPlanAggregateCountResponse(
     totalEmployees: 0,
     planned: 0,
     approved: 0,
@@ -114,7 +127,9 @@ abstract class _TourPlanStore with Store {
   TourPlanGetManagerSummaryResponse? managerSummaryData;
 
   @observable
-  ObservableFuture<TourPlanGetManagerSummaryResponse> fetchManagerSummaryFuture = ObservableFuture.value(TourPlanGetManagerSummaryResponse(
+  ObservableFuture<TourPlanGetManagerSummaryResponse>
+      fetchManagerSummaryFuture =
+      ObservableFuture.value(TourPlanGetManagerSummaryResponse(
     totalEmployees: 0,
     notPlannedEmployees: 0,
     approvedDays: 0,
@@ -134,7 +149,9 @@ abstract class _TourPlanStore with Store {
   TourPlanGetEmployeeListSummaryResponse? employeeListSummaryData;
 
   @observable
-  ObservableFuture<TourPlanGetEmployeeListSummaryResponse> fetchEmployeeListSummaryFuture = ObservableFuture.value(TourPlanGetEmployeeListSummaryResponse(
+  ObservableFuture<TourPlanGetEmployeeListSummaryResponse>
+      fetchEmployeeListSummaryFuture =
+      ObservableFuture.value(TourPlanGetEmployeeListSummaryResponse(
     employees: [],
   ));
 
@@ -142,7 +159,9 @@ abstract class _TourPlanStore with Store {
   List<MappedCustomer> mappedCustomers = <MappedCustomer>[];
 
   @observable
-  ObservableFuture<GetMappedCustomersByEmployeeIdResponse> fetchMappedCustomersFuture = ObservableFuture.value(GetMappedCustomersByEmployeeIdResponse(
+  ObservableFuture<GetMappedCustomersByEmployeeIdResponse>
+      fetchMappedCustomersFuture =
+      ObservableFuture.value(GetMappedCustomersByEmployeeIdResponse(
     customers: [],
     totalRecords: 0,
     filteredRecords: 0,
@@ -151,7 +170,10 @@ abstract class _TourPlanStore with Store {
   ));
 
   @action
-  Future<void> loadMonth({String? employeeId, String? customer, TourPlanEntryStatus? status}) async {
+  Future<void> loadMonth(
+      {String? employeeId,
+      String? customer,
+      TourPlanEntryStatus? status}) async {
     final Future<List<TourPlanEntry>> f = _repo.listMonth(
       month: month,
       employeeId: employeeId,
@@ -192,31 +214,34 @@ abstract class _TourPlanStore with Store {
     int selectedEmployeeId = 0,
   }) async {
     print('TourPlanStore: loadCalendarViewData called for $month/$year');
-    
+
     // Clear existing data for hard refresh
     calendarViewData = <CalendarViewData>[];
-    
+
     // Ensure SelectedEmployeeId equals employeeId as per API requirement
-    final int finalSelectedEmployeeId = selectedEmployeeId != 0 ? selectedEmployeeId : employeeId;
-    
+    final int finalSelectedEmployeeId =
+        selectedEmployeeId != 0 ? selectedEmployeeId : employeeId;
+
     final request = CalendarViewRequest(
       month: month,
       year: year,
       userId: userId, // Pass null if not provided, as per API requirement
       managerId: managerId,
       employeeId: employeeId,
-      selectedEmployeeId: finalSelectedEmployeeId, // SelectedEmployeeId must equal employeeId
+      selectedEmployeeId:
+          finalSelectedEmployeeId, // SelectedEmployeeId must equal employeeId
     );
-    
+
     print('TourPlanStore: Created request: ${request.toJson()}');
-    
+
     final Future<List<CalendarViewData>> f = _repo.getCalendarViewData(request);
     fetchCalendarDataFuture = ObservableFuture(f);
-    
+
     try {
       final data = await f;
       calendarViewData = data;
-      print('TourPlanStore: Calendar data loaded successfully - ${data.length} entries');
+      print(
+          'TourPlanStore: Calendar data loaded successfully - ${data.length} entries');
     } catch (e) {
       print('TourPlanStore: Error loading calendar data: $e');
       errorStore.errorMessage = e.toString();
@@ -236,10 +261,10 @@ abstract class _TourPlanStore with Store {
     int? selectedEmployeeId,
   }) async {
     print('TourPlanStore: loadTourPlanList called');
-    
+
     // Ensure SelectedEmployeeId equals employeeId as per API requirement
     final int? finalSelectedEmployeeId = selectedEmployeeId ?? employeeId;
-    
+
     final request = TourPlanGetRequest(
       searchText: searchText,
       pageNumber: pageNumber,
@@ -249,19 +274,22 @@ abstract class _TourPlanStore with Store {
       userId: userId,
       bizunit: bizunit,
       year: year,
-      selectedEmployeeId: finalSelectedEmployeeId, // SelectedEmployeeId must equal employeeId
+      selectedEmployeeId:
+          finalSelectedEmployeeId, // SelectedEmployeeId must equal employeeId
     );
-    
+
     print('TourPlanStore: Created request: ${request.toJson()}');
-    
+
     final Future<TourPlanGetResponse> f = _repo.getTourPlanDetail(request);
     fetchTourPlanListFuture = ObservableFuture(f);
-    
+
     try {
       final response = await f;
       tourPlanListItems = response.items;
-      print('TourPlanStore: Tour plan list loaded successfully - ${response.items.length} entries');
-      print('TourPlanStore: Total records: ${response.totalRecords}, Filtered: ${response.filteredRecords}');
+      print(
+          'TourPlanStore: Tour plan list loaded successfully - ${response.items.length} entries');
+      print(
+          'TourPlanStore: Total records: ${response.totalRecords}, Filtered: ${response.filteredRecords}');
     } catch (e) {
       print('TourPlanStore: Error loading tour plan list: $e');
       errorStore.errorMessage = e.toString();
@@ -285,11 +313,9 @@ abstract class _TourPlanStore with Store {
     int? sortDir,
     String? sortField,
   }) async {
-    print('TourPlanStore: loadCalendarItemListData called for month $month, year $year, employeeId $employeeId');
-    
     // Clear existing data for hard refresh
     calendarItemListData = <TourPlanItem>[];
-    
+
     final request = TourPlanGetRequest(
       searchText: searchText,
       pageNumber: pageNumber,
@@ -301,22 +327,23 @@ abstract class _TourPlanStore with Store {
       year: year,
       customerId: customerId,
       status: status,
-      selectedEmployeeId: selectedEmployeeId ?? employeeId, // SelectedEmployeeId must equal employeeId if not provided
+      selectedEmployeeId: selectedEmployeeId ??
+          employeeId, // SelectedEmployeeId must equal employeeId if not provided
       sortOrder: sortOrder,
       sortDir: sortDir,
       sortField: sortField,
     );
-    
-    print('TourPlanStore: Created calendar item list request: ${request.toJson()}');
-    
+
     final Future<TourPlanGetResponse> f = _repo.getTourPlanListData(request);
     fetchCalendarItemListDataFuture = ObservableFuture(f);
-    
+
     try {
       final response = await f;
       calendarItemListData = response.items;
-      print('TourPlanStore: Calendar item list data loaded successfully - ${response.items.length} entries');
-      print('TourPlanStore: Total records: ${response.totalRecords}, Filtered: ${response.filteredRecords}');
+      print(
+          'TourPlanStore: Calendar item list data loaded successfully - ${response.items.length} entries');
+      print(
+          'TourPlanStore: Total records: ${response.totalRecords}, Filtered: ${response.filteredRecords}');
     } catch (e) {
       print('TourPlanStore: Error loading calendar item list data: $e');
       errorStore.errorMessage = e.toString();
@@ -358,24 +385,28 @@ abstract class _TourPlanStore with Store {
     required int month,
     required int year,
   }) async {
-    print('TourPlanStore: loadAggregateCountSummary called for employee $employeeId, month $month, year $year');
-    
+    print(
+        'TourPlanStore: loadAggregateCountSummary called for employee $employeeId, month $month, year $year');
+
     final request = TourPlanAggregateCountRequest(
       employeeId: employeeId,
       month: month,
       year: year,
     );
-    
-    print('TourPlanStore: Created aggregate count request: ${request.toJson()}');
-    
-    final Future<TourPlanAggregateCountResponse> f = _repo.getTourPlanAggregateCountSummary(request);
+
+    print(
+        'TourPlanStore: Created aggregate count request: ${request.toJson()}');
+
+    final Future<TourPlanAggregateCountResponse> f =
+        _repo.getTourPlanAggregateCountSummary(request);
     fetchAggregateCountFuture = ObservableFuture(f);
-    
+
     try {
       final data = await f;
       aggregateCountData = data;
       print('TourPlanStore: Aggregate count data loaded successfully');
-      print('TourPlanStore: Total Employees: ${data.totalEmployees}, Planned: ${data.planned}, Approved: ${data.approved}');
+      print(
+          'TourPlanStore: Total Employees: ${data.totalEmployees}, Planned: ${data.planned}, Approved: ${data.approved}');
     } catch (e) {
       print('TourPlanStore: Error loading aggregate count data: $e');
       errorStore.errorMessage = e.toString();
@@ -389,25 +420,29 @@ abstract class _TourPlanStore with Store {
     required int userId,
     required int bizunit,
   }) async {
-    print('TourPlanStore: loadTourPlanSummary called for month $month, year $year, userId $userId, bizunit $bizunit');
-    
+    print(
+        'TourPlanStore: loadTourPlanSummary called for month $month, year $year, userId $userId, bizunit $bizunit');
+
     final request = TourPlanGetSummaryRequest(
       month: month,
       year: year,
       userId: userId,
       bizunit: bizunit,
     );
-    
-    print('TourPlanStore: Created tour plan summary request: ${request.toJson()}');
-    
-    final Future<TourPlanGetSummaryResponse> f = _repo.getTourPlanSummary(request);
+
+    print(
+        'TourPlanStore: Created tour plan summary request: ${request.toJson()}');
+
+    final Future<TourPlanGetSummaryResponse> f =
+        _repo.getTourPlanSummary(request);
     fetchTourPlanSummaryFuture = ObservableFuture(f);
-    
+
     try {
       final data = await f;
       tourPlanSummaryData = data;
       print('TourPlanStore: Tour plan summary data loaded successfully');
-      print('TourPlanStore: Planned Days: ${data.approvedDays}, Approved Days: ${data.approvedDays}, Pending Days: ${data.pendingDays}, Sent Back Days: ${data.sentBackDays}');
+      print(
+          'TourPlanStore: Planned Days: ${data.approvedDays}, Approved Days: ${data.approvedDays}, Pending Days: ${data.pendingDays}, Sent Back Days: ${data.sentBackDays}');
     } catch (e) {
       print('TourPlanStore: Error loading tour plan summary data: $e');
       errorStore.errorMessage = e.toString();
@@ -420,24 +455,28 @@ abstract class _TourPlanStore with Store {
     required int month,
     required int year,
   }) async {
-    print('TourPlanStore: loadManagerSummary called for employee $employeeId, month $month, year $year');
-    
+    print(
+        'TourPlanStore: loadManagerSummary called for employee $employeeId, month $month, year $year');
+
     final request = TourPlanGetManagerSummaryRequest(
       employeeId: employeeId,
       month: month,
       year: year,
     );
-    
-    print('TourPlanStore: Created manager summary request: ${request.toJson()}');
-    
-    final Future<TourPlanGetManagerSummaryResponse> f = _repo.getTourPlanManagerSummary(request);
+
+    print(
+        'TourPlanStore: Created manager summary request: ${request.toJson()}');
+
+    final Future<TourPlanGetManagerSummaryResponse> f =
+        _repo.getTourPlanManagerSummary(request);
     fetchManagerSummaryFuture = ObservableFuture(f);
-    
+
     try {
       final data = await f;
       managerSummaryData = data;
       print('TourPlanStore: Manager summary data loaded successfully');
-      print('TourPlanStore: Total Employees: ${data.totalEmployees}, Not Planned Employees: ${data.notPlannedEmployees}, Fully Approved: ${data.fullyApproved}');
+      print(
+          'TourPlanStore: Total Employees: ${data.totalEmployees}, Not Planned Employees: ${data.notPlannedEmployees}, Fully Approved: ${data.fullyApproved}');
     } catch (e) {
       print('TourPlanStore: Error loading manager summary data: $e');
       errorStore.errorMessage = e.toString();
@@ -450,31 +489,36 @@ abstract class _TourPlanStore with Store {
     required int month,
     required int year,
   }) async {
-    print('TourPlanStore: loadEmployeeListSummary called for employee $employeeId, month $month, year $year');
-    
+    print(
+        'TourPlanStore: loadEmployeeListSummary called for employee $employeeId, month $month, year $year');
+
     // Clear existing data to prevent type confusion
     employeeListSummaryData = null;
-    
+
     final request = TourPlanGetEmployeeListSummaryRequest(
       employeeId: employeeId,
       month: month,
       year: year,
     );
-    
-    print('TourPlanStore: Created employee list summary request: ${request.toJson()}');
-    
-    final Future<TourPlanGetEmployeeListSummaryResponse> f = _repo.getTourPlanEmployeeListSummary(request);
+
+    print(
+        'TourPlanStore: Created employee list summary request: ${request.toJson()}');
+
+    final Future<TourPlanGetEmployeeListSummaryResponse> f =
+        _repo.getTourPlanEmployeeListSummary(request);
     fetchEmployeeListSummaryFuture = ObservableFuture(f);
-    
+
     try {
       final data = await f;
       // Ensure we're assigning the correct type
       if (data is TourPlanGetEmployeeListSummaryResponse) {
         employeeListSummaryData = data;
         print('TourPlanStore: Employee list summary data loaded successfully');
-        print('TourPlanStore: Total Employees: ${data.totalEmployees}, Planned: ${data.totalPlanned}, Approved: ${data.totalApproved}, Pending: ${data.totalPending}, Sent Back: ${data.totalSentBack}, Not Entered: ${data.totalNotEntered}');
+        print(
+            'TourPlanStore: Total Employees: ${data.totalEmployees}, Planned: ${data.totalPlanned}, Approved: ${data.totalApproved}, Pending: ${data.totalPending}, Sent Back: ${data.totalSentBack}, Not Entered: ${data.totalNotEntered}');
       } else {
-        print('TourPlanStore: ERROR - Received wrong type: ${data.runtimeType}, expected TourPlanGetEmployeeListSummaryResponse');
+        print(
+            'TourPlanStore: ERROR - Received wrong type: ${data.runtimeType}, expected TourPlanGetEmployeeListSummaryResponse');
         employeeListSummaryData = null;
       }
     } catch (e) {
@@ -508,8 +552,9 @@ abstract class _TourPlanStore with Store {
     List<ClusterIdModel>? clusterIds,
     int? selectedEmployeeId,
   }) async {
-    print('TourPlanStore: loadMappedCustomersByEmployeeId called for employee $selectedEmployeeId');
-    
+    print(
+        'TourPlanStore: loadMappedCustomersByEmployeeId called for employee $selectedEmployeeId');
+
     final request = GetMappedCustomersByEmployeeIdRequest(
       searchText: searchText,
       pageNumber: pageNumber,
@@ -533,17 +578,20 @@ abstract class _TourPlanStore with Store {
       clusterIds: clusterIds,
       selectedEmployeeId: selectedEmployeeId,
     );
-    
-    print('TourPlanStore: Created mapped customers request: ${request.toJson()}');
-    
-    final Future<GetMappedCustomersByEmployeeIdResponse> f = _repo.getMappedCustomersByEmployeeId(request);
+
+    print(
+        'TourPlanStore: Created mapped customers request: ${request.toJson()}');
+
+    final Future<GetMappedCustomersByEmployeeIdResponse> f =
+        _repo.getMappedCustomersByEmployeeId(request);
     fetchMappedCustomersFuture = ObservableFuture(f);
-    
+
     try {
       final data = await f;
       mappedCustomers = data.customers;
       print('TourPlanStore: Mapped customers data loaded successfully');
-      print('TourPlanStore: Total Customers: ${data.totalRecords}, Filtered: ${data.filteredRecords}, Page: ${data.pageNumber}/${data.pageSize}');
+      print(
+          'TourPlanStore: Total Customers: ${data.totalRecords}, Filtered: ${data.filteredRecords}, Page: ${data.pageNumber}/${data.pageSize}');
     } catch (e) {
       print('TourPlanStore: Error loading mapped customers data: $e');
       errorStore.errorMessage = e.toString();
@@ -551,9 +599,11 @@ abstract class _TourPlanStore with Store {
   }
 
   @action
-  Future<TourPlanActionResponse> approveSingleTourPlan(TourPlanActionRequest request) async {
+  Future<TourPlanActionResponse> approveSingleTourPlan(
+      TourPlanActionRequest request) async {
     try {
-      print('TourPlanStore: approveSingleTourPlan called for ID: ${request.id}');
+      print(
+          'TourPlanStore: approveSingleTourPlan called for ID: ${request.id}');
       final response = await _repo.approveSingleTourPlan(request);
       print('TourPlanStore: Single tour plan approved successfully');
       return response;
@@ -565,7 +615,8 @@ abstract class _TourPlanStore with Store {
   }
 
   @action
-  Future<TourPlanActionResponse> rejectSingleTourPlan(TourPlanActionRequest request) async {
+  Future<TourPlanActionResponse> rejectSingleTourPlan(
+      TourPlanActionRequest request) async {
     try {
       print('TourPlanStore: rejectSingleTourPlan called for ID: ${request.id}');
       final response = await _repo.rejectSingleTourPlan(request);
@@ -579,18 +630,19 @@ abstract class _TourPlanStore with Store {
   }
 
   @action
-  Future<TourPlanActionResponse> bulkApproveTourPlans(TourPlanBulkActionRequest request) async {
+  Future<TourPlanActionResponse> bulkApproveTourPlans(
+      TourPlanBulkActionRequest request) async {
     try {
       print('TourPlanStore: bulkApproveTourPlans called for ID: ${request.id}');
       final response = await _repo.bulkApproveTourPlans(request);
       print('TourPlanStore: Tour plans bulk approved successfully');
-      
+
       // Force clear the data to ensure fresh reload
       // This ensures the UI will show updated status after approval
       calendarItemListData = <TourPlanItem>[];
       calendarViewData = <CalendarViewData>[];
       print('TourPlanStore: Cleared calendar data to force refresh');
-      
+
       return response;
     } catch (e) {
       print('TourPlanStore: Error bulk approving tour plans: $e');
@@ -600,18 +652,21 @@ abstract class _TourPlanStore with Store {
   }
 
   @action
-  Future<TourPlanActionResponse> bulkSendBackTourPlans(TourPlanBulkActionRequest request) async {
+  Future<TourPlanActionResponse> bulkSendBackTourPlans(
+      TourPlanBulkActionRequest request) async {
     try {
-      print('TourPlanStore: bulkSendBackTourPlans called for ID: ${request.id}, Action: ${request.action}');
+      print(
+          'TourPlanStore: bulkSendBackTourPlans called for ID: ${request.id}, Action: ${request.action}');
       final response = await _repo.bulkSendBackTourPlans(request);
-      print('TourPlanStore: Tour plans bulk action completed successfully (Action: ${request.action})');
-      
+      print(
+          'TourPlanStore: Tour plans bulk action completed successfully (Action: ${request.action})');
+
       // Force clear the data to ensure fresh reload
       // This ensures the UI will show updated status after send back/reject
       calendarItemListData = <TourPlanItem>[];
       calendarViewData = <CalendarViewData>[];
       print('TourPlanStore: Cleared calendar data to force refresh');
-      
+
       return response;
     } catch (e) {
       print('TourPlanStore: Error bulk action (Action: ${request.action}): $e');
@@ -621,9 +676,11 @@ abstract class _TourPlanStore with Store {
   }
 
   @action
-  Future<TourPlanCommentSaveResponse> saveTourPlanComment(TourPlanCommentSaveRequest request) async {
+  Future<TourPlanCommentSaveResponse> saveTourPlanComment(
+      TourPlanCommentSaveRequest request) async {
     try {
-      print('TourPlanStore: saveTourPlanComment called for TourPlanId: ${request.tourPlanId}');
+      print(
+          'TourPlanStore: saveTourPlanComment called for TourPlanId: ${request.tourPlanId}');
       final response = await _repo.saveTourPlanComment(request);
       print('TourPlanStore: Tour plan comment saved successfully');
       return response;
@@ -635,11 +692,14 @@ abstract class _TourPlanStore with Store {
   }
 
   @action
-  Future<List<TourPlanCommentItem>> getTourPlanCommentsList(TourPlanCommentGetListRequest request) async {
+  Future<List<TourPlanCommentItem>> getTourPlanCommentsList(
+      TourPlanCommentGetListRequest request) async {
     try {
-      print('TourPlanStore: getTourPlanCommentsList called for id: ${request.id}');
+      print(
+          'TourPlanStore: getTourPlanCommentsList called for id: ${request.id}');
       final response = await _repo.getTourPlanCommentsList(request);
-      print('TourPlanStore: Tour plan comments list retrieved successfully - ${response.length} comments');
+      print(
+          'TourPlanStore: Tour plan comments list retrieved successfully - ${response.length} comments');
       return response;
     } catch (e) {
       print('TourPlanStore: Error getting tour plan comments list: $e');
@@ -654,12 +714,12 @@ abstract class _TourPlanStore with Store {
       print('TourPlanStore: deleteTourPlan called for ID: $id');
       final response = await _repo.deleteTourPlan(id);
       print('TourPlanStore: Tour plan deleted successfully');
-      
+
       // Force clear the data to ensure fresh reload
       calendarItemListData = <TourPlanItem>[];
       calendarViewData = <CalendarViewData>[];
       print('TourPlanStore: Cleared calendar data to force refresh');
-      
+
       return response;
     } catch (e) {
       print('TourPlanStore: Error deleting tour plan: $e');
@@ -668,5 +728,3 @@ abstract class _TourPlanStore with Store {
     }
   }
 }
-
-
