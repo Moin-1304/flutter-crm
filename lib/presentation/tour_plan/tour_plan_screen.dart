@@ -950,11 +950,12 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 color: Colors.white.withOpacity(0.8),
                                 borderRadius: BorderRadius.circular(28),
                               ),
-                              child: const Center(
+                              child: Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    CircularProgressIndicator(),
+                                    CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(tealGreen),
+                                    ),
                                     SizedBox(height: 8),
                                     Text('Loading tour plans...'),
                                   ],

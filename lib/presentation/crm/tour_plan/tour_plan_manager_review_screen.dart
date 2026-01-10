@@ -478,10 +478,10 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                         style: Theme.of(context).textTheme.titleLarge,
                                       ),
                                       const SizedBox(height: 16),
-                                      const Center(
+                                      Center(
                                         child: Column(
                                           children: [
-                                            CircularProgressIndicator(),
+                                            CircularProgressIndicator(color: tealGreen),
                                             SizedBox(height: 8),
                                             Text('Loading summary...'),
                                           ],

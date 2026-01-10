@@ -1145,9 +1145,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
             // Main content
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(),
-                    )
+                  ? Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(tealGreen)),)
                   : SingleChildScrollView(
                       padding: EdgeInsets.all(isTablet ? 24 : 16),
                       child: Center(
@@ -4800,7 +4798,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
             height: 20,
             child: CircularProgressIndicator(
               strokeWidth: 2.5,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.grey.shade600),
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4db1b3)),
             ),
           ),
           const SizedBox(width: 12),
