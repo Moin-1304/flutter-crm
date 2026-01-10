@@ -3707,15 +3707,33 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       customerName = item.customerName?.trim() ?? '';
     }
 
-    // Extract products from tourPlanDetails[0].productsToDiscuss
+    // Extract products from tourPlanDetails[0].productsToBeDiscussed (array) or productsToDiscuss (string)
     final String products;
-    if (detail != null &&
-        detail.productsToDiscuss != null &&
-        detail.productsToDiscuss!.trim().isNotEmpty) {
-      products = detail.productsToDiscuss!.trim();
-      print('TourPlanScreen: Using productsToDiscuss from detail: $products');
+    if (detail != null) {
+      // First, try productsToBeDiscussed array (preferred - from API)
+      if (detail.productsToBeDiscussed != null &&
+          detail.productsToBeDiscussed!.isNotEmpty) {
+        // Convert array to comma-separated string
+        products = detail.productsToBeDiscussed!
+            .map((p) => p.productName.trim())
+            .where((name) => name.isNotEmpty)
+            .join(', ');
+        print(
+            'TourPlanScreen: Using productsToBeDiscussed array from detail: $products');
+      } else if (detail.productsToDiscuss != null &&
+          detail.productsToDiscuss!.trim().isNotEmpty) {
+        // Fallback to productsToDiscuss string
+        products = detail.productsToDiscuss!.trim();
+        print(
+            'TourPlanScreen: Using productsToDiscuss string from detail: $products');
+      } else {
+        products = '';
+      }
     } else {
+      // Fallback to header-level productsToDiscuss
       products = item.productsToDiscuss?.trim() ?? '';
+      print(
+          'TourPlanScreen: Using productsToDiscuss from item header: $products');
     }
 
     // Extract samples from tourPlanDetails[0].samplesToDistribute

@@ -276,6 +276,7 @@ class CommonApi {
   Future<List<CommonDropdownItem>> getMappedInstrumentsList(
       int userId, int customerId) async {
     try {
+      print('getMappedInstrumentsList: userId: $userId, customerId: $customerId');
       final request =
           MappedInstrumentsRequest(userId: userId, customerId: customerId);
       final response = await _dioClient.dio.post(
