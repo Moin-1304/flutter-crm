@@ -289,6 +289,30 @@ class TourPlanItem {
   }
 }
 
+class ProductToBeDiscussed {
+  final int productId;
+  final String productName;
+
+  ProductToBeDiscussed({
+    required this.productId,
+    required this.productName,
+  });
+
+  factory ProductToBeDiscussed.fromJson(Map<String, dynamic> json) {
+    return ProductToBeDiscussed(
+      productId: json['productId'] ?? 0,
+      productName: json['productName'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'productId': productId,
+      'productName': productName,
+    };
+  }
+}
+
 class TourPlanDetail {
   final int id;
   final DateTime planDate;
@@ -305,6 +329,8 @@ class TourPlanDetail {
   final String? clusterNames;
   final List<Customer> customers;
   final int? customerType;
+  final List<ProductToBeDiscussed>? productsToBeDiscussed;
+  final List<dynamic>? mappedInstruments;
 
   TourPlanDetail({
     required this.id,
@@ -322,6 +348,8 @@ class TourPlanDetail {
     this.clusterNames,
     required this.customers,
     this.customerType,
+    this.productsToBeDiscussed,
+    this.mappedInstruments,
   });
 
   factory TourPlanDetail.fromJson(Map<String, dynamic> json) {
@@ -343,6 +371,10 @@ class TourPlanDetail {
           ?.map((e) => Customer.fromJson(e))
           .toList() ?? [],
       customerType: json['customerType'],
+      productsToBeDiscussed: (json['productsToBeDiscussed'] as List?)
+          ?.map((e) => ProductToBeDiscussed.fromJson(e))
+          .toList(),
+      mappedInstruments: json['mappedInstruments'] as List?,
     );
   }
 }

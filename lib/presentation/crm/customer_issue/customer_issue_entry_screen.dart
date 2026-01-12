@@ -15,12 +15,14 @@ import 'package:boilerplate/domain/entity/workflow/workflow_api_models.dart';
 import 'package:boilerplate/domain/repository/item_issue/item_issue_repository.dart';
 import 'package:boilerplate/domain/entity/item_issue/item_issue_api_models.dart';
 import 'package:dio/dio.dart';
+import 'package:boilerplate/core/widgets/toast_message.dart';
 
 class ItemDetail {
   String? divisionCategory;
   String? itemDescription;
   String? batchNo;
   int? batchId; // Store batch ID when batch is selected
+  int? itemId; // Store item ID when loading from API (for edit mode)
   TextEditingController qtyInStockCtrl = TextEditingController();
   TextEditingController qtyIssuedCtrl = TextEditingController();
   TextEditingController uomCtrl = TextEditingController();
@@ -290,14 +292,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         // Show error message to user - use Future.microtask to ensure context is ready
         Future.microtask(() {
           if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to load stores. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          ToastMessage.show(
+            context,
+            message: 'Failed to load stores. Please try again.',
+            type: ToastType.error,
+          );
+        }
         });
       }
     }
@@ -354,15 +354,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         // Show error message to user - use Future.microtask to ensure context is ready
         Future.microtask(() {
           if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content:
-                    Text('Failed to load issue-to options. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          ToastMessage.show(
+            context,
+            message: 'Failed to load issue-to options. Please try again.',
+            type: ToastType.error,
+          );
+        }
         });
       }
     }
@@ -410,15 +407,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         // Show error message to user - use Future.microtask to ensure context is ready
         Future.microtask(() {
           if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Failed to load issue-against options. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          ToastMessage.show(
+            context,
+            message: 'Failed to load issue-against options. Please try again.',
+            type: ToastType.error,
+          );
+        }
         });
       }
     }
@@ -657,11 +651,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           _isLoading = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load customer issue: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Failed to load customer issue: ${e.toString()}',
+          type: ToastType.error,
         );
       }
     }
@@ -677,6 +670,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     print('Department Text: ${apiIssue.departmentText}');
     print('To Store Text: ${apiIssue.toStoreText}');
     print('Issue Against ID: ${apiIssue.issueAgainst}');
+    print('Issue Receipt Type ID: ${apiIssue.issueReceiptType}');
     print('Issue To ID: ${apiIssue.issueTo}');
     print('Reference: ${apiIssue.reference}');
     print('Details Count: ${apiIssue.details?.length ?? 0}');
@@ -704,23 +698,26 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       _toStore = apiIssue.toStoreText.isNotEmpty ? apiIssue.toStoreText : null;
 
       // Map issue against - convert ID to text value
-      if (apiIssue.issueAgainst != null) {
+      // Fallback: if issueAgainst is null, use issueReceiptType as ID
+      final effectiveIssueAgainstId =
+          apiIssue.issueAgainst ?? apiIssue.issueReceiptType;
+
+      if (effectiveIssueAgainstId != null) {
         if (_issueAgainstList.isNotEmpty) {
           try {
-            final issueAgainstId = apiIssue.issueAgainst;
-            print('🔍 Looking for Issue Against ID: $issueAgainstId');
+            print('🔍 Looking for Issue Against ID: $effectiveIssueAgainstId');
             print(
                 '   Available IDs in list: ${_issueAgainstList.map((e) => e.id).toList()}');
 
             final issueAgainstItem = _issueAgainstList.firstWhere(
-              (item) => item.id == issueAgainstId,
+              (item) => item.id == effectiveIssueAgainstId,
             );
             _issueAgainst = issueAgainstItem.text;
             print(
-                '✅ Mapped Issue Against: ID $issueAgainstId -> "${issueAgainstItem.text}"');
+                '✅ Mapped Issue Against: ID $effectiveIssueAgainstId -> "${issueAgainstItem.text}"');
           } catch (e) {
             print(
-                '❌ ERROR: Could not find issue against for ID: ${apiIssue.issueAgainst}');
+                '❌ ERROR: Could not find issue against for ID: $effectiveIssueAgainstId');
             print(
                 '   Available IDs: ${_issueAgainstList.map((e) => e.id).toList()}');
             print(
@@ -730,10 +727,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           }
         } else {
           print(
-              '⚠️ Issue Against list is empty, cannot map ID: ${apiIssue.issueAgainst}');
+              '⚠️ Issue Against list is empty, cannot map ID: $effectiveIssueAgainstId');
         }
       } else {
-        print('ℹ️ Issue Against is null in API response (field is optional)');
+        print(
+            'ℹ️ Issue Against and Issue Receipt Type are null in API response (field is optional)');
         _issueAgainst = null; // Explicitly set to null
       }
 
@@ -876,6 +874,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
               if (batchId != null && batchId is int) {
                 itemDetail.batchId = batchId;
                 print('   Batch ID: ${itemDetail.batchId}');
+              }
+
+              // Store item ID if available (for later use in save - prevents lookup failures)
+              final itemId = detailJson['item'] ?? detailJson['Item'];
+              if (itemId != null && itemId is int && itemId > 0) {
+                itemDetail.itemId = itemId;
+                print('   Item ID: ${itemDetail.itemId}');
               }
 
               _itemDetails.add(itemDetail);
@@ -1069,8 +1074,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   icon: const Icon(Icons.print, color: Colors.white),
                   onPressed: () {
                     // TODO: Print issue
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Printing...')),
+                    ToastMessage.show(
+                      context,
+                      message: 'Printing...',
+                      type: ToastType.info,
                     );
                   },
                   tooltip: 'Print',
@@ -1111,8 +1118,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                     TextButton.icon(
                       onPressed: () {
                         // TODO: Implement undo
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Undo last action')),
+                        ToastMessage.show(
+                          context,
+                          message: 'Undo last action',
+                          type: ToastType.info,
                         );
                       },
                       icon: Icon(Icons.undo,
@@ -1136,9 +1145,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
             // Main content
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(),
-                    )
+                  ? Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(tealGreen)),)
                   : SingleChildScrollView(
                       padding: EdgeInsets.all(isTablet ? 24 : 16),
                       child: Center(
@@ -2534,7 +2541,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                         ),
                       ],
                       const Spacer(),
-                      if (_itemDetails.length > 1) ...[
+                      if (_itemDetails.length > 1 && !_isViewMode) ...[
                         Icon(
                           isExpanded ? Icons.expand_less : Icons.expand_more,
                           color: const Color(0xFF4db1b3),
@@ -2547,6 +2554,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           constraints: const BoxConstraints(),
                         ),
                       ],
+                      if (_itemDetails.length > 1 && _isViewMode)
+                        Icon(
+                          isExpanded ? Icons.expand_less : Icons.expand_more,
+                          color: const Color(0xFF4db1b3),
+                        ),
                     ],
                   ),
                 ),
@@ -2578,27 +2590,46 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           label: 'Division / Category',
           required: true,
           errorText: detail.divisionCategoryError,
-          child: SearchableDropdown(
-            options: _divisionCategoryOptions,
-            value: detail.divisionCategory,
-            hintText: 'Select Division/Category',
-            searchHintText: 'Search division/category...',
-            hasError: detail.divisionCategoryError != null,
-            onChanged: (v) {
-              setState(() {
-                detail.divisionCategory = v;
-                detail.divisionCategoryError = null;
-                detail.itemDescription =
-                    null; // Clear item description when division changes
-                detail.batchNo = null; // Clear batch no when division changes
-                detail.itemDescriptionOptions = [];
-                detail.batchNoOptions = [];
-              });
-              if (v != null) {
-                _loadItemDescriptionsForDivision(v, detail);
-              }
-            },
-          ),
+          child: _isViewMode
+              ? Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                  ),
+                  child: Text(
+                    detail.divisionCategory ?? 'Not selected',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                )
+              : SearchableDropdown(
+                  options: _divisionCategoryOptions,
+                  value: detail.divisionCategory,
+                  hintText: 'Select Division/Category',
+                  searchHintText: 'Search division/category...',
+                  hasError: detail.divisionCategoryError != null,
+                  onChanged: (v) {
+                    setState(() {
+                      detail.divisionCategory = v;
+                      detail.divisionCategoryError = null;
+                      detail.itemDescription =
+                          null; // Clear item description when division changes
+                      detail.batchNo =
+                          null; // Clear batch no when division changes
+                      detail.itemDescriptionOptions = [];
+                      detail.batchNoOptions = [];
+                    });
+                    if (v != null) {
+                      _loadItemDescriptionsForDivision(v, detail);
+                    }
+                  },
+                ),
         ),
         const SizedBox(height: 12),
 
@@ -2607,128 +2638,166 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           label: 'Item Description',
           required: true,
           errorText: detail.itemDescriptionError,
-          child: SearchableDropdown(
-            options: detail.itemDescriptionOptions,
-            value: detail.itemDescription,
-            hintText: 'Select Item Description',
-            searchHintText: 'Search item description...',
-            hasError: detail.itemDescriptionError != null,
-            onChanged: (v) {
-              setState(() {
-                detail.itemDescription = v;
-                detail.itemDescriptionError = null;
-                detail.batchNo = null; // Clear batch no when item changes
-                detail.batchNoOptions = [];
-              });
-              if (v != null && detail.divisionCategory != null) {
-                _loadBatchNumbersForItem(v, detail);
-              }
-            },
-          ),
+          child: _isViewMode
+              ? Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                  ),
+                  child: Text(
+                    detail.itemDescription ?? 'Not selected',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                )
+              : SearchableDropdown(
+                  options: detail.itemDescriptionOptions,
+                  value: detail.itemDescription,
+                  hintText: 'Select Item Description',
+                  searchHintText: 'Search item description...',
+                  hasError: detail.itemDescriptionError != null,
+                  onChanged: (v) {
+                    setState(() {
+                      detail.itemDescription = v;
+                      detail.itemDescriptionError = null;
+                      detail.batchNo = null; // Clear batch no when item changes
+                      detail.batchNoOptions = [];
+                    });
+                    if (v != null && detail.divisionCategory != null) {
+                      _loadBatchNumbersForItem(v, detail);
+                    }
+                  },
+                ),
         ),
         const SizedBox(height: 12),
 
         // Batch No
         _Labeled(
           label: 'Batch No',
-          child: SearchableDropdown(
-            options: detail.batchNoOptions,
-            value: detail.batchNo,
-            hintText: 'Select Batch No',
-            searchHintText: 'Search batch no...',
-            onChanged: (v) {
-              setState(() {
-                detail.batchNo = v;
-                // Store batch ID when batch is selected
-                if (v != null && detail.itemDescription != null) {
-                  final batchList =
-                      _itemToBatchNumberList[detail.itemDescription!];
-                  if (batchList != null) {
-                    try {
-                      final batchItem = batchList.firstWhere(
-                        (item) => item.text.trim() == v.trim(),
-                      );
-                      detail.batchId = batchItem.id;
-                      print('✅ Batch selected: "$v" -> ID: ${batchItem.id}');
-                    } catch (e) {
-                      // Try case-insensitive match
-                      try {
-                        final batchItem = batchList.firstWhere(
-                          (item) =>
-                              item.text.trim().toLowerCase() ==
-                              v.trim().toLowerCase(),
-                        );
-                        detail.batchId = batchItem.id;
-                        print(
-                            '✅ Batch selected (case-insensitive): "$v" -> ID: ${batchItem.id}');
-                      } catch (e2) {
-                        print('⚠️ Batch not found in list: "$v"');
+          child: _isViewMode
+              ? Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                  ),
+                  child: Text(
+                    detail.batchNo ?? 'Not selected',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                )
+              : SearchableDropdown(
+                  options: detail.batchNoOptions,
+                  value: detail.batchNo,
+                  hintText: 'Select Batch No',
+                  searchHintText: 'Search batch no...',
+                  onChanged: (v) {
+                    setState(() {
+                      detail.batchNo = v;
+                      // Store batch ID when batch is selected
+                      if (v != null && detail.itemDescription != null) {
+                        final batchList =
+                            _itemToBatchNumberList[detail.itemDescription!];
+                        if (batchList != null) {
+                          try {
+                            final batchItem = batchList.firstWhere(
+                              (item) => item.text.trim() == v.trim(),
+                            );
+                            detail.batchId = batchItem.id;
+                            print(
+                                '✅ Batch selected: "$v" -> ID: ${batchItem.id}');
+                          } catch (e) {
+                            // Try case-insensitive match
+                            try {
+                              final batchItem = batchList.firstWhere(
+                                (item) =>
+                                    item.text.trim().toLowerCase() ==
+                                    v.trim().toLowerCase(),
+                              );
+                              detail.batchId = batchItem.id;
+                              print(
+                                  '✅ Batch selected (case-insensitive): "$v" -> ID: ${batchItem.id}');
+                            } catch (e2) {
+                              print('⚠️ Batch not found in list: "$v"');
+                              detail.batchId = null;
+                            }
+                          }
+                          // Auto-fill qty in stock, UOM, and rate if available
+                          if (detail.batchId != null && detail.batchId! > 0) {
+                            try {
+                              // Find the batch item to get stock, UOM, and rate
+                              final batchItem = batchList.firstWhere(
+                                (item) => item.id == detail.batchId,
+                                orElse: () => batchList.firstWhere(
+                                  (item) => item.text.trim() == v.trim(),
+                                ),
+                              );
+
+                              // Auto-fill Stock Quantity
+                              if (batchItem.stock > 0) {
+                                detail.qtyInStockCtrl.text =
+                                    batchItem.stock.toString();
+                              } else {
+                                detail.qtyInStockCtrl.clear();
+                              }
+
+                              // Auto-fill UOM (Unit of Measure)
+                              // UOM is stored as ID, convert to string for display
+                              if (batchItem.uom > 0) {
+                                detail.uomCtrl.text = batchItem.uom.toString();
+                              } else {
+                                detail.uomCtrl.clear();
+                              }
+
+                              // Auto-fill Rate (if > 0)
+                              if (batchItem.rate > 0) {
+                                detail.rateCtrl.text =
+                                    batchItem.rate.toString();
+                                // Recalculate amount if qty issued is already entered
+                                _calculateAmountForItem(detail);
+                              } else {
+                                detail.rateCtrl.clear();
+                                _calculateAmountForItem(
+                                    detail); // Recalculate to set amount to 0
+                              }
+
+                              print('✅ Auto-filled from Batch No "$v":');
+                              print('   - Stock: ${batchItem.stock}');
+                              print('   - UOM: ${batchItem.uom}');
+                              print('   - Rate: ${batchItem.rate}');
+                            } catch (e) {
+                              print('⚠️ Error auto-filling from batch: $e');
+                            }
+                          } else {
+                            // Clear auto-filled fields when batch is cleared or invalid
+                            detail.qtyInStockCtrl.clear();
+                            detail.uomCtrl.clear();
+                            detail.rateCtrl.clear();
+                            _calculateAmountForItem(detail);
+                          }
+                        } else {
+                          print(
+                              '⚠️ Batch list not loaded for item: ${detail.itemDescription}');
+                          detail.batchId = null;
+                        }
+                      } else {
                         detail.batchId = null;
                       }
-                    }
-                    // Auto-fill qty in stock, UOM, and rate if available
-                    if (detail.batchId != null && detail.batchId! > 0) {
-                      try {
-                        // Find the batch item to get stock, UOM, and rate
-                        final batchItem = batchList.firstWhere(
-                          (item) => item.id == detail.batchId,
-                          orElse: () => batchList.firstWhere(
-                            (item) => item.text.trim() == v.trim(),
-                          ),
-                        );
-
-                        // Auto-fill Stock Quantity
-                        if (batchItem.stock > 0) {
-                          detail.qtyInStockCtrl.text =
-                              batchItem.stock.toString();
-                        } else {
-                          detail.qtyInStockCtrl.clear();
-                        }
-
-                        // Auto-fill UOM (Unit of Measure)
-                        // UOM is stored as ID, convert to string for display
-                        if (batchItem.uom > 0) {
-                          detail.uomCtrl.text = batchItem.uom.toString();
-                        } else {
-                          detail.uomCtrl.clear();
-                        }
-
-                        // Auto-fill Rate (if > 0)
-                        if (batchItem.rate > 0) {
-                          detail.rateCtrl.text = batchItem.rate.toString();
-                          // Recalculate amount if qty issued is already entered
-                          _calculateAmountForItem(detail);
-                        } else {
-                          detail.rateCtrl.clear();
-                          _calculateAmountForItem(
-                              detail); // Recalculate to set amount to 0
-                        }
-
-                        print('✅ Auto-filled from Batch No "$v":');
-                        print('   - Stock: ${batchItem.stock}');
-                        print('   - UOM: ${batchItem.uom}');
-                        print('   - Rate: ${batchItem.rate}');
-                      } catch (e) {
-                        print('⚠️ Error auto-filling from batch: $e');
-                      }
-                    } else {
-                      // Clear auto-filled fields when batch is cleared or invalid
-                      detail.qtyInStockCtrl.clear();
-                      detail.uomCtrl.clear();
-                      detail.rateCtrl.clear();
-                      _calculateAmountForItem(detail);
-                    }
-                  } else {
-                    print(
-                        '⚠️ Batch list not loaded for item: ${detail.itemDescription}');
-                    detail.batchId = null;
-                  }
-                } else {
-                  detail.batchId = null;
-                }
-              });
-            },
-          ),
+                    });
+                  },
+                ),
         ),
         const SizedBox(height: 12),
 
@@ -2759,8 +2828,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                 child: TextFormField(
                   controller: detail.qtyIssuedCtrl,
                   keyboardType: TextInputType.number,
+                  readOnly: _isViewMode,
                   decoration: InputDecoration(
                     hintText: 'Enter quantity',
+                    filled: _isViewMode,
+                    fillColor:
+                        _isViewMode ? Colors.grey.shade100 : Colors.white,
                   ),
                   onChanged: (_) {
                     setState(() {
@@ -2796,9 +2869,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           child: TextFormField(
             controller: detail.rateCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            readOnly: _isViewMode,
             decoration: InputDecoration(
               hintText: 'Enter rate',
-              // prefixIcon: Icon(Icons.attach_money, size: 20),
+              filled: _isViewMode,
+              fillColor: _isViewMode ? Colors.grey.shade100 : Colors.white,
             ),
             onChanged: (_) {
               _calculateAmountForItem(detail);
@@ -2817,7 +2892,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
               hintText: 'Auto-calculated',
               filled: true,
               fillColor: Colors.grey.shade100,
-              prefixIcon: Icon(Icons.calculate, size: 20),
+              prefixIcon: const Icon(Icons.calculate, size: 20),
             ),
           ),
         ),
@@ -2829,8 +2904,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           child: TextFormField(
             controller: detail.remarksCtrl,
             maxLines: 2,
+            readOnly: _isViewMode,
             decoration: InputDecoration(
               hintText: 'Add remarks',
+              filled: _isViewMode,
+              fillColor: _isViewMode ? Colors.grey.shade100 : Colors.white,
             ),
           ),
         ),
@@ -2881,6 +2959,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       itemDescription: detail.itemDescription ?? '',
       batchNo: detail.batchNo ?? '',
       batchId: detail.batchId, // Include batchId if available
+      itemId: detail.itemId, // Include itemId if available (from API)
       qtyInStock: int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0,
       qtyIssued: int.tryParse(detail.qtyIssuedCtrl.text.trim()) ?? 0,
       uom: detail.uomCtrl.text.trim(),
@@ -2917,30 +2996,40 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       final itemIssueRepo = getIt<ItemIssueRepository>();
       await itemIssueRepo.saveItemIssue(saveRequest);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEditMode
-                  ? 'Customer Issue submitted successfully'
-                  : 'Customer Issue submitted successfully',
-            ),
-            backgroundColor: Colors.green,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Customer Issue submitted successfully',
+          type: ToastType.success,
         );
         Navigator.of(context).pop(true);
       }
-    } catch (e) {
+    } catch (e, stack) {
+      print('❌ Exception caught during submit: ' + e.toString());
+      print('Stacktrace:');
+      print(stack);
+      String detailedMessage = e.toString();
       // If using Dio or a similar network error
       try {
-        print('❌ Exception caught during submit: ' + e.toString());
-
-      } catch (ee) {}
+        // Check for DioException (newer Dio) or DioError (older Dio)
+        if (e is DioException) {
+          detailedMessage = e.response?.data?.toString() ?? e.toString();
+          print('DioException type: ${e.type}');
+          print('DioException response: ${e.response}');
+          print('DioException data: ${e.response?.data?.toString() ?? 'null'}');
+        } else if (e.toString().contains('DioException') ||
+            e.toString().contains('DioError')) {
+          // Fallback for Dio errors that might not be caught by type check
+          detailedMessage = e.toString();
+        }
+      } catch (ee) {
+        // If error handling fails, just use the original error message
+        detailedMessage = e.toString();
+      }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to submit customer issue: e'),
-            backgroundColor: Colors.red,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Failed to submit customer issue: $detailedMessage',
+          type: ToastType.error,
         );
       }
     } finally {
@@ -2959,34 +3048,29 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         .map((detail) => _convertItemDetailToIssueItemDetail(detail))
         .toList();
 
-    // Save button enabled when form is valid (doesn't depend on workflow)
-    // Note: Save doesn't need to wait for workflow to load since it doesn't use workflow
-    final bool canSave = _items.isNotEmpty &&
-        _issueAgainst != null &&
-        _issueTo != null &&
-        _fromStore != null &&
-        _toStore != null &&
-        (
-          !_isEditMode ||
-          (_pendingApiIssueData != null
-              ? _pendingApiIssueData!.statusText?.toLowerCase() != 'approved'
-              : true)
-        );
+    // Save button enabled based on edit mode status only (not required fields)
+    // Required fields will be validated on click and show popup if missing
+    final bool canSave = !_isEditMode ||
+        (_pendingApiIssueData != null
+            ? _pendingApiIssueData!.statusText?.toLowerCase() != 'approved'
+            : true);
 
     // Submit button enabled only if processAction exists and is valid
+    // Required fields will be validated on click and show popup if missing
     final bool canSubmit = canSave && _hasWorkflowSubmitAction;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-
         // Save and Submit buttons in a row
         Row(
           children: [
             // Save button
             Expanded(
               child: OutlinedButton(
-                onPressed: canSave && !_isLoading ? _handleSave : null,
+                onPressed: canSave && !_isLoading
+                    ? () => _handleSaveWithValidation()
+                    : null,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: tealGreen,
                   side: BorderSide(color: tealGreen, width: 1.5),
@@ -3012,7 +3096,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           canSubmit &&
                           action.processAction != null &&
                           action.processAction!.isNotEmpty
-                      ? () => _handleWorkflowAction(action)
+                      ? () => _handleWorkflowActionWithValidation(action)
                       : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: tealGreen,
@@ -3341,16 +3425,28 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     for (int i = 0; i < _items.length; i++) {
       final item = _items[i];
 
-      // Validate: itemId cannot be 0 or null!
+      // Get item ID - prefer stored itemId from API (edit mode), otherwise lookup
+      int itemId = 0;
       final itemDescriptionList =
           _divisionToItemDescriptionList[item.divisionCategory] ?? [];
-      print('itemDescriptionList: $itemDescriptionList');
-      final itemDescriptionId =
-          _getIdFromText(item.itemDescription, itemDescriptionList);
-      print('itemDescriptionId: $itemDescriptionId');
-      if (itemDescriptionId == 0) {
-        throw Exception(
-            'Item ID is 0 for item: \'${item.itemDescription}\'. Please ensure the item is selected properly.');
+
+      if (item.itemId != null && item.itemId! > 0) {
+        // Use stored item ID from API (most reliable for edit mode)
+        itemId = item.itemId!;
+        print(
+            '✅ Using stored item ID from API: $itemId for item: "${item.itemDescription}"');
+      } else {
+        // Fallback: lookup item ID from item description list
+        print('itemDescriptionList: $itemDescriptionList');
+        final itemDescriptionId =
+            _getIdFromText(item.itemDescription, itemDescriptionList);
+        print('itemDescriptionId: $itemDescriptionId');
+        itemId = itemDescriptionId;
+
+        if (itemId == 0) {
+          throw Exception(
+              'Item ID is 0 for item: \'${item.itemDescription}\'. Please ensure the item is selected properly.');
+        }
       }
 
       // Get the actual item object to extract UOM and other fields
@@ -3436,16 +3532,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         uomId = itemDescriptionObj.uom;
       }
 
-      // Get item ID from item description
-      final itemId = itemDescriptionId > 0
-          ? itemDescriptionId
-          : (itemDescriptionObj?.id ?? 0);
-
-      // Validate item details
-      if (itemId == 0) {
-        throw Exception(
-            'Item ID is 0 for item: ${item.itemDescription}. Please ensure the item is selected correctly.');
-      }
+      // itemId is already set above (from stored value or lookup)
+      // No need to recalculate here - itemId variable is already available
       if (divisionCategoryId == 0) {
         throw Exception(
             'Division Category ID is 0 for: ${item.divisionCategory}. Please ensure the division category is selected correctly.');
@@ -3676,6 +3764,114 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     return request;
   }
 
+  /// Get list of missing required fields
+  List<String> _getMissingRequiredFields() {
+    List<String> missingFields = [];
+
+    if (_issueAgainst == null) {
+      missingFields.add('Issue Against');
+    }
+
+    if (_issueTo == null) {
+      missingFields.add('Issue To');
+    }
+
+    if (_fromStore == null) {
+      missingFields.add('From Store');
+    }
+
+    if (_toStore == null) {
+      missingFields.add('To Store');
+    }
+
+    // Convert _itemDetails to _items for validation
+    _items = _itemDetails
+        .map((detail) => _convertItemDetailToIssueItemDetail(detail))
+        .toList();
+
+    if (_items.isEmpty) {
+      missingFields.add('At least one item');
+    }
+
+    return missingFields;
+  }
+
+  /// Show popup with missing required fields
+  void _showMissingFieldsDialog(List<String> missingFields) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Required Fields Missing'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Please fill in the following required fields:'),
+            const SizedBox(height: 12),
+            ...missingFields.map((field) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.circle, size: 8, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(field)),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Handle save with validation popup
+  Future<void> _handleSaveWithValidation() async {
+    final missingFields = _getMissingRequiredFields();
+    if (missingFields.isNotEmpty) {
+      _showMissingFieldsDialog(missingFields);
+      return;
+    }
+
+    // Validate store same check
+    if (_fromStore != null && _toStore != null && _fromStore == _toStore) {
+      _showStoreSameDialog();
+      setState(() {
+        _fromStoreError = 'From Store and To Store cannot be same';
+        _toStoreError = 'From Store and To Store cannot be same';
+      });
+      return;
+    }
+
+    await _handleSave();
+  }
+
+  /// Handle workflow action with validation popup
+  void _handleWorkflowActionWithValidation(ProcessActionDetail action) {
+    final missingFields = _getMissingRequiredFields();
+    if (missingFields.isNotEmpty) {
+      _showMissingFieldsDialog(missingFields);
+      return;
+    }
+
+    // Validate store same check
+    if (_fromStore != null && _toStore != null && _fromStore == _toStore) {
+      _showStoreSameDialog();
+      setState(() {
+        _fromStoreError = 'From Store and To Store cannot be same';
+        _toStoreError = 'From Store and To Store cannot be same';
+      });
+      return;
+    }
+
+    _handleWorkflowAction(action);
+  }
+
   /// Handle save (without workflow)
   Future<void> _handleSave() async {
     if (!_validateForm()) return;
@@ -3704,25 +3900,19 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       await itemIssueRepo.saveItemIssue(saveRequest);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEditMode
-                  ? 'Customer Issue saved successfully'
-                  : 'Customer Issue saved successfully',
-            ),
-            backgroundColor: Colors.green,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Customer Issue saved successfully',
+          type: ToastType.success,
         );
         Navigator.of(context).pop(true); // Return true to indicate success
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save customer issue: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Failed to save customer issue: ${e.toString()}',
+          type: ToastType.error,
         );
       }
     } finally {
@@ -3763,15 +3953,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       await itemIssueRepo.saveItemIssue(saveRequest);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEditMode
-                  ? 'Customer Issue submitted successfully'
-                  : 'Customer Issue submitted successfully',
-            ),
-            backgroundColor: Colors.green,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Customer Issue submitted successfully',
+          type: ToastType.success,
         );
         Navigator.of(context).pop(true); // Return true to indicate success
       }
@@ -3792,12 +3977,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         }
       } catch (ee) {}
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('Failed to submit customer issue: ' + detailedMessage),
-            backgroundColor: Colors.red,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Failed to submit customer issue: $detailedMessage',
+          type: ToastType.error,
         );
       }
     } finally {
@@ -3851,11 +4034,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
 
     if (_items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add at least one item before submitting'),
-          backgroundColor: Colors.orange,
-        ),
+      ToastMessage.show(
+        context,
+        message: 'Please add at least one item before submitting',
+        type: ToastType.warning,
       );
       isValid = false;
     }
@@ -3986,13 +4168,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
         Future.microtask(() {
           if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Failed to load division/category options. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
+            ToastMessage.show(
+              context,
+              message: 'Failed to load division/category options. Please try again.',
+              type: ToastType.error,
             );
           }
         });
@@ -4044,13 +4223,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
         Future.microtask(() {
           if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content:
-                    Text('Failed to load item descriptions. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
+            ToastMessage.show(
+              context,
+              message: 'Failed to load item descriptions. Please try again.',
+              type: ToastType.error,
             );
           }
         });
@@ -4201,13 +4377,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
         Future.microtask(() {
           if (mounted && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content:
-                    Text('Failed to load batch numbers. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
+            ToastMessage.show(
+              context,
+              message: 'Failed to load batch numbers. Please try again.',
+              type: ToastType.error,
             );
           }
         });
@@ -4625,7 +4798,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
             height: 20,
             child: CircularProgressIndicator(
               strokeWidth: 2.5,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.grey.shade600),
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4db1b3)),
             ),
           ),
           const SizedBox(width: 12),
@@ -5299,6 +5472,7 @@ class IssueItemDetail {
   final String itemDescription;
   final String batchNo;
   final int? batchId; // Optional batch ID
+  final int? itemId; // Optional item ID (from API when editing)
   final int qtyInStock;
   final int qtyIssued;
   final String uom;
@@ -5311,6 +5485,7 @@ class IssueItemDetail {
     required this.itemDescription,
     required this.batchNo,
     this.batchId,
+    this.itemId,
     required this.qtyInStock,
     required this.qtyIssued,
     required this.uom,

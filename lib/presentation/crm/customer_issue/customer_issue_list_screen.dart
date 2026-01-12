@@ -1472,8 +1472,9 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                       ? SliverToBoxAdapter(
                           child: Container(
                             padding: const EdgeInsets.all(40),
-                            child: const Center(
-                                child: CircularProgressIndicator()),
+                            child: Center(
+                                child: CircularProgressIndicator(
+                                    color: tealGreen)),
                           ),
                         )
                       : _loadError != null && _issues.isEmpty

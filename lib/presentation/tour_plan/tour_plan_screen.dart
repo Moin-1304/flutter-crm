@@ -624,8 +624,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                     surfaceTintColor: Colors.transparent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(28),
-                      side:
-                          BorderSide(color: Colors.black.withOpacity(.06)),
+                      side: BorderSide(color: Colors.black.withOpacity(.06)),
                     ),
                     elevation: 12,
                     child: Stack(
@@ -653,19 +652,19 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                         onDateTap: (d) {
                                           setState(() {
                                             // Toggle selection: if same date is tapped again, deselect it
-                                            _selectedDay = _selectedDay !=
-                                                        null &&
-                                                    _isSameDate(
-                                                        _selectedDay!, d)
-                                                ? null
-                                                : d;
+                                            _selectedDay =
+                                                _selectedDay != null &&
+                                                        _isSameDate(
+                                                            _selectedDay!, d)
+                                                    ? null
+                                                    : d;
                                           });
                                           // No need to reload data - filtering is handled in the UI
                                         },
                                         onMonthChanged: (m) async {
                                           setState(() {
-                                            _month = DateTime(
-                                                m.year, m.month, 1);
+                                            _month =
+                                                DateTime(m.year, m.month, 1);
                                             _selectedDay =
                                                 null; // Clear selection when month changes
                                             _store.month = _month;
@@ -694,21 +693,19 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                         Positioned.fill(
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              color: Colors.white
-                                                  .withOpacity(0.8),
+                                              color:
+                                                  Colors.white.withOpacity(0.8),
                                               borderRadius:
                                                   BorderRadius.circular(28),
                                             ),
                                             child: Center(
                                               child: Column(
-                                                mainAxisSize:
-                                                    MainAxisSize.min,
+                                                mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   CircularProgressIndicator(
                                                     valueColor:
                                                         AlwaysStoppedAnimation<
-                                                                Color>(
-                                                            tealGreen),
+                                                            Color>(tealGreen),
                                                   ),
                                                   const SizedBox(height: 8),
                                                   const Text(
@@ -953,11 +950,12 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 color: Colors.white.withOpacity(0.8),
                                 borderRadius: BorderRadius.circular(28),
                               ),
-                              child: const Center(
+                              child: Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    CircularProgressIndicator(),
+                                    CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(tealGreen),
+                                    ),
                                     SizedBox(height: 8),
                                     Text('Loading tour plans...'),
                                   ],
@@ -2230,8 +2228,12 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       if (mounted) {
         setState(() {});
       }
-    } catch (e) {
-      print('TourPlanScreen: Error loading calendar item list data: $e');
+    } catch (e, stackTrace) {
+      print(
+          'TourPlanScreen: ========== ERROR LOADING CALENDAR ITEM LIST DATA ==========');
+      print('TourPlanScreen: Error: $e');
+      print('TourPlanScreen: Stack trace: $stackTrace');
+      print('TourPlanScreen: ========== END ERROR ==========');
     }
   }
 
@@ -2686,14 +2688,146 @@ class _TourPlanScreenState extends State<TourPlanScreen>
   }
 
   /// Show detailed popup for Tour Plan item with bottom-to-top slide animation
-  void _showTourPlanDetails(TourPlanItem item) {
+  void _showTourPlanDetails(TourPlanItem item) async {
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    final statusText = _getStatusDisplayText(item);
-    final statusColor = _getStatusColor(item.status);
-    final statusBgColor = _getStatusBackgroundColor(item.status);
-    final customerName = item.customerName ?? 'Customer ${item.customerId}';
-    final customerCode = item.customerId != null
-        ? ' - P${item.customerId.toString().padLeft(5, '0')}'
+
+    // Show loading dialog first
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Container(
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Loading tour plan details...',
+                style: GoogleFonts.inter(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    TourPlanItem? fullItem = item;
+
+    try {
+      // Fetch full tour plan details from API
+      final repo = getIt<TourPlanRepository>();
+      int effectiveTourPlanId = item.tourPlanId ?? 0;
+      int effectiveId = item.id;
+
+      // If tourPlanId is 0 or null, use id as tourPlanId
+      if (effectiveTourPlanId == 0) {
+        effectiveTourPlanId = effectiveId;
+      }
+
+      print(
+          'TourPlanScreen: Calling getTourPlanDetails with tourPlanId=$effectiveTourPlanId, id=$effectiveId');
+      final response = await repo.getTourPlanDetails(
+        tourPlanId: effectiveTourPlanId,
+        id: effectiveId,
+      );
+
+      if (response.items.isNotEmpty) {
+        fullItem = response.items.first;
+        print('TourPlanScreen: ✓ Fetched full tour plan details');
+        print(
+            'TourPlanScreen: tourPlanDetails count: ${fullItem.tourPlanDetails?.length ?? 0}');
+      } else {
+        print(
+            'TourPlanScreen: ⚠ API returned empty items, using original item');
+      }
+    } catch (e) {
+      print('TourPlanScreen: ⚠ Error fetching tour plan details: $e');
+      // Continue with original item if API fails
+    } finally {
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    if (!mounted || fullItem == null) return;
+
+    // Collect all clusters from tourPlanDetails
+    Set<String> allClusters = <String>{};
+    if (fullItem.clusters != null && fullItem.clusters!.isNotEmpty) {
+      allClusters.addAll(fullItem.clusters!
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty));
+    }
+    if (fullItem.tourPlanDetails != null &&
+        fullItem.tourPlanDetails!.isNotEmpty) {
+      for (final detail in fullItem.tourPlanDetails!) {
+        if (detail.clusterNames != null && detail.clusterNames!.isNotEmpty) {
+          allClusters.addAll(detail.clusterNames!
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty));
+        }
+      }
+    }
+    final clustersDisplay = allClusters.isNotEmpty
+        ? allClusters.join(', ')
+        : (fullItem.cluster ?? 'N/A');
+
+    // Collect all products from productsToBeDiscussed arrays
+    List<String> allProducts = <String>[];
+    if (fullItem.tourPlanDetails != null &&
+        fullItem.tourPlanDetails!.isNotEmpty) {
+      for (final detail in fullItem.tourPlanDetails!) {
+        if (detail.productsToBeDiscussed != null &&
+            detail.productsToBeDiscussed!.isNotEmpty) {
+          for (final product in detail.productsToBeDiscussed!) {
+            if (product.productName.isNotEmpty &&
+                !allProducts.contains(product.productName)) {
+              allProducts.add(product.productName);
+            }
+          }
+        } else if (detail.productsToDiscuss != null &&
+            detail.productsToDiscuss!.isNotEmpty) {
+          final products = detail.productsToDiscuss!
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty);
+          for (final product in products) {
+            if (!allProducts.contains(product)) {
+              allProducts.add(product);
+            }
+          }
+        }
+      }
+    }
+    // Fallback to item level products
+    if (allProducts.isEmpty &&
+        fullItem.productsToDiscuss != null &&
+        fullItem.productsToDiscuss!.isNotEmpty) {
+      allProducts = fullItem.productsToDiscuss!
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    final productsDisplay =
+        allProducts.isNotEmpty ? allProducts.join(', ') : 'N/A';
+
+    final statusText = _getStatusDisplayText(fullItem);
+    final statusColor = _getStatusColor(fullItem.status);
+    final statusBgColor = _getStatusBackgroundColor(fullItem.status);
+    final customerName =
+        fullItem.customerName ?? 'Customer ${fullItem.customerId}';
+    final customerCode = fullItem.customerId != null
+        ? ' - P${fullItem.customerId.toString().padLeft(5, '0')}'
         : '';
 
     showModalBottomSheet(
@@ -2823,206 +2957,220 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                 ),
               ),
               // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Employee Information
-                      if (item.employeeName != null ||
-                          item.designation != null ||
-                          item.planDate != null) ...[
-                        Text(
-                          'Employee Information',
-                          style: GoogleFonts.inter(
-                            fontSize: isTablet ? 14 : 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey[900],
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 10 : 8),
-                        Container(
-                          padding: EdgeInsets.all(isTablet ? 12 : 10),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            children: [
-                              if (item.employeeName != null &&
-                                  item.employeeName!.isNotEmpty)
-                                _DetailRow('Name', item.employeeName!),
-                              if (item.designation != null &&
-                                  item.designation!.isNotEmpty) ...[
-                                if (item.employeeName != null &&
-                                    item.employeeName!.isNotEmpty)
-                                  SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Designation', item.designation!),
-                              ],
-                              if (item.planDate != null) ...[
-                                if ((item.employeeName != null &&
-                                        item.employeeName!.isNotEmpty) ||
-                                    (item.designation != null &&
-                                        item.designation!.isNotEmpty))
-                                  SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Date', _formatDate(item.planDate)),
-                              ],
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 12 : 10),
-                      ],
+              Builder(
+                builder: (context) {
+                  final item = fullItem!; // Use non-nullable version
+                  // Get samples from tourPlanDetails first, then fallback to item level
+                  final String? samplesToDistribute =
+                      (item.tourPlanDetails != null &&
+                              item.tourPlanDetails!.isNotEmpty &&
+                              item.tourPlanDetails![0].samplesToDistribute !=
+                                  null &&
+                              item.tourPlanDetails![0].samplesToDistribute!
+                                  .trim()
+                                  .isNotEmpty)
+                          ? item.tourPlanDetails![0].samplesToDistribute!.trim()
+                          : (item.samplesToDistribute != null &&
+                                  item.samplesToDistribute!.trim().isNotEmpty
+                              ? item.samplesToDistribute!.trim()
+                              : null);
 
-                      // Location Details
-                      if (item.cluster != null ||
-                          item.clusters != null ||
-                          item.territory != null) ...[
-                        Text(
-                          'Location Details',
-                          style: GoogleFonts.inter(
-                            fontSize: isTablet ? 14 : 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey[900],
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 10 : 8),
-                        Container(
-                          padding: EdgeInsets.all(isTablet ? 12 : 10),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            children: [
-                              if (item.clusters != null &&
-                                  item.clusters!.isNotEmpty) ...[
-                                _DetailRow('Clusters', item.clusters!),
-                              ] else if (item.cluster != null &&
-                                  item.cluster!.isNotEmpty) ...[
-                                _DetailRow('Cluster', item.cluster!),
-                              ],
-                              if (item.territory != null &&
-                                  item.territory!.isNotEmpty) ...[
-                                if (item.cluster != null ||
-                                    item.clusters != null)
-                                  SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Territory', item.territory!),
-                              ],
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 12 : 10),
-                      ],
+                  return Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Employee Information
+                          if (item.employeeName != null ||
+                              item.designation != null ||
+                              item.planDate != null) ...[
+                            Text(
+                              'Employee Information',
+                              style: GoogleFonts.inter(
+                                fontSize: isTablet ? 14 : 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey[900],
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 10 : 8),
+                            Container(
+                              padding: EdgeInsets.all(isTablet ? 12 : 10),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  if (item.employeeName != null &&
+                                      item.employeeName!.isNotEmpty)
+                                    _DetailRow('Name', item.employeeName!),
+                                  if (item.designation != null &&
+                                      item.designation!.isNotEmpty) ...[
+                                    if (item.employeeName != null &&
+                                        item.employeeName!.isNotEmpty)
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow(
+                                        'Designation', item.designation!),
+                                  ],
+                                  if (item.planDate != null) ...[
+                                    if ((item.employeeName != null &&
+                                            item.employeeName!.isNotEmpty) ||
+                                        (item.designation != null &&
+                                            item.designation!.isNotEmpty))
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow(
+                                        'Date', _formatDate(item.planDate)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 12 : 10),
+                          ],
 
-                      // Visit Details
-                      if (customerName.isNotEmpty ||
-                          item.productsToDiscuss != null ||
-                          item.samplesToDistribute != null ||
-                          item.objective != null) ...[
-                        Text(
-                          'Visit Details',
-                          style: GoogleFonts.inter(
-                            fontSize: isTablet ? 14 : 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey[900],
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 10 : 8),
-                        Container(
-                          padding: EdgeInsets.all(isTablet ? 12 : 10),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            children: [
-                              _DetailRow(
-                                  'Customer', '$customerName$customerCode'),
-                              if (item.productsToDiscuss != null &&
-                                  item.productsToDiscuss!.isNotEmpty) ...[
-                                SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Products to Discuss',
-                                    item.productsToDiscuss!),
-                              ],
-                              if (item.samplesToDistribute != null &&
-                                  item.samplesToDistribute!.isNotEmpty) ...[
-                                SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Samples to Distribute',
-                                    item.samplesToDistribute!),
-                              ],
-                              if (item.objective != null &&
-                                  item.objective!.isNotEmpty) ...[
-                                SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Objective', item.objective!),
-                              ],
-                              if (item.tourPlanType != null &&
-                                  item.tourPlanType!.isNotEmpty) ...[
-                                SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Plan Type', item.tourPlanType!),
-                              ],
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 12 : 10),
-                      ],
+                          // Location Details
+                          if (clustersDisplay.isNotEmpty &&
+                              clustersDisplay != 'N/A') ...[
+                            Text(
+                              'Location Details',
+                              style: GoogleFonts.inter(
+                                fontSize: isTablet ? 14 : 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey[900],
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 10 : 8),
+                            Container(
+                              padding: EdgeInsets.all(isTablet ? 12 : 10),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  _DetailRow(
+                                      'Clusters/Cities', clustersDisplay),
+                                  if (item.territory != null &&
+                                      item.territory!.isNotEmpty) ...[
+                                    SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Territory', item.territory!),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 12 : 10),
+                          ],
 
-                      // Additional Information
-                      if (item.notes != null ||
-                          item.remarks != null ||
-                          item.managerComments != null) ...[
-                        Text(
-                          'Additional Information',
-                          style: GoogleFonts.inter(
-                            fontSize: isTablet ? 14 : 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey[900],
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 10 : 8),
-                        Container(
-                          padding: EdgeInsets.all(isTablet ? 12 : 10),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            children: [
-                              if (item.notes != null &&
-                                  item.notes!.isNotEmpty) ...[
-                                _DetailRow('Notes', item.notes!,
-                                    isMultiline: true),
-                              ],
-                              if (item.remarks != null &&
-                                  item.remarks!.isNotEmpty) ...[
-                                if (item.notes != null &&
-                                    item.notes!.isNotEmpty)
-                                  SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow('Remarks', item.remarks!,
-                                    isMultiline: true),
-                              ],
-                              if (item.managerComments != null &&
-                                  item.managerComments!.isNotEmpty) ...[
-                                if ((item.notes != null &&
-                                        item.notes!.isNotEmpty) ||
-                                    (item.remarks != null &&
-                                        item.remarks!.isNotEmpty))
-                                  SizedBox(height: isTablet ? 6 : 4),
-                                _DetailRow(
-                                    'Manager Comments', item.managerComments!,
-                                    isMultiline: true),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+                          // Visit Details
+                          if (customerName.isNotEmpty ||
+                              productsDisplay.isNotEmpty ||
+                              samplesToDistribute != null ||
+                              item.objective != null) ...[
+                            Text(
+                              'Visit Details',
+                              style: GoogleFonts.inter(
+                                fontSize: isTablet ? 14 : 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey[900],
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 10 : 8),
+                            Container(
+                              padding: EdgeInsets.all(isTablet ? 12 : 10),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  _DetailRow(
+                                      'Customer', '$customerName$customerCode'),
+                                  if (productsDisplay.isNotEmpty &&
+                                      productsDisplay != 'N/A') ...[
+                                    SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow(
+                                        'Products to Discuss', productsDisplay),
+                                  ],
+                                  if (samplesToDistribute != null &&
+                                      samplesToDistribute.isNotEmpty) ...[
+                                    SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Samples to Distribute',
+                                        samplesToDistribute),
+                                  ],
+                                  if (item.objective != null &&
+                                      item.objective!.isNotEmpty) ...[
+                                    SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Objective', item.objective!),
+                                  ],
+                                  if (item.tourPlanType != null &&
+                                      item.tourPlanType!.isNotEmpty) ...[
+                                    SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Plan Type', item.tourPlanType!),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 12 : 10),
+                          ],
+
+                          // Additional Information
+                          if (item.notes != null ||
+                              item.remarks != null ||
+                              item.managerComments != null) ...[
+                            Text(
+                              'Additional Information',
+                              style: GoogleFonts.inter(
+                                fontSize: isTablet ? 14 : 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey[900],
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: isTablet ? 10 : 8),
+                            Container(
+                              padding: EdgeInsets.all(isTablet ? 12 : 10),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  if (item.notes != null &&
+                                      item.notes!.isNotEmpty) ...[
+                                    _DetailRow('Notes', item.notes!,
+                                        isMultiline: true),
+                                  ],
+                                  if (item.remarks != null &&
+                                      item.remarks!.isNotEmpty) ...[
+                                    if (item.notes != null &&
+                                        item.notes!.isNotEmpty)
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Remarks', item.remarks!,
+                                        isMultiline: true),
+                                  ],
+                                  if (item.managerComments != null &&
+                                      item.managerComments!.isNotEmpty) ...[
+                                    if ((item.notes != null &&
+                                            item.notes!.isNotEmpty) ||
+                                        (item.remarks != null &&
+                                            item.remarks!.isNotEmpty))
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Manager Comments',
+                                        item.managerComments!,
+                                        isMultiline: true),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
               // Footer actions
               SafeArea(
@@ -3035,7 +3183,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                     alignment: WrapAlignment.end,
                     children: [
                       // Edit button
-                      if (_canEditTourPlan(item))
+                      if (_canEditTourPlan(fullItem!))
                         getIt.isRegistered<UserValidationStore>()
                             ? ListenableBuilder(
                                 listenable: getIt<UserValidationStore>(),
@@ -3048,7 +3196,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                     onPressed: isEnabled
                                         ? () {
                                             Navigator.of(context).pop();
-                                            _editTourPlan(item);
+                                            _editTourPlan(fullItem!);
                                           }
                                         : null,
                                     icon: Icon(Icons.edit_outlined,
@@ -3082,7 +3230,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             : FilledButton.icon(
                                 onPressed: () {
                                   Navigator.of(context).pop();
-                                  _editTourPlan(item);
+                                  _editTourPlan(fullItem!);
                                 },
                                 icon: Icon(Icons.edit_outlined,
                                     size: isTablet ? 18 : 16),
@@ -3106,11 +3254,11 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 ),
                               ),
                       // Comment button (for Pending, Approved, and Sent Back)
-                      if (_canCommentTourPlan(item))
+                      if (_canCommentTourPlan(fullItem!))
                         FilledButton.icon(
                           onPressed: () {
                             // Don't close the popup - let the comment dialog open on top
-                            _addCommentToTourPlan(item);
+                            _addCommentToTourPlan(fullItem!);
                           },
                           icon: Icon(Icons.comment_outlined,
                               size: isTablet ? 18 : 16),
@@ -3134,11 +3282,11 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ),
                         ),
                       // Create DCR button
-                      if (_canCreateDcrFromTourPlan(item))
+                      if (_canCreateDcrFromTourPlan(fullItem!))
                         FilledButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            _createDcrFromTourPlan(item);
+                            _createDcrFromTourPlan(fullItem!);
                           },
                           icon: Icon(Icons.description_outlined,
                               size: isTablet ? 18 : 16),
@@ -3162,11 +3310,11 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ),
                         ),
                       // Delete button
-                      if (_canDeleteTourPlan(item))
+                      if (_canDeleteTourPlan(fullItem!))
                         OutlinedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            _deleteTourPlan(item);
+                            _deleteTourPlan(fullItem!);
                           },
                           icon: Icon(Icons.delete_outlined,
                               size: isTablet ? 18 : 16),
@@ -3238,6 +3386,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
   }
 
   /// Navigate to edit tour plan screen
+
   void _editTourPlan(TourPlanItem item) async {
     print('TourPlanScreen: Editing tour plan with ID: ${item.id}');
 
@@ -3559,15 +3708,33 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       customerName = item.customerName?.trim() ?? '';
     }
 
-    // Extract products from tourPlanDetails[0].productsToDiscuss
+    // Extract products from tourPlanDetails[0].productsToBeDiscussed (array) or productsToDiscuss (string)
     final String products;
-    if (detail != null &&
-        detail.productsToDiscuss != null &&
-        detail.productsToDiscuss!.trim().isNotEmpty) {
-      products = detail.productsToDiscuss!.trim();
-      print('TourPlanScreen: Using productsToDiscuss from detail: $products');
+    if (detail != null) {
+      // First, try productsToBeDiscussed array (preferred - from API)
+      if (detail.productsToBeDiscussed != null &&
+          detail.productsToBeDiscussed!.isNotEmpty) {
+        // Convert array to comma-separated string
+        products = detail.productsToBeDiscussed!
+            .map((p) => p.productName.trim())
+            .where((name) => name.isNotEmpty)
+            .join(', ');
+        print(
+            'TourPlanScreen: Using productsToBeDiscussed array from detail: $products');
+      } else if (detail.productsToDiscuss != null &&
+          detail.productsToDiscuss!.trim().isNotEmpty) {
+        // Fallback to productsToDiscuss string
+        products = detail.productsToDiscuss!.trim();
+        print(
+            'TourPlanScreen: Using productsToDiscuss string from detail: $products');
+      } else {
+        products = '';
+      }
     } else {
+      // Fallback to header-level productsToDiscuss
       products = item.productsToDiscuss?.trim() ?? '';
+      print(
+          'TourPlanScreen: Using productsToDiscuss from item header: $products');
     }
 
     // Extract samples from tourPlanDetails[0].samplesToDistribute

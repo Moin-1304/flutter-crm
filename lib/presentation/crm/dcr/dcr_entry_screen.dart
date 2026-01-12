@@ -279,10 +279,31 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         }
 
         int? userId = userStore?.userDetail?.id;
+        int? employeeId = userStore?.userDetail?.employeeId;
+        String? serviceArea = userStore?.userDetail?.serviceArea;
+
         if (userId == null || userId <= 0) {
           print(
               'DcrEntryScreen: [Instruments] userId is null/0, skipping instruments load');
           return;
+        }
+
+        // For Service Engineer: use employeeId as UserId
+        // For others: use userId as UserId (matches _loadProductsList logic)
+        int? actualUserId = employeeId;
+
+        if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+          if (employeeId != null && employeeId > 0) {
+            actualUserId = employeeId;
+            print(
+                'DcrEntryScreen: [Instruments] Service Engineer detected - using employeeId: $actualUserId as UserId');
+          } else {
+            print(
+                'DcrEntryScreen: [Instruments] Service Engineer but employeeId is null/0, using userId: $actualUserId');
+          }
+        } else {
+          print(
+              'DcrEntryScreen: [Instruments] Non-Service Engineer - using actualUserId: $actualUserId');
         }
 
         // Get selected customer ID - instruments are loaded based on selected customer
@@ -298,9 +319,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         }
 
         print(
-            'DcrEntryScreen: [Instruments] Loading instruments with userId: $userId, customerId: $customerId');
+            'DcrEntryScreen: [Instruments] Loading instruments with userId: $actualUserId, customerId: $customerId');
         final List<CommonDropdownItem> items =
-            await repo.getMappedInstrumentsList(userId, customerId);
+            await repo.getMappedInstrumentsList(actualUserId ?? 0, customerId);
 
         if (items.isNotEmpty) {
           setState(() {
@@ -2321,6 +2342,14 @@ extension on _DcrEntryScreenState {
         }
       }
 
+      // Use same logic as dropdowns for UserId consistency
+      int actualUserId = userDetail.id;
+      if (userDetail.serviceArea.trim() == 'Service Engineer') {
+        if (userDetail.employeeId > 0) {
+          actualUserId = userDetail.employeeId;
+        }
+      }
+
       // Create params with the IDs from UserStore and name-to-ID maps
       final params = CreateDcrParams(
         date: visit,
@@ -2340,7 +2369,7 @@ extension on _DcrEntryScreenState {
         typeOfWorkId: typeOfWorkId,
         cityId: cityId,
         customerId: customerId,
-        userId: userDetail.id,
+        userId: actualUserId,
         bizunit: userDetail.sbuId,
         latitude: _position?.latitude,
         longitude: _position?.longitude,
