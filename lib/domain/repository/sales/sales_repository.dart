@@ -23,6 +23,22 @@ abstract class SalesRepository {
   });
 
   Future<SalesOrderApiItem> getSalesOrderById(int id);
+
+  Future<List<String>> getStatusFilters({
+    required int bizUnit,
+  });
+
+  Future<List<String>> getTransactionStatusFilters({
+    required int bizUnit,
+  });
+
+  Future<List<String>> getSOTypeFilters({
+    required int bizUnit,
+  });
+
+  Future<List<String>> getCurrencyFilters({
+    required int bizUnit,
+  });
 }
 
 

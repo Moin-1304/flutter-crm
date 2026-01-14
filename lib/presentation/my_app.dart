@@ -8,12 +8,10 @@ import 'package:boilerplate/data/network/interceptors/error_interceptor.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/utils/locale/app_localization.dart';
 import 'package:boilerplate/utils/routes/routes.dart';
-<<<<<<< Updated upstream
 import 'package:event_bus/event_bus.dart';
-=======
 import 'package:boilerplate/presentation/sales/detail/sale_order_view_screen.dart';
+import 'package:boilerplate/presentation/sales/detail/sale_creation.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
->>>>>>> Stashed changes
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -85,19 +83,28 @@ class _MyAppState extends State<MyApp> {
           theme: _themeStore.darkMode
               ? AppThemeData.darkThemeData
               : AppThemeData.lightThemeData,
-          routes: Routes.routes,
+          // Filter out saleCreate and saleView from routes map - they need arguments
+          // so they're handled in onGenerateRoute instead
+          routes: Map.fromEntries(
+            Routes.routes.entries.where((entry) => 
+              entry.key != Routes.saleCreate && entry.key != Routes.saleView
+            )
+          ),
           onGenerateRoute: (settings) {
-            // Handle routes with arguments
+            // Handle routes with arguments - check these FIRST before falling back to routes map
             if (settings.name == Routes.saleView) {
               final args = settings.arguments as Map<String, dynamic>?;
-              print('🔍 [MyApp] onGenerateRoute for saleView');
-              print('   Arguments: $args');
-              print('   orderId: ${args?['orderId']}');
-              print('   orderData type: ${args?['orderData']?.runtimeType}');
-              print('   orderData id: ${args?['orderData']?.id}');
-              
               return MaterialPageRoute(
                 builder: (context) => SaleOrderViewScreen(
+                  orderId: args?['orderId'] as String?,
+                  orderData: args?['orderData'] as SalesOrderApiItem?,
+                ),
+              );
+            }
+            if (settings.name == Routes.saleCreate) {
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute(
+                builder: (context) => SaleCreationScreen(
                   orderId: args?['orderId'] as String?,
                   orderData: args?['orderData'] as SalesOrderApiItem?,
                 ),

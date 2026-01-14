@@ -8,6 +8,11 @@ class CommonGetAutoRequest {
   final int? bizUnit;
   final int? userId;
   final String? date;
+  final int? customer;
+  final int? customerId;
+  final int? distributerId;
+  final String? searchText;
+  final int? item;
 
   CommonGetAutoRequest({
     required this.commandType,
@@ -18,6 +23,11 @@ class CommonGetAutoRequest {
     this.bizUnit,
     this.userId,
     this.date,
+    this.customer,
+    this.customerId,
+    this.distributerId,
+    this.searchText,
+    this.item,
   });
 
   Map<String, dynamic> toJson() {
@@ -32,6 +42,11 @@ class CommonGetAutoRequest {
     if (bizUnit != null) data['BizUnit'] = bizUnit;
     if (userId != null) data['UserId'] = userId;
     if (date != null) data['Date'] = date;
+    if (customer != null) data['Customer'] = customer;
+    if (customerId != null) data['CustomerId'] = customerId;
+    if (distributerId != null) data['DistributerId'] = distributerId;
+    if (searchText != null) data['SearchText'] = searchText;
+    if (item != null) data['Item'] = item;
 
     return data;
   }
@@ -1010,15 +1025,21 @@ class DivisionCategoryRequest {
 }
 
 /// Request model for Item Description List (CommandType: 105)
-/// Requires Division ID from selected Division/Category
+/// Can use either DivisionId or DistributerId
 class ItemDescriptionRequest {
-  final int divisionId;
+  final int? divisionId;
+  final int? distributerId;
+  final String? searchText;
 
-  ItemDescriptionRequest({required this.divisionId});
+  ItemDescriptionRequest({
+    this.divisionId,
+    this.distributerId,
+    this.searchText,
+  });
 
   Map<String, dynamic> toJson() {
     return {
-      'SearchText': null,
+      'SearchText': searchText ?? '%',
       'Id': null,
       'TransactionId': null,
       'UserId': null,
@@ -1079,7 +1100,7 @@ class ItemDescriptionRequest {
       'Name': null,
       'CityId': null,
       'StateId': null,
-      'DistributerId': null,
+      'DistributerId': distributerId,
       'TaxCategory': null,
       'OnlyParent': null,
       'DesignationCode': null,
@@ -1258,6 +1279,133 @@ class PurposeOfVisitRequest {
       'Module': null,
       'Flag': null,
       'CustomerId': null,
+      'Customer': null,
+      'DespatchNo': null,
+      'SurveyType': null,
+      'PageName': null,
+      'Mode': null,
+      'Division': null,
+      'DivisionGroup': null,
+      'Role': null,
+      'TypeId': null,
+      'PageType': null,
+      'IsTax': null,
+      'CategoryAccountType': null,
+      'AddressLine1': null,
+      'AddressLine2': null,
+      'AddressLine3': null,
+      'PostalCode': null,
+      'VehicleNo': null,
+      'StatusType': null,
+      'CurrentStatusID': null,
+      'ProcessType': null,
+      'IsMaterialIssue': false,
+      'IsItemIssue': false,
+      'ReferenceType': null,
+      'TransactionType': null,
+      'ManufacturerMasterDoc': null,
+      'BrandName': null,
+      'AccountSubType': null,
+      'IsFromAMCUser': null,
+      'IsContra': null,
+      'receiveSubType': null,
+      'IssueId': null,
+      'CustomerSelectedList': null,
+    };
+  }
+}
+
+/// Request model for Customer List (CommandType: 71)
+class CustomerListRequest {
+  final int bizUnit;
+  final int? customerId;
+  final String? searchText;
+
+  CustomerListRequest({
+    required this.bizUnit,
+    this.customerId,
+    this.searchText,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SearchText': searchText,
+      'Id': null,
+      'TransactionId': null,
+      'UserId': null,
+      'CommandType': 71,
+      'CommandText': null,
+      'Value': null,
+      'CountryId': null,
+      'Key': null,
+      'Text': null,
+      'Type': null,
+      'TaxFlag': 0,
+      'SubType': null,
+      'RoleMapList': null,
+      'CategoryId': null,
+      'ClusterId': null,
+      'EmployeeId': null,
+      'PageUrl': null,
+      'IncludeCancelled': false,
+      'Program': null,
+      'Category': null,
+      'Status': null,
+      'FromDate': null,
+      'ToDate': null,
+      'ReportName': null,
+      'IsOrganizationUser': null,
+      'ItemGroupName': null,
+      'Active': null,
+      'ConstantMasterPk': null,
+      'ConstantMasterActive': null,
+      'ConstantMasterGroup': null,
+      'ConstantMasterGroupValue': null,
+      'ConstantMasterGroupTypeValue': null,
+      'TypeValue': null,
+      'SbuId': null,
+      'LsmLine': null,
+      'LsmListType': null,
+      'LineId': null,
+      'Item': null,
+      'Date': null,
+      'Department': null,
+      'ItemGrade': null,
+      'Process': null,
+      'Surface': null,
+      'Colour': null,
+      'Thickness': null,
+      'Sterile': null,
+      'Nature': null,
+      'Grade': null,
+      'Length': null,
+      'Chlorination': null,
+      'Size': null,
+      'AdditionalSpec1': null,
+      'ProductGroupId': null,
+      'SpecialCondition': null,
+      'P_COA_SUB_TYPE': null,
+      'Group': null,
+      'GroupType': null,
+      'Name': null,
+      'CityId': null,
+      'StateId': null,
+      'DistributerId': null,
+      'TaxCategory': null,
+      'OnlyParent': null,
+      'DesignationCode': null,
+      'DistrictId': null,
+      'TownId': null,
+      'BizUnit': bizUnit,
+      'ProcessId': null,
+      'FieldName': null,
+      'Sector': 0,
+      'ConstantMasterParent': null,
+      'Vendor': null,
+      'ReceiveType': null,
+      'Module': null,
+      'Flag': null,
+      'CustomerId': customerId,
       'Customer': null,
       'DespatchNo': null,
       'SurveyType': null,

@@ -180,4 +180,5 @@ class Endpoints {
   // Sales endpoints
   static const String salesOrderList = "$baseUrl/SaleOrder/List";
   static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
+  static const String salesInvoiceCommonAuto = "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
 }

@@ -407,13 +407,42 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
+  Future<List<CommonDropdownItem>> getCustomerList({
+    required int bizUnit,
+    int? customerId,
+    String? searchText,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getCustomerList(
+          bizUnit: bizUnit,
+          customerId: customerId,
+          searchText: searchText,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get customer list failed
+    }
+    return [];
+  }
+
+  @override
   Future<List<CommonDropdownItem>> getItemDescriptionList(
-      int divisionId) async {
+    int? divisionId, {
+    int? distributerId,
+    String? searchText,
+  }) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
 
-        final response = await commonApi.getItemDescriptionList(divisionId);
+        final response = await commonApi.getItemDescriptionList(
+          divisionId,
+          distributerId: distributerId,
+          searchText: searchText,
+        );
         return response;
       }
     } catch (e) {
@@ -468,6 +497,100 @@ class CommonRepositoryImpl implements CommonRepository {
       }
     } catch (e) {
       // API get reporting manager list failed
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getSalesRepList({
+    required int userId,
+    required int customerId,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+
+        final response = await commonApi.getSalesRepList(
+          userId: userId,
+          customerId: customerId,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get sales rep list failed
+      print('Error getting sales rep list: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getDistributorList({
+    required int bizUnit,
+    required int customerId,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+
+        final response = await commonApi.getDistributorList(
+          bizUnit: bizUnit,
+          customerId: customerId,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get distributor list failed
+      print('Error getting distributor list: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getItemList({
+    required int distributerId,
+    String? searchText,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+
+        final response = await commonApi.getItemList(
+          distributerId: distributerId,
+          searchText: searchText,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get item list failed
+      print('Error getting item list: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getUOMList({
+    required int itemId,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+
+        final response = await commonApi.getUOMList(
+          itemId: itemId,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get UOM list failed
+      print('Error getting UOM list: $e');
     }
 
     // Fallback to empty list if API fails

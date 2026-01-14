@@ -78,5 +78,77 @@ class SalesRepositoryImpl implements SalesRepository {
       throw Exception('Failed to fetch sales order: ${e.toString()}');
     }
   }
+
+  @override
+  Future<List<String>> getStatusFilters({
+    required int bizUnit,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        final response = await salesApi.getStatusFilters(bizUnit: bizUnit);
+        return response;
+      }
+    } catch (e) {
+      print('Error getting status filters: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<String>> getTransactionStatusFilters({
+    required int bizUnit,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        final response = await salesApi.getTransactionStatusFilters(bizUnit: bizUnit);
+        return response;
+      }
+    } catch (e) {
+      print('Error getting transaction status filters: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<String>> getSOTypeFilters({
+    required int bizUnit,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        final response = await salesApi.getSOTypeFilters(bizUnit: bizUnit);
+        return response;
+      }
+    } catch (e) {
+      print('Error getting SO type filters: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<String>> getCurrencyFilters({
+    required int bizUnit,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        final response = await salesApi.getCurrencyFilters(bizUnit: bizUnit);
+        return response;
+      }
+    } catch (e) {
+      print('Error getting currency filters: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
 }
 

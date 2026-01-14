@@ -202,7 +202,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Sale Order Details',
+              'Order Information',
               style: GoogleFonts.inter(
                 fontSize: isTablet ? 18 : 16,
                 fontWeight: FontWeight.w600,
@@ -222,145 +222,121 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 800;
         return isWide
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            ? Column(
                 children: [
-                  Expanded(child: _buildLeftColumn(isTablet)),
-                  const SizedBox(width: 24),
-                  Expanded(child: _buildRightColumn(isTablet)),
+                  // Top Row: Customer, SO Number, Date
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _buildTopRowField1(isTablet)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildTopRowField2(isTablet)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildTopRowField3(isTablet)),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // Bottom Row: Customer Address, Delivery Date, Sales Rep, Distributor For
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _buildBottomRowField1(isTablet)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildBottomRowField2(isTablet)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildBottomRowField3(isTablet)),
+                      const SizedBox(width: 16),
+                      Expanded(child: _buildBottomRowField4(isTablet)),
+                    ],
+                  ),
                 ],
               )
             : Column(
                 children: [
-                  _buildLeftColumn(isTablet),
-                  _buildRightColumn(isTablet),
+                  // Top Row fields
+                  _buildTopRowField1(isTablet),
+                  const SizedBox(height: 20),
+                  _buildTopRowField2(isTablet),
+                  const SizedBox(height: 20),
+                  _buildTopRowField3(isTablet),
+                  const SizedBox(height: 20),
+                  // Bottom Row fields
+                  _buildBottomRowField1(isTablet),
+                  const SizedBox(height: 20),
+                  _buildBottomRowField2(isTablet),
+                  const SizedBox(height: 20),
+                  _buildBottomRowField3(isTablet),
+                  const SizedBox(height: 20),
+                  _buildBottomRowField4(isTablet),
                 ],
               );
       },
     );
   }
 
-  Widget _buildLeftColumn(bool isTablet) {
-    // Debug: Print order data when building
-    if (_orderData != null) {
-      print('📋 [SaleOrderView] Building left column with data:');
-      print('   Customer: ${_orderData?.customer}');
-      print('   Customer Name: ${_orderData?.customerName}');
-      print('   Address: ${_orderData?.cusAddress}');
-    }
-    
-    return Column(
-      children: [
-        _LabeledField(
-          label: 'Customer',
-          child: _buildReadOnlyField(_orderData?.customerName ?? _orderData?.customer ?? ''),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Customer Address',
-          child: _buildReadOnlyField(_orderData?.cusAddress ?? '', maxLines: 3),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Sales Rep',
-          child: _buildReadOnlyField(_orderData?.salesRepName ?? _orderData?.salesRep ?? ''),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Customer PO#',
-          child: _buildReadOnlyField(_orderData?.customerRef ?? ''),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Delivery Date',
-          child: _buildReadOnlyField(
-            _orderData?.deliveryDate != null
-                ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.deliveryDate!))
-                : '',
-          ),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'User Group',
-          child: _buildReadOnlyField(_orderData?.divisionGroupName ?? ''),
-        ),
-      ],
+  // Top Row Field 1: Customer
+  Widget _buildTopRowField1(bool isTablet) {
+    return _LabeledField(
+      label: 'Customer',
+      child: _buildReadOnlyField(_orderData?.customerName ?? _orderData?.customer ?? ''),
     );
   }
 
-  Widget _buildRightColumn(bool isTablet) {
-    return Column(
-      children: [
-        _LabeledField(
-          label: 'SO Number',
-          child: _buildReadOnlyField(_orderData?.soNumber ?? ''),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Type',
-          child: _buildReadOnlyField(_orderData?.typeText ?? ''),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Quotation No',
-          child: _buildReadOnlyField(''),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Delivery Address',
-          child: _buildReadOnlyField(_orderData?.deliveryAddress ?? '', maxLines: 3),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Bonus SO',
-          child: Row(
-            children: [
-              Checkbox(
-                value: _orderData?.isBonusSO ?? false,
-                onChanged: null,
-                activeColor: const Color(0xFF4db1b3),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Bonus SO',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        _LabeledField(
-          label: 'Date',
-          child: _buildReadOnlyField(
-            _orderData?.date != null
-                ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.date!))
-                : '',
-          ),
-        ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: _LabeledField(
-                label: 'Currency',
-                child: _buildReadOnlyField(_orderData?.currencyText ?? _orderData?.currency ?? ''),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _LabeledField(
-                label: 'Exchange Rate',
-                child: _buildReadOnlyField(
-                  _orderData?.exchangeRate?.toStringAsFixed(5) ?? '1.00000',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+  // Top Row Field 2: SO Number
+  Widget _buildTopRowField2(bool isTablet) {
+    return _LabeledField(
+      label: 'SO Number',
+      child: _buildReadOnlyField(_orderData?.soNumber ?? ''),
+    );
+  }
+
+  // Top Row Field 3: Date
+  Widget _buildTopRowField3(bool isTablet) {
+    return _LabeledField(
+      label: 'Date',
+      child: _buildReadOnlyField(
+        _orderData?.date != null
+            ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.date!))
+            : '',
+      ),
+    );
+  }
+
+  // Bottom Row Field 1: Customer Address
+  Widget _buildBottomRowField1(bool isTablet) {
+    return _LabeledField(
+      label: 'Customer Address',
+      child: _buildReadOnlyField(_orderData?.cusAddress ?? '', maxLines: 3),
+    );
+  }
+
+  // Bottom Row Field 2: Delivery Date
+  Widget _buildBottomRowField2(bool isTablet) {
+    return _LabeledField(
+      label: 'Delivery Date',
+      child: _buildReadOnlyField(
+        _orderData?.deliveryDate != null
+            ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.deliveryDate!))
+            : '',
+      ),
+    );
+  }
+
+  // Bottom Row Field 3: Sales Rep
+  Widget _buildBottomRowField3(bool isTablet) {
+    return _LabeledField(
+      label: 'Sales Rep',
+      child: _buildReadOnlyField(_orderData?.salesRepName ?? _orderData?.salesRep ?? ''),
+    );
+  }
+
+  // Bottom Row Field 4: Distributor For
+  Widget _buildBottomRowField4(bool isTablet) {
+    // Note: The API model has distributerForId but no distributor name field
+    // Display empty string for now, or could fetch distributor name from ID if needed
+    return _LabeledField(
+      label: 'Distributer For',
+      child: _buildReadOnlyField(''), // TODO: Map distributerForId to distributor name if available
     );
   }
 

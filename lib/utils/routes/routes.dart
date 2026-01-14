@@ -42,7 +42,8 @@ class Routes {
     crmExpenses: (BuildContext context) => const CRMShell(initialIndex: 3),
     crmTourPlan: (BuildContext context) => const CRMShell(initialIndex: 2),
     crmContracts: (BuildContext context) => const CRMShell(initialIndex: 3),
-    saleCreate: (BuildContext context) =>  SaleCreationScreen(),
+    // saleCreate and saleView are handled in onGenerateRoute to support arguments
+    // saleCreate: (BuildContext context) =>  SaleCreationScreen(),
     saleList: (BuildContext context) =>  SaleOrderScreen(),
   };
 }

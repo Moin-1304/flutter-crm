@@ -394,4 +394,78 @@ class SalesOrderApiItem {
   }
 }
 
+/// Request model for GetSalesInvoiceCommonAuto endpoint
+class GetSalesInvoiceCommonAutoRequest {
+  final int? id;
+  final int pageNumber;
+  final int pageSize;
+  final int sortOrder;
+  final int bizUnit;
+  final bool? active;
+  final int sortDir;
+  final String? searchText;
+  final String? sortField;
+  final String? filterExpression;
+  final String? sortExpression;
+  final String? fromDate;
+  final String? toDate;
+  final String? fieldName;
+  final String? pageName;
+  final int? userId;
+  final int? menuId;
+  final String? url;
+  final bool? isFullyUsed;
+  final int? refId;
+
+  GetSalesInvoiceCommonAutoRequest({
+    this.id,
+    required this.pageNumber,
+    required this.pageSize,
+    required this.sortOrder,
+    required this.bizUnit,
+    this.active,
+    required this.sortDir,
+    this.searchText,
+    this.sortField,
+    this.filterExpression,
+    this.sortExpression,
+    this.fromDate,
+    this.toDate,
+    required this.fieldName,
+    required this.pageName,
+    this.userId,
+    this.menuId,
+    this.url,
+    this.isFullyUsed,
+    this.refId,
+  });
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      'sortOrder': sortOrder,
+      'bizUnit': bizUnit,
+      'sortDir': sortDir,
+      'fieldName': fieldName,
+      'pageName': pageName,
+    };
+
+    if (id != null) data['id'] = id;
+    if (active != null) data['active'] = active;
+    if (searchText != null) data['searchText'] = searchText;
+    if (sortField != null) data['sortField'] = sortField;
+    if (filterExpression != null) data['filterExpression'] = filterExpression;
+    if (sortExpression != null) data['sortExpression'] = sortExpression;
+    if (fromDate != null) data['fromDate'] = fromDate;
+    if (toDate != null) data['toDate'] = toDate;
+    if (userId != null) data['userId'] = userId;
+    if (menuId != null) data['menuId'] = menuId;
+    if (url != null) data['url'] = url;
+    if (isFullyUsed != null) data['isFullyUsed'] = isFullyUsed;
+    if (refId != null) data['refId'] = refId;
+
+    return data;
+  }
+}
 

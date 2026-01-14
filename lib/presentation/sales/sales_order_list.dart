@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../utils/routes/routes.dart';
@@ -19,6 +20,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
   final searchCtrl = TextEditingController();
   final fromCtrl = TextEditingController();
   final toCtrl = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   String customer = '';
   String status = '';
@@ -26,6 +28,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
   // API data
   List<SalesOrderApiItem> _apiOrders = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
   String? _loadError;
   int _currentPage = 1;
   final int _pageSize = 15;
@@ -38,6 +41,10 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
   // Customer list from API
   List<String> _customerList = ['All Customers'];
   String _selectedCustomer = 'All Customers';
+
+  // Currency list from API
+  List<String> _currencyList = ['Select All', 'USD', 'LKR'];
+  Set<String> _selectedCurrencies = {};
 
   // // Filter modal state
   // AnimationController? _filterModalController;
@@ -125,9 +132,13 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
   String? _SOType;
 
   // Filter options
-  final List<String> _statusList = ['Select All', 'Approved', 'Drafted', 'Cancelled' ,'Short Closed'];
-  final List<String> _transactionStatusList = ['Select All', 'Pending', '100% Dispatched'];
-  final List<String> _SOTypeList = ['Select All', 'Normal', 'Bonus'];
+  List<String> _statusList = ['Select All']; // Will be loaded from API
+  List<String> _transactionStatusList = ['Select All']; // Will be loaded from API
+  List<String> _SOTypeList = ['Select All']; // Will be loaded from API
+  bool _isLoadingStatusFilters = false;
+  bool _isLoadingTransactionStatusFilters = false;
+  bool _isLoadingSOTypeFilters = false;
+  bool _isFilterByExpanded = true; // Collapsible Filter By section
 
   // Column filter state - keep for complex filters
   final Map<String, ColumnFilterState> _columnFilters = {
@@ -145,13 +156,16 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
     'despatchedQty': ColumnFilterState(),
     'despatchNo': ColumnFilterState(),
     'invoiceNo': ColumnFilterState(),
+    'status': ColumnFilterState(),
+    'transactionStatus': ColumnFilterState(),
+    'soType': ColumnFilterState(),
   };
 
 
-  // Status filter state (single-select to match tour plan style)
-  String? _selectedStatus;
-  String? _selectedTransactionStatus;
-  String? _selectedSOType;
+  // Status filter state (multi-select like Currency)
+  Set<String> _selectedStatuses = {};
+  Set<String> _selectedTransactionStatuses = {}; // Changed to multi-select Set
+  Set<String> _selectedSOTypes = {};
 
   @override
   void initState() {
@@ -171,12 +185,245 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
 
     // Load data from API
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadStatusFilters();
+      _loadTransactionStatusFilters();
+      _loadSOTypeFilters();
+      _loadCurrencyFilters();
       _loadSalesOrders();
     });
+    
+    // Add scroll listener for infinite scroll
+    _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _loadStatusFilters() async {
+    if (_isLoadingStatusFilters) return;
+
+    setState(() {
+      _isLoadingStatusFilters = true;
+    });
+
+    try {
+      // Get bizUnit from user
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) {
+        setState(() {
+          _isLoadingStatusFilters = false;
+        });
+        return;
+      }
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      final salesRepository = getIt<SalesRepository>();
+      final statusFilters = await salesRepository.getStatusFilters(bizUnit: bizUnit);
+
+      if (mounted) {
+        setState(() {
+          // Add "Select All" at the beginning if not already present
+          _statusList = ['Select All', ...statusFilters];
+          _isLoadingStatusFilters = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading status filters: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingStatusFilters = false;
+          // Keep default list on error
+          _statusList = ['Select All'];
+        });
+      }
+    }
+  }
+
+  Future<void> _loadTransactionStatusFilters() async {
+    if (_isLoadingTransactionStatusFilters) return;
+
+    setState(() {
+      _isLoadingTransactionStatusFilters = true;
+    });
+
+    try {
+      // Get bizUnit from user
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) {
+        setState(() {
+          _isLoadingTransactionStatusFilters = false;
+        });
+        return;
+      }
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      final salesRepository = getIt<SalesRepository>();
+      final transactionStatusFilters = await salesRepository.getTransactionStatusFilters(bizUnit: bizUnit);
+
+      if (mounted) {
+        setState(() {
+          // Add "Select All" at the beginning if not already present
+          _transactionStatusList = ['Select All', ...transactionStatusFilters];
+          _isLoadingTransactionStatusFilters = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading transaction status filters: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingTransactionStatusFilters = false;
+          // Keep default list on error
+          _transactionStatusList = ['Select All'];
+        });
+      }
+    }
+  }
+
+  Future<void> _loadSOTypeFilters() async {
+    if (_isLoadingSOTypeFilters) return;
+
+    setState(() {
+      _isLoadingSOTypeFilters = true;
+    });
+
+    try {
+      // Get bizUnit from user
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) {
+        setState(() {
+          _isLoadingSOTypeFilters = false;
+        });
+        return;
+      }
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      final salesRepository = getIt<SalesRepository>();
+      final soTypeFilters = await salesRepository.getSOTypeFilters(bizUnit: bizUnit);
+
+      if (mounted) {
+        setState(() {
+          // Add "Select All" at the beginning if not already present
+          _SOTypeList = ['Select All', ...soTypeFilters];
+          _isLoadingSOTypeFilters = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading SO type filters: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingSOTypeFilters = false;
+          // Keep default list on error
+          _SOTypeList = ['Select All'];
+        });
+      }
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      // Load more when within 200 pixels of bottom
+      if (!_isLoadingMore && _hasMore && !_isLoading) {
+        _loadMore();
+      }
+    }
+  }
+
+  Future<void> _loadCurrencyFilters() async {
+    try {
+      // Get bizUnit from user
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) {
+        return;
+      }
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      final salesRepository = getIt<SalesRepository>();
+      final currencyFilters = await salesRepository.getCurrencyFilters(bizUnit: bizUnit);
+
+      if (mounted) {
+        setState(() {
+          // Add "Select All" at the beginning if not already present
+          _currencyList = ['Select All', ...currencyFilters];
+        });
+      }
+    } catch (e) {
+      print('Error loading currency filters: $e');
+      if (mounted) {
+        setState(() {
+          // Keep default list on error
+          _currencyList = ['Select All', 'USD', 'LKR'];
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || !_hasMore) return;
+    
+    setState(() {
+      _isLoadingMore = true;
+    });
+    
+    _currentPage++;
+    await _loadSalesOrders(refresh: false);
+    
+    if (mounted) {
+      setState(() {
+        _isLoadingMore = false;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     searchCtrl.dispose();
     fromCtrl.dispose();
     toCtrl.dispose();
@@ -251,6 +498,9 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
       String? searchText =
           searchCtrl.text.trim().isEmpty ? null : searchCtrl.text.trim();
 
+      // Build FilterExpression from all active filters
+      String? filterExpression = _buildFilterExpression();
+
       final salesRepository = getIt<SalesRepository>();
       final response = await salesRepository.getSalesOrderList(
         id: null,
@@ -262,7 +512,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         sortDir: 1, // 1 as per working API call
         searchText: searchText,
         sortField: 'Date', // Capitalized as per working API call
-        filterExpression: null,
+        filterExpression: filterExpression,
         sortExpression: null,
         fromDate: fromDateStr,
         toDate: toDateStr,
@@ -278,12 +528,20 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         setState(() {
           if (refresh) {
             _apiOrders = response.items;
+            _currentPage = 1;
           } else {
             _apiOrders.addAll(response.items);
           }
 
           _hasMore = response.items.length >= _pageSize;
           _isLoading = false;
+          _isLoadingMore = false;
+
+          // Debug logging
+          print('📊 API Response: ${response.items.length} items received');
+          print('📊 _apiOrders length: ${_apiOrders.length}');
+          print('📊 _filteredOrders length: ${_filteredOrders.length}');
+          print('📊 _displayOrders length: ${_displayOrders.length}');
 
           // Update customer list from API data
           final customers = response.items
@@ -292,6 +550,8 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
               .toSet()
               .toList();
           _customerList = ['All Customers', ...customers];
+          
+          // Currency list is now loaded separately via _loadCurrencyFilters()
         });
       }
     } catch (e) {
@@ -369,6 +629,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         },
         color: tealGreen,
         child: CustomScrollView(
+          controller: _scrollController,
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
@@ -443,7 +704,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                             ),
                           ),
                         )
-                      : _displayOrders.isEmpty
+                      : list.isEmpty
                           ? SliverToBoxAdapter(
                               child: Container(
                                 padding: const EdgeInsets.all(40),
@@ -476,6 +737,22 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                           : SliverList(
                               delegate: SliverChildBuilderDelegate(
                                 (context, index) {
+                                  // Show loading indicator at the end
+                                  if (index >= list.length) {
+                                    return _isLoadingMore && index == list.length
+                                        ? Container(
+                                            padding: const EdgeInsets.all(20),
+                                            child: const Center(
+                                              child: CircularProgressIndicator(
+                                                valueColor: AlwaysStoppedAnimation<Color>(
+                                                  Color(0xFF4db1b3),
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        : const SizedBox.shrink();
+                                  }
+                                  
                                   final order = list[index];
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
@@ -492,14 +769,19 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                                         );
                                       },
                                       onEdit: () {
-                                        // TODO: Navigate to edit order
                                         Navigator.pushNamed(
-                                            context, Routes.saleCreate);
+                                          context,
+                                          Routes.saleCreate,
+                                          arguments: {
+                                            'orderId': order.id.toString(),
+                                            'orderData': order,
+                                          },
+                                        );
                                       },
                                     ),
                                   );
                                 },
-                                childCount: _apiOrders.length,
+                                childCount: list.length + (_isLoadingMore ? 1 : 0),
                               ),
                             ),
             ),
@@ -521,7 +803,14 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title row
+          // Title row with filter icon on the right
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
           Text(
             'Sales Orders',
             style: GoogleFonts.inter(
@@ -539,6 +828,9 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
               fontWeight: FontWeight.w500,
               color: Colors.grey[600],
               letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
             ),
           ),
           // Filter Icon with Badge
@@ -602,6 +894,8 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                       ),
                     ),
                   ),
+                    ),
+                ],
                 ),
             ],
           ),
@@ -621,7 +915,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                     icon: const Icon(Icons.add, size: 18),
                     // text lenght is cutting need fix it
                     label: Text(
-                      'Sale Order',
+                      'New SO',
                       style: GoogleFonts.inter(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -734,111 +1028,578 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (_) => _buildFilterModal(),
     );
   }
   Widget _buildFilterModal() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    final isTablet = MediaQuery.of(context).size.width >= 600;
+    final maxHeight = MediaQuery.of(context).size.height * 0.9;
+    
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Title
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                Text(
+                  'Filters',
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 24 : 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[900],
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          // Scrollable Content
+          Flexible(
         child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 8),
 
-              /// NORMAL FILTERS
-              DropdownButtonFormField<String>(
-                value: _selectedStatus,
-                decoration: const InputDecoration(
-                  labelText: 'Status',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              /// FILTER BY SECTION (Collapsible)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isFilterByExpanded = !_isFilterByExpanded;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Filter By',
+                          style: GoogleFonts.inter(
+                            fontSize: isTablet ? 18 : 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[900],
+                          ),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          _isFilterByExpanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: Colors.grey[600],
+                          size: 24,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                items: _statusList
-                    .map((e) => DropdownMenuItem<String>(
-                          value: e,
-                          child: Text(e),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedStatus = v),
               ),
-
-              DropdownButtonFormField<String>(
-                value: _selectedTransactionStatus,
-                decoration: const InputDecoration(
-                  labelText: 'Transaction Status',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                items: _transactionStatusList
-                    .map((e) => DropdownMenuItem<String>(
-                          value: e,
-                          child: Text(e),
-                        ))
-                    .toList(),
-                onChanged: (v) =>
-                    setState(() => _selectedTransactionStatus = v),
+              
+              if (_isFilterByExpanded) ...[
+                const SizedBox(height: 16),
+                // From, To, Transaction Status in a row (responsive)
+                LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool isWide = constraints.maxWidth > 600;
+                  if (isWide) {
+                    // Wide layout: All in one row
+                    return Row(
+                      children: [
+                        // From Date
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'From',
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _fromDate ?? DateTime.now(),
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    helpText: 'Select From Date',
+                                  );
+                                  if (picked != null) {
+                                    setState(() {
+                                      _fromDate = picked;
+                                      fromCtrl.text = _formatDateForDisplay(picked);
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey[300]!),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Colors.grey[50],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          fromCtrl.text.isEmpty
+                                              ? 'Select Date'
+                                              : fromCtrl.text,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 14,
+                                            color: Colors.grey[800],
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.calendar_today,
+                                        size: 18,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // To Date
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'To',
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _toDate ?? DateTime.now(),
+                                    firstDate: _fromDate ?? DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    helpText: 'Select To Date',
+                                  );
+                                  if (picked != null) {
+                                    setState(() {
+                                      _toDate = picked;
+                                      toCtrl.text = _formatDateForDisplay(picked);
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey[300]!),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Colors.grey[50],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          toCtrl.text.isEmpty
+                                              ? 'Select Date'
+                                              : toCtrl.text,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 14,
+                                            color: Colors.grey[800],
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.calendar_today,
+                                        size: 18,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Narrow layout: Stacked
+                    return Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'From',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  InkWell(
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: _fromDate ?? DateTime.now(),
+                                        firstDate: DateTime(2000),
+                                        lastDate: DateTime(2100),
+                                        helpText: 'Select From Date',
+                                      );
+                                      if (picked != null) {
+                                        setState(() {
+                                          _fromDate = picked;
+                                          fromCtrl.text = _formatDateForDisplay(picked);
+                                        });
+                                      }
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 14,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: Colors.grey[300]!),
+                                        borderRadius: BorderRadius.circular(12),
+                                        color: Colors.grey[50],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              fromCtrl.text.isEmpty
+                                                  ? 'Select Date'
+                                                  : fromCtrl.text,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 14,
+                                                color: Colors.grey[800],
+                                              ),
+                                            ),
+                                          ),
+                                          Icon(
+                                            Icons.calendar_today,
+                                            size: 18,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'To',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  InkWell(
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: _toDate ?? DateTime.now(),
+                                        firstDate: _fromDate ?? DateTime(2000),
+                                        lastDate: DateTime(2100),
+                                        helpText: 'Select To Date',
+                                      );
+                                      if (picked != null) {
+                                        setState(() {
+                                          _toDate = picked;
+                                          toCtrl.text = _formatDateForDisplay(picked);
+                                        });
+                                      }
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 14,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: Colors.grey[300]!),
+                                        borderRadius: BorderRadius.circular(12),
+                                        color: Colors.grey[50],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              toCtrl.text.isEmpty
+                                                  ? 'Select Date'
+                                                  : toCtrl.text,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 14,
+                                                color: Colors.grey[800],
+                                              ),
+                                            ),
+                                          ),
+                                          Icon(
+                                            Icons.calendar_today,
+                                            size: 18,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  }
+                },
               ),
+              ],
+              
+              const SizedBox(height: 24),
+              const Divider(height: 1),
+              const SizedBox(height: 24),
 
-              DropdownButtonFormField<String>(
-                value: _selectedSOType,
-                decoration: const InputDecoration(
-                  labelText: 'SO Type',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                items: _SOTypeList
-                    .map((e) => DropdownMenuItem<String>(
-                          value: e,
-                          child: Text(e),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedSOType = v),
-              ),
-
-              const Divider(height: 32),
-
-              /// COMPLEX FILTERS
+              /// ADDITIONAL FILTERS
               _filterTrigger('Date', 'date', _dateOperators),
+              const SizedBox(height: 12),
               _filterTrigger('SO Number', 'soNumber', _textOperators),
+              const SizedBox(height: 12),
+              
+              // Status Filter (like Currency)
+              _statusFilterTrigger(),
+              const SizedBox(height: 12),
+              
+              // SO Type Filter (like Currency)
+              _soTypeFilterTrigger(),
+              const SizedBox(height: 12),
+              
+              // Transaction Status Filter (like Currency)
+              _transactionStatusFilterTrigger(),
+              const SizedBox(height: 12),
+              
               _filterTrigger('Customer', 'customer', _textOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Item Details', 'itemDetails', _textOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Type', 'type', _textOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Delivery Date', 'deliveryDate', _dateOperators),
-              _filterTrigger('Currency', 'currency', _textOperators),
+              const SizedBox(height: 12),
+              _currencyFilterTrigger(),
+              const SizedBox(height: 12),
               _filterTrigger('Quantity', 'quantity', _numberOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Bonus Qty', 'bonusQty', _numberOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Addl. Bonus Qty', 'addlBonusQty', _numberOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Amount', 'amount', _numberOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Despatched Qty', 'despatchedQty', _numberOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Despatch No', 'despatchNo', _textOperators),
+              const SizedBox(height: 12),
               _filterTrigger('Invoice No', 'invoiceNo', _textOperators),
 
               const SizedBox(height: 20),
-
-              Row(
+                ],
+              ),
+            ),
+          ),
+          // Fixed Buttons at Bottom
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
                       onPressed: _clearAllFilters,
-                      child: const Text('Clear All'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
+                      ),
+                      child: Text(
+                        'Clear All',
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 16 : 14,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF4db1b3),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
                       onPressed: () {
-                        setState(() {});
                         Navigator.pop(context);
+                        // Reload sales orders with new filters
+                        _loadSalesOrders(refresh: true);
                       },
-                      child: const Text('Apply'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF4db1b3),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Apply',
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 16 : 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ],
+              ),
+            ),
+              ),
+            ],
+          ),
+    );
+  }
+  Widget _currencyFilterTrigger() {
+    final isActive = _selectedCurrencies.isNotEmpty;
+    const Color tealGreen = Color(0xFF4db1b3);
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => _CurrencyFilterPopup(
+              availableCurrencies: _currencyList,
+              selectedCurrencies: _selectedCurrencies,
+              onApply: (selected) {
+                setState(() {
+                  _selectedCurrencies = selected;
+                });
+                Navigator.pop(context);
+              },
+              onClear: () {
+                setState(() {
+                  _selectedCurrencies.clear();
+                });
+                Navigator.pop(context);
+              },
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.grey[200]!,
+                width: 1,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Currency',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              Icon(
+                isActive ? Icons.filter_alt : Icons.filter_alt_outlined,
+                color: isActive ? tealGreen : Colors.grey[400],
+                size: 22,
               ),
             ],
           ),
@@ -846,68 +1607,347 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
       ),
     );
   }
+
   Widget _filterTrigger(String title, String key, List<String> operators) {
-    return ListTile(
-      title: Text(title),
-      trailing: Icon(
-        _columnFilters[key]!.isActive
-            ? Icons.filter_alt
-            : Icons.filter_alt_outlined,
-        color: _columnFilters[key]!.isActive
-            ? const Color(0xFF4db1b3)
-            : Colors.grey,
-      ),
+    final filterState = _columnFilters[key];
+    if (filterState == null) {
+      // If filter state doesn't exist, return empty widget
+      return const SizedBox.shrink();
+    }
+    
+    final isActive = filterState.isActive;
+    const Color tealGreen = Color(0xFF4db1b3);
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
       onTap: () {
         showModalBottomSheet(
           context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
           builder: (_) => _ColumnFilterPopup(
-            filterState: _columnFilters[key]!,
+            filterState: filterState,
             operators: operators,
             onApply: () {
               setState(() {
-                _columnFilters[key]!.isActive = true;
+                filterState.isActive = true;
               });
               Navigator.pop(context);
+              // Reload sales orders with new filter
+              _loadSalesOrders(refresh: true);
             },
             onClear: () {
-              setState(() => _columnFilters[key]!.clear());
+              setState(() => filterState.clear());
               Navigator.pop(context);
+              // Reload sales orders after clearing filter
+              _loadSalesOrders(refresh: true);
             },
           ),
         );
       },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.grey[200]!,
+                width: 1,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              Icon(
+                isActive ? Icons.filter_alt : Icons.filter_alt_outlined,
+                color: isActive ? tealGreen : Colors.grey[400],
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
+
+  Widget _statusFilterTrigger() {
+    final isActive = _selectedStatuses.isNotEmpty;
+    const Color tealGreen = Color(0xFF4db1b3);
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => _StatusFilterPopup(
+              availableStatuses: _statusList,
+              selectedStatuses: _selectedStatuses,
+              onApply: (selected) {
+                setState(() {
+                  _selectedStatuses = selected;
+                });
+                Navigator.pop(context);
+              },
+              onClear: () {
+                setState(() {
+                  _selectedStatuses.clear();
+                });
+                Navigator.pop(context);
+              },
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.grey[200]!,
+                width: 1,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Status',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              Icon(
+                isActive ? Icons.filter_alt : Icons.filter_alt_outlined,
+                color: isActive ? tealGreen : Colors.grey[400],
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _soTypeFilterTrigger() {
+    final isActive = _selectedSOTypes.isNotEmpty;
+    const Color tealGreen = Color(0xFF4db1b3);
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => _SOTypeFilterPopup(
+              availableSOTypes: _SOTypeList,
+              selectedSOTypes: _selectedSOTypes,
+              onApply: (selected) {
+                setState(() {
+                  _selectedSOTypes = selected;
+                });
+                Navigator.pop(context);
+              },
+              onClear: () {
+                setState(() {
+                  _selectedSOTypes.clear();
+                });
+                Navigator.pop(context);
+              },
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.grey[200]!,
+                width: 1,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'SO Type',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              Icon(
+                isActive ? Icons.filter_alt : Icons.filter_alt_outlined,
+                color: isActive ? tealGreen : Colors.grey[400],
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _transactionStatusFilterTrigger() {
+    final isActive = _selectedTransactionStatuses.isNotEmpty;
+    const Color tealGreen = Color(0xFF4db1b3);
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => _TransactionStatusFilterPopup(
+              availableTransactionStatuses: _transactionStatusList,
+              selectedTransactionStatuses: _selectedTransactionStatuses,
+              onApply: (selected) {
+                setState(() {
+                  _selectedTransactionStatuses = selected;
+                });
+                Navigator.pop(context);
+                _loadSalesOrders(refresh: true);
+              },
+              onClear: () {
+                setState(() {
+                  _selectedTransactionStatuses.clear();
+                });
+                Navigator.pop(context);
+                _loadSalesOrders(refresh: true);
+              },
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.grey[200]!,
+                width: 1,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Transaction',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              Icon(
+                isActive ? Icons.filter_alt : Icons.filter_alt_outlined,
+                color: isActive ? tealGreen : Colors.grey[400],
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   List<SalesOrderApiItem> get _filteredOrders {
+    // Check if FilterExpression is being used (if _buildFilterExpression returns non-null)
+    // This is the most reliable way to know if API filtering is active
+    final filterExpression = _buildFilterExpression();
+    final hasApiFiltering = filterExpression != null && filterExpression.isNotEmpty;
+    
+    if (hasApiFiltering) {
+      // When API is filtering via FilterExpression, just return the API results as-is
+      // The API has already applied these filters, so we don't need to filter again
+      print('🔵 API filtering active (FilterExpression: $filterExpression), returning ${_apiOrders.length} items without client-side filtering');
+      return _apiOrders;
+    }
+    
+    // Otherwise, apply client-side filtering for any remaining filters
+    print('🟢 No API filtering, applying client-side filtering to ${_apiOrders.length} items');
     return _apiOrders.where((o) {
 
       // NORMAL FILTERS
-      if (_selectedStatus != null &&
-          _selectedStatus != 'Select All' &&
-          o.statusText != _selectedStatus) return false;
-
-      if (_selectedTransactionStatus != null &&
-          _selectedTransactionStatus != 'Select All') {
-        if (_selectedTransactionStatus == 'Pending' &&
-            o.isClosed == 1) return false;
-
-        if (_selectedTransactionStatus == '100% Dispatched' &&
-            o.isClosed != 1) return false;
+      // Status filter (multi-select)
+      if (_selectedStatuses.isNotEmpty && !_selectedStatuses.contains('Select All')) {
+        final status = o.statusText ?? '';
+        if (!_selectedStatuses.contains(status)) {
+          return false;
+        }
       }
 
-      if (_selectedSOType != null &&
-          _selectedSOType != 'Select All') {
-        final soTypeText = o.soType == 'N'
-            ? 'Normal'
-            : o.soType == 'B'
-                ? 'Bonus'
-                : o.soType;
-
-        if (soTypeText != _selectedSOType) return false;
+      // Transaction Status filter (multi-select)
+      if (_selectedTransactionStatuses.isNotEmpty && !_selectedTransactionStatuses.contains('Select All')) {
+        final transactionStatus = (o.isClosed ?? 0) == 1 ? '100% Dispatched' : 'Pending';
+        if (!_selectedTransactionStatuses.contains(transactionStatus)) {
+          return false;
+        }
       }
 
-      // COMPLEX FILTERS
+      // SO Type filter (multi-select)
+      if (_selectedSOTypes.isNotEmpty && !_selectedSOTypes.contains('Select All')) {
+        // Handle both API formats: 'N'/'B' or 'Normal'/'Bonus'
+        String soTypeText;
+        if (o.soType == 'N' || o.soType == 'Normal') {
+          soTypeText = 'Normal';
+        } else if (o.soType == 'B' || o.soType == 'Bonus') {
+          soTypeText = 'Bonus';
+        } else {
+          soTypeText = o.soType ?? '';
+        }
+        
+        if (!_selectedSOTypes.contains(soTypeText)) {
+          return false;
+        }
+      }
+
+      // Currency filter
+      if (_selectedCurrencies.isNotEmpty && !_selectedCurrencies.contains('Select All')) {
+        // Handle both currencyText and currency fields
+        final currency = o.currencyText ?? o.currency ?? 'LKR';
+        if (!_selectedCurrencies.contains(currency)) {
+          return false;
+        }
+      }
+
+      // COMPLEX FILTERS (only apply if not already filtered by API via FilterExpression)
+      // Note: Date filter is handled by API via FilterExpression, so we skip client-side date filtering
       for (final f in _columnFilters.entries) {
+        // Skip date filter as it's handled by API FilterExpression
+        if (f.key == 'date') continue;
+        
         if (!f.value.isActive) continue;
         final value = _getFieldValue(o, f.key);
         if (!_evaluateCondition(value, f.value)) return false;
@@ -981,9 +2021,498 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
       case 'invoiceNo':
         return o.invoiceNo;
       case 'status':
-        return o.statusText;
+        return o.statusText ?? '';
+      case 'transactionStatus':
+        return (o.isClosed ?? 0) == 1 ? '100% Dispatched' : 'Pending';
       case 'soType':
-        return o.soType;
+        if (o.soType == null) return '';
+        return o.soType == 'N' ? 'Normal' : (o.soType == 'B' ? 'Bonus' : o.soType);
+      default:
+        return null;
+    }
+  }
+
+  /// Build FilterExpression string from all active filters
+  String? _buildFilterExpression() {
+    final List<String> expressions = [];
+
+    // Date filter from ColumnFilterState
+    final dateFilter = _columnFilters['date'];
+    if (dateFilter != null && dateFilter.isActive && dateFilter.condition1Value.isNotEmpty) {
+      final fieldName = 'Date';
+      final operator = dateFilter.condition1Operator;
+      final value = dateFilter.condition1Value;
+      
+      if (operator == 'Is equal to' && value.isNotEmpty) {
+        // Format date as 'yyyy-MM-dd'
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName = '$dateStr'");
+        } catch (e) {
+          // If parsing fails, use value as is
+          expressions.add("$fieldName = '$value'");
+        }
+      } else if (operator == 'Is not equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName != '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName != '$value'");
+        }
+      } else if (operator == 'Is after or equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName >= '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName >= '$value'");
+        }
+      } else if (operator == 'Is after' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName > '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName > '$value'");
+        }
+      } else if (operator == 'Is before or equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName <= '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName <= '$value'");
+        }
+      } else if (operator == 'Is before' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName < '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName < '$value'");
+        }
+      }
+      
+      // Handle second condition if present (for date filters with logical operator)
+      if (dateFilter.condition2Value.isNotEmpty) {
+        final operator2 = dateFilter.condition2Operator;
+        final value2 = dateFilter.condition2Value;
+        String? expr2;
+        
+        if (operator2 == 'Is equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName = '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName = '$value2'";
+          }
+        } else if (operator2 == 'Is not equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName != '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName != '$value2'";
+          }
+        } else if (operator2 == 'Is after or equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName >= '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName >= '$value2'";
+          }
+        } else if (operator2 == 'Is after' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName > '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName > '$value2'";
+          }
+        } else if (operator2 == 'Is before or equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName <= '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName <= '$value2'";
+          }
+        } else if (operator2 == 'Is before' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName < '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName < '$value2'";
+          }
+        }
+        
+        if (expr2 != null && expressions.isNotEmpty) {
+          final logicalOp = dateFilter.logicalOperator == 'And' ? 'AND' : 'OR';
+          final lastExpr = expressions.removeLast();
+          expressions.add("($lastExpr $logicalOp $expr2)");
+        }
+      }
+    }
+
+    // Status filter (multi-select) - Always use IN() format with StatusText field name
+    if (_selectedStatuses.isNotEmpty && !_selectedStatuses.contains('Select All')) {
+      final statuses = _selectedStatuses.where((s) => s != 'Select All').map((s) => "'$s'").join(',');
+      if (statuses.isNotEmpty) {
+        expressions.add("StatusText IN($statuses)");
+      }
+    }
+
+    // SO Type filter (multi-select) - Use separate conditions with AND as per API example
+    if (_selectedSOTypes.isNotEmpty && !_selectedSOTypes.contains('Select All')) {
+      final selectedTypes = _selectedSOTypes.where((s) => s != 'Select All').toList();
+      if (selectedTypes.isNotEmpty) {
+        // Build separate conditions with AND (as shown in API example)
+        // Note: The example shows AND, but logically OR would make more sense
+        // However, following the API example format: SOType = 'Normal' AND SOType = 'Bonus'
+        final soTypeConditions = selectedTypes.map((s) {
+          // Use display name directly (Normal/Bonus) as shown in API example
+          return "SOType = '$s'";
+        }).join(' AND ');
+        expressions.add(soTypeConditions);
+      }
+    }
+
+    // Currency filter (multi-select) - Always use IN() format as per API example
+    if (_selectedCurrencies.isNotEmpty && !_selectedCurrencies.contains('Select All')) {
+      final currencies = _selectedCurrencies.where((c) => c != 'Select All').map((c) => "'$c'").join(',');
+      if (currencies.isNotEmpty) {
+        expressions.add("Currency IN($currencies)");
+      }
+    }
+
+    // Transaction Status filter (multi-select) - Use IsFullyUsedText with IN() format
+    if (_selectedTransactionStatuses.isNotEmpty && !_selectedTransactionStatuses.contains('Select All')) {
+      final transactionStatuses = _selectedTransactionStatuses.where((s) => s != 'Select All').map((s) => "'$s'").join(',');
+      if (transactionStatuses.isNotEmpty) {
+        expressions.add("IsFullyUsedText IN($transactionStatuses)");
+      }
+    }
+
+    // Delivery Date filter (similar to Date filter)
+    final deliveryDateFilter = _columnFilters['deliveryDate'];
+    if (deliveryDateFilter != null && deliveryDateFilter.isActive && deliveryDateFilter.condition1Value.isNotEmpty) {
+      final fieldName = 'DeliveryDate';
+      final operator = deliveryDateFilter.condition1Operator;
+      final value = deliveryDateFilter.condition1Value;
+      
+      if (operator == 'Is equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName = '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName = '$value'");
+        }
+      } else if (operator == 'Is not equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName != '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName != '$value'");
+        }
+      } else if (operator == 'Is after or equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName >= '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName >= '$value'");
+        }
+      } else if (operator == 'Is after' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName > '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName > '$value'");
+        }
+      } else if (operator == 'Is before or equal to' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName <= '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName <= '$value'");
+        }
+      } else if (operator == 'Is before' && value.isNotEmpty) {
+        try {
+          final date = DateTime.parse(value);
+          final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          expressions.add("$fieldName < '$dateStr'");
+        } catch (e) {
+          expressions.add("$fieldName < '$value'");
+        }
+      }
+      
+      // Handle second condition for delivery date if present
+      if (deliveryDateFilter.condition2Value.isNotEmpty) {
+        final operator2 = deliveryDateFilter.condition2Operator;
+        final value2 = deliveryDateFilter.condition2Value;
+        String? expr2;
+        
+        if (operator2 == 'Is equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName = '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName = '$value2'";
+          }
+        } else if (operator2 == 'Is not equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName != '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName != '$value2'";
+          }
+        } else if (operator2 == 'Is after or equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName >= '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName >= '$value2'";
+          }
+        } else if (operator2 == 'Is after' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName > '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName > '$value2'";
+          }
+        } else if (operator2 == 'Is before or equal to' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName <= '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName <= '$value2'";
+          }
+        } else if (operator2 == 'Is before' && value2.isNotEmpty) {
+          try {
+            final date = DateTime.parse(value2);
+            final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            expr2 = "$fieldName < '$dateStr'";
+          } catch (e) {
+            expr2 = "$fieldName < '$value2'";
+          }
+        }
+        
+        if (expr2 != null && expressions.isNotEmpty) {
+          final logicalOp = deliveryDateFilter.logicalOperator == 'And' ? 'AND' : 'OR';
+          final lastExpr = expressions.removeLast();
+          expressions.add("($lastExpr $logicalOp $expr2)");
+        }
+      }
+    }
+
+    // Other column filters
+    for (final entry in _columnFilters.entries) {
+      final key = entry.key;
+      final filter = entry.value;
+      
+      // Skip date and deliveryDate filters as they're already handled above
+      if (key == 'date' || key == 'deliveryDate' || !filter.isActive || filter.condition1Value.isEmpty) {
+        continue;
+      }
+
+      final fieldName = _getApiFieldName(key);
+      if (fieldName == null) continue;
+
+      final operator = filter.condition1Operator;
+      final value = filter.condition1Value;
+
+      // Check if this is a number field
+      final isNumberField = ['quantity', 'bonusQty', 'addlBonusQty', 'amount', 'despatchedQty'].contains(key);
+
+      String? expr;
+      if (operator == 'Is equal to') {
+        // For Type field, use IN() format even for single value as per API example
+        if (key == 'type') {
+          expr = "$fieldName IN('$value')";
+        } else if (key == 'amount') {
+          // For Amount field, use IN() format without quotes as per API example
+          expr = "$fieldName IN($value)";
+        } else if (isNumberField) {
+          // For other number fields, use = with quotes
+          expr = "$fieldName = '$value'";
+        } else {
+          expr = "$fieldName = '$value'";
+        }
+      } else if (operator == 'Is not equal to') {
+        if (isNumberField) {
+          expr = "$fieldName != '$value'";
+        } else {
+          expr = "$fieldName != '$value'";
+        }
+      } else if (operator == 'Contains') {
+        expr = "$fieldName LIKE '%$value%'";
+      } else if (operator == 'Starts with') {
+        expr = "$fieldName LIKE '$value%'";
+      } else if (operator == 'Ends with') {
+        expr = "$fieldName LIKE '%$value'";
+      } else if (operator == 'Greater than') {
+        // For number fields, don't use quotes
+        if (isNumberField) {
+          expr = "$fieldName > $value";
+        } else {
+          expr = "$fieldName > '$value'";
+        }
+      } else if (operator == 'Less than') {
+        // For number fields, don't use quotes
+        if (isNumberField) {
+          expr = "$fieldName < $value";
+        } else {
+          expr = "$fieldName < '$value'";
+        }
+      } else if (operator == 'Greater than or equal to') {
+        // For number fields, don't use quotes
+        if (isNumberField) {
+          expr = "$fieldName >= $value";
+        } else {
+          expr = "$fieldName >= '$value'";
+        }
+      } else if (operator == 'Less than or equal to') {
+        // For number fields, don't use quotes
+        if (isNumberField) {
+          expr = "$fieldName <= $value";
+        } else {
+          expr = "$fieldName <= '$value'";
+        }
+      } else if (operator == 'Is null') {
+        expr = "$fieldName IS NULL";
+      } else if (operator == 'Is not null') {
+        expr = "$fieldName IS NOT NULL";
+      }
+
+      if (expr != null) {
+        // Handle second condition if present
+        if (filter.condition2Value.isNotEmpty) {
+          final operator2 = filter.condition2Operator;
+          final value2 = filter.condition2Value;
+          String? expr2;
+          
+          if (operator2 == 'Is equal to') {
+            // For Type field, use IN() format even for single value
+            if (key == 'type') {
+              expr2 = "$fieldName IN('$value2')";
+            } else if (key == 'amount') {
+              // For Amount field, use IN() format without quotes as per API example
+              expr2 = "$fieldName IN($value2)";
+            } else if (isNumberField) {
+              // For other number fields, use = with quotes
+              expr2 = "$fieldName = '$value2'";
+            } else {
+              expr2 = "$fieldName = '$value2'";
+            }
+          } else if (operator2 == 'Is not equal to') {
+            if (isNumberField) {
+              expr2 = "$fieldName != '$value2'";
+            } else {
+              expr2 = "$fieldName != '$value2'";
+            }
+          } else if (operator2 == 'Contains') {
+            expr2 = "$fieldName LIKE '%$value2%'";
+          } else if (operator2 == 'Starts with') {
+            expr2 = "$fieldName LIKE '$value2%'";
+          } else if (operator2 == 'Ends with') {
+            expr2 = "$fieldName LIKE '%$value2'";
+          } else if (operator2 == 'Greater than') {
+            // For number fields, don't use quotes
+            if (isNumberField) {
+              expr2 = "$fieldName > $value2";
+            } else {
+              expr2 = "$fieldName > '$value2'";
+            }
+          } else if (operator2 == 'Less than') {
+            // For number fields, don't use quotes
+            if (isNumberField) {
+              expr2 = "$fieldName < $value2";
+            } else {
+              expr2 = "$fieldName < '$value2'";
+            }
+          } else if (operator2 == 'Greater than or equal to') {
+            // For number fields, don't use quotes
+            if (isNumberField) {
+              expr2 = "$fieldName >= $value2";
+            } else {
+              expr2 = "$fieldName >= '$value2'";
+            }
+          } else if (operator2 == 'Less than or equal to') {
+            // For number fields, don't use quotes
+            if (isNumberField) {
+              expr2 = "$fieldName <= $value2";
+            } else {
+              expr2 = "$fieldName <= '$value2'";
+            }
+          }
+
+          if (expr2 != null) {
+            final logicalOp = filter.logicalOperator == 'And' ? 'AND' : 'OR';
+            expr = "($expr $logicalOp $expr2)";
+          }
+        }
+        expressions.add(expr);
+      }
+    }
+
+    if (expressions.isEmpty) {
+      return null;
+    }
+
+    return expressions.join(' AND ');
+  }
+
+  /// Map UI field names to API field names
+  String? _getApiFieldName(String key) {
+    switch (key) {
+      case 'date':
+        return 'Date';
+      case 'soNumber':
+        return 'SONumber';
+      case 'customer':
+        return 'Customer';
+      case 'itemDetails':
+        return 'ItemName'; // API uses ItemName, not ItemDetails
+      case 'type':
+        return 'TypeText'; // API uses TypeText, not Type
+      case 'deliveryDate':
+        return 'DeliveryDate';
+      case 'currency':
+        return 'Currency';
+      case 'quantity':
+        return 'TotalQuantity'; // API uses TotalQuantity, not Quantity
+      case 'bonusQty':
+        return 'BonusQuantity'; // API uses BonusQuantity, not BonusQty
+      case 'addlBonusQty':
+        return 'AdditionalBonusQuantity'; // API uses AdditionalBonusQuantity, not AddlBonusQty
+      case 'amount':
+        return 'Amount';
+      case 'despatchedQty':
+        return 'DespatchedQty';
+      case 'despatchNo':
+        return 'DespatchNo';
+      case 'invoiceNo':
+        return 'InvoiceNo';
+      case 'status':
+        return 'Status';
+      case 'transactionStatus':
+        return 'IsFullyUsed';
+      case 'soType':
+        return 'SOType';
       default:
         return null;
     }
@@ -991,22 +2520,26 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
 
   int _getFilterCount() {
     int count = 0;
-    if (_selectedStatus != null && _selectedStatus != 'Select All') count++;
-    if (_selectedTransactionStatus != null && _selectedTransactionStatus != 'Select All') count++;
-    if (_selectedSOType != null && _selectedSOType != 'Select All') count++;
+    if (_selectedStatuses.isNotEmpty && !_selectedStatuses.contains('Select All')) count++;
+    if (_selectedTransactionStatuses.isNotEmpty && !_selectedTransactionStatuses.contains('Select All')) count++;
+    if (_selectedSOTypes.isNotEmpty && !_selectedSOTypes.contains('Select All')) count++;
+    if (_selectedCurrencies.isNotEmpty && !_selectedCurrencies.contains('Select All')) count++;
     count += _columnFilters.values.where((f) => f.isActive).length;
     return count;
   }
   void _clearAllFilters() {
     setState(() {
-      _selectedStatus = null;
-      _selectedTransactionStatus = null;
-      _selectedSOType = null;
+      _selectedStatuses.clear();
+      _selectedTransactionStatuses.clear();
+      _selectedSOTypes.clear();
+      _selectedCurrencies.clear();
 
       for (final f in _columnFilters.values) {
         f.clear();
       }
     });
+    // Reload sales orders immediately after clearing filters
+    _loadSalesOrders(refresh: true);
   }
 
 
@@ -1633,11 +3166,11 @@ const List<String> _numberOperators = [
 
 const List<String> _dateOperators = [
   'Is equal to',
-  'Before',
-  'After',
-  'Between',
-  'Is null',
-  'Is not null',
+  'Is not equal to',
+  'Is after or equal to',
+  'Is after',
+  'Is before or equal to',
+  'Is before',
 ];
 
 class ColumnFilterState {
@@ -1681,40 +3214,66 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
   @override
   void initState() {
     super.initState();
+    // Ensure operators are valid for the current filter type
+    final validOp1 = widget.operators.contains(widget.filterState.condition1Operator)
+        ? widget.filterState.condition1Operator
+        : widget.operators.first;
+    final validOp2 = widget.operators.contains(widget.filterState.condition2Operator)
+        ? widget.filterState.condition2Operator
+        : widget.operators.first;
+    
     _localState = ColumnFilterState()
-      ..condition1Operator = widget.filterState.condition1Operator
+      ..condition1Operator = validOp1
       ..condition1Value = widget.filterState.condition1Value
       ..logicalOperator = widget.filterState.logicalOperator
-      ..condition2Operator = widget.filterState.condition2Operator
+      ..condition2Operator = validOp2
       ..condition2Value = widget.filterState.condition2Value;
   }
 
   @override
   Widget build(BuildContext context) {
-    const blueColor = Color(0xFF2196F3);
     final isMobile = MediaQuery.of(context).size.width < 600;
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    return Column(
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
+    
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
         // Header with title and close button
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   'Filter',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.normal),
+                    style: GoogleFonts.inter(
+                      fontSize: isMobile ? 20 : 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[900],
+                    ),
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () => Navigator.of(context).pop(),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
               ),
             ],
           ),
@@ -1722,13 +3281,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
         const Divider(height: 1),
         // Content
         Flexible(
-          child: Container(
-            width: isMobile ? screenWidth - 32 : 320,
-            constraints: BoxConstraints(
-              maxWidth: isMobile ? screenWidth - 32 : 320,
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1809,10 +3363,32 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                   },
                 ),
 
-                const SizedBox(height: 16),
-
-                // Buttons
-                Row(
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+          // Fixed Buttons at Bottom
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
@@ -1870,14 +3446,13 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                           ),
                         ),
                       ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -1895,6 +3470,17 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
       'Has no value',
       'Has value'
     ].contains(operator);
+    
+    // Check if this is a date filter by comparing operators list with _dateOperators
+    // Compare by checking if all operators in the list are date operators and vice versa
+    final bool isDateFilter = widget.operators.length == _dateOperators.length &&
+        widget.operators.every((op) => _dateOperators.contains(op)) &&
+        _dateOperators.every((op) => widget.operators.contains(op));
+    
+    // Check if this is a number filter by comparing operators list with _numberOperators
+    final bool isNumberFilter = widget.operators.length == _numberOperators.length &&
+        widget.operators.every((op) => _numberOperators.contains(op)) &&
+        _numberOperators.every((op) => widget.operators.contains(op));
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1905,17 +3491,31 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
               child: DropdownButtonFormField<String>(
                 value: operator,
                 isExpanded: true,
-                style: const TextStyle(
+                style: GoogleFonts.inter(
                   fontWeight: FontWeight.normal,
                   color: Colors.black87,
+                  fontSize: 14,
                 ),
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF4db1b3),
+                      width: 2,
+                    ),
                   ),
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  filled: true,
+                  fillColor: Colors.white,
                 ),
                 items: widget.operators.map((op) {
                   return DropdownMenuItem(
@@ -1923,8 +3523,9 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                     child: Text(
                       op,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: GoogleFonts.inter(
                         fontWeight: FontWeight.normal,
+                        fontSize: 14,
                       ),
                     ),
                   );
@@ -1940,13 +3541,41 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
               const SizedBox(width: 8),
               Expanded(
                 flex: 1,
-                child: TextField(
+                child: isDateFilter
+                    ? _buildDatePickerField(value, onValueChanged)
+                    : isNumberFilter
+                        ? _buildNumberField(value, onValueChanged)
+                        : TextField(
+                        controller: TextEditingController(text: value)
+                          ..selection = TextSelection.collapsed(
+                            offset: value.length,
+                          ),
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF4db1b3),
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
                   ),
                   onChanged: onValueChanged,
                 ),
@@ -1955,6 +3584,1270 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildDatePickerField(String value, ValueChanged<String> onValueChanged) {
+    DateTime? selectedDate;
+    
+    // Try to parse the existing value
+    if (value.isNotEmpty) {
+      try {
+        // Try different date formats
+        if (value.contains('/')) {
+          final parts = value.split('/');
+          if (parts.length == 3) {
+            final month = int.tryParse(parts[0]);
+            final day = int.tryParse(parts[1]);
+            final year = int.tryParse(parts[2]);
+            if (month != null && day != null && year != null) {
+              selectedDate = DateTime(year, month, day);
+            }
+          }
+        } else {
+          selectedDate = DateTime.parse(value);
+        }
+      } catch (e) {
+        // If parsing fails, use null
+        selectedDate = null;
+      }
+    }
+
+    return InkWell(
+      onTap: () async {
+        final DateTime? picked = await showDatePicker(
+          context: context,
+          initialDate: selectedDate ?? DateTime.now(),
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: const ColorScheme.light(
+                  primary: Color(0xFF4db1b3),
+                  onPrimary: Colors.white,
+                  onSurface: Colors.black87,
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+        if (picked != null) {
+          // Format as M/d/yyyy
+          final formattedDate = '${picked.month}/${picked.day}/${picked.year}';
+          onValueChanged(formattedDate);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                value.isEmpty ? 'M/d/yyyy' : value,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: value.isEmpty ? Colors.grey[600] : Colors.black87,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.calendar_today,
+              size: 20,
+              color: Colors.grey[600],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNumberField(String value, ValueChanged<String> onValueChanged) {
+    return TextField(
+      controller: TextEditingController(text: value)
+        ..selection = TextSelection.collapsed(offset: value.length),
+      style: GoogleFonts.inter(
+        fontSize: 14,
+        color: Colors.black87,
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+      ],
+      decoration: InputDecoration(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Color(0xFF4db1b3),
+            width: 2,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        hintText: 'Enter number',
+        hintStyle: GoogleFonts.inter(
+          fontSize: 14,
+          color: Colors.grey[600],
+        ),
+      ),
+      onChanged: onValueChanged,
+    );
+  }
+}
+
+// Currency Filter Popup with Searchable Checkboxes
+class _CurrencyFilterPopup extends StatefulWidget {
+  final List<String> availableCurrencies;
+  final Set<String> selectedCurrencies;
+  final ValueChanged<Set<String>> onApply;
+  final VoidCallback onClear;
+
+  const _CurrencyFilterPopup({
+    required this.availableCurrencies,
+    required this.selectedCurrencies,
+    required this.onApply,
+    required this.onClear,
+  });
+
+  @override
+  State<_CurrencyFilterPopup> createState() => _CurrencyFilterPopupState();
+}
+
+class _CurrencyFilterPopupState extends State<_CurrencyFilterPopup> {
+  late Set<String> _localSelected;
+  late TextEditingController _searchController;
+  late List<String> _filteredCurrencies;
+
+  @override
+  void initState() {
+    super.initState();
+    _localSelected = Set<String>.from(widget.selectedCurrencies);
+    _searchController = TextEditingController();
+    _filteredCurrencies = widget.availableCurrencies;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredCurrencies = widget.availableCurrencies
+          .where((currency) =>
+              currency.toLowerCase().contains(query) ||
+              query.isEmpty)
+          .toList();
+    });
+  }
+
+  void _toggleCurrency(String currency) {
+    setState(() {
+      if (currency == 'Select All') {
+        if (_localSelected.contains('Select All') ||
+            _localSelected.length == widget.availableCurrencies.length - 1) {
+          // Deselect all
+          _localSelected.clear();
+        } else {
+          // Select all
+          _localSelected = Set<String>.from(widget.availableCurrencies);
+        }
+      } else {
+        if (_localSelected.contains(currency)) {
+          _localSelected.remove(currency);
+          _localSelected.remove('Select All');
+        } else {
+          _localSelected.add(currency);
+          // If all individual currencies are selected, also select "Select All"
+          if (_localSelected.length == widget.availableCurrencies.length - 1) {
+            _localSelected.add('Select All');
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
+    const Color tealGreen = Color(0xFF4db1b3);
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Currency',
+                    style: GoogleFonts.inter(
+                      fontSize: isMobile ? 20 : 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[900],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Search field
+          Padding(
+            padding: const EdgeInsets.all(20),
+                child: TextField(
+              controller: _searchController,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+                  decoration: InputDecoration(
+                hintText: 'Search',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.grey[400],
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: Colors.grey[600],
+                  size: 20,
+                ),
+                    border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: tealGreen,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+            ),
+          ),
+          // Currency list
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _filteredCurrencies.length,
+              itemBuilder: (context, index) {
+                final currency = _filteredCurrencies[index];
+                final isSelected = _localSelected.contains(currency);
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _toggleCurrency(currency),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: isSelected ? tealGreen : Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSelected
+                                    ? tealGreen
+                                    : Colors.grey[400]!,
+                                width: 2,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              currency,
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? Colors.grey[900]
+                                    : Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          // Fixed Buttons at Bottom
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: widget.onClear,
+                      child: Text(
+                        'Clear',
+                        style: GoogleFonts.inter(
+                          fontSize: isMobile ? 14 : 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: () {
+                        widget.onApply(_localSelected);
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: tealGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                      child: Text(
+                        'Filter',
+                        style: GoogleFonts.inter(
+                          fontSize: isMobile ? 14 : 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Status Filter Popup with Searchable Checkboxes
+class _StatusFilterPopup extends StatefulWidget {
+  final List<String> availableStatuses;
+  final Set<String> selectedStatuses;
+  final ValueChanged<Set<String>> onApply;
+  final VoidCallback onClear;
+
+  const _StatusFilterPopup({
+    required this.availableStatuses,
+    required this.selectedStatuses,
+    required this.onApply,
+    required this.onClear,
+  });
+
+  @override
+  State<_StatusFilterPopup> createState() => _StatusFilterPopupState();
+}
+
+class _StatusFilterPopupState extends State<_StatusFilterPopup> {
+  late Set<String> _localSelected;
+  late TextEditingController _searchController;
+  late List<String> _filteredStatuses;
+
+  @override
+  void initState() {
+    super.initState();
+    _localSelected = Set<String>.from(widget.selectedStatuses);
+    _searchController = TextEditingController();
+    _filteredStatuses = widget.availableStatuses;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredStatuses = widget.availableStatuses
+          .where((status) =>
+              status.toLowerCase().contains(query) ||
+              query.isEmpty)
+          .toList();
+    });
+  }
+
+  void _toggleStatus(String status) {
+    setState(() {
+      if (status == 'Select All') {
+        if (_localSelected.contains('Select All') ||
+            _localSelected.length == widget.availableStatuses.length - 1) {
+          _localSelected.clear();
+        } else {
+          _localSelected = Set<String>.from(widget.availableStatuses);
+        }
+      } else {
+        if (_localSelected.contains(status)) {
+          _localSelected.remove(status);
+          _localSelected.remove('Select All');
+        } else {
+          _localSelected.add(status);
+          if (_localSelected.length == widget.availableStatuses.length - 1) {
+            _localSelected.add('Select All');
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
+    const Color tealGreen = Color(0xFF4db1b3);
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Status',
+                    style: GoogleFonts.inter(
+                      fontSize: isMobile ? 20 : 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[900],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: TextField(
+              controller: _searchController,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.grey[400],
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: Colors.grey[600],
+                  size: 20,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: tealGreen,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _filteredStatuses.length,
+              itemBuilder: (context, index) {
+                final status = _filteredStatuses[index];
+                final isSelected = _localSelected.contains(status);
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _toggleStatus(status),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: isSelected ? tealGreen : Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSelected
+                                    ? tealGreen
+                                    : Colors.grey[400]!,
+                                width: 2,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              status,
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                color: Colors.grey[900],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: widget.onClear,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
+                    ),
+                    child: Text(
+                      'Clear',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF4db1b3),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: () => widget.onApply(_localSelected),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: tealGreen,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Apply',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Transaction Status Filter Popup with Searchable Checkboxes
+class _TransactionStatusFilterPopup extends StatefulWidget {
+  final List<String> availableTransactionStatuses;
+  final Set<String> selectedTransactionStatuses;
+  final ValueChanged<Set<String>> onApply;
+  final VoidCallback onClear;
+
+  const _TransactionStatusFilterPopup({
+    required this.availableTransactionStatuses,
+    required this.selectedTransactionStatuses,
+    required this.onApply,
+    required this.onClear,
+  });
+
+  @override
+  State<_TransactionStatusFilterPopup> createState() => _TransactionStatusFilterPopupState();
+}
+
+class _TransactionStatusFilterPopupState extends State<_TransactionStatusFilterPopup> {
+  late Set<String> _localSelected;
+  late TextEditingController _searchController;
+  late List<String> _filteredTransactionStatuses;
+
+  @override
+  void initState() {
+    super.initState();
+    _localSelected = Set<String>.from(widget.selectedTransactionStatuses);
+    _searchController = TextEditingController();
+    _filteredTransactionStatuses = widget.availableTransactionStatuses;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredTransactionStatuses = widget.availableTransactionStatuses
+          .where((status) =>
+              status.toLowerCase().contains(query) ||
+              query.isEmpty)
+          .toList();
+    });
+  }
+
+  void _toggleTransactionStatus(String status) {
+    setState(() {
+      if (status == 'Select All') {
+        if (_localSelected.contains('Select All') ||
+            _localSelected.length == widget.availableTransactionStatuses.length - 1) {
+          _localSelected.clear();
+        } else {
+          _localSelected = Set<String>.from(widget.availableTransactionStatuses);
+        }
+      } else {
+        if (_localSelected.contains(status)) {
+          _localSelected.remove(status);
+          _localSelected.remove('Select All');
+        } else {
+          _localSelected.add(status);
+          if (_localSelected.length == widget.availableTransactionStatuses.length - 1) {
+            _localSelected.add('Select All');
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
+    const Color tealGreen = Color(0xFF4db1b3);
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Transaction',
+                    style: GoogleFonts.inter(
+                      fontSize: isMobile ? 20 : 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[900],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: TextField(
+              controller: _searchController,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.grey[400],
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: Colors.grey[600],
+                  size: 20,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: tealGreen,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _filteredTransactionStatuses.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final status = _filteredTransactionStatuses[index];
+                final isSelected = _localSelected.contains(status);
+                return InkWell(
+                  onTap: () => _toggleTransactionStatus(status),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: isSelected,
+                          onChanged: (_) => _toggleTransactionStatus(status),
+                          activeColor: tealGreen,
+                          shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            status,
+                            style: GoogleFonts.inter(
+                              fontSize: 15,
+                              fontWeight: FontWeight.normal,
+                              color: Colors.grey[900],
+                            ),
+                ),
+              ),
+            ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: widget.onClear,
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: tealGreen,
+                          width: 1.5,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          vertical: isMobile ? 14 : 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Clear',
+                        style: GoogleFonts.inter(
+                          color: tealGreen,
+                          fontSize: isMobile ? 14 : 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: isMobile ? 12 : 16),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        widget.onApply(_localSelected);
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: tealGreen,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          vertical: isMobile ? 14 : 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                      child: Text(
+                        'Apply',
+                        style: GoogleFonts.inter(
+                          fontSize: isMobile ? 14 : 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// SO Type Filter Popup with Searchable Checkboxes
+class _SOTypeFilterPopup extends StatefulWidget {
+  final List<String> availableSOTypes;
+  final Set<String> selectedSOTypes;
+  final ValueChanged<Set<String>> onApply;
+  final VoidCallback onClear;
+
+  const _SOTypeFilterPopup({
+    required this.availableSOTypes,
+    required this.selectedSOTypes,
+    required this.onApply,
+    required this.onClear,
+  });
+
+  @override
+  State<_SOTypeFilterPopup> createState() => _SOTypeFilterPopupState();
+}
+
+class _SOTypeFilterPopupState extends State<_SOTypeFilterPopup> {
+  late Set<String> _localSelected;
+  late TextEditingController _searchController;
+  late List<String> _filteredSOTypes;
+
+  @override
+  void initState() {
+    super.initState();
+    _localSelected = Set<String>.from(widget.selectedSOTypes);
+    _searchController = TextEditingController();
+    _filteredSOTypes = widget.availableSOTypes;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredSOTypes = widget.availableSOTypes
+          .where((soType) =>
+              soType.toLowerCase().contains(query) ||
+              query.isEmpty)
+          .toList();
+    });
+  }
+
+  void _toggleSOType(String soType) {
+    setState(() {
+      if (soType == 'Select All') {
+        if (_localSelected.contains('Select All') ||
+            _localSelected.length == widget.availableSOTypes.length - 1) {
+          _localSelected.clear();
+        } else {
+          _localSelected = Set<String>.from(widget.availableSOTypes);
+        }
+      } else {
+        if (_localSelected.contains(soType)) {
+          _localSelected.remove(soType);
+          _localSelected.remove('Select All');
+        } else {
+          _localSelected.add(soType);
+          if (_localSelected.length == widget.availableSOTypes.length - 1) {
+            _localSelected.add('Select All');
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
+    const Color tealGreen = Color(0xFF4db1b3);
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'SO Type',
+                    style: GoogleFonts.inter(
+                      fontSize: isMobile ? 20 : 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[900],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: TextField(
+              controller: _searchController,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search',
+                hintStyle: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Colors.grey[400],
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: Colors.grey[600],
+                  size: 20,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: tealGreen,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _filteredSOTypes.length,
+              itemBuilder: (context, index) {
+                final soType = _filteredSOTypes[index];
+                final isSelected = _localSelected.contains(soType);
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _toggleSOType(soType),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: isSelected ? tealGreen : Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSelected
+                                    ? tealGreen
+                                    : Colors.grey[400]!,
+                                width: 2,
+                              ),
+                            ),
+                            child: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              soType,
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                color: Colors.grey[900],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: widget.onClear,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
+                    ),
+                    child: Text(
+                      'Clear',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF4db1b3),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: () => widget.onApply(_localSelected),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: tealGreen,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Apply',
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

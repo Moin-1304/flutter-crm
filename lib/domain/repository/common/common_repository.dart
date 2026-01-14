@@ -34,7 +34,16 @@ abstract class CommonRepository {
   Future<List<CommonDropdownItem>> getIssueToList(int userId, int bizUnit);
   Future<List<CommonDropdownItem>> getIssueAgainstList();
   Future<List<CommonDropdownItem>> getDivisionCategoryList();
-  Future<List<CommonDropdownItem>> getItemDescriptionList(int divisionId);
+  Future<List<CommonDropdownItem>> getCustomerList({
+    required int bizUnit,
+    int? customerId,
+    String? searchText,
+  });
+  Future<List<CommonDropdownItem>> getItemDescriptionList(
+    int? divisionId, {
+    int? distributerId,
+    String? searchText,
+  });
   Future<List<CommonDropdownItem>> getBatchNoList({
     required int itemId,
     required int employeeId,
@@ -45,4 +54,19 @@ abstract class CommonRepository {
     int transactionType = 14,
   });
   Future<List<CommonDropdownItem>> getReportingManagerList();
+  Future<List<CommonDropdownItem>> getSalesRepList({
+    required int userId,
+    required int customerId,
+  });
+  Future<List<CommonDropdownItem>> getDistributorList({
+    required int bizUnit,
+    required int customerId,
+  });
+  Future<List<CommonDropdownItem>> getItemList({
+    required int distributerId,
+    String? searchText,
+  });
+  Future<List<CommonDropdownItem>> getUOMList({
+    required int itemId,
+  });
 }

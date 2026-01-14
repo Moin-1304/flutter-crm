@@ -430,12 +430,74 @@ class CommonApi {
     }
   }
 
-  /// Get Item Description List (CommandType: 105)
-  /// Returns list of item descriptions based on selected Division ID
-  Future<List<CommonDropdownItem>> getItemDescriptionList(
-      int divisionId) async {
+  /// Get Customer List (CommandType: 71)
+  /// Returns list of customers based on BizUnit
+  Future<List<CommonDropdownItem>> getCustomerList({
+    required int bizUnit,
+    int? customerId,
+    String? searchText,
+  }) async {
     try {
-      final request = ItemDescriptionRequest(divisionId: divisionId);
+      final request = CustomerListRequest(
+        bizUnit: bizUnit,
+        customerId: customerId,
+        searchText: searchText,
+      );
+      final requestJson = request.toJson();
+      
+      // Debug logging
+      print('🔵 [CommonApi] CUSTOMER LIST API REQUEST');
+      print('📡 Endpoint: POST ${Endpoints.commonGetAuto}');
+      print('📦 Request Body:');
+      print('   CommandType: ${requestJson['CommandType']}');
+      print('   BizUnit: ${requestJson['BizUnit']}');
+      print('   CustomerId: ${requestJson['CustomerId']}');
+      
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: requestJson,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      
+      print('🟢 [CommonApi] CUSTOMER LIST API RESPONSE');
+      print('📊 Status Code: ${response.statusCode}');
+      if (response.data != null && response.data is List) {
+        print('📊 Total Customers: ${(response.data as List).length}');
+      }
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get customer list: ${e.toString()}');
+    }
+  }
+
+  /// Get Item Description List (CommandType: 105)
+  /// Returns list of item descriptions based on selected Division ID or DistributerId
+  Future<List<CommonDropdownItem>> getItemDescriptionList(
+    int? divisionId, {
+    int? distributerId,
+    String? searchText,
+  }) async {
+    try {
+      final request = ItemDescriptionRequest(
+        divisionId: divisionId,
+        distributerId: distributerId,
+        searchText: searchText,
+      );
       final requestJson = request.toJson();
       final requestJsonString =
           const JsonEncoder.withIndent('  ').convert(requestJson);
@@ -736,6 +798,76 @@ class CommonApi {
       }
     } catch (e) {
       throw Exception('Failed to get reporting manager list: ${e.toString()}');
+    }
+  }
+
+  /// Get Sales Rep List (CommandType: 158)
+  /// Requires userId and customerId
+  Future<List<CommonDropdownItem>> getSalesRepList({
+    required int userId,
+    required int customerId,
+  }) async {
+    try {
+      final request = CommonGetAutoRequest(
+        commandType: 158,
+        userId: userId,
+        customer: customerId,
+      );
+      return getAuto(request);
+    } catch (e) {
+      throw Exception('Failed to get sales rep list: ${e.toString()}');
+    }
+  }
+
+  /// Get Distributor List (CommandType: 114)
+  /// Requires bizUnit and customerId
+  Future<List<CommonDropdownItem>> getDistributorList({
+    required int bizUnit,
+    required int customerId,
+  }) async {
+    try {
+      final request = CommonGetAutoRequest(
+        commandType: 114,
+        bizUnit: bizUnit,
+        customerId: customerId,
+      );
+      return getAuto(request);
+    } catch (e) {
+      throw Exception('Failed to get distributor list: ${e.toString()}');
+    }
+  }
+
+  /// Get Item List (CommandType: 105)
+  /// Requires distributerId and optional searchText
+  Future<List<CommonDropdownItem>> getItemList({
+    required int distributerId,
+    String? searchText,
+  }) async {
+    try {
+      final request = CommonGetAutoRequest(
+        commandType: 105,
+        distributerId: distributerId,
+        searchText: searchText ?? '%',
+      );
+      return getAuto(request);
+    } catch (e) {
+      throw Exception('Failed to get item list: ${e.toString()}');
+    }
+  }
+
+  /// Get UOM List (CommandType: 64)
+  /// Requires itemId
+  Future<List<CommonDropdownItem>> getUOMList({
+    required int itemId,
+  }) async {
+    try {
+      final request = CommonGetAutoRequest(
+        commandType: 64,
+        item: itemId,
+      );
+      return getAuto(request);
+    } catch (e) {
+      throw Exception('Failed to get UOM list: ${e.toString()}');
     }
   }
 }
