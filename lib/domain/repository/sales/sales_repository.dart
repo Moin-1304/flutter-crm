@@ -20,6 +20,7 @@ abstract class SalesRepository {
     required int userId,
     required int menuId,
     required String url,
+    int? isFullyUsed,
   });
 
   Future<SalesOrderApiItem> getSalesOrderById(int id);

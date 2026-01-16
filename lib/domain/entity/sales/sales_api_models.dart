@@ -17,6 +17,7 @@ class SalesOrderListRequest {
   final int userId;
   final int menuId;
   final String url;
+  final int? isFullyUsed;
 
   SalesOrderListRequest({
     this.id,
@@ -37,6 +38,7 @@ class SalesOrderListRequest {
     required this.userId,
     required this.menuId,
     required this.url,
+    this.isFullyUsed,
   });
 
   Map<String, dynamic> toJson() {
@@ -59,6 +61,7 @@ class SalesOrderListRequest {
       'UserId': userId,
       'MenuId': menuId,
       'Url': url,
+      'IsFullyUsed': isFullyUsed,
     };
   }
 }

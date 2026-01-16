@@ -433,6 +433,8 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
   final FocusNode _displayFocusNode = FocusNode();
   OverlayEntry? _entry;
   String? _value;
+  String? _previousWidgetValue; // Track previous widget value to detect actual changes
+  bool _isUserSelecting = false; // Flag to prevent value reset during user selection
   List<String> _filteredOptions = [];
 
   @override
@@ -457,6 +459,7 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
   void initState() {
     super.initState();
     _value = widget.value;
+    _previousWidgetValue = widget.value;
     _filteredOptions = widget.options;
     _updateDisplayText();
     // Prevent the display field from requesting focus to avoid keyboard
@@ -468,9 +471,19 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
   @override
   void didUpdateWidget(covariant SearchableDropdown oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.value != _value) {
+    // Always sync _value with widget.value when widget.value changes
+    // This ensures the dropdown displays the correct value from the parent
+    // But only if we're not in the middle of a user selection
+    if (!_isUserSelecting && widget.value != oldWidget.value) {
+      print('🔵 SearchableDropdown didUpdateWidget: widget.value changed from "${oldWidget.value}" to "${widget.value}"');
+      _previousWidgetValue = widget.value;
       _value = widget.value;
       _updateDisplayText();
+    } else if (_isUserSelecting && widget.value == _value) {
+      // User selection completed - parent has updated to match our selection
+      print('🔵 SearchableDropdown didUpdateWidget: User selection confirmed, widget.value now matches _value: "${widget.value}"');
+      _isUserSelecting = false;
+      _previousWidgetValue = widget.value;
     }
     if (widget.options != oldWidget.options) {
       _filteredOptions = widget.options;
@@ -522,9 +535,13 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
 
   @override
   Widget build(BuildContext context) {
-    // Sync value and update display
-    if (widget.value != _value) {
+    // Only sync value in build if widget.value has changed from previous widget.value
+    // AND we're not in the middle of a user selection
+    // This prevents resetting the value when user selects a new option
+    if (!_isUserSelecting && widget.value != _previousWidgetValue && widget.value != null) {
+      print('🔵 SearchableDropdown build: widget.value changed from "$_previousWidgetValue" to "${widget.value}", syncing _value');
       _value = widget.value;
+      _previousWidgetValue = widget.value;
       _updateDisplayText();
     }
     final Color borderColor = widget.hasError ? Colors.red.shade400 : Colors.grey.shade300;
@@ -749,11 +766,38 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                                       child: InkWell(
                                         borderRadius: BorderRadius.circular(12),
                                         onTap: () {
-                                          _value = opt;
-                                          _updateDisplayText();
-                                          widget.onChanged(opt);
-                                          setState(() {});
+                                          print('🔵 SearchableDropdown: User selected option: $opt (current _value: $_value, widget.value: ${widget.value})');
+                                          // Validate that the selected option exists in the options list
+                                          if (!widget.options.contains(opt)) {
+                                            print('🔵 Warning: Selected option "$opt" not in options list: ${widget.options}');
+                                            return;
+                                          }
+                                          
+                                          // Set flag to prevent value reset during selection
+                                          _isUserSelecting = true;
+                                          
+                                          // Close the overlay first to prevent visual glitches
                                           _removeOverlay();
+                                          
+                                          // Update internal state immediately for responsive UI
+                                          _value = opt;
+                                          _previousWidgetValue = opt; // Set this BEFORE calling onChanged
+                                          _updateDisplayText();
+                                          
+                                          // Call the parent's onChanged callback
+                                          // This will trigger parent's setState, which will rebuild this widget
+                                          // with the new widget.value, which should match opt
+                                          widget.onChanged(opt);
+                                          
+                                          // Update local state to reflect the change
+                                          setState(() {});
+                                          
+                                          // Reset flag after a short delay to allow parent to update
+                                          Future.delayed(const Duration(milliseconds: 100), () {
+                                            if (mounted) {
+                                              _isUserSelecting = false;
+                                            }
+                                          });
                                         },
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),

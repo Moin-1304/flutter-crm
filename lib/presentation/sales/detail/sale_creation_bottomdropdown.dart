@@ -23,15 +23,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     Customer(
         code: 'C001',
         name: 'Dr. Meera Joshi',
-        address: '123 Health St, Wellness City, Mumbai - 400001'),
+        address: '123 Health St, Wellness City, Mumbai - 400001',
+        city: 'Mumbai'),
     Customer(
         code: 'C002',
         name: 'Sunrise Clinic',
-        address: '21 Park Lane, Pune - 411001'),
+        address: '21 Park Lane, Pune - 411001',
+        city: 'Pune'),
     Customer(
         code: 'C003',
         name: 'Apollo Pharmacy',
-        address: '402 Marine Drive, Mumbai - 400002'),
+        address: '402 Marine Drive, Mumbai - 400002',
+        city: 'Mumbai'),
   ];
 
   final List<String> _salesReps = const ['Mr. John Doe', 'Ms. Jane Smith'];

@@ -1,5 +1,6 @@
 import 'package:boilerplate/data/network/apis/common/common_api.dart';
-import 'package:boilerplate/domain/entity/common/common_api_models.dart';
+import 'package:boilerplate/domain/entity/common/common_api_models.dart'
+    show CommonDropdownItem, TaxComponentResponse;
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/di/service_locator.dart';
 
@@ -591,6 +592,105 @@ class CommonRepositoryImpl implements CommonRepository {
     } catch (e) {
       // API get UOM list failed
       print('Error getting UOM list: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getItemTaxList({
+    required int itemId,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+
+        final response = await commonApi.getItemTaxList(
+          itemId: itemId,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get item tax list failed
+      print('Error getting item tax list: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getTaxListForTaxSection() async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getTaxListForTaxSection();
+        return response;
+      }
+    } catch (e) {
+      // API get tax list failed
+      print('Error getting tax list for tax section: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getDiscountListForTaxSection() async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getDiscountListForTaxSection();
+        return response;
+      }
+    } catch (e) {
+      // API get discount list failed
+      print('Error getting discount list for tax section: $e');
+    }
+
+    // Fallback to empty list if API fails
+    return [];
+  }
+
+  @override
+  Future<List<TaxComponentResponse>> getTaxComponentFormulas({
+    required int id,
+    int? userId,
+    int pageNumber = 0,
+    int pageSize = 0,
+    String? searchText,
+    int sortOrder = 0,
+    int sortDir = 0,
+    String? sortField,
+    String? json,
+    String? filterExpression,
+    int? pageId,
+    int? type,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getTaxComponentFormulas(
+          id: id,
+          userId: userId,
+          pageNumber: pageNumber,
+          pageSize: pageSize,
+          searchText: searchText,
+          sortOrder: sortOrder,
+          sortDir: sortDir,
+          sortField: sortField,
+          json: json,
+          filterExpression: filterExpression,
+          pageId: pageId,
+          type: type,
+        );
+        return response;
+      }
+    } catch (e) {
+      // API get tax component formulas failed
+      print('Error getting tax component formulas: $e');
     }
 
     // Fallback to empty list if API fails

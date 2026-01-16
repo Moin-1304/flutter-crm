@@ -2416,8 +2416,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     final isTablet = MediaQuery.of(context).size.width >= 600;
     // Get status text with fallbacks
     final statusText = _getStatusDisplayText(item);
-    final statusColor = _getStatusColor(item.status);
-    final statusBgColor = _getStatusBackgroundColor(item.status);
+    // Get the actual status using helper method
+    final int actualStatus = _getActualStatus(item);
+    final statusColor = _getStatusColor(actualStatus);
+    final statusBgColor = _getStatusBackgroundColor(actualStatus);
     final customerName = item.customerName ?? 'Customer ${item.customerId}';
 
     return InkWell(
@@ -2642,12 +2644,19 @@ class _TourPlanScreenState extends State<TourPlanScreen>
 
   /// Check if comment button should be shown for tour plan
   /// Shows comment icon for: Pending (1, 2), Approved (5), and Sent Back (4)
+  /// Hide comment button if status is rejected (status == 3 or statusId == 3)
   /// Status IDs: 5=Approved, 1=Pending/Submitted, 4=Sent Back, 3=Rejected, 2=Submitted
   bool _canCommentTourPlan(TourPlanItem item) {
-    return item.status == 1 ||
-        item.status == 2 ||
-        item.status == 4 ||
-        item.status == 5;
+    // Get the actual status using helper method
+    final int actualStatus = _getActualStatus(item);
+    
+    // Hide comment button if status is rejected (status == 3)
+    if (actualStatus == 3) return false;
+    
+    return actualStatus == 1 ||
+        actualStatus == 2 ||
+        actualStatus == 4 ||
+        actualStatus == 5;
   }
 
   /// Check if tour plan can be edited (Draft, Pending, or Sent Back status)
@@ -2660,31 +2669,60 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       }
     }
 
+    // Get the actual status using helper method
+    final int actualStatus = _getActualStatus(item);
+    
+    // Hide edit button if status is rejected (status == 3)
+    if (actualStatus == 3) return false;
+    
     // Allow editing for Draft (status 0), Pending (status 1 or 2), and Sent Back (status 4) tour plans
     // Status 4 = Sent Back - user should be able to edit and resubmit
-    return item.status == 0 ||
-        item.status == 1 ||
-        item.status == 2 ||
-        item.status == 4;
+    return actualStatus == 0 ||
+        actualStatus == 1 ||
+        actualStatus == 2 ||
+        actualStatus == 4;
   }
 
-  /// Check if tour plan can be deleted (Medical Rep with roleCategory == 3, and not approved/sent back)
+  /// Check if tour plan is approved (status == 5)
+  bool _isApprovedTourPlan(TourPlanItem item) {
+    final int actualStatus = _getActualStatus(item);
+    return actualStatus == 5; // Status 5 = Approved
+  }
+
+  /// Check if tour plan can be deleted (Medical Rep with roleCategory == 3, and not approved/sent back/pending)
+  /// Hide delete button if status is rejected (status == 3), pending (status == 1 or 2), approved (5), or sent back (4)
   bool _canDeleteTourPlan(TourPlanItem item) {
+    // Get the actual status using helper method
+    final int actualStatus = _getActualStatus(item);
+    
+    // Hide delete button if status is rejected (status == 3)
+    if (actualStatus == 3) return false;
+    
+    // Hide delete button if status is pending (status == 1 or 2)
+    if (actualStatus == 1 || actualStatus == 2) return false;
+    
     // Only allow delete for Medical Rep (roleCategory == 3)
     // Exclude Approved (5) and Sent Back (4) statuses - server doesn't allow deleting sent back tour plans
     final roleCategory = _userDetailStore.userDetail?.roleCategory;
     return roleCategory == 3 &&
-        item.status != 5 &&
-        item.status != 4; // Status 5 = Approved, 4 = Sent Back
+        actualStatus != 5 &&
+        actualStatus != 4; // Status 5 = Approved, 4 = Sent Back
   }
 
   /// Check if DCR can be created from tour plan (not available for pending or sent back tour plans)
+  /// Hide Create DCR button if status is rejected (status == 3 or statusId == 3)
   bool _canCreateDcrFromTourPlan(TourPlanItem item) {
+    // Get the actual status using helper method
+    final int actualStatus = _getActualStatus(item);
+    
+    // Hide Create DCR button if status is rejected (status == 3)
+    if (actualStatus == 3) return false;
+    
     // DCR cannot be created from pending tour plans (status 1 or 2) or sent back tour plans (status 4)
-    // DCR can be created from Draft (0), Approved (5), and Rejected (3) tour plans
-    return item.status != 1 &&
-        item.status != 2 &&
-        item.status != 4; // Exclude pending and sent back statuses
+    // DCR can be created from Draft (0) and Approved (5) tour plans
+    return actualStatus != 1 &&
+        actualStatus != 2 &&
+        actualStatus != 4; // Exclude pending and sent back statuses
   }
 
   /// Show detailed popup for Tour Plan item with bottom-to-top slide animation
@@ -2742,6 +2780,8 @@ class _TourPlanScreenState extends State<TourPlanScreen>
         print('TourPlanScreen: ✓ Fetched full tour plan details');
         print(
             'TourPlanScreen: tourPlanDetails count: ${fullItem.tourPlanDetails?.length ?? 0}');
+        print('TourPlanScreen: Fetched status=${fullItem.status}, statusId=${fullItem.statusId}, tourPlanStatus=${fullItem.tourPlanStatus}, statusText=${fullItem.statusText}');
+        print('TourPlanScreen: Original status=${item.status}, statusId=${item.statusId}, tourPlanStatus=${item.tourPlanStatus}, statusText=${item.statusText}');
       } else {
         print(
             'TourPlanScreen: ⚠ API returned empty items, using original item');
@@ -2821,11 +2861,64 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     final productsDisplay =
         allProducts.isNotEmpty ? allProducts.join(', ') : 'N/A';
 
-    final statusText = _getStatusDisplayText(fullItem);
-    final statusColor = _getStatusColor(fullItem.status);
-    final statusBgColor = _getStatusBackgroundColor(fullItem.status);
-    final customerName =
-        fullItem.customerName ?? 'Customer ${fullItem.customerId}';
+    // Check if fullItem has valid status, otherwise use original item's status
+    // Use _getActualStatus to properly handle tourPlanStatus field
+    final int fetchedStatus = _getActualStatus(fullItem);
+    final int originalStatus = _getActualStatus(item);
+    
+    // Use original item for status display if:
+    // 1. Fetched item has status 0 (Draft) but original doesn't, OR
+    // 2. Original item has tourPlanStatus/statusText but fetched doesn't
+    final bool shouldUseOriginal = (fetchedStatus == 0 && originalStatus != 0) ||
+        (item.tourPlanStatus != null && item.tourPlanStatus!.trim().isNotEmpty && 
+         (fullItem.tourPlanStatus == null || fullItem.tourPlanStatus!.trim().isEmpty));
+    
+    final TourPlanItem statusItem = shouldUseOriginal ? item : fullItem;
+    
+    if (shouldUseOriginal) {
+      print('TourPlanScreen: Using original item status ($originalStatus) instead of fetched status ($fetchedStatus)');
+      print('TourPlanScreen: Original tourPlanStatus="${item.tourPlanStatus}", Fetched tourPlanStatus="${fullItem.tourPlanStatus}"');
+    }
+    
+    final statusText = _getStatusDisplayText(statusItem);
+    // Get the actual status using helper method
+    final int actualStatus = _getActualStatus(statusItem);
+    final statusColor = _getStatusColor(actualStatus);
+    final statusBgColor = _getStatusBackgroundColor(actualStatus);
+    
+    // Extract customer name from tourPlanDetails[0].location (format: "CLUSTER - CUSTOMER - CODE")
+    // Example: "ANGURUWELLA - Safeway Pharmaceuticals (Pvt) Ltd - P01304"
+    String customerName = '';
+    if (fullItem.tourPlanDetails != null &&
+        fullItem.tourPlanDetails!.isNotEmpty) {
+      final detail = fullItem.tourPlanDetails!.first;
+      if (detail.location != null && detail.location!.contains('-')) {
+        final parts = detail.location!.split('-');
+        if (parts.length >= 2) {
+          // Customer name is typically the second part (index 1)
+          // But we need to handle cases where customer name itself contains dashes
+          // So we take everything between first and last part
+          if (parts.length == 3) {
+            customerName = parts[1].trim();
+          } else if (parts.length > 3) {
+            // Customer name contains dashes, join all middle parts
+            customerName = parts.sublist(1, parts.length - 1).join('-').trim();
+          } else {
+            customerName = parts[1].trim();
+          }
+          print('TourPlanScreen: Extracted customer from location: $customerName');
+        }
+      }
+    }
+    // Fallback to header-level customerName
+    if (customerName.isEmpty) {
+      customerName = fullItem.customerName?.trim() ?? '';
+    }
+    // Last resort fallback
+    if (customerName.isEmpty && fullItem.customerId != null) {
+      customerName = 'Customer ${fullItem.customerId}';
+    }
+    
     final customerCode = fullItem.customerId != null
         ? ' - P${fullItem.customerId.toString().padLeft(5, '0')}'
         : '';
@@ -3183,7 +3276,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                     alignment: WrapAlignment.end,
                     children: [
                       // Edit button
-                      if (_canEditTourPlan(fullItem!))
+                      if (_canEditTourPlan(statusItem))
                         getIt.isRegistered<UserValidationStore>()
                             ? ListenableBuilder(
                                 listenable: getIt<UserValidationStore>(),
@@ -3254,7 +3347,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 ),
                               ),
                       // Comment button (for Pending, Approved, and Sent Back)
-                      if (_canCommentTourPlan(fullItem!))
+                      if (_canCommentTourPlan(statusItem))
                         FilledButton.icon(
                           onPressed: () {
                             // Don't close the popup - let the comment dialog open on top
@@ -3282,7 +3375,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ),
                         ),
                       // Create DCR button
-                      if (_canCreateDcrFromTourPlan(fullItem!))
+                      if (_canCreateDcrFromTourPlan(statusItem))
                         FilledButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
@@ -3310,7 +3403,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ),
                         ),
                       // Delete button
-                      if (_canDeleteTourPlan(fullItem!))
+                      if (_canDeleteTourPlan(statusItem))
                         OutlinedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
@@ -3328,6 +3421,34 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Colors.red),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 20 : 16,
+                              vertical: isTablet ? 12 : 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      // View button (for Approved status)
+                      if (_isApprovedTourPlan(statusItem))
+                        FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _viewTourPlan(fullItem!);
+                          },
+                          icon: Icon(Icons.visibility_outlined,
+                              size: isTablet ? 18 : 16),
+                          label: Text(
+                            'View',
+                            style: GoogleFonts.inter(
+                              fontSize: isTablet ? 14 : 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: tealGreen,
+                            foregroundColor: Colors.white,
                             padding: EdgeInsets.symmetric(
                               horizontal: isTablet ? 20 : 16,
                               vertical: isTablet ? 12 : 10,
@@ -3386,7 +3507,6 @@ class _TourPlanScreenState extends State<TourPlanScreen>
   }
 
   /// Navigate to edit tour plan screen
-
   void _editTourPlan(TourPlanItem item) async {
     print('TourPlanScreen: Editing tour plan with ID: ${item.id}');
 
@@ -3400,6 +3520,20 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     if (result == true && mounted) {
       await _refreshAllWithLoader();
     }
+  }
+
+  /// Navigate to view tour plan screen (for approved tour plans)
+  void _viewTourPlan(TourPlanItem item) async {
+    print('TourPlanScreen: Viewing tour plan with ID: ${item.id}');
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NewTourPlanScreen(
+          tourPlanToEdit: item,
+          isViewOnly: true, // Enable view-only mode
+        ),
+      ),
+    );
   }
 
   /// Delete tour plan (for Medical Rep only, before approval)
@@ -3883,6 +4017,70 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     );
   }
 
+  /// Get the actual status value from item (handles status, statusId, and tourPlanStatus fields)
+  /// Returns a valid status ID (0-5) or defaults to 0 (Draft)
+  int _getActualStatus(TourPlanItem item) {
+    // First, try to derive status from tourPlanStatus text field (this is the most reliable)
+    if (item.tourPlanStatus != null && item.tourPlanStatus!.trim().isNotEmpty) {
+      final statusText = item.tourPlanStatus!.trim().toLowerCase();
+      if (statusText.contains('rejected')) {
+        return 3; // Rejected
+      } else if (statusText.contains('approved')) {
+        return 5; // Approved
+      } else if (statusText.contains('sent back')) {
+        return 4; // Sent Back
+      } else if (statusText.contains('pending') || statusText.contains('submitted')) {
+        return 1; // Pending
+      } else if (statusText.contains('draft')) {
+        return 0; // Draft
+      }
+    }
+    
+    // Fallback to statusText field
+    if (item.statusText != null && item.statusText!.trim().isNotEmpty) {
+      final statusText = item.statusText!.trim().toLowerCase();
+      if (statusText.contains('rejected')) {
+        return 3; // Rejected
+      } else if (statusText.contains('approved')) {
+        return 5; // Approved
+      } else if (statusText.contains('sent back')) {
+        return 4; // Sent Back
+      } else if (statusText.contains('pending') || statusText.contains('submitted')) {
+        return 1; // Pending
+      } else if (statusText.contains('draft')) {
+        return 0; // Draft
+      }
+    }
+    
+    // Get the actual status: check if status is valid (0-5), otherwise use statusId
+    int statusId;
+    if (item.status >= 0 && item.status <= 5) {
+      // status is valid, use it (unless it's 0, then check statusId)
+      statusId = item.status != 0 ? item.status : item.statusId;
+    } else {
+      // status is invalid or unexpected, use statusId
+      statusId = item.statusId;
+    }
+    
+    // If statusId is still invalid, try to use status as fallback
+    if (statusId < 0 || statusId > 5) {
+      statusId = item.status >= 0 && item.status <= 5 ? item.status : 0;
+    }
+    
+    // Ensure we return a valid status (0-5)
+    if (statusId >= 0 && statusId <= 5) {
+      return statusId;
+    }
+    
+    // Last resort: check statusId directly
+    if (item.statusId >= 0 && item.statusId <= 5) {
+      return item.statusId;
+    }
+    
+    // Default to 0 (Draft) if all else fails
+    return 0;
+  }
+
   /// Get status color based on status value
   Color _getStatusColor(int status) {
     switch (status) {
@@ -3918,20 +4116,24 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     }
   }
 
-  /// Get status display text with fallbacks
+  /// Get status display text from item, using tourPlanStatus field or deriving from status field
+  /// Matches the logic from tour_plan_manager_review_screen.dart
   String _getStatusDisplayText(TourPlanItem item) {
-    // First try statusText
-    if (item.statusText != null && item.statusText!.trim().isNotEmpty) {
-      return item.statusText!.trim();
-    }
-
-    // Fallback to tourPlanStatus
+    // First try tourPlanStatus field (this is the actual status text from API)
     if (item.tourPlanStatus != null && item.tourPlanStatus!.trim().isNotEmpty) {
       return item.tourPlanStatus!.trim();
     }
-
-    // Fallback to deriving from status ID
-    switch (item.status) {
+    
+    // Fallback to statusText if tourPlanStatus is not available
+    if (item.statusText != null && item.statusText!.trim().isNotEmpty) {
+      return item.statusText!.trim();
+    }
+    
+    // Derive from status field using helper method
+    // Status IDs: 5=Approved, 4=Sent Back, 3=Rejected, 2=Submitted, 1=Pending, 0=Draft
+    final int statusId = _getActualStatus(item);
+    
+    switch (statusId) {
       case 5:
         return 'Approved';
       case 4:
@@ -3939,6 +4141,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       case 3:
         return 'Rejected';
       case 2:
+        return 'Submitted';
       case 1:
         return 'Pending';
       case 0:

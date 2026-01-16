@@ -1195,7 +1195,40 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     final statusText = _getStatusDisplayText(item);
     final statusColor = _getStatusColor(item.status);
     final statusBgColor = _getStatusBackgroundColor(item.status);
-    final customerName = item.customerName ?? 'Customer ${item.customerId}';
+    
+    // Extract customer name from tourPlanDetails[0].location (format: "CLUSTER - CUSTOMER - CODE")
+    // Example: "ANGURUWELLA - Safeway Pharmaceuticals (Pvt) Ltd - P01304"
+    String customerName = '';
+    if (item.tourPlanDetails != null &&
+        item.tourPlanDetails!.isNotEmpty) {
+      final detail = item.tourPlanDetails!.first;
+      if (detail.location != null && detail.location!.contains('-')) {
+        final parts = detail.location!.split('-');
+        if (parts.length >= 2) {
+          // Customer name is typically the second part (index 1)
+          // But we need to handle cases where customer name itself contains dashes
+          // So we take everything between first and last part
+          if (parts.length == 3) {
+            customerName = parts[1].trim();
+          } else if (parts.length > 3) {
+            // Customer name contains dashes, join all middle parts
+            customerName = parts.sublist(1, parts.length - 1).join('-').trim();
+          } else {
+            customerName = parts[1].trim();
+          }
+          print('TourPlanManagerReviewScreen: Extracted customer from location: $customerName');
+        }
+      }
+    }
+    // Fallback to header-level customerName
+    if (customerName.isEmpty) {
+      customerName = item.customerName?.trim() ?? '';
+    }
+    // Last resort fallback
+    if (customerName.isEmpty && item.customerId != null) {
+      customerName = 'Customer ${item.customerId}';
+    }
+    
     final customerCode = item.customerId != null ? ' - P${item.customerId.toString().padLeft(5, '0')}' : '';
     
     showModalBottomSheet(
@@ -1626,11 +1659,18 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   /// Check if delete button should be shown for a tour plan item
   /// Delete button should only be visible when status is "Pending" (status == 1 or 2)
+  /// Hide delete button if status is rejected (status == 3 or statusId == 3)
   /// If roleCategoryId === 3, only show delete for pending tour plans
   bool _shouldShowDeleteButton(TourPlanItem item) {
     // Status IDs: 5=Approved, 4=Sent Back, 3=Rejected, 2=Submitted, 1=Pending, 0=Draft
+    // Get the actual status (check status first, fallback to statusId if status is 0)
+    final int actualStatus = item.status != 0 ? item.status : item.statusId;
+    
+    // Hide delete button if status is rejected (status == 3)
+    if (actualStatus == 3) return false;
+    
     // Only show delete for Pending status (1 or 2)
-    final bool isPending = item.status == 1 || item.status == 2;
+    final bool isPending = actualStatus == 1 || actualStatus == 2;
     
     if (!isPending) return false;
     
@@ -1646,10 +1686,17 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   /// Check if modify button should be shown for a tour plan item
   /// Show only for managers (roleCategory == 1) and on approved plans (status == 5)
+  /// Hide modify button if status is rejected (status == 3 or statusId == 3)
   bool _shouldShowModifyButton(TourPlanItem item) {
+    // Get the actual status (check status first, fallback to statusId if status is 0)
+    final int actualStatus = item.status != 0 ? item.status : item.statusId;
+    
+    // Hide modify button if status is rejected (status == 3)
+    if (actualStatus == 3) return false;
+    
     final roleCategory = _userDetailStore.userDetail?.roleCategory;
     final bool isManager = roleCategory == 1;
-    final bool isApproved = item.status == 5;
+    final bool isApproved = actualStatus == 5;
 
     return isManager && isApproved;
   }

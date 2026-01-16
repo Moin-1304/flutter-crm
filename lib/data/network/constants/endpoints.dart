@@ -87,6 +87,13 @@ class Endpoints {
 // Common endpoints for dropdowns
   static const String commonGetAuto = "$baseUrl/Common/GetAuto";
   static const String commonGetAutoBigInt = "$baseUrl/Common/GetAutoBigInt";
+  static const String commonGetCatItemTax = "$baseUrl/Common/GetCatItemTax";
+  
+  // Tax Component endpoints
+  static const String taxComponentGet = "$baseUrl/TaxComponent/Get";
+  
+  // Workflow endpoints
+  static const String workflowGetAllActions = "$baseUrl/WorkFlowMaster/GetAllActions";
 
   // Deviation endpoints
   static const String deviationList = "$baseUrl/PharmaCRM/Deviation/List";
@@ -172,10 +179,6 @@ class Endpoints {
   static const String itemIssueList = "$baseUrl/ItemIssue/List";
   static const String itemIssueSave = "$baseUrl/ItemIssue/Save";
   static String itemIssueGet(int id) => "$baseUrl/ItemIssue/Get?Id=$id";
-
-  // Workflow endpoints
-  static const String workflowGetAllActions =
-      "$baseUrl/WorkflowMaster/GetAllActions";
 
   // Sales endpoints
   static const String salesOrderList = "$baseUrl/SaleOrder/List";

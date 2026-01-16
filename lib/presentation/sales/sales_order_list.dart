@@ -8,6 +8,7 @@ import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/core/widgets/app_dropdowns.dart';
 
 class SaleOrderListScreen extends StatefulWidget {
   const SaleOrderListScreen({super.key});
@@ -500,6 +501,14 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
 
       // Build FilterExpression from all active filters
       String? filterExpression = _buildFilterExpression();
+      
+      // Map Transaction Status to IsFullyUsed numeric value
+      int? isFullyUsed;
+      if (_selectedTransactionStatuses.isNotEmpty && !_selectedTransactionStatuses.contains('Select All')) {
+        // Get the first selected transaction status (since we're using single select in dropdown)
+        final selectedStatus = _selectedTransactionStatuses.first;
+        isFullyUsed = _mapTransactionStatusToIsFullyUsed(selectedStatus);
+      }
 
       final salesRepository = getIt<SalesRepository>();
       final response = await salesRepository.getSalesOrderList(
@@ -522,6 +531,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         menuId: menuId,
         url:
             '/sales/salescontract/list', // Relative path as per working API call
+        isFullyUsed: isFullyUsed,
       );
 
       if (mounted) {
@@ -1036,103 +1046,154 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final maxHeight = MediaQuery.of(context).size.height * 0.9;
     
-    return Container(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
+    return StatefulBuilder(
+      builder: (BuildContext context, StateSetter setModalState) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          // Title
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: Row(
-              children: [
-                Text(
-                  'Filters',
-                  style: GoogleFonts.inter(
-                    fontSize: isTablet ? 24 : 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[900],
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+              ),
+              // Title
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Filters',
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 24 : 20,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[900],
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          // Scrollable Content
-          Flexible(
+              ),
+              // Scrollable Content
+              Flexible(
         child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-              /// FILTER BY SECTION (Collapsible)
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    setState(() {
-                      _isFilterByExpanded = !_isFilterByExpanded;
-                    });
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey[200]!, width: 1),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(
-                          'Filter By',
-                          style: GoogleFonts.inter(
-                            fontSize: isTablet ? 18 : 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[900],
+                      /// FILTER BY SECTION (Collapsible with attractive border)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.grey[300]!,
+                            width: 1.5,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey[200]!.withOpacity(0.5),
+                              spreadRadius: 1,
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        const Spacer(),
-                        Icon(
-                          _isFilterByExpanded
-                              ? Icons.expand_less
-                              : Icons.expand_more,
-                          color: Colors.grey[600],
-                          size: 24,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              
-              if (_isFilterByExpanded) ...[
-                const SizedBox(height: 16),
-                // From, To, Transaction Status in a row (responsive)
-                LayoutBuilder(
+                        child: Column(
+                          children: [
+                            // Header (clickable)
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  setModalState(() {
+                                    _isFilterByExpanded = !_isFilterByExpanded;
+                                  });
+                                },
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(12),
+                                ),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                    horizontal: 16,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[50],
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(12),
+                                      topRight: const Radius.circular(12),
+                                      bottomLeft: _isFilterByExpanded
+                                          ? Radius.zero
+                                          : const Radius.circular(12),
+                                      bottomRight: _isFilterByExpanded
+                                          ? Radius.zero
+                                          : const Radius.circular(12),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.filter_list,
+                                        color: Colors.grey[700],
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Filter By',
+                                        style: GoogleFonts.inter(
+                                          fontSize: isTablet ? 18 : 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey[900],
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Icon(
+                                        _isFilterByExpanded
+                                            ? Icons.expand_less
+                                            : Icons.expand_more,
+                                        color: Colors.grey[600],
+                                        size: 24,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            
+                            // Content (expandable)
+                            if (_isFilterByExpanded) ...[
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: const BorderRadius.vertical(
+                                    bottom: Radius.circular(12),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    // From, To, Transaction Status in a row (responsive)
+                                    LayoutBuilder(
                 builder: (context, constraints) {
                   final bool isWide = constraints.maxWidth > 600;
                   if (isWide) {
@@ -1266,6 +1327,95 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                                     ],
                                   ),
                                 ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Transaction Status Dropdown
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Transaction',
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Builder(
+                                builder: (context) {
+                                  // Build options list dynamically - "All" first, then all transaction statuses except "Select All"
+                                  final List<String> availableOptions = _transactionStatusList
+                                      .where((s) => s != 'Select All')
+                                      .toList();
+                                  
+                                  final List<String> options = ['All', ...availableOptions];
+                                  
+                                  // Compute current value - show "All" if nothing selected, otherwise show first selected
+                                  // Make sure the value exists in options, otherwise default to "All"
+                                  String currentValue = 'All';
+                                  if (_selectedTransactionStatuses.isNotEmpty) {
+                                    final selected = _selectedTransactionStatuses.first;
+                                    if (options.contains(selected)) {
+                                      currentValue = selected;
+                                    } else {
+                                      // If selected value is not in options, clear it
+                                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                                        if (mounted) {
+                                          setState(() {
+                                            _selectedTransactionStatuses.clear();
+                                          });
+                                        }
+                                      });
+                                    }
+                                  }
+                                  
+                                  print('🔵 Transaction dropdown (wide) - currentValue: $currentValue, options: $options (${options.length} items), selected: $_selectedTransactionStatuses');
+                                  
+                                  return SearchableDropdown(
+                                    key: ValueKey('transaction_wide_${currentValue}_${options.length}'),
+                                    options: options,
+                                    value: currentValue,
+                                  onChanged: (String? newValue) {
+                                    print('🔵 Transaction dropdown (wide) onChanged: $newValue (previous: $currentValue, current selected: $_selectedTransactionStatuses)');
+                                    if (newValue == null || newValue.isEmpty) {
+                                      print('🔵 Ignoring null/empty value');
+                                      return;
+                                    }
+                                    
+                                    if (!mounted) return;
+                                    
+                                    // Update state immediately and synchronously
+                                    setState(() {
+                                      if (newValue == 'All') {
+                                        _selectedTransactionStatuses.clear();
+                                        print('🔵 Cleared transaction status filter - showing all');
+                                      } else if (options.contains(newValue)) {
+                                        _selectedTransactionStatuses = {newValue};
+                                        print('🔵 Set transaction status filter to: $_selectedTransactionStatuses');
+                                      } else {
+                                        print('🔵 Warning: Selected value "$newValue" not in options, ignoring');
+                                        return;
+                                      }
+                                    });
+                                    
+                                    print('🔵 After setState: _selectedTransactionStatuses = $_selectedTransactionStatuses');
+                                    
+                                    // Reload data after state update
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      if (mounted) {
+                                        _loadSalesOrders(refresh: true);
+                                      }
+                                    });
+                                  },
+                                    hintText: 'Select Transaction',
+                                    searchHintText: 'Search transaction status...',
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -1409,12 +1559,105 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                             ),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        // Transaction Status Dropdown
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Transaction',
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Builder(
+                              builder: (context) {
+                                // Build options list dynamically - "All" first, then all transaction statuses except "Select All"
+                                final List<String> availableOptions = _transactionStatusList
+                                    .where((s) => s != 'Select All')
+                                    .toList();
+                                
+                                final List<String> options = ['All', ...availableOptions];
+                                
+                                // Compute current value - show "All" if nothing selected, otherwise show first selected
+                                // Make sure the value exists in options, otherwise default to "All"
+                                String currentValue = 'All';
+                                if (_selectedTransactionStatuses.isNotEmpty) {
+                                  final selected = _selectedTransactionStatuses.first;
+                                  if (options.contains(selected)) {
+                                    currentValue = selected;
+                                  } else {
+                                    // If selected value is not in options, clear it
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      if (mounted) {
+                                        setState(() {
+                                          _selectedTransactionStatuses.clear();
+                                        });
+                                      }
+                                    });
+                                  }
+                                }
+                                
+                                print('🔵 Transaction dropdown (narrow) - currentValue: $currentValue, options: $options (${options.length} items), selected: $_selectedTransactionStatuses');
+                                
+                                return SearchableDropdown(
+                                  key: ValueKey('transaction_narrow_${currentValue}_${options.length}'),
+                                  options: options,
+                                  value: currentValue,
+                                  onChanged: (String? newValue) {
+                                    print('🔵 Transaction dropdown (narrow) onChanged: $newValue (previous: $currentValue, current selected: $_selectedTransactionStatuses)');
+                                    if (newValue == null || newValue.isEmpty) {
+                                      print('🔵 Ignoring null/empty value');
+                                      return;
+                                    }
+                                    
+                                    if (!mounted) return;
+                                    
+                                    // Update state immediately and synchronously
+                                    setState(() {
+                                      if (newValue == 'All') {
+                                        _selectedTransactionStatuses.clear();
+                                        print('🔵 Cleared transaction status filter - showing all');
+                                      } else if (options.contains(newValue)) {
+                                        _selectedTransactionStatuses = {newValue};
+                                        print('🔵 Set transaction status filter to: $_selectedTransactionStatuses');
+                                      } else {
+                                        print('🔵 Warning: Selected value "$newValue" not in options, ignoring');
+                                        return;
+                                      }
+                                    });
+                                    
+                                    print('🔵 After setState: _selectedTransactionStatuses = $_selectedTransactionStatuses');
+                                    
+                                    // Reload data after state update
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      if (mounted) {
+                                        _loadSalesOrders(refresh: true);
+                                      }
+                                    });
+                                  },
+                                  hintText: 'Select Transaction',
+                                  searchHintText: 'Search transaction status...',
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ],
                     );
                   }
                 },
               ),
-              ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
               
               const SizedBox(height: 24),
               const Divider(height: 1),
@@ -1540,6 +1783,8 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
               ),
             ],
           ),
+        );
+      },
     );
   }
   Widget _currencyFilterTrigger() {
@@ -1884,14 +2129,23 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
 
   List<SalesOrderApiItem> get _filteredOrders {
     // Check if FilterExpression is being used (if _buildFilterExpression returns non-null)
-    // This is the most reliable way to know if API filtering is active
+    // Also check if Transaction Status is selected (which uses IsFullyUsed field, not FilterExpression)
     final filterExpression = _buildFilterExpression();
-    final hasApiFiltering = filterExpression != null && filterExpression.isNotEmpty;
+    final hasFilterExpression = filterExpression != null && filterExpression.isNotEmpty;
+    final hasTransactionStatusFilter = _selectedTransactionStatuses.isNotEmpty && 
+                                       !_selectedTransactionStatuses.contains('Select All');
+    final hasApiFiltering = hasFilterExpression || hasTransactionStatusFilter;
     
     if (hasApiFiltering) {
-      // When API is filtering via FilterExpression, just return the API results as-is
+      // When API is filtering via FilterExpression or IsFullyUsed, just return the API results as-is
       // The API has already applied these filters, so we don't need to filter again
-      print('🔵 API filtering active (FilterExpression: $filterExpression), returning ${_apiOrders.length} items without client-side filtering');
+      if (hasFilterExpression && hasTransactionStatusFilter) {
+        print('🔵 API filtering active (FilterExpression: $filterExpression, IsFullyUsed: ${_mapTransactionStatusToIsFullyUsed(_selectedTransactionStatuses.first)}), returning ${_apiOrders.length} items without client-side filtering');
+      } else if (hasFilterExpression) {
+        print('🔵 API filtering active (FilterExpression: $filterExpression), returning ${_apiOrders.length} items without client-side filtering');
+      } else if (hasTransactionStatusFilter) {
+        print('🔵 API filtering active (IsFullyUsed: ${_mapTransactionStatusToIsFullyUsed(_selectedTransactionStatuses.first)}), returning ${_apiOrders.length} items without client-side filtering');
+      }
       return _apiOrders;
     }
     
@@ -1908,7 +2162,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         }
       }
 
-      // Transaction Status filter (multi-select)
+      // Transaction Status filter (multi-select) - only apply if not using API filtering
       if (_selectedTransactionStatuses.isNotEmpty && !_selectedTransactionStatuses.contains('Select All')) {
         final transactionStatus = (o.isClosed ?? 0) == 1 ? '100% Dispatched' : 'Pending';
         if (!_selectedTransactionStatuses.contains(transactionStatus)) {
@@ -2190,13 +2444,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
       }
     }
 
-    // Transaction Status filter (multi-select) - Use IsFullyUsedText with IN() format
-    if (_selectedTransactionStatuses.isNotEmpty && !_selectedTransactionStatuses.contains('Select All')) {
-      final transactionStatuses = _selectedTransactionStatuses.where((s) => s != 'Select All').map((s) => "'$s'").join(',');
-      if (transactionStatuses.isNotEmpty) {
-        expressions.add("IsFullyUsedText IN($transactionStatuses)");
-      }
-    }
+    // Transaction Status filter is handled separately via IsFullyUsed field, not FilterExpression
 
     // Delivery Date filter (similar to Date filter)
     final deliveryDateFilter = _columnFilters['deliveryDate'];
@@ -2515,6 +2763,25 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         return 'SOType';
       default:
         return null;
+    }
+  }
+
+  /// Map Transaction Status text to IsFullyUsed numeric value
+  /// Based on API: "Pending" -> 0 (or null), "100% Dispatched" -> 1
+  int? _mapTransactionStatusToIsFullyUsed(String statusText) {
+    final normalizedStatus = statusText.trim().toLowerCase();
+    
+    // Map common transaction statuses to numeric values
+    if (normalizedStatus.contains('pending') || normalizedStatus == 'pending') {
+      return 0; // Pending = not fully used
+    } else if (normalizedStatus.contains('100%') || 
+               normalizedStatus.contains('dispatched') ||
+               normalizedStatus.contains('fully')) {
+      return 1; // Fully dispatched = fully used
+    } else {
+      // Default: if it's not "Pending", assume it's fully dispatched
+      // This handles cases like "100% Dispatched", "Fully Dispatched", etc.
+      return 1;
     }
   }
 

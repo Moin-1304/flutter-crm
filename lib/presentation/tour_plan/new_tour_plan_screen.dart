@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:google_fonts/google_fonts.dart';
@@ -20,8 +21,13 @@ void main() {
 
 class NewTourPlanScreen extends StatefulWidget {
   final TourPlanItem? tourPlanToEdit; // Add optional parameter for editing
+  final bool isViewOnly; // If true, form is read-only (for approved tour plans)
 
-  const NewTourPlanScreen({super.key, this.tourPlanToEdit});
+  const NewTourPlanScreen({
+    super.key,
+    this.tourPlanToEdit,
+    this.isViewOnly = false,
+  });
 
   @override
   State<NewTourPlanScreen> createState() => _NewTourPlanScreenState();
@@ -83,6 +89,26 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   TourPlanItem?
       _fullTourPlanData; // Store the full tour plan data after fetching
   bool _isSubmitting = false; // Flag to track if we're submitting the tour plan
+
+  /// Check if the form should be in view-only mode
+  /// Returns true if isViewOnly is true OR if the tour plan is approved (status 5)
+  bool get _isViewOnlyMode {
+    if (widget.isViewOnly) return true;
+    if (widget.tourPlanToEdit != null) {
+      // Check if tour plan is approved
+      final status = widget.tourPlanToEdit!.status != 0 
+          ? widget.tourPlanToEdit!.status 
+          : widget.tourPlanToEdit!.statusId;
+      if (status == 5) return true; // Status 5 = Approved
+      
+      // Also check tourPlanStatus text field
+      if (widget.tourPlanToEdit!.tourPlanStatus != null) {
+        final statusText = widget.tourPlanToEdit!.tourPlanStatus!.toLowerCase();
+        if (statusText.contains('approved')) return true;
+      }
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -961,7 +987,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          widget.tourPlanToEdit != null ? 'Edit Tour Plan' : 'New Tour Plan',
+          _isViewOnlyMode
+              ? 'View Tour Plan'
+              : (widget.tourPlanToEdit != null ? 'Edit Tour Plan' : 'New Tour Plan'),
           style: GoogleFonts.inter(
             fontSize: 20,
             fontWeight: FontWeight.w700,
@@ -1080,7 +1108,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 readOnly: true,
                                 suffixIcon:
                                     const Icon(Icons.calendar_today_outlined),
-                                onTap: _pickDate,
+                                onTap: _isViewOnlyMode ? null : _pickDate,
                                 controller: _dateCtrl,
                               ),
                             ),
@@ -1099,20 +1127,23 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 emptyMessage: _isLoadingClusters
                                     ? 'Loading clusters...'
                                     : 'No clusters found',
-                                onBeforeOpen: () => _ensureClustersLoaded(),
-                                onChanged: (v) {
-                                  setState(() {
-                                    _selectedClusters = v;
-                                    _clusterError = null;
-                                    _updateAutoSelectedClusters();
-                                  });
-                                  // Refresh customers filtered by selected clusters
-                                  // This will also update cluster mapping from API response
-                                  _loadMappedCustomers().catchError((e) {
-                                    print(
-                                        'NewTourPlanScreen: Error loading customers: $e');
-                                  });
-                                },
+                                isEnabled: !_isViewOnlyMode,
+                                onBeforeOpen: _isViewOnlyMode ? null : () => _ensureClustersLoaded(),
+                                onChanged: _isViewOnlyMode
+                                    ? (_) {} // No-op function for view-only mode
+                                    : (v) {
+                                        setState(() {
+                                          _selectedClusters = v;
+                                          _clusterError = null;
+                                          _updateAutoSelectedClusters();
+                                        });
+                                        // Refresh customers filtered by selected clusters
+                                        // This will also update cluster mapping from API response
+                                        _loadMappedCustomers().catchError((e) {
+                                          print(
+                                              'NewTourPlanScreen: Error loading customers: $e');
+                                        });
+                                      },
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -1127,16 +1158,19 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? 'Loading customer types...'
                                     : 'Select customer type',
                                 isLoading: _isLoadingCustomerType,
-                                onChanged: (v) {
-                                  setState(() {
-                                    _selectedCustomerType = v;
-                                    _customerTypeError = null;
-                                  });
-                                  // Reload customers when customer type changes
-                                  if (_selectedClusters.isNotEmpty) {
-                                    _loadMappedCustomers();
-                                  }
-                                },
+                                isEnabled: !_isViewOnlyMode,
+                                onChanged: _isViewOnlyMode
+                                    ? (_) {} // No-op function for view-only mode
+                                    : (v) {
+                                        setState(() {
+                                          _selectedCustomerType = v;
+                                          _customerTypeError = null;
+                                        });
+                                        // Reload customers when customer type changes
+                                        if (_selectedClusters.isNotEmpty) {
+                                          _loadMappedCustomers();
+                                        }
+                                      },
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -1148,41 +1182,50 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 customerOptions: _customerOptions,
                                 purposeOptions: _purposeOptions,
                                 productOptions: _productOptions,
+                                isViewOnly: _isViewOnlyMode,
                                 customerError: i < _callErrors.length
                                     ? _callErrors[i].customerError
                                     : null,
                                 purposeError: i < _callErrors.length
                                     ? _callErrors[i].purposeError
                                     : null,
-                                onCustomersChanged: (customers) => setState(() {
-                                  _calls[i].customers = customers;
-                                  if (_callErrors.length > i) {
-                                    final List<_CallValidationState> updated =
-                                        _cloneCallErrors();
-                                    updated[i].customerError = null;
-                                    _callErrors = updated;
-                                  }
-                                  _updateAutoSelectedClusters();
-                                }),
-                                onPurposeChanged: (purpose) => setState(() {
-                                  _calls[i].purpose = purpose;
-                                  if (_callErrors.length > i) {
-                                    final List<_CallValidationState> updated =
-                                        _cloneCallErrors();
-                                    updated[i].purposeError = null;
-                                    _callErrors = updated;
-                                  }
-                                }),
-                                onProductsChanged: (products) => setState(() {
-                                  _calls[i].products = products;
-                                }),
-                                onToggleExpand: () => setState(() {
-                                  final bool current =
-                                      _calls[i].isExpanded ?? true;
-                                  _calls[i].isExpanded = !current;
-                                }),
-                                // Hide Remove button when updating/editing a tour plan
-                                onRemove: widget.tourPlanToEdit == null
+                                onCustomersChanged: _isViewOnlyMode
+                                    ? null
+                                    : (customers) => setState(() {
+                                        _calls[i].customers = customers;
+                                        if (_callErrors.length > i) {
+                                          final List<_CallValidationState> updated =
+                                              _cloneCallErrors();
+                                          updated[i].customerError = null;
+                                          _callErrors = updated;
+                                        }
+                                        _updateAutoSelectedClusters();
+                                      }),
+                                onPurposeChanged: _isViewOnlyMode
+                                    ? null
+                                    : (purpose) => setState(() {
+                                        _calls[i].purpose = purpose;
+                                        if (_callErrors.length > i) {
+                                          final List<_CallValidationState> updated =
+                                              _cloneCallErrors();
+                                          updated[i].purposeError = null;
+                                          _callErrors = updated;
+                                        }
+                                      }),
+                                onProductsChanged: _isViewOnlyMode
+                                    ? null
+                                    : (products) => setState(() {
+                                        _calls[i].products = products;
+                                      }),
+                                onToggleExpand: _isViewOnlyMode
+                                    ? null
+                                    : () => setState(() {
+                                        final bool current =
+                                            _calls[i].isExpanded ?? true;
+                                        _calls[i].isExpanded = !current;
+                                      }),
+                                // Hide Remove button when updating/editing a tour plan or in view-only mode
+                                onRemove: (widget.tourPlanToEdit == null && !_isViewOnlyMode)
                                     ? () {
                                         if (_calls.length == 1) {
                                           _showSnack(
@@ -1205,42 +1248,46 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                             ],
                             Row(
                               children: [
-                                Expanded(
-                                  child: _AddAnotherCallButton(
-                                    onPressed: () => setState(() {
-                                      for (final c in _calls) {
-                                        c.isExpanded = false;
-                                      }
-                                      _calls.add(_CallData(isExpanded: true));
-                                      _callErrors = [
-                                        ..._cloneCallErrors(),
-                                        _CallValidationState(),
-                                      ];
-                                    }),
+                                // Hide Add Call button in view-only mode
+                                if (!_isViewOnlyMode)
+                                  Expanded(
+                                    child: _AddAnotherCallButton(
+                                      onPressed: () => setState(() {
+                                        for (final c in _calls) {
+                                          c.isExpanded = false;
+                                        }
+                                        _calls.add(_CallData(isExpanded: true));
+                                        _callErrors = [
+                                          ..._cloneCallErrors(),
+                                          _CallValidationState(),
+                                        ];
+                                      }),
+                                    ),
                                   ),
-                                ),
                                 const SizedBox(width: 12),
-                                Expanded(
-                                  child: FilledButton(
-                                    onPressed: _isSubmitting
-                                        ? null
-                                        : () async {
-                                            if (!_validateForm()) {
-                                              return;
-                                            }
-                                            _handleSubmit();
-                                          },
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF4db1b3),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 14),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      elevation: 2,
-                                      disabledBackgroundColor:
-                                          const Color(0xFF4db1b3)
+                                // Hide submit button in view-only mode
+                                if (!_isViewOnlyMode)
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed: _isSubmitting
+                                          ? null
+                                          : () async {
+                                              if (!_validateForm()) {
+                                                return;
+                                              }
+                                              _handleSubmit();
+                                            },
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(0xFF4db1b3),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        elevation: 2,
+                                        disabledBackgroundColor:
+                                            const Color(0xFF4db1b3)
                                               .withOpacity(0.6),
                                     ),
                                     child: Text(
@@ -1291,7 +1338,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           ? 0
           : (_clusterNameToId[_selectedClusters.first] ?? 0);
 
-      // Build details: one entry per call with array formats
+      // Build details: one entry per cluster per call
       final List<Map<String, dynamic>> details = <Map<String, dynamic>>[];
       // Array of selected cluster IDs
       final List<int> clusterIdsArray = _selectedClusters
@@ -1299,8 +1346,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           .where((id) => id > 0)
           .toList();
 
-      for (int i = 0; i < _calls.length; i++) {
-        final _CallData call = _calls[i];
+      // If no clusters selected, use resolvedClusterId as fallback
+      final List<int> effectiveClusterIds = clusterIdsArray.isNotEmpty 
+          ? clusterIdsArray 
+          : (resolvedClusterId > 0 ? [resolvedClusterId] : []);
+
+      // Create one detail entry for each cluster and call combination
+      int detailIndex = 0;
+      for (int callIndex = 0; callIndex < _calls.length; callIndex++) {
+        final _CallData call = _calls[callIndex];
         final int typeOfWorkId = call.purpose == null
             ? 0
             : (_typeOfWorkNameToId[call.purpose!] ?? 0);
@@ -1310,81 +1364,128 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             .where((id) => id > 0)
             .toList();
 
-        final List<String> purposesArray =
-            call.purpose != null ? [call.purpose!] : [];
-
-        // Build customers array with CustomerId and ClusterId pairs
-        final List<Map<String, dynamic>> customersArray =
-            <Map<String, dynamic>>[];
-        for (int j = 0; j < call.customers.length; j++) {
-          final customerName = call.customers.elementAt(j);
-          final customerId = _customerNameToId[customerName] ?? 0;
-          final clusterId = clusterIdsArray.isNotEmpty
-              ? clusterIdsArray[j % clusterIdsArray.length]
-              : resolvedClusterId;
-
-          customersArray.add({
-            'CustomerId': customerId,
-            'ClusterId': clusterId,
-          });
-        }
-
-        // Build ProductsToBeDiscussed array with ProductId and ProductName
-        final List<Map<String, dynamic>> productsToBeDiscussedArray =
-            <Map<String, dynamic>>[];
-        for (final productName in call.products) {
-          final productId = _productNameToId[productName] ?? 0;
-          if (productId > 0) {
-            productsToBeDiscussedArray.add({
-              'ProductId': productId,
-              'ProductName': null,
+        // If no clusters selected, create one detail entry per call
+        if (effectiveClusterIds.isEmpty) {
+          // Build customers array with CustomerId and ClusterId pairs
+          final List<Map<String, dynamic>> customersArray =
+              <Map<String, dynamic>>[];
+          for (int j = 0; j < call.customers.length; j++) {
+            final customerName = call.customers.elementAt(j);
+            final customerId = _customerNameToId[customerName] ?? 0;
+            customersArray.add({
+              'CustomerId': customerId,
+              'ClusterId': 0, // No cluster selected
             });
           }
+
+          // Build ProductsToBeDiscussed array with ProductId and ProductName
+          final List<Map<String, dynamic>> productsToBeDiscussedArray =
+              <Map<String, dynamic>>[];
+          for (final productName in call.products) {
+            final productId = _productNameToId[productName] ?? 0;
+            if (productId > 0) {
+              productsToBeDiscussedArray.add({
+                'ProductId': productId,
+                'ProductName': null,
+              });
+            }
+          }
+
+          // If editing, map existing detail id from fetched item by index
+          final int existingDetailId =
+              (_fullTourPlanData?.tourPlanDetails != null &&
+                      _fullTourPlanData!.tourPlanDetails!.length > detailIndex)
+                  ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
+                  : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
+                          widget.tourPlanToEdit!.tourPlanDetails!.length > detailIndex)
+                      ? widget.tourPlanToEdit!.tourPlanDetails![detailIndex].id
+                      : 0);
+
+          final String locationFromCustomer =
+              call.customers.isNotEmpty ? ' - ${call.customers.first}' : ' - ';
+          details.add({
+            'Id': existingDetailId,
+            'PlanDate': '${planDateStr}T06:30:00.000',
+            'TypeOfWorkId': typeOfWorkId,
+            'ClusterId': 0,
+            'CustomerId': customerIdsArray.isEmpty ? 0 : customerIdsArray.first,
+            'Status': 1,
+            'Remarks': call.remarksCtrl.text.trim(),
+            'Location': locationFromCustomer,
+            'Latitude': null,
+            'Longitude': null,
+            'SamplesToDistribute': call.samplesCtrl.text.trim(),
+            'ProductsToDiscuss': '',
+            'ClusterNames': null,
+            'Customers': customersArray,
+            'ProductsToBeDiscussed': productsToBeDiscussedArray,
+            'MappedInstruments': [],
+          });
+          detailIndex++;
+        } else {
+          // Create one detail entry for each selected cluster
+          for (int clusterIndex = 0; clusterIndex < effectiveClusterIds.length; clusterIndex++) {
+            final int clusterId = effectiveClusterIds[clusterIndex];
+            final String clusterName = _selectedClusters.elementAt(clusterIndex);
+
+            // Build customers array with CustomerId and ClusterId pairs
+            final List<Map<String, dynamic>> customersArray =
+                <Map<String, dynamic>>[];
+            for (int j = 0; j < call.customers.length; j++) {
+              final customerName = call.customers.elementAt(j);
+              final customerId = _customerNameToId[customerName] ?? 0;
+              customersArray.add({
+                'CustomerId': customerId,
+                'ClusterId': clusterId,
+              });
+            }
+
+            // Build ProductsToBeDiscussed array with ProductId and ProductName
+            final List<Map<String, dynamic>> productsToBeDiscussedArray =
+                <Map<String, dynamic>>[];
+            for (final productName in call.products) {
+              final productId = _productNameToId[productName] ?? 0;
+              if (productId > 0) {
+                productsToBeDiscussedArray.add({
+                  'ProductId': productId,
+                  'ProductName': null,
+                });
+              }
+            }
+
+            // If editing, map existing detail id from fetched item by index
+            final int existingDetailId =
+                (_fullTourPlanData?.tourPlanDetails != null &&
+                        _fullTourPlanData!.tourPlanDetails!.length > detailIndex)
+                    ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
+                    : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
+                            widget.tourPlanToEdit!.tourPlanDetails!.length > detailIndex)
+                        ? widget.tourPlanToEdit!.tourPlanDetails![detailIndex].id
+                        : 0);
+
+            final String locationFromCustomer =
+                call.customers.isNotEmpty ? '$clusterName - ${call.customers.first}' : '$clusterName - ';
+            details.add({
+              'Id': existingDetailId,
+              'PlanDate': '${planDateStr}T06:30:00.000',
+              'TypeOfWorkId': typeOfWorkId,
+              'ClusterId': clusterId, // Use the specific cluster ID for this detail
+              'CustomerId': customerIdsArray.isEmpty ? 0 : customerIdsArray.first,
+              'Status': 1,
+              'Remarks': call.remarksCtrl.text.trim(),
+              'Location': locationFromCustomer,
+              'Latitude': null,
+              'Longitude': null,
+              'SamplesToDistribute': call.samplesCtrl.text.trim(),
+              'ProductsToDiscuss': '',
+              'ClusterNames': clusterName,
+              'Customers': customersArray,
+              'ProductsToBeDiscussed': productsToBeDiscussedArray,
+              'MappedInstruments': [],
+            });
+            detailIndex++;
+          }
         }
-
-        // If editing, map existing detail id from fetched item by index
-        // Prefer IDs from fully-fetched API data if available
-        final int existingDetailId =
-            (_fullTourPlanData?.tourPlanDetails != null &&
-                    _fullTourPlanData!.tourPlanDetails!.length > i)
-                ? (_fullTourPlanData!.tourPlanDetails![i].id)
-                : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
-                        widget.tourPlanToEdit!.tourPlanDetails!.length > i)
-                    ? widget.tourPlanToEdit!.tourPlanDetails![i].id
-                    : 0);
-
-        // If customerId could not be resolved from UI, fallback to existing detail
-        final int fallbackCustomerId =
-            (_fullTourPlanData?.tourPlanDetails != null &&
-                    _fullTourPlanData!.tourPlanDetails!.length > i)
-                ? _fullTourPlanData!.tourPlanDetails![i].customerId
-                : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
-                        widget.tourPlanToEdit!.tourPlanDetails!.length > i)
-                    ? widget.tourPlanToEdit!.tourPlanDetails![i].customerId
-                    : 0);
-
-        final String clusterNameForDetail =
-            _selectedClusters.isNotEmpty ? _selectedClusters.first : '';
-        final String locationFromCustomer =
-            call.customers.isNotEmpty ? ' - ${call.customers.first}' : ' - ';
-        details.add({
-          'Id': existingDetailId, // Detail Id must be the "id" from list item
-          'PlanDate': '${planDateStr}T06:30:00.000',
-          'TypeOfWorkId': typeOfWorkId,
-          'ClusterId': clusterIdsArray.isEmpty ? 0 : clusterIdsArray.first,
-          'CustomerId': customerIdsArray.isEmpty ? 0 : customerIdsArray.first,
-          'Status': 1,
-          'Remarks': call.remarksCtrl.text.trim(),
-          'Location': locationFromCustomer,
-          'Latitude': null,
-          'Longitude': null,
-          'SamplesToDistribute': call.samplesCtrl.text.trim(),
-          'ProductsToDiscuss': '',
-          'ClusterNames': null,
-          'Customers': customersArray,
-          'ProductsToBeDiscussed': productsToBeDiscussedArray,
-          'MappedInstruments': [],
-        });
       }
 
       // Build header TourPlanType as array of all selected purposes
@@ -1487,7 +1588,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'PlanDate': '0001-01-01T00:00:00.000',
         'CustomerId': 0,
         'CustomerName': "",
-        'Clusters': "",
+        'Clusters': _selectedClusters.isNotEmpty ? _selectedClusters.join(', ') : "",
         'SamplesToDistribute':
             aggregatedSamples.isNotEmpty ? aggregatedSamples : null,
         'ProductsToDiscuss':
@@ -1506,23 +1607,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'CustomerType': customerTypeId,
       };
 
-      // Print Request Data
-      print('NewTourPlanScreen: ========== REQUEST DATA ==========');
-      print('NewTourPlanScreen: ${isEditing ? 'Update' : 'Create'} Mode');
-      print(
-          'NewTourPlanScreen: Tour Plan ID: ${widget.tourPlanToEdit?.id ?? 'New'}');
+      // Print Request Data with full payload
+      print('NewTourPlanScreen: ========== REQUEST PAYLOAD ==========');
+      print('NewTourPlanScreen: ${isEditing ? 'UPDATE' : 'CREATE'} TOUR PLAN');
+      print('NewTourPlanScreen: Mode: ${isEditing ? 'Update' : 'Create'}');
+      print('NewTourPlanScreen: Tour Plan ID: ${widget.tourPlanToEdit?.id ?? 'New'}');
       print('NewTourPlanScreen: User ID: $userId');
       print('NewTourPlanScreen: Employee ID: $employeeId');
       print('NewTourPlanScreen: SBU ID: $sbuId');
       print('NewTourPlanScreen: Plan Date: $planDateStr');
       print('NewTourPlanScreen: Selected Clusters: $_selectedClusters');
-      print('NewTourPlanScreen: Cluster IDs: $clusterIdsArray');
+      print('NewTourPlanScreen: Cluster IDs Array: $clusterIdsArray');
+      print('NewTourPlanScreen: Effective Cluster IDs: $effectiveClusterIds');
+      print('NewTourPlanScreen: Number of Details to Create: ${details.length}');
       print('NewTourPlanScreen: Tour Plan Type: $tourPlanTypeArray');
-      print(
-          'NewTourPlanScreen: Selected Customer Type: $_selectedCustomerType');
-      print(
-          'NewTourPlanScreen: Customer Type ID: ${_selectedCustomerType != null ? _customerTypeNameToId[_selectedCustomerType!] : null}');
-      print('NewTourPlanScreen: Customer Type Map: $_customerTypeNameToId');
+      print('NewTourPlanScreen: Selected Customer Type: $_selectedCustomerType');
+      print('NewTourPlanScreen: Customer Type ID: ${_selectedCustomerType != null ? _customerTypeNameToId[_selectedCustomerType!] : null}');
       print('NewTourPlanScreen: Number of Calls: ${_calls.length}');
 
       for (int i = 0; i < _calls.length; i++) {
@@ -1531,9 +1631,54 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print('  - Customers: ${call.customers}');
         print('  - Purpose: ${call.purpose}');
         print('  - Remarks: ${call.remarksCtrl.text.trim()}');
+        print('  - Products: ${call.products}');
+        print('  - Samples: ${call.samplesCtrl.text.trim()}');
       }
-      print('NewTourPlanScreen: Full Request Body:');
-      print('  $body');
+
+      print('NewTourPlanScreen: Tour Plan Details (${details.length} entries):');
+      for (int i = 0; i < details.length; i++) {
+        final detail = details[i];
+        print('NewTourPlanScreen:   Detail ${i + 1}:');
+        print('    - Id: ${detail['Id']}');
+        print('    - ClusterId: ${detail['ClusterId']}');
+        print('    - CustomerId: ${detail['CustomerId']}');
+        print('    - TypeOfWorkId: ${detail['TypeOfWorkId']}');
+        print('    - Location: ${detail['Location']}');
+        print('    - ClusterNames: ${detail['ClusterNames']}');
+        print('    - Customers Array: ${detail['Customers']}');
+      }
+
+      // Print full JSON payload - split into chunks to avoid truncation
+      print('NewTourPlanScreen: ========== FULL REQUEST BODY (JSON) ==========');
+      try {
+        final jsonString = const JsonEncoder.withIndent('  ').convert(body);
+        print('NewTourPlanScreen: JSON Length: ${jsonString.length} characters');
+        // Split into chunks to ensure full output (Flutter print has limits ~1024 chars)
+        const int chunkSize = 1000; // Characters per chunk (safe limit)
+        int chunkNumber = 1;
+        for (int i = 0; i < jsonString.length; i += chunkSize) {
+          final end = (i + chunkSize < jsonString.length) ? i + chunkSize : jsonString.length;
+          print('NewTourPlanScreen: [Chunk $chunkNumber/${((jsonString.length / chunkSize).ceil())}]');
+          print(jsonString.substring(i, end));
+          chunkNumber++;
+        }
+      } catch (e) {
+        print('NewTourPlanScreen: Error formatting JSON: $e');
+        print('NewTourPlanScreen: Stack trace: ${StackTrace.current}');
+        print('NewTourPlanScreen: Request Body (toString):');
+        // Also split toString output
+        final bodyString = body.toString();
+        print('NewTourPlanScreen: Body String Length: ${bodyString.length} characters');
+        const int chunkSize = 1000;
+        int chunkNumber = 1;
+        for (int i = 0; i < bodyString.length; i += chunkSize) {
+          final end = (i + chunkSize < bodyString.length) ? i + chunkSize : bodyString.length;
+          print('NewTourPlanScreen: [Chunk $chunkNumber/${((bodyString.length / chunkSize).ceil())}]');
+          print(bodyString.substring(i, end));
+          chunkNumber++;
+        }
+      }
+      print('NewTourPlanScreen: ========== END OF REQUEST BODY ==========');
       print('NewTourPlanScreen: ========== SENDING REQUEST ==========');
 
       // Use updateTourPlan for editing and saveTourPlan for new tour plans
@@ -1642,10 +1787,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           await Future.delayed(const Duration(milliseconds: 500));
         } catch (_) {}
 
-        // Pop back to the previous screen (My Tour Plan screen) with success result
-        // Return true to trigger refresh on the previous screen with its current filters/parameters
-        // This ensures the list is refreshed with the screen's current view parameters
-        if (mounted) {
+        // Only pop back to previous screen when creating new tour plan
+        // When editing (tour plan details), stay on the current screen
+        if (mounted && !isEditing) {
           Navigator.of(context).pop(true);
         }
       }
@@ -1693,6 +1837,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   }
 
   Future<void> _pickDate() async {
+    // Don't allow date picking in view-only mode
+    if (_isViewOnlyMode) return;
     // Get today's date at midnight for comparison
     final DateTime today =
         DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
@@ -2938,6 +3084,7 @@ class _CallCard extends StatelessWidget {
     required this.productOptions,
     this.isLoadingPurpose = false,
     this.isLoadingProducts = false,
+    this.isViewOnly = false,
     this.customerError,
     this.purposeError,
     this.onCustomersChanged,
@@ -2954,6 +3101,7 @@ class _CallCard extends StatelessWidget {
   final List<String> productOptions;
   final bool isLoadingPurpose;
   final bool isLoadingProducts;
+  final bool isViewOnly;
   final String? customerError;
   final String? purposeError;
   final ValueChanged<Set<String>>? onCustomersChanged;
@@ -3020,7 +3168,7 @@ class _CallCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (onToggleExpand != null)
+                if (onToggleExpand != null && !isViewOnly)
                   TextButton.icon(
                     onPressed: onToggleExpand,
                     icon: Icon(
@@ -3058,13 +3206,16 @@ class _CallCard extends StatelessWidget {
                   selectedValues: data.customers,
                   hintText: 'Select customer',
                   emptyMessage: 'No customers found',
-                  onChanged: (set) {
-                    if (onCustomersChanged != null) {
-                      onCustomersChanged!(set);
-                    } else {
-                      data.customers = set;
-                    }
-                  },
+                  isEnabled: !isViewOnly,
+                  onChanged: isViewOnly
+                      ? (_) {} // No-op function for view-only mode
+                      : (set) {
+                          if (onCustomersChanged != null) {
+                            onCustomersChanged!(set);
+                          } else {
+                            data.customers = set;
+                          }
+                        },
                 ),
               ),
               const SizedBox(height: 12),
@@ -3079,13 +3230,16 @@ class _CallCard extends StatelessWidget {
                       ? 'Loading purpose...'
                       : 'Select purpose',
                   isLoading: isLoadingPurpose,
-                  onChanged: (value) {
-                    if (onPurposeChanged != null) {
-                      onPurposeChanged!(value);
-                    } else {
-                      data.purpose = value;
-                    }
-                  },
+                  isEnabled: !isViewOnly,
+                  onChanged: isViewOnly
+                      ? (_) {} // No-op function for view-only mode
+                      : (value) {
+                          if (onPurposeChanged != null) {
+                            onPurposeChanged!(value);
+                          } else {
+                            data.purpose = value;
+                          }
+                        },
                 ),
               ),
               const SizedBox(height: 12),
@@ -3101,13 +3255,16 @@ class _CallCard extends StatelessWidget {
                       ? 'Loading products...'
                       : 'No products found',
                   isLoading: isLoadingProducts,
-                  onChanged: (set) {
-                    if (onProductsChanged != null) {
-                      onProductsChanged!(set);
-                    } else {
-                      data.products = set;
-                    }
-                  },
+                  isEnabled: !isViewOnly,
+                  onChanged: isViewOnly
+                      ? (_) {} // No-op function for view-only mode
+                      : (set) {
+                          if (onProductsChanged != null) {
+                            onProductsChanged!(set);
+                          } else {
+                            data.products = set;
+                          }
+                        },
                 ),
               ),
               const SizedBox(height: 12),
@@ -3116,6 +3273,7 @@ class _CallCard extends StatelessWidget {
                 child: TextFormField(
                   controller: data.remarksCtrl,
                   maxLines: 3,
+                  readOnly: isViewOnly,
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
@@ -3261,6 +3419,7 @@ class _MultiSelectDropdown extends StatefulWidget {
     this.isLoading = false,
     this.onBeforeOpen,
     this.emptyMessage,
+    this.isEnabled = true,
   });
   final List<String> options;
   final Set<String> selectedValues;
@@ -3269,6 +3428,7 @@ class _MultiSelectDropdown extends StatefulWidget {
   final bool isLoading;
   final Future<void> Function()? onBeforeOpen;
   final String? emptyMessage;
+  final bool isEnabled;
 
   @override
   State<_MultiSelectDropdown> createState() => _MultiSelectDropdownState();
@@ -3354,7 +3514,7 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     return CompositedTransformTarget(
       link: _link,
       child: GestureDetector(
-        onTap: () async => _toggleOverlay(),
+        onTap: widget.isEnabled ? () async => _toggleOverlay() : null,
         behavior: HitTestBehavior.opaque,
         child: AbsorbPointer(
           child: TextFormField(
@@ -3399,6 +3559,9 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
   }
 
   Future<void> _toggleOverlay() async {
+    // Don't open overlay if disabled
+    if (!widget.isEnabled) return;
+    
     // Dismiss keyboard and unfocus everything
     _displayFocusNode.unfocus();
     _searchFocusNode.unfocus();
@@ -3786,12 +3949,14 @@ class _SingleSelectDropdown extends StatefulWidget {
       required this.value,
       required this.onChanged,
       this.hintText,
-      this.isLoading = false});
+      this.isLoading = false,
+      this.isEnabled = true});
   final List<String> options;
   final String? value;
   final ValueChanged<String?> onChanged;
   final String? hintText;
   final bool isLoading;
+  final bool isEnabled;
 
   @override
   State<_SingleSelectDropdown> createState() => _SingleSelectDropdownState();
@@ -3848,7 +4013,7 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
     return CompositedTransformTarget(
       link: _link,
       child: GestureDetector(
-        onTap: _toggleOverlay,
+        onTap: widget.isEnabled ? _toggleOverlay : null,
         behavior: HitTestBehavior.opaque,
         child: AbsorbPointer(
           child: TextFormField(
@@ -3877,6 +4042,9 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
   }
 
   void _toggleOverlay() {
+    // Don't open overlay if disabled
+    if (!widget.isEnabled) return;
+    
     // Dismiss keyboard and unfocus everything
     _focusNode.unfocus();
     FocusScope.of(context).unfocus();

@@ -42,7 +42,9 @@ class ItemIssueRepositoryImpl implements ItemIssueRepository {
         throw Exception('ItemIssueApi not registered in service locator');
       }
     } catch (e) {
-      throw Exception('Failed to save ItemIssue: ${e.toString()}');
+      // Re-throw the original exception to preserve error message details
+      // The API layer already extracts and formats the error message
+      rethrow;
     }
   }
 }

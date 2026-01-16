@@ -1,4 +1,5 @@
-import 'package:boilerplate/domain/entity/common/common_api_models.dart';
+import 'package:boilerplate/domain/entity/common/common_api_models.dart'
+    show CommonDropdownItem, TaxComponentResponse;
 
 abstract class CommonRepository {
   Future<List<CommonDropdownItem>> getEmployeeList({int? employeeId});
@@ -68,5 +69,24 @@ abstract class CommonRepository {
   });
   Future<List<CommonDropdownItem>> getUOMList({
     required int itemId,
+  });
+  Future<List<CommonDropdownItem>> getItemTaxList({
+    required int itemId,
+  });
+  Future<List<CommonDropdownItem>> getTaxListForTaxSection();
+  Future<List<CommonDropdownItem>> getDiscountListForTaxSection();
+  Future<List<TaxComponentResponse>> getTaxComponentFormulas({
+    required int id,
+    int? userId,
+    int pageNumber = 0,
+    int pageSize = 0,
+    String? searchText,
+    int sortOrder = 0,
+    int sortDir = 0,
+    String? sortField,
+    String? json,
+    String? filterExpression,
+    int? pageId,
+    int? type,
   });
 }

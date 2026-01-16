@@ -586,21 +586,25 @@ class _TourPlanListScreenState extends State<TourPlanListScreen> {
                 if (selected == null) return const SizedBox.shrink();
                 return _DayPlansCard(
                   date: selected,
-                  entries: apiItems.map((item) => domain.TourPlanEntry(
-                    id: item.id.toString(),
-                    date: item.planDate,
-                    cluster: item.cluster ?? '',
-                    customer: item.customerName ?? 'Customer ${item.customerId}',
-                    employeeId: item.employeeId.toString(),
-                    employeeName: item.employeeName ?? '',
-                    status: _parseStatusFromApi(item.status),
-                    callDetails: domain.TourPlanCallDetails(
-                      purposes: [],
-                      productsToDiscuss: item.productsToDiscuss,
-                      samplesToDistribute: item.samplesToDistribute,
-                      remarks: item.remarks,
-                    ),
-                  )).toList(),
+                  entries: apiItems.map((item) {
+                    // Get the actual status (check status first, fallback to statusId if status is 0)
+                    final int actualStatus = item.status != 0 ? item.status : item.statusId;
+                    return domain.TourPlanEntry(
+                      id: item.id.toString(),
+                      date: item.planDate,
+                      cluster: item.cluster ?? '',
+                      customer: item.customerName ?? 'Customer ${item.customerId}',
+                      employeeId: item.employeeId.toString(),
+                      employeeName: item.employeeName ?? '',
+                      status: _parseStatusFromApi(actualStatus),
+                      callDetails: domain.TourPlanCallDetails(
+                        purposes: [],
+                        productsToDiscuss: item.productsToDiscuss,
+                        samplesToDistribute: item.samplesToDistribute,
+                        remarks: item.remarks,
+                      ),
+                    );
+                  }).toList(),
                   onEdit: (entry) async {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
@@ -2064,10 +2068,12 @@ class _PlanRow extends StatelessWidget {
             child: Text(_statusText(entry.status)),
           ),
           const SizedBox(width: 8),
-          TextButton(
-            onPressed: entry.status == domain.TourPlanEntryStatus.approved ? null : onEdit,
-            child: const Text('Edit'),
-          ),
+          // Hide Edit button if status is rejected or approved
+          if (entry.status != domain.TourPlanEntryStatus.rejected && entry.status != domain.TourPlanEntryStatus.approved)
+            TextButton(
+              onPressed: onEdit,
+              child: const Text('Edit'),
+            ),
         ],
       ),
     );

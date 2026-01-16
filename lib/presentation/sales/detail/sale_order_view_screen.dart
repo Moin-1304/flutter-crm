@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
+import 'package:boilerplate/domain/repository/common/common_repository.dart';
+import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
+import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/di/service_locator.dart';
 
 class SaleOrderViewScreen extends StatefulWidget {
@@ -22,6 +25,13 @@ class SaleOrderViewScreen extends StatefulWidget {
 class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   bool _isLoading = false;
   SalesOrderApiItem? _orderData;
+  String? _distributorName; // Store distributor name loaded from API
+  
+  // Collapsible sections
+  bool _isOrderInfoExpanded = true;
+  bool _isOrderDetailsExpanded = true;
+  bool _isTaxSectionExpanded = true;
+  bool _isAttachmentsExpanded = true;
 
   @override
   void initState() {
@@ -43,6 +53,18 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       });
     } else if (widget.orderData != null) {
       print('   ✅ Using provided orderData (no orderId, so no API call)');
+      setState(() {
+        _orderData = widget.orderData;
+      });
+      // Load distributor name if available
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (widget.orderData!.distributerForId != null && widget.orderData!.customerId != null) {
+          _loadDistributorName(
+            widget.orderData!.customerId!,
+            widget.orderData!.distributerForId!,
+          );
+        }
+      });
     } else {
       print('   ⚠️ No orderId or orderData provided');
     }
@@ -81,6 +103,15 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           _orderData = orderData;
           _isLoading = false;
         });
+        
+        // Load distributor name if available
+        if (orderData.distributerForId != null && orderData.customerId != null) {
+          _loadDistributorName(
+            orderData.customerId!,
+            orderData.distributerForId!,
+          );
+        }
+        
         print('✅ [SaleOrderView] State updated with order data');
       }
     } catch (e, stackTrace) {
@@ -201,16 +232,46 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Collapsible Header
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _isOrderInfoExpanded = !_isOrderInfoExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             Text(
-              'Order Information',
+                        'Sales Order Details',
               style: GoogleFonts.inter(
                 fontSize: isTablet ? 18 : 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey.shade900,
               ),
             ),
+                      Icon(
+                        _isOrderInfoExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: Colors.grey.shade600,
+                        size: 24,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Content (shown when expanded)
+            if (_isOrderInfoExpanded) ...[
             const SizedBox(height: 20),
             _buildDetailsForm(isTablet),
+            ],
           ],
         ),
       ),
@@ -226,8 +287,8 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 children: [
                   // Top Row: Customer, SO Number, Date
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                       Expanded(child: _buildTopRowField1(isTablet)),
                       const SizedBox(width: 16),
                       Expanded(child: _buildTopRowField2(isTablet)),
@@ -277,28 +338,28 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   // Top Row Field 1: Customer
   Widget _buildTopRowField1(bool isTablet) {
     return _LabeledField(
-      label: 'Customer',
-      child: _buildReadOnlyField(_orderData?.customerName ?? _orderData?.customer ?? ''),
+          label: 'Customer',
+          child: _buildReadOnlyField(_orderData?.customerName ?? _orderData?.customer ?? ''),
     );
   }
 
   // Top Row Field 2: SO Number
   Widget _buildTopRowField2(bool isTablet) {
     return _LabeledField(
-      label: 'SO Number',
-      child: _buildReadOnlyField(_orderData?.soNumber ?? ''),
+          label: 'SO Number',
+          child: _buildReadOnlyField(_orderData?.soNumber ?? ''),
     );
   }
 
   // Top Row Field 3: Date
   Widget _buildTopRowField3(bool isTablet) {
     return _LabeledField(
-      label: 'Date',
-      child: _buildReadOnlyField(
-        _orderData?.date != null
-            ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.date!))
-            : '',
-      ),
+          label: 'Date',
+          child: _buildReadOnlyField(
+            _orderData?.date != null
+                ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.date!))
+                : '',
+          ),
     );
   }
 
@@ -314,7 +375,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   Widget _buildBottomRowField2(bool isTablet) {
     return _LabeledField(
       label: 'Delivery Date',
-      child: _buildReadOnlyField(
+                child: _buildReadOnlyField(
         _orderData?.deliveryDate != null
             ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.deliveryDate!))
             : '',
@@ -332,17 +393,90 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
 
   // Bottom Row Field 4: Distributor For
   Widget _buildBottomRowField4(bool isTablet) {
-    // Note: The API model has distributerForId but no distributor name field
-    // Display empty string for now, or could fetch distributor name from ID if needed
+    // Display distributor name if loaded, otherwise show ID as fallback
+    String distributorText = _distributorName ?? '';
+    if (distributorText.isEmpty && _orderData?.distributerForId != null && _orderData!.distributerForId! > 0) {
+      // Fallback to ID if name not loaded yet
+      distributorText = 'ID: ${_orderData!.distributerForId}';
+    }
     return _LabeledField(
       label: 'Distributer For',
-      child: _buildReadOnlyField(''), // TODO: Map distributerForId to distributor name if available
+      child: _buildReadOnlyField(distributorText),
     );
+  }
+
+  Future<void> _loadDistributorName(int customerId, int distributorId) async {
+    try {
+      // Get user info for bizUnit
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+
+      if (user == null) {
+        print('Error: User not available for Distributor API');
+        return;
+      }
+
+      // Get bizUnit from UserDetailStore or user prefs
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      if (bizUnit == 0) {
+        print('Error: BizUnit is 0');
+        return;
+      }
+
+      print('🔵 Loading Distributor Name for BizUnit: $bizUnit, CustomerId: $customerId, DistributorId: $distributorId');
+
+      final commonRepository = getIt<CommonRepository>();
+      final distributors = await commonRepository.getDistributorList(
+        bizUnit: bizUnit,
+        customerId: customerId,
+      );
+
+      if (mounted) {
+        // Find distributor by ID
+        String? distributorName;
+        try {
+          final distributorItem = distributors.firstWhere(
+            (item) => item.id == distributorId,
+          );
+          distributorName = distributorItem.text;
+          print('✅ Found Distributor Name: $distributorName');
+        } catch (e) {
+          // Distributor not found by ID
+          distributorName = null;
+          print('⚠️ Distributor not found by ID: $distributorId');
+        }
+        
+        // Update state with the found name
+        setState(() {
+          _distributorName = distributorName;
+        });
+        print('✅ Loaded Distributor Name: ${_distributorName}');
+      }
+    } catch (e) {
+      print('Error loading distributor name: $e');
+      if (mounted) {
+        setState(() {
+          _distributorName = null;
+        });
+      }
+    }
   }
 
   Widget _buildReadOnlyField(String value, {int maxLines = 1}) {
     final isTablet = MediaQuery.of(context).size.width >= 800;
     return TextFormField(
+      key: ValueKey(value), // Force rebuild when value changes
       readOnly: true,
       initialValue: value.isEmpty ? '-' : value,
       maxLines: maxLines,
@@ -426,6 +560,21 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Collapsible Header
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _isOrderDetailsExpanded = !_isOrderDetailsExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             Text(
               'Order Details',
               style: GoogleFonts.inter(
@@ -434,6 +583,20 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 color: Colors.grey.shade900,
               ),
             ),
+                      Icon(
+                        _isOrderDetailsExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: Colors.grey.shade600,
+                        size: 24,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Content (shown when expanded)
+            if (_isOrderDetailsExpanded) ...[
             const SizedBox(height: 20),
             if (items.isEmpty)
               Padding(
@@ -454,6 +617,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 final item = entry.value;
                 return _buildOrderItemCard(item, index, items.length, isTablet);
               }),
+            ],
           ],
         ),
       ),
@@ -510,13 +674,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: _buildItemField('Disc.', (item['discount'] as num).toStringAsFixed(2), isTablet)),
-              const SizedBox(width: 12),
-              Expanded(child: _buildItemField('Tax', (item['tax'] as num).toStringAsFixed(2), isTablet)),
-            ],
-          ),
+          _buildItemField('Disc.', (item['discount'] as num).toStringAsFixed(2), isTablet),
           const SizedBox(height: 16),
           _buildItemField('Total Amount', (item['totalAmount'] as num).toStringAsFixed(2), isTablet),
           const SizedBox(height: 16),
@@ -566,33 +724,46 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   }
 
   Widget _buildTaxSection(bool isTablet) {
-    // Try to get values from taxAndOtherChargesDetail first
+    // Parse tax and charges from taxAndOtherChargesDetail using typeText
     double subtotal = 0.0;
-    double tax = 0.0;
-    double discount = 0.0;
-    double otherCharge = 0.0;
     double adjustment = 0.0;
-    double grandTotal = 0.0;
+    double grandTotalFromAPI = 0.0;
+    final List<Map<String, dynamic>> taxRows = [];
+    final List<Map<String, dynamic>> discountRows = [];
+    final List<Map<String, dynamic>> otherChargeRows = [];
 
     if (_orderData?.taxAndOtherChargesDetail != null && _orderData!.taxAndOtherChargesDetail is List) {
       final charges = _orderData!.taxAndOtherChargesDetail as List;
       for (var charge in charges) {
         if (charge is Map<String, dynamic>) {
-          final label = charge['label']?.toString().toLowerCase() ?? '';
+          final typeText = charge['typeText']?.toString() ?? '';
+          final label = charge['label']?.toString() ?? '';
           final value = (charge['value'] ?? 0).toDouble();
           
-          if (label.contains('sub total') || label.contains('subtotal')) {
+          // Use typeText for exact matching (more reliable than label)
+          if (typeText == 'SubTotal' || typeText.toLowerCase() == 'subtotal') {
             subtotal = value;
-          } else if (label.contains('tax')) {
-            tax = value;
-          } else if (label.contains('discount')) {
-            discount = value;
-          } else if (label.contains('other charge')) {
-            otherCharge = value;
-          } else if (label.contains('price adjustment')) {
+          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax') {
+            taxRows.add({
+              'label': label.isNotEmpty ? label : 'Tax',
+              'value': value,
+              'type': charge['subTypeText']?.toString(),
+            });
+          } else if (typeText == 'Discount' || typeText.toLowerCase() == 'discount') {
+            discountRows.add({
+              'label': label.isNotEmpty ? label : 'Discount',
+              'value': value,
+              'type': charge['subTypeText']?.toString(),
+            });
+          } else if (typeText == 'OtherCharge' || typeText.toLowerCase() == 'othercharge') {
+            otherChargeRows.add({
+              'label': label.isNotEmpty ? label : 'Other Charge',
+              'value': value,
+            });
+          } else if (typeText == 'PriceAdjustment' || typeText.toLowerCase() == 'priceadjustment') {
             adjustment = value;
-          } else if (label.contains('grand total')) {
-            grandTotal = value;
+          } else if (typeText == 'GrandTotal' || typeText.toLowerCase() == 'grandtotal') {
+            grandTotalFromAPI = value;
           }
         }
       }
@@ -600,11 +771,37 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
 
     // Fallback to direct fields if taxAndOtherChargesDetail is not available
     if (subtotal == 0.0) subtotal = _orderData?.totalAmount ?? _orderData?.amount ?? 0.0;
-    if (tax == 0.0) tax = _orderData?.totalTax ?? 0.0;
-    if (discount == 0.0) discount = _orderData?.totalDiscount ?? 0.0;
-    if (otherCharge == 0.0) otherCharge = _orderData?.totalShipCharge ?? 0.0;
     if (adjustment == 0.0) adjustment = _orderData?.totalAdjust ?? 0.0;
-    if (grandTotal == 0.0) grandTotal = subtotal + tax - discount + otherCharge + adjustment;
+    
+    // If no tax rows found, try to create from direct fields
+    if (taxRows.isEmpty && (_orderData?.totalTax ?? 0.0) > 0) {
+      taxRows.add({
+        'label': 'Tax',
+        'value': _orderData!.totalTax!,
+        'type': null,
+      });
+    }
+    if (discountRows.isEmpty && (_orderData?.totalDiscount ?? 0.0) > 0) {
+      discountRows.add({
+        'label': 'Discount',
+        'value': _orderData!.totalDiscount!,
+        'type': null,
+      });
+    }
+    if (otherChargeRows.isEmpty && (_orderData?.totalShipCharge ?? 0.0) > 0) {
+      otherChargeRows.add({
+        'label': 'Other Charge',
+        'value': _orderData!.totalShipCharge!,
+      });
+    }
+
+    // Calculate totals - use GrandTotal from API if available, otherwise calculate
+    final totalTax = taxRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
+    final totalDiscount = discountRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
+    final totalOtherCharge = otherChargeRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
+    final grandTotal = grandTotalFromAPI > 0.0 
+        ? grandTotalFromAPI 
+        : (subtotal + totalTax - totalDiscount + totalOtherCharge + adjustment);
 
     return Card(
       color: Colors.white,
@@ -618,6 +815,21 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Collapsible Header
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _isTaxSectionExpanded = !_isTaxSectionExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             Text(
               'Tax',
               style: GoogleFonts.inter(
@@ -626,32 +838,287 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 color: Colors.grey.shade900,
               ),
             ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(20),
+                      Icon(
+                        _isTaxSectionExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: Colors.grey.shade600,
+                        size: 24,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Tax Table Content (shown when expanded)
+            if (_isTaxSectionExpanded) ...[
+              const SizedBox(height: 16),
+              // Different layout for mobile vs tablet
+              isTablet
+                  ? Container(
+                      constraints: const BoxConstraints(maxHeight: 400),
               decoration: BoxDecoration(
                 color: Colors.grey.shade50,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade200, width: 1),
               ),
+                      child: SingleChildScrollView(
               child: Column(
                 children: [
-                  _buildTaxRow('Sub Total', subtotal),
+                            // Sub Total Row
+                            _buildTaxTableRowReadOnly(
+                              label: 'Sub Total',
+                              value: subtotal,
+                              isTablet: isTablet,
+                            ),
+                            Divider(height: 1, color: Colors.grey.shade200),
+                            // Tax Rows
+                            for (int i = 0; i < taxRows.length; i++) ...[
+                              _buildTaxTableRowReadOnlyWithConfig(
+                                label: 'Tax',
+                                value: taxRows[i]['value'] as double,
+                                configValue: taxRows[i]['type'] as String?,
+                                isTablet: isTablet,
+                              ),
+                              Divider(height: 1, color: Colors.grey.shade200),
+                            ],
+                            // Discount Rows
+                            for (int i = 0; i < discountRows.length; i++) ...[
+                              _buildTaxTableRowReadOnlyWithConfig(
+                                label: 'Discount',
+                                value: discountRows[i]['value'] as double,
+                                configValue: discountRows[i]['type'] as String?,
+                                isTablet: isTablet,
+                              ),
+                              Divider(height: 1, color: Colors.grey.shade200),
+                            ],
+                            // Other Charge Rows
+                            for (int i = 0; i < otherChargeRows.length; i++) ...[
+                              _buildTaxTableRowReadOnly(
+                                label: 'Other Charge',
+                                value: otherChargeRows[i]['value'] as double,
+                                isTablet: isTablet,
+                              ),
+                              Divider(height: 1, color: Colors.grey.shade200),
+                            ],
+                            // Price Adjustment Row
+                            _buildTaxTableRowReadOnly(
+                              label: 'Price Adjustment',
+                              value: adjustment,
+                              isTablet: isTablet,
+                            ),
+                            Divider(height: 1, color: Colors.grey.shade200, thickness: 2),
+                            // Grand Total Row
+                            _buildTaxTableRowReadOnly(
+                              label: 'Grand Total',
+                              value: grandTotal,
+                              isTotal: true,
+                              isTablet: isTablet,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        // Sub Total Row
+                        _buildTaxRowMobile(
+                          label: 'Sub Total',
+                          value: subtotal,
+                        ),
                   const SizedBox(height: 12),
-                  _buildTaxRow('Tax', tax),
-                  const SizedBox(height: 12),
-                  _buildTaxRow('Discount', discount),
-                  const SizedBox(height: 12),
-                  _buildTaxRow('Other Charge', otherCharge),
-                  const SizedBox(height: 12),
-                  _buildTaxRow('Price Adjustment', adjustment),
-                  const Divider(height: 24),
-                  _buildTaxRow('Grand Total', grandTotal, isTotal: true),
-                ],
+                        // Tax Rows
+                        for (int i = 0; i < taxRows.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildTaxRowMobile(
+                              label: 'Tax',
+                              value: taxRows[i]['value'] as double,
+                            ),
+                          ),
+                        // Discount Rows
+                        for (int i = 0; i < discountRows.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildTaxRowMobile(
+                              label: 'Discount',
+                              value: discountRows[i]['value'] as double,
+                            ),
+                          ),
+                        // Other Charge Rows
+                        for (int i = 0; i < otherChargeRows.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildTaxRowMobile(
+                              label: 'Other Charge',
+                              value: otherChargeRows[i]['value'] as double,
+                            ),
+                          ),
+                        // Price Adjustment Row
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildTaxRowMobile(
+                            label: 'Price Adjustment',
+                            value: adjustment,
+                          ),
+                        ),
+                        const Divider(height: 24, thickness: 1, color: Colors.grey),
+                        // Grand Total Row
+                        _buildTaxRowMobile(
+                          label: 'Grand Total',
+                          value: grandTotal,
+                          isTotal: true,
+                        ),
+                      ],
+                    ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String? _extractTaxType(String label) {
+    if (label.contains('VAT') || label.contains('18%')) return 'VAT 18%';
+    if (label.contains('GST') || label.contains('5%')) return 'GST 5%';
+    return null;
+  }
+
+  String? _extractDiscountType(String label) {
+    if (label.contains('Percent') || label.contains('%')) return 'Percentage';
+    if (label.contains('Fixed')) return 'Fixed Amount';
+    return null;
+  }
+
+  Widget _buildTaxRowMobile({
+    required String label,
+    required double value,
+    bool isTotal = false,
+  }) {
+    const Color tealGreen = Color(0xFF4db1b3);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: isTotal ? 15 : 14,
+            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+            color: Colors.grey.shade900,
+          ),
+        ),
+        Text(
+          value == 0.0 ? '0' : _formatCurrency(value),
+          style: GoogleFonts.inter(
+            fontSize: isTotal ? 15 : 14,
+            fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
+            color: isTotal ? tealGreen : Colors.grey.shade900,
               ),
             ),
           ],
-        ),
+    );
+  }
+
+  Widget _buildTaxTableRowReadOnly({
+    required String label,
+    required double value,
+    bool isTotal = false,
+    required bool isTablet,
+  }) {
+    const Color tealGreen = Color(0xFF4db1b3);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        children: [
+          SizedBox(width: 40),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 14 : 13,
+                fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+                color: Colors.grey.shade900,
+              ),
+            ),
+          ),
+          Expanded(flex: 2, child: const SizedBox.shrink()),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 1,
+            child: Text(
+              value == 0.0 ? '0' : _formatCurrency(value),
+              textAlign: TextAlign.end,
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 14 : 13,
+                fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
+                color: isTotal ? tealGreen : Colors.grey.shade900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaxTableRowReadOnlyWithConfig({
+    required String label,
+    required double value,
+    String? configValue,
+    required bool isTablet,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        children: [
+          SizedBox(width: 40),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 14 : 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade900,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: configValue != null
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Text(
+                      configValue,
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 13 : 12,
+                        color: Colors.grey.shade900,
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 1,
+            child: Text(
+              value == 0.0 ? '0' : _formatCurrency(value),
+              textAlign: TextAlign.end,
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 14 : 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -711,6 +1178,21 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Collapsible Header
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _isAttachmentsExpanded = !_isAttachmentsExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             Text(
               'Attachments',
               style: GoogleFonts.inter(
@@ -719,6 +1201,20 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 color: Colors.grey.shade900,
               ),
             ),
+                      Icon(
+                        _isAttachmentsExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: Colors.grey.shade600,
+                        size: 24,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Content (shown when expanded)
+            if (_isAttachmentsExpanded) ...[
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(40),
@@ -737,6 +1233,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 ),
               ),
             ),
+            ],
           ],
         ),
       ),

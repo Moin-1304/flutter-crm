@@ -118,22 +118,34 @@ class ItemIssueApi {
         print('Response Data: ${e.response?.data}');
         print('Response Headers: ${e.response?.headers}');
         
-        // Try to extract error message from response
-        final responseData = e.response?.data;
-        if (responseData is Map) {
-          final message = responseData['message'] ?? 
-                         responseData['error'] ?? 
-                         responseData['Message'] ?? 
-                         responseData['Error'];
-          if (message != null) {
-            errorMessage = 'Failed to save ItemIssue: $message';
-          } else {
-            errorMessage = 'Failed to save ItemIssue: ${responseData.toString()}';
+        // Try to extract error message from response headers first (errormessage field)
+        final headers = e.response?.headers;
+        if (headers != null && headers.map.containsKey('errormessage')) {
+          final headerError = headers.map['errormessage']?.first;
+          if (headerError != null && headerError.isNotEmpty) {
+            errorMessage = headerError;
           }
-        } else if (responseData is String) {
-          errorMessage = 'Failed to save ItemIssue: $responseData';
-        } else {
-          errorMessage = 'Failed to save ItemIssue: Status ${e.response?.statusCode} - ${responseData?.toString() ?? "Unknown error"}';
+        }
+        
+        // If no header error, try to extract from response body
+        if (errorMessage == 'Failed to save ItemIssue') {
+          final responseData = e.response?.data;
+          if (responseData is Map) {
+            final message = responseData['message'] ?? 
+                           responseData['error'] ?? 
+                           responseData['Message'] ?? 
+                           responseData['Error'] ??
+                           responseData['errormessage'];
+            if (message != null) {
+              errorMessage = message.toString();
+            } else {
+              errorMessage = 'Failed to save ItemIssue: ${responseData.toString()}';
+            }
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          } else {
+            errorMessage = 'Failed to save ItemIssue: Status ${e.response?.statusCode} - ${responseData?.toString() ?? "Unknown error"}';
+          }
         }
       } else if (e.requestOptions != null) {
         // Request was sent but no response received

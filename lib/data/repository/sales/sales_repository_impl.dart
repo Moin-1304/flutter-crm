@@ -24,6 +24,7 @@ class SalesRepositoryImpl implements SalesRepository {
     required int userId,
     required int menuId,
     required String url,
+    int? isFullyUsed,
   }) async {
     try {
       if (getIt.isRegistered<SalesApi>()) {
@@ -48,6 +49,7 @@ class SalesRepositoryImpl implements SalesRepository {
           userId: userId,
           menuId: menuId,
           url: url,
+          isFullyUsed: isFullyUsed,
         );
 
         final response = await salesApi.getSalesOrderList(request);

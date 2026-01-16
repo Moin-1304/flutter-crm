@@ -13,6 +13,7 @@ class CommonGetAutoRequest {
   final int? distributerId;
   final String? searchText;
   final int? item;
+  final int? pageType;
 
   CommonGetAutoRequest({
     required this.commandType,
@@ -28,6 +29,7 @@ class CommonGetAutoRequest {
     this.distributerId,
     this.searchText,
     this.item,
+    this.pageType,
   });
 
   Map<String, dynamic> toJson() {
@@ -47,6 +49,7 @@ class CommonGetAutoRequest {
     if (distributerId != null) data['DistributerId'] = distributerId;
     if (searchText != null) data['SearchText'] = searchText;
     if (item != null) data['Item'] = item;
+    if (pageType != null) data['PageType'] = pageType;
 
     return data;
   }
@@ -1757,6 +1760,110 @@ class CommonDropdownItem {
       subType: json['subType'] ?? 0,
       isReceiptBatchRequired: json['isReceiptBatchRequired'] ?? 0,
       displayOrder: json['displayOrder'] ?? 0,
+    );
+  }
+}
+
+/// Tax Component Request Model
+class TaxComponentRequest {
+  final int id;
+  final int? userId;
+  final int pageNumber;
+  final int pageSize;
+  final String? searchText;
+  final int sortOrder;
+  final int sortDir;
+  final String? sortField;
+  final String? json;
+  final String? filterExpression;
+  final int? pageId;
+  final int? type;
+
+  TaxComponentRequest({
+    required this.id,
+    this.userId,
+    this.pageNumber = 0,
+    this.pageSize = 0,
+    this.searchText,
+    this.sortOrder = 0,
+    this.sortDir = 0,
+    this.sortField,
+    this.json,
+    this.filterExpression,
+    this.pageId,
+    this.type,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'Id': id,
+      'UserId': userId,
+      'PageNumber': pageNumber,
+      'PageSize': pageSize,
+      'SearchText': searchText,
+      'SortOrder': sortOrder,
+      'SortDir': sortDir,
+      'SortField': sortField,
+      'Json': json,
+      'FilterExpression': filterExpression,
+      'PageId': pageId,
+      'Type': type,
+    };
+  }
+}
+
+/// Tax Component Response Model
+class TaxComponentResponse {
+  final int id;
+  final int chargesType; // 1=SubTotal, 2=Discount, 3=OtherCharge, 4=Tax, 5=PriceAdjustment, 6=GrandTotal, 7=ShippingCharge, 8=DedAdvPaid
+  final String? formula;
+  final String? label;
+  final int? displayOrder;
+  final bool? isActive;
+  final String? description;
+
+  TaxComponentResponse({
+    required this.id,
+    required this.chargesType,
+    this.formula,
+    this.label,
+    this.displayOrder,
+    this.isActive,
+    this.description,
+  });
+
+  factory TaxComponentResponse.fromJson(Map<String, dynamic> json) {
+    return TaxComponentResponse(
+      id: json['id'] ?? 0,
+      chargesType: json['chargesType'] ?? json['ChargesType'] ?? 0,
+      formula: json['formula'] ?? json['Formula'],
+      label: json['label'] ?? json['Label'],
+      displayOrder: json['displayOrder'] ?? json['DisplayOrder'],
+      isActive: json['isActive'] ?? json['IsActive'],
+      description: json['description'] ?? json['Description'],
+    );
+  }
+}
+
+/// ChargesType Enum Helper
+enum ChargesType {
+  subTotal(1),
+  discount(2),
+  otherCharge(3),
+  tax(4),
+  priceAdjustment(5),
+  grandTotal(6),
+  shippingCharge(7),
+  dedAdvPaid(8);
+
+  final int value;
+  const ChargesType(this.value);
+
+  static ChargesType? fromInt(int? value) {
+    if (value == null) return null;
+    return ChargesType.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => ChargesType.subTotal,
     );
   }
 }

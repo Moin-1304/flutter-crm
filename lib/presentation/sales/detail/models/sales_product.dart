@@ -23,6 +23,12 @@ class Customer {
   final String code;
   final String name;
   final String address;
+  final String city;
 
-  const Customer({required this.code, required this.name, required this.address});
+  const Customer({
+    required this.code,
+    required this.name,
+    required this.address,
+    required this.city,
+  });
 }

@@ -585,61 +585,64 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: Row(
                     children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () async {
-                            Navigator.of(context).pop();
-                            // Get full API item data for editing
-                            final apiItem = _apiItemsById[issue.id];
-                            print(
-                                '═══════════════════════════════════════════════════════════');
-                            print('✏️ EDIT BUTTON CLICKED');
-                            print(
-                                '═══════════════════════════════════════════════════════════');
-                            print('Issue ID: ${issue.id}');
-                            print(
-                                'API Items Map Size: ${_apiItemsById.length}');
-                            print(
-                                'API Items Keys: ${_apiItemsById.keys.take(5).toList()}');
-                            print('API Item Found: ${apiItem != null}');
-                            if (apiItem != null) {
-                              print('API Item ID: ${apiItem.id}');
-                              print('API Item No: ${apiItem.no}');
+                      // Hide Edit button if status is Approved
+                      if (issue.status.toLowerCase() != 'approved') ...[
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              // Get full API item data for editing
+                              final apiItem = _apiItemsById[issue.id];
                               print(
-                                  'API Item Details Count: ${apiItem.details?.length ?? 0}');
-                            } else {
-                              print('⚠️ WARNING: API Item not found in map!');
-                            }
-                            print(
-                                '═══════════════════════════════════════════════════════════');
+                                  '═══════════════════════════════════════════════════════════');
+                              print('✏️ EDIT BUTTON CLICKED');
+                              print(
+                                  '═══════════════════════════════════════════════════════════');
+                              print('Issue ID: ${issue.id}');
+                              print(
+                                  'API Items Map Size: ${_apiItemsById.length}');
+                              print(
+                                  'API Items Keys: ${_apiItemsById.keys.take(5).toList()}');
+                              print('API Item Found: ${apiItem != null}');
+                              if (apiItem != null) {
+                                print('API Item ID: ${apiItem.id}');
+                                print('API Item No: ${apiItem.no}');
+                                print(
+                                    'API Item Details Count: ${apiItem.details?.length ?? 0}');
+                              } else {
+                                print('⚠️ WARNING: API Item not found in map!');
+                              }
+                              print(
+                                  '═══════════════════════════════════════════════════════════');
 
-                            final result = await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CustomerIssueEntryScreen(
-                                  issueId: issue.id,
-                                  issueData: issue,
-                                  apiIssueData: apiItem, // Pass full API data
+                              final result = await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => CustomerIssueEntryScreen(
+                                    issueId: issue.id,
+                                    issueData: issue,
+                                    apiIssueData: apiItem, // Pass full API data
+                                  ),
                                 ),
-                              ),
-                            );
-                            if (result == true) {
-                              setState(() {}); // Refresh list
-                            }
-                          },
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text('Edit'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF4db1b3),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(44),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 18, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
+                              );
+                              if (result == true) {
+                                setState(() {}); // Refresh list
+                              }
+                            },
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            label: const Text('Edit'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF4db1b3),
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(44),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 18, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
+                        const SizedBox(width: 10),
+                      ],
                       Expanded(
                         child: FilledButton.icon(
                           onPressed: () {

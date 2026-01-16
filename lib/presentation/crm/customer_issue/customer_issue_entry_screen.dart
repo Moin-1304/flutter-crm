@@ -322,7 +322,30 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       }
 
       final userId = user.userId ?? user.id ?? 1;
-      final bizUnit = user.sbuId ?? 1;
+
+      // Get BizUnit - prioritize UserDetailStore, then SharedPreferenceHelper
+      // Allow 0 as a valid value if explicitly set (not null)
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+
+      // Prefer UserDetailStore, fallback to SharedPreferences, then default to 1
+      // If value is null (not set), default to 1. If value is 0 (explicitly set), use 0.
+      final int bizUnit = bizUnitFromStore != null
+          ? bizUnitFromStore!
+          : (bizUnitFromPrefs != null ? bizUnitFromPrefs! : 1);
+
+      // Print parameters being used for API call
+      print('═══════════════════════════════════════════════════════════');
+      print('🔍 Issue To List API Call Parameters');
+      print('═══════════════════════════════════════════════════════════');
+      print('UserId: $userId');
+      print('BizUnit from UserDetailStore: $bizUnitFromStore');
+      print('BizUnit from SharedPreferences: $bizUnitFromPrefs');
+      print('Final BizUnit being used: $bizUnit');
+      print('═══════════════════════════════════════════════════════════');
 
       final commonRepository = getIt<CommonRepository>();
       // Add timeout to prevent hanging
@@ -334,12 +357,35 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         },
       );
 
+      // Print received data for comparison
+      print('═══════════════════════════════════════════════════════════');
+      print('📋 Issue To List Received Data');
+      print('═══════════════════════════════════════════════════════════');
+      print('Total Items: ${issueToList.length}');
+      print('First 5 items (ID and Text):');
+      for (int i = 0; i < (issueToList.length > 5 ? 5 : issueToList.length); i++) {
+        final item = issueToList[i];
+        print('  [$i] ID: ${item.id}, Text: "${item.text}"');
+      }
+      if (issueToList.length > 5) {
+        print('  ... and ${issueToList.length - 5} more items');
+      }
+      print('All IDs: ${issueToList.map((e) => e.id).toList()}');
+      print('All Texts (first 10): ${issueToList.take(10).map((e) => e.text).toList()}');
+      print('═══════════════════════════════════════════════════════════');
+
       if (mounted) {
         setState(() {
           _issueToList = issueToList;
           _issueToOptions = issueToList.map((item) => item.text).toList();
           _isLoadingIssueTo = false;
         });
+        
+        // Verify what's set in state
+        print('✅ Issue To List State Updated');
+        print('   _issueToList.length: ${_issueToList.length}');
+        print('   _issueToOptions.length: ${_issueToOptions.length}');
+        print('   _issueToOptions (first 5): ${_issueToOptions.take(5).toList()}');
       }
     } catch (e) {
       if (mounted) {
@@ -2837,7 +2883,20 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   ),
                   onChanged: (_) {
                     setState(() {
-                      detail.qtyIssuedError = null;
+                      // Validate quantity issued vs quantity in stock
+                      final qtyIssued = int.tryParse(detail.qtyIssuedCtrl.text.trim());
+                      final qtyInStock = int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0;
+
+                      if (qtyIssued != null && qtyIssued > 0) {
+                        if (qtyIssued >= qtyInStock) {
+                          detail.qtyIssuedError =
+                              'Quantity issued ($qtyIssued) must be less than quantity in stock ($qtyInStock)';
+                        } else {
+                          detail.qtyIssuedError = null;
+                        }
+                      } else {
+                        detail.qtyIssuedError = null;
+                      }
                     });
                     _calculateAmountForItem(detail);
                   },
@@ -3007,28 +3066,56 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('❌ Exception caught during submit: ' + e.toString());
       print('Stacktrace:');
       print(stack);
-      String detailedMessage = e.toString();
-      // If using Dio or a similar network error
+      String detailedMessage = 'Failed to submit customer issue';
+      
+      // Try to extract user-friendly error message from server response
       try {
-        // Check for DioException (newer Dio) or DioError (older Dio)
-        if (e is DioException) {
-          detailedMessage = e.response?.data?.toString() ?? e.toString();
+        if (e is DioException && e.response != null) {
+          // Check headers for errormessage
+          final headers = e.response?.headers;
+          if (headers != null && headers.map.containsKey('errormessage')) {
+            final headerError = headers.map['errormessage']?.first;
+            if (headerError != null && headerError.isNotEmpty) {
+              detailedMessage = headerError;
+            }
+          } else {
+            // Check response body
+            final responseData = e.response?.data;
+            if (responseData is Map) {
+              detailedMessage = responseData['errormessage']?.toString() ??
+                              responseData['message']?.toString() ??
+                              responseData['error']?.toString() ??
+                              detailedMessage;
+            } else {
+              detailedMessage = e.response?.data?.toString() ?? detailedMessage;
+            }
+          }
           print('DioException type: ${e.type}');
           print('DioException response: ${e.response}');
           print('DioException data: ${e.response?.data?.toString() ?? 'null'}');
-        } else if (e.toString().contains('DioException') ||
-            e.toString().contains('DioError')) {
-          // Fallback for Dio errors that might not be caught by type check
-          detailedMessage = e.toString();
+        } else {
+          // Extract message from Exception (API layer already formats it)
+          final errorString = e.toString();
+          if (errorString.startsWith('Exception: ')) {
+            detailedMessage = errorString.replaceFirst('Exception: ', '');
+          } else {
+            detailedMessage = errorString;
+          }
         }
       } catch (ee) {
         // If error handling fails, just use the original error message
-        detailedMessage = e.toString();
+        final errorString = e.toString();
+        if (errorString.startsWith('Exception: ')) {
+          detailedMessage = errorString.replaceFirst('Exception: ', '');
+        } else {
+          detailedMessage = errorString;
+        }
       }
+      
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Failed to submit customer issue: $detailedMessage',
+          message: detailedMessage,
           type: ToastType.error,
         );
       }
@@ -3908,10 +3995,41 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         Navigator.of(context).pop(true); // Return true to indicate success
       }
     } catch (e) {
+      String errorMessage = 'Failed to save customer issue';
+      
+      // Try to extract user-friendly error message
+      if (e is DioException && e.response != null) {
+        // Check headers for errormessage first
+        final headers = e.response?.headers;
+        if (headers != null && headers.map.containsKey('errormessage')) {
+          final headerError = headers.map['errormessage']?.first;
+          if (headerError != null && headerError.isNotEmpty) {
+            errorMessage = headerError;
+          }
+        } else {
+          // Check response body
+          final responseData = e.response?.data;
+          if (responseData is Map) {
+            errorMessage = responseData['errormessage']?.toString() ??
+                          responseData['message']?.toString() ??
+                          responseData['error']?.toString() ??
+                          errorMessage;
+          }
+        }
+      } else {
+        // Extract message from Exception (API layer already formats it)
+        final errorString = e.toString();
+        if (errorString.startsWith('Exception: ')) {
+          errorMessage = errorString.replaceFirst('Exception: ', '');
+        } else {
+          errorMessage = errorString;
+        }
+      }
+      
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Failed to save customer issue: ${e.toString()}',
+          message: errorMessage,
           type: ToastType.error,
         );
       }
@@ -4040,6 +4158,40 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         type: ToastType.warning,
       );
       isValid = false;
+    }
+
+    // Validate that all items have quantity issued > 0 and < quantity in stock
+    for (int i = 0; i < _itemDetails.length; i++) {
+      final detail = _itemDetails[i];
+      final qtyIssued = int.tryParse(detail.qtyIssuedCtrl.text.trim());
+      final qtyInStock = int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0;
+      
+      if (qtyIssued == null || qtyIssued <= 0) {
+        setState(() {
+          detail.qtyIssuedError = 'Quantity issued must be greater than 0';
+        });
+        isValid = false;
+        
+        // Expand the item section to show the error
+        if (_expandedIndex != i) {
+          setState(() {
+            _expandedIndex = i;
+          });
+        }
+      } else if (qtyIssued >= qtyInStock) {
+        setState(() {
+          detail.qtyIssuedError =
+              'Quantity issued ($qtyIssued) must be less than quantity in stock ($qtyInStock)';
+        });
+        isValid = false;
+        
+        // Expand the item section to show the error
+        if (_expandedIndex != i) {
+          setState(() {
+            _expandedIndex = i;
+          });
+        }
+      }
     }
 
     if (!isValid) {
@@ -4421,9 +4573,19 @@ class _AddItemDialogState extends State<_AddItemDialog> {
       });
       isValid = false;
     } else {
-      setState(() {
-        _qtyIssuedError = null;
-      });
+      // Validate that Quantity Issued is less than Quantity In Stock
+      final qtyInStock = int.tryParse(_qtyInStockCtrl.text.trim()) ?? 0;
+      if (qtyIssued >= qtyInStock) {
+        setState(() {
+          _qtyIssuedError =
+              'Quantity issued ($qtyIssued) must be less than quantity in stock ($qtyInStock)';
+        });
+        isValid = false;
+      } else {
+        setState(() {
+          _qtyIssuedError = null;
+        });
+      }
     }
 
     if (!isValid) {
