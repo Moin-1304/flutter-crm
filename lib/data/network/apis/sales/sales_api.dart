@@ -320,5 +320,156 @@ class SalesApi {
       throw Exception('Failed to fetch Currency filters: ${e.toString()}');
     }
   }
+
+  /// Save Sales Order
+  Future<SalesOrderSaveResponse> saveSalesOrder(SalesOrderSaveRequest request) async {
+    try {
+      // Log request for debugging
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 Sales Order Save API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.salesOrderSave}');
+      print('Request JSON:');
+      print(request.toJson());
+      print('═══════════════════════════════════════════════════════════');
+
+      final response = await _dioClient.dio.post(
+        Endpoints.salesOrderSave,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('✅ Sales Order Save API Success');
+      print('Response Status: ${response.statusCode}');
+      print('Response Data: ${response.data}');
+
+      if (response.data != null) {
+        return SalesOrderSaveResponse.fromJson(response.data);
+      } else {
+        throw Exception('No sales order save response received');
+      }
+    } on DioException catch (e) {
+      // Enhanced error handling for DioException
+      String errorMessage = 'Failed to save Sales Order';
+      
+      if (e.response != null) {
+        // Server responded with error
+        print('❌ Sales Order Save API Error');
+        print('   Status Code: ${e.response!.statusCode}');
+        print('   Response Headers: ${e.response!.headers}');
+        print('   Response Data Type: ${e.response!.data.runtimeType}');
+        print('   Response Data: ${e.response!.data}');
+        
+        // First, check response headers for error message (common in ASP.NET APIs)
+        final headers = e.response!.headers;
+        
+        // Debug: Print all header keys to see what's available
+        print('   Available Header Keys: ${headers.map.keys.toList()}');
+        print('   All Headers:');
+        headers.map.forEach((key, value) {
+          print('      $key: $value');
+        });
+        
+        // Try to find error message in headers (case-insensitive check)
+        String? headerError;
+        for (final key in headers.map.keys) {
+          final lowerKey = key.toLowerCase();
+          if (lowerKey == 'errormessage' || lowerKey == 'error-message') {
+            final headerValue = headers.map[key];
+            if (headerValue != null && headerValue.isNotEmpty) {
+              headerError = headerValue.first;
+              print('   Found errorMessage header (key: $key): $headerError');
+              break;
+            }
+          }
+        }
+        
+        if (headerError != null && headerError.isNotEmpty) {
+          errorMessage = headerError;
+          print('   ✅ Error Message from Header: $errorMessage');
+        } else {
+          print('   ⚠️ No errorMessage found in headers - will try response body');
+        }
+        
+        // If no error message found in headers, try response body
+        if (errorMessage == 'Failed to save Sales Order') {
+          final responseData = e.response!.data;
+          
+          if (responseData != null) {
+            if (responseData is String) {
+              // If response is a plain string, use it directly
+              errorMessage = responseData.isNotEmpty ? responseData : errorMessage;
+            } else if (responseData is Map) {
+              // Try multiple possible error message fields
+              errorMessage = responseData['message']?.toString() ?? 
+                            responseData['error']?.toString() ??
+                            responseData['errorMessage']?.toString() ??
+                            responseData['Message']?.toString() ??
+                            responseData['Error']?.toString() ??
+                            responseData['ErrorMessage']?.toString() ??
+                            responseData['exceptionMessage']?.toString() ??
+                            responseData['ExceptionMessage']?.toString() ??
+                            responseData['detail']?.toString() ??
+                            responseData['Detail']?.toString() ??
+                            errorMessage;
+              
+              // If still default message, try to extract from nested structures
+              if (errorMessage == 'Failed to save Sales Order' && responseData.containsKey('errors')) {
+                final errors = responseData['errors'];
+                if (errors is Map) {
+                  final errorList = errors.values.expand((v) => v is List ? v : [v]).toList();
+                  if (errorList.isNotEmpty) {
+                    errorMessage = errorList.join(', ');
+                  }
+                } else if (errors is List) {
+                  errorMessage = errors.join(', ');
+                }
+              }
+            } else if (responseData is List) {
+              // Handle validation errors array (e.g., from .NET Core ModelState)
+              if (responseData.isNotEmpty) {
+                final errorMessages = responseData.map((err) {
+                  if (err is Map) {
+                    return err['errorMessage']?.toString() ?? 
+                           err['ErrorMessage']?.toString() ??
+                           err['message']?.toString() ??
+                           err['Message']?.toString() ??
+                           err.toString();
+                  }
+                  return err.toString();
+                }).toList();
+                errorMessage = 'Validation Errors:\n${errorMessages.join('\n')}';
+              }
+            }
+          }
+          
+          // For 500 errors, add more context if we couldn't extract a specific message
+          if (e.response!.statusCode == 500 && errorMessage == 'Failed to save Sales Order') {
+            errorMessage = 'Internal Server Error (500): The server encountered an unexpected error while processing your request. Please try again later or contact support.';
+          }
+        }
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+                 e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please check your network connection and try again.';
+      } else if (e.type == DioExceptionType.connectionError) {
+        errorMessage = 'No internet connection. Please check your network and try again.';
+      } else if (e.type == DioExceptionType.sendTimeout) {
+        errorMessage = 'Request timeout. The server is taking too long to respond.';
+      }
+      
+      print('   Final Error Message: $errorMessage');
+      throw Exception(errorMessage);
+    } catch (e) {
+      print('❌ Sales Order Save API Error: $e');
+      if (e is Exception) {
+        rethrow; // Re-throw if it's already an Exception with proper message
+      }
+      throw Exception('Failed to save Sales Order: ${e.toString()}');
+    }
+  }
 }
 

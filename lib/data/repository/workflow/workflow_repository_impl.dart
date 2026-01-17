@@ -17,6 +17,20 @@ class WorkflowRepositoryImpl implements WorkflowRepository {
       throw Exception('Failed to get workflow actions: ${e.toString()}');
     }
   }
+
+  @override
+  Future<WorkflowGetUserPagePrivilegesResponse> getUserPagePrivileges(WorkflowGetUserPagePrivilegesRequest request) async {
+    try {
+      if (getIt.isRegistered<WorkflowApi>()) {
+        final workflowApi = getIt<WorkflowApi>();
+        return await workflowApi.getUserPagePrivileges(request);
+      } else {
+        throw Exception('WorkflowApi not registered in service locator');
+      }
+    } catch (e) {
+      throw Exception('Failed to get user page privileges: ${e.toString()}');
+    }
+  }
 }
 
 

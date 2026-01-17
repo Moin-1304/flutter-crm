@@ -1,6 +1,7 @@
 import 'package:boilerplate/core/stores/error/error_store.dart';
 import 'package:boilerplate/domain/entity/tour_plan/tour_plan.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
+import 'package:dio/dio.dart';
 import 'package:mobx/mobx.dart';
 
 import '../../../../data/network/apis/user/lib/domain/entity/tour_plan/calendar_view_data.dart';
@@ -358,13 +359,77 @@ abstract class _TourPlanStore with Store {
       saveResponse = res;
     } catch (e) {
       print("TourPlanStore: Error in saveTourPlan: $e");
-      errorStore.errorMessage = e.toString();
+      
+      // Extract user-friendly error message from DioException
+      String errorMessage = 'Error occurred while saving tour plan';
+      
+      if (e is DioException) {
+        print("TourPlanStore: DioException detected");
+        print("TourPlanStore: Status Code: ${e.response?.statusCode}");
+        print("TourPlanStore: Response Data: ${e.response?.data}");
+        
+        if (e.response != null) {
+          // Try to extract error message from response headers first
+          final headers = e.response?.headers;
+          if (headers != null && headers.map.containsKey('errormessage')) {
+            final headerError = headers.map['errormessage']?.first;
+            if (headerError != null && headerError.isNotEmpty) {
+              errorMessage = headerError;
+              print("TourPlanStore: Extracted error from header: $errorMessage");
+            }
+          }
+          
+          // If no header error, try to extract from response body
+          if (errorMessage == 'Error occurred while saving tour plan') {
+            final responseData = e.response?.data;
+            if (responseData is Map) {
+              errorMessage = responseData['errormessage']?.toString() ??
+                            responseData['message']?.toString() ??
+                            responseData['errorMessage']?.toString() ??
+                            responseData['error']?.toString() ??
+                            responseData['msg']?.toString() ??
+                            errorMessage;
+              print("TourPlanStore: Extracted error from response body: $errorMessage");
+            } else if (responseData is String && responseData.isNotEmpty) {
+              errorMessage = responseData;
+              print("TourPlanStore: Using string response as error: $errorMessage");
+            } else {
+              // Provide more specific error based on status code
+              final statusCode = e.response?.statusCode;
+              if (statusCode == 500) {
+                errorMessage = 'Server error occurred. Please try again later or contact support.';
+              } else if (statusCode == 400) {
+                errorMessage = 'Invalid request. Please check your input and try again.';
+              } else if (statusCode == 401) {
+                errorMessage = 'Authentication failed. Please login again.';
+              } else if (statusCode == 403) {
+                errorMessage = 'You do not have permission to perform this action.';
+              } else if (statusCode != null) {
+                errorMessage = 'Request failed with status code $statusCode. Please try again.';
+              }
+            }
+          }
+        } else {
+          // No response received
+          errorMessage = 'No response from server. Please check your connection and try again.';
+        }
+      } else {
+        // For non-DioException errors, try to extract message
+        final errorString = e.toString();
+        if (errorString.startsWith('Exception: ')) {
+          errorMessage = errorString.replaceFirst('Exception: ', '');
+        } else {
+          errorMessage = errorString;
+        }
+      }
+      
+      errorStore.errorMessage = errorMessage;
       // Set error response so UI can handle it properly
       saveResponse = {
         'status': false,
-        'msg': 'Error occurred while saving tour plan',
+        'msg': errorMessage,
         'error': e.toString(),
-        'errorMessage': e.toString(),
+        'errorMessage': errorMessage,
       };
     }
   }
@@ -375,7 +440,76 @@ abstract class _TourPlanStore with Store {
       final res = await _repo.updateTourPlan(body);
       saveResponse = res;
     } catch (e) {
-      errorStore.errorMessage = e.toString();
+      print("TourPlanStore: Error in updateTourPlan: $e");
+      
+      // Extract user-friendly error message from DioException
+      String errorMessage = 'Error occurred while updating tour plan';
+      
+      if (e is DioException) {
+        print("TourPlanStore: DioException detected in updateTourPlan");
+        print("TourPlanStore: Status Code: ${e.response?.statusCode}");
+        print("TourPlanStore: Response Data: ${e.response?.data}");
+        
+        if (e.response != null) {
+          // Try to extract error message from response headers first
+          final headers = e.response?.headers;
+          if (headers != null && headers.map.containsKey('errormessage')) {
+            final headerError = headers.map['errormessage']?.first;
+            if (headerError != null && headerError.isNotEmpty) {
+              errorMessage = headerError;
+            }
+          }
+          
+          // If no header error, try to extract from response body
+          if (errorMessage == 'Error occurred while updating tour plan') {
+            final responseData = e.response?.data;
+            if (responseData is Map) {
+              errorMessage = responseData['errormessage']?.toString() ??
+                            responseData['message']?.toString() ??
+                            responseData['errorMessage']?.toString() ??
+                            responseData['error']?.toString() ??
+                            responseData['msg']?.toString() ??
+                            errorMessage;
+            } else if (responseData is String && responseData.isNotEmpty) {
+              errorMessage = responseData;
+            } else {
+              // Provide more specific error based on status code
+              final statusCode = e.response?.statusCode;
+              if (statusCode == 500) {
+                errorMessage = 'Server error occurred. Please try again later or contact support.';
+              } else if (statusCode == 400) {
+                errorMessage = 'Invalid request. Please check your input and try again.';
+              } else if (statusCode == 401) {
+                errorMessage = 'Authentication failed. Please login again.';
+              } else if (statusCode == 403) {
+                errorMessage = 'You do not have permission to perform this action.';
+              } else if (statusCode != null) {
+                errorMessage = 'Request failed with status code $statusCode. Please try again.';
+              }
+            }
+          }
+        } else {
+          // No response received
+          errorMessage = 'No response from server. Please check your connection and try again.';
+        }
+      } else {
+        // For non-DioException errors, try to extract message
+        final errorString = e.toString();
+        if (errorString.startsWith('Exception: ')) {
+          errorMessage = errorString.replaceFirst('Exception: ', '');
+        } else {
+          errorMessage = errorString;
+        }
+      }
+      
+      errorStore.errorMessage = errorMessage;
+      // Set error response so UI can handle it properly
+      saveResponse = {
+        'status': false,
+        'msg': errorMessage,
+        'error': e.toString(),
+        'errorMessage': errorMessage,
+      };
     }
   }
 

@@ -94,6 +94,7 @@ class Endpoints {
   
   // Workflow endpoints
   static const String workflowGetAllActions = "$baseUrl/WorkFlowMaster/GetAllActions";
+  static const String workflowGetUserPagePrivileges = "$baseUrl/WorkFlow/GetUserPagePrivileges";
 
   // Deviation endpoints
   static const String deviationList = "$baseUrl/PharmaCRM/Deviation/List";
@@ -183,5 +184,6 @@ class Endpoints {
   // Sales endpoints
   static const String salesOrderList = "$baseUrl/SaleOrder/List";
   static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
+  static const String salesOrderSave = "$baseUrl/SaleOrder/Save";
   static const String salesInvoiceCommonAuto = "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
 }

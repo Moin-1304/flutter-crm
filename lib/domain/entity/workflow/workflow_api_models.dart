@@ -138,5 +138,109 @@ class ProcessAction {
   }
 }
 
+/// GetUserPagePrivileges API Models
+
+class WorkflowGetUserPagePrivilegesRequest {
+  final String? groupName;
+  final String? pageName;
+  final int userId;
+  final int? roleId;
+  final int? groupId;
+  final int? pageId;
+  final String pageUrl;
+  final int menuId;
+  final int module;
+  final bool hasRight;
+  final String? hierarchy;
+  final int? sectorId;
+  final String? tabName;
+  final String? subTabName;
+  final int bizunit;
+
+  WorkflowGetUserPagePrivilegesRequest({
+    this.groupName,
+    this.pageName,
+    required this.userId,
+    this.roleId,
+    this.groupId,
+    this.pageId,
+    required this.pageUrl,
+    required this.menuId,
+    required this.module,
+    required this.hasRight,
+    this.hierarchy,
+    this.sectorId,
+    this.tabName,
+    this.subTabName,
+    required this.bizunit,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'GroupName': groupName,
+      'PageName': pageName,
+      'UserId': userId,
+      'RoleId': roleId,
+      'GroupId': groupId,
+      'PageId': pageId,
+      'PageUrl': pageUrl,
+      'MenuId': menuId,
+      'Module': module,
+      'HasRight': hasRight,
+      'Hierarchy': hierarchy,
+      'SectorId': sectorId,
+      'TabName': tabName,
+      'SubTabName': subTabName,
+      'Bizunit': bizunit,
+    };
+  }
+}
+
+class WorkflowGetUserPagePrivilegesResponse {
+  final Map<String, ButtonPrivilege> buttonPrivileges;
+
+  WorkflowGetUserPagePrivilegesResponse({
+    required this.buttonPrivileges,
+  });
+
+  factory WorkflowGetUserPagePrivilegesResponse.fromJson(Map<String, dynamic> json) {
+    final Map<String, ButtonPrivilege> privileges = {};
+    
+    // Parse all button privileges from the response
+    json.forEach((key, value) {
+      if (value is Map<String, dynamic>) {
+        privileges[key] = ButtonPrivilege.fromJson(value);
+      } else if (value is bool) {
+        // If value is just a boolean, create a ButtonPrivilege with hasRight = value
+        privileges[key] = ButtonPrivilege(hasRight: value);
+      }
+    });
+    
+    return WorkflowGetUserPagePrivilegesResponse(
+      buttonPrivileges: privileges,
+    );
+  }
+}
+
+class ButtonPrivilege {
+  final bool hasRight;
+  final String? buttonName;
+  final String? action;
+
+  ButtonPrivilege({
+    required this.hasRight,
+    this.buttonName,
+    this.action,
+  });
+
+  factory ButtonPrivilege.fromJson(Map<String, dynamic> json) {
+    return ButtonPrivilege(
+      hasRight: json['HasRight'] == true || json['hasRight'] == true || json['HasRight'] == 1 || json['hasRight'] == 1,
+      buttonName: json['ButtonName'] ?? json['buttonName'],
+      action: json['Action'] ?? json['action'],
+    );
+  }
+}
+
 
 

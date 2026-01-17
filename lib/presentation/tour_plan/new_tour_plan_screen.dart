@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:google_fonts/google_fonts.dart';
@@ -1721,22 +1722,48 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (hasStoreError || hasErrorMessage) {
           // It's an error
           isSuccess = false;
+          // Prioritize errorMessage (which contains the extracted user-friendly message)
+          // then msg, then error (which may contain technical details)
           errorMessage = res['errorMessage']?.toString() ??
-              res['error']?.toString() ??
               res['msg']?.toString() ??
+              res['error']?.toString() ??
               'Unknown error occurred';
+          
+          // Clean up error message - remove technical DioException details if present
+          if (errorMessage.contains('DioException')) {
+            // Try to extract just the meaningful part
+            if (errorMessage.contains('msg:')) {
+              final msgIndex = errorMessage.indexOf('msg:');
+              final afterMsg = errorMessage.substring(msgIndex + 4).trim();
+              if (afterMsg.isNotEmpty && !afterMsg.contains('DioException')) {
+                errorMessage = afterMsg.split('\n').first.trim();
+              }
+            }
+            // If still contains DioException, use a generic message
+            if (errorMessage.contains('DioException')) {
+              errorMessage = res['msg']?.toString() ?? 
+                           'An error occurred while ${isEditing ? 'updating' : 'submitting'} the tour plan. Please try again.';
+            }
+          }
         } else {
           // No error indicators - consider it success
           isSuccess = true;
         }
+      } else {
+        // No response received
+        isSuccess = false;
+        errorMessage = 'No response received from server. Please check your connection and try again.';
       }
+      
       ToastMessage.show(
         context,
         message: isSuccess
             ? 'Success: Tour plan ${isEditing ? 'updated' : 'submitted'} successfully'
-            : 'Failed: ${errorMessage.isNotEmpty ? errorMessage : 'No response received from server.'}',
+            : errorMessage.isNotEmpty 
+                ? errorMessage 
+                : 'Failed to ${isEditing ? 'update' : 'submit'} tour plan. Please try again.',
         type: isSuccess ? ToastType.success : ToastType.error,
-        duration: Duration(seconds: isSuccess ? 3 : 4),
+        duration: Duration(seconds: isSuccess ? 3 : 5),
       );
 
       // Refresh Tour Plan data on success before leaving
@@ -1801,21 +1828,51 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: Stack Trace: $stackTrace');
       print('NewTourPlanScreen: ========== ERROR END ==========');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '✗ ${isEditing ? 'Update' : 'Submission'} Failed!\nError: $e',
-            style: TextStyle(
-              fontSize: MediaQuery.of(context).size.width < 600 ? 12 : 13,
-            ),
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
+      
+      // Extract user-friendly error message
+      String errorMessage = 'Failed to ${isEditing ? 'update' : 'submit'} tour plan';
+      
+      // Check if it's a DioException and extract message
+      if (e is DioException) {
+        if (e.response != null) {
+          final responseData = e.response?.data;
+          if (responseData is Map) {
+            errorMessage = responseData['errormessage']?.toString() ??
+                          responseData['message']?.toString() ??
+                          responseData['errorMessage']?.toString() ??
+                          responseData['error']?.toString() ??
+                          responseData['msg']?.toString() ??
+                          errorMessage;
+          } else if (responseData is String && responseData.isNotEmpty) {
+            errorMessage = responseData;
+          } else {
+            final statusCode = e.response?.statusCode;
+            if (statusCode == 500) {
+              errorMessage = 'Server error occurred. Please try again later or contact support.';
+            } else if (statusCode == 400) {
+              errorMessage = 'Invalid request. Please check your input and try again.';
+            } else if (statusCode == 401) {
+              errorMessage = 'Authentication failed. Please login again.';
+            }
+          }
+        } else {
+          errorMessage = 'No response from server. Please check your connection and try again.';
+        }
+      } else {
+        // For non-DioException, try to extract meaningful message
+        final errorString = e.toString();
+        if (errorString.startsWith('Exception: ')) {
+          errorMessage = errorString.replaceFirst('Exception: ', '');
+        } else if (!errorString.contains('DioException')) {
+          errorMessage = errorString;
+        }
+      }
+      
+      ToastMessage.show(
+        context,
+        message: errorMessage,
+        type: ToastType.error,
+        duration: const Duration(seconds: 5),
       );
     } finally {
       if (mounted) {

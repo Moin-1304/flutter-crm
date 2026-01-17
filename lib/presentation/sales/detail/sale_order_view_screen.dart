@@ -475,14 +475,20 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
 
   Widget _buildReadOnlyField(String value, {int maxLines = 1}) {
     final isTablet = MediaQuery.of(context).size.width >= 800;
+    final border = OutlineInputBorder(
+      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+      borderRadius: BorderRadius.circular(10),
+    );
+    
     return TextFormField(
       key: ValueKey(value), // Force rebuild when value changes
       readOnly: true,
       initialValue: value.isEmpty ? '-' : value,
       maxLines: maxLines,
       style: GoogleFonts.inter(
-        fontSize: 14,
-        color: value.isEmpty ? Colors.grey.shade500 : Colors.grey.shade800,
+        fontSize: isTablet ? 15 : 14,
+        fontWeight: FontWeight.w500,
+        color: value.isEmpty ? Colors.grey.shade500 : const Color(0xFF111827),
       ),
       decoration: InputDecoration(
         hintText: value.isEmpty ? 'Not provided' : null,
@@ -490,6 +496,13 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           horizontal: isTablet ? 16 : 14,
           vertical: isTablet ? 16 : 14,
         ),
+        filled: true,
+        fillColor: const Color(0xFFF3F4F6),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: border,
+        errorBorder: border,
+        disabledBorder: border,
       ),
     );
   }
@@ -507,6 +520,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           'quantity': _orderData!.totalQuantity ?? 0,
           'uom': '-',
           'rate': _orderData!.amount,
+          'mrp': null, // MRP not available in summary data
           'amount': _orderData!.amount,
           'bonusQty': _orderData!.bonusQuantity,
           'addlBonus': _orderData!.additionalBonusQuantity,
@@ -529,6 +543,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           'quantity': (map['quantity'] ?? 0).toDouble(),
           'uom': map['uomText'] ?? map['uom'] ?? '-',
           'rate': (map['unitPrice'] ?? map['rate'] ?? 0).toDouble(),
+          'mrp': (map['mrp'] ?? map['maxRetailPrice'] ?? map['mrpValue'] ?? 0).toDouble(),
           'amount': (map['amount'] ?? 0).toDouble(),
           'bonusQty': (map['bonusQuantity'] ?? map['bonusQty'] ?? 0).toDouble(),
           'addlBonus': (map['additionalQuantity'] ?? map['addlBonus'] ?? map['additionalBonusQuantity'] ?? 0).toDouble(),
@@ -639,11 +654,18 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
 
     return Container(
       margin: EdgeInsets.only(bottom: index < total - 1 ? 16 : 0),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isTablet ? 20 : 16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -662,7 +684,15 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             children: [
               Expanded(child: _buildItemField('Rate', (item['rate'] as num).toStringAsFixed(2), isTablet)),
               const SizedBox(width: 12),
+              Expanded(child: _buildItemField('MRP', (item['mrp'] as num? ?? 0) > 0 ? (item['mrp'] as num).toStringAsFixed(2) : '-', isTablet)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
               Expanded(child: _buildItemField('Amount', (item['amount'] as num).toStringAsFixed(2), isTablet)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildItemField('Disc.', (item['discount'] as num).toStringAsFixed(2), isTablet)),
             ],
           ),
           const SizedBox(height: 16),
@@ -674,25 +704,24 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildItemField('Disc.', (item['discount'] as num).toStringAsFixed(2), isTablet),
-          const SizedBox(height: 16),
-          _buildItemField('Total Amount', (item['totalAmount'] as num).toStringAsFixed(2), isTablet),
-          const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildItemField('Manufacturer', item['manufacturer'].toString(), isTablet)),
+              Expanded(child: _buildItemField('Total Amount', (item['totalAmount'] as num).toStringAsFixed(2), isTablet)),
               const SizedBox(width: 12),
               Expanded(child: _buildItemField('Reqd. Date', reqdDate, isTablet)),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildItemField('Division', item['division'].toString(), isTablet),
         ],
       ),
     );
   }
 
   Widget _buildItemField(String label, String value, bool isTablet) {
+    final border = OutlineInputBorder(
+      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+      borderRadius: BorderRadius.circular(10),
+    );
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -700,8 +729,9 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           label,
           style: GoogleFonts.inter(
             fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade700,
+            letterSpacing: 0.1,
           ),
         ),
         const SizedBox(height: 8),
@@ -709,14 +739,22 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           readOnly: true,
           initialValue: value,
           style: GoogleFonts.inter(
-            fontSize: 14,
-            color: Colors.grey.shade800,
+            fontSize: isTablet ? 15 : 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade900,
           ),
           decoration: InputDecoration(
             contentPadding: EdgeInsets.symmetric(
               horizontal: isTablet ? 16 : 14,
               vertical: isTablet ? 16 : 14,
             ),
+            filled: true,
+            fillColor: const Color(0xFFF3F4F6),
+            border: border,
+            enabledBorder: border,
+            focusedBorder: border,
+            errorBorder: border,
+            disabledBorder: border,
           ),
         ),
       ],
@@ -852,15 +890,22 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             ),
             // Tax Table Content (shown when expanded)
             if (_isTaxSectionExpanded) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               // Different layout for mobile vs tablet
               isTablet
                   ? Container(
                       constraints: const BoxConstraints(maxHeight: 400),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade200, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
                       child: SingleChildScrollView(
               child: Column(
@@ -1219,9 +1264,16 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             Container(
               padding: const EdgeInsets.all(40),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey.shade200, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Center(
                 child: Text(
@@ -1229,6 +1281,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),

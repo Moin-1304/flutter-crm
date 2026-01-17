@@ -40,6 +40,8 @@ abstract class SalesRepository {
   Future<List<String>> getCurrencyFilters({
     required int bizUnit,
   });
+
+  Future<SalesOrderSaveResponse> saveSalesOrder(SalesOrderSaveRequest request);
 }
 
 

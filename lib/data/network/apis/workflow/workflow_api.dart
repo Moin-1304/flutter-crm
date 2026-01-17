@@ -120,4 +120,53 @@ class WorkflowApi {
       throw Exception('Failed to get workflow actions: ${e.toString()}');
     }
   }
+
+  /// Get user page privileges
+  Future<WorkflowGetUserPagePrivilegesResponse> getUserPagePrivileges(
+      WorkflowGetUserPagePrivilegesRequest request) async {
+    try {
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 Workflow GetUserPagePrivileges API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.workflowGetUserPagePrivileges}');
+      print('Request: ${request.toJson()}');
+
+      final response = await _dioClient.dio.post(
+        Endpoints.workflowGetUserPagePrivileges,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('Response Status: ${response.statusCode}');
+      print('Response Data Type: ${response.data.runtimeType}');
+      print('Response Data: ${response.data}');
+
+      // Handle null or empty response data
+      if (response.data == null || response.data.toString().isEmpty) {
+        print('⚠️ Response data is null or empty');
+        return WorkflowGetUserPagePrivilegesResponse(buttonPrivileges: {});
+      }
+
+      // Normal JSON response
+      if (response.data is Map<String, dynamic>) {
+        print('✅ Parsing JSON response');
+        return WorkflowGetUserPagePrivilegesResponse.fromJson(response.data);
+      }
+
+      // Fallback: return empty response
+      print('⚠️ Unknown response format, returning empty response');
+      return WorkflowGetUserPagePrivilegesResponse(buttonPrivileges: {});
+    } catch (e) {
+      print('❌ Error in GetUserPagePrivileges API: $e');
+      if (e is DioException) {
+        print('DioException Status: ${e.response?.statusCode}');
+        print('DioException Data: ${e.response?.data}');
+      }
+      throw Exception('Failed to get user page privileges: ${e.toString()}');
+    }
+  }
 }

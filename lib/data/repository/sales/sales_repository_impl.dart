@@ -152,5 +152,19 @@ class SalesRepositoryImpl implements SalesRepository {
     // Fallback to empty list if API fails
     return [];
   }
+
+  @override
+  Future<SalesOrderSaveResponse> saveSalesOrder(SalesOrderSaveRequest request) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        final response = await salesApi.saveSalesOrder(request);
+        return response;
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      throw Exception('Failed to save sales order: ${e.toString()}');
+    }
+  }
 }
 
