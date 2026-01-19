@@ -17,7 +17,7 @@ abstract class SalesRepository {
     String? toDate,
     String? fieldName,
     String? pageName,
-    required int userId,
+    required int userId, // Required - passed in listing API to fetch records
     required int menuId,
     required String url,
     int? isFullyUsed,
@@ -42,6 +42,12 @@ abstract class SalesRepository {
   });
 
   Future<SalesOrderSaveResponse> saveSalesOrder(SalesOrderSaveRequest request);
+
+  Future<void> deleteSalesOrder({
+    required int id,
+    required int bizunit,
+    required int userId,
+  });
 }
 
 

@@ -6,6 +6,7 @@ class Product {
   final String name;
   final String manufacturer;
   final double rate;
+  final double? mrp; // MRP field
   final String uom;
   final int availableQty;
 
@@ -14,6 +15,7 @@ class Product {
     required this.name,
     required this.manufacturer,
     required this.rate,
+    this.mrp,
     required this.uom,
     required this.availableQty,
   });

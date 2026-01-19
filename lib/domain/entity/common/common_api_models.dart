@@ -1323,34 +1323,70 @@ class CustomerListRequest {
   final int bizUnit;
   final int? customerId;
   final String? searchText;
+  final int? userId;
+  final int? distributerId;
+  final int? customer;
+  final int sector;
+  final int taxFlag;
+  final bool includeCancelled;
+  final int? id;
+  final int? transactionId;
+  final int? countryId;
+  final int? clusterId;
+  final int? employeeId;
+  final String? pageUrl;
+  final int? sbuId;
+  final int? cityId;
+  final int? stateId;
+  final int? districtId;
+  final int? townId;
+  final int? module;
 
   CustomerListRequest({
     required this.bizUnit,
     this.customerId,
     this.searchText,
+    this.userId,
+    this.distributerId,
+    this.customer,
+    this.sector = 0,
+    this.taxFlag = 0,
+    this.includeCancelled = false,
+    this.id,
+    this.transactionId,
+    this.countryId,
+    this.clusterId,
+    this.employeeId,
+    this.pageUrl,
+    this.sbuId,
+    this.cityId,
+    this.stateId,
+    this.districtId,
+    this.townId,
+    this.module,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'SearchText': searchText,
-      'Id': null,
-      'TransactionId': null,
-      'UserId': null,
+      'Id': id,
+      'TransactionId': transactionId,
+      'UserId': userId,
       'CommandType': 71,
       'CommandText': null,
       'Value': null,
-      'CountryId': null,
+      'CountryId': countryId,
       'Key': null,
       'Text': null,
       'Type': null,
-      'TaxFlag': 0,
+      'TaxFlag': taxFlag,
       'SubType': null,
       'RoleMapList': null,
       'CategoryId': null,
-      'ClusterId': null,
-      'EmployeeId': null,
-      'PageUrl': null,
-      'IncludeCancelled': false,
+      'ClusterId': clusterId,
+      'EmployeeId': employeeId,
+      'PageUrl': pageUrl,
+      'IncludeCancelled': includeCancelled,
       'Program': null,
       'Category': null,
       'Status': null,
@@ -1366,7 +1402,7 @@ class CustomerListRequest {
       'ConstantMasterGroupValue': null,
       'ConstantMasterGroupTypeValue': null,
       'TypeValue': null,
-      'SbuId': null,
+      'SbuId': sbuId,
       'LsmLine': null,
       'LsmListType': null,
       'LineId': null,
@@ -1391,25 +1427,25 @@ class CustomerListRequest {
       'Group': null,
       'GroupType': null,
       'Name': null,
-      'CityId': null,
-      'StateId': null,
-      'DistributerId': null,
+      'CityId': cityId,
+      'StateId': stateId,
+      'DistributerId': distributerId,
       'TaxCategory': null,
       'OnlyParent': null,
       'DesignationCode': null,
-      'DistrictId': null,
-      'TownId': null,
+      'DistrictId': districtId,
+      'TownId': townId,
       'BizUnit': bizUnit,
       'ProcessId': null,
       'FieldName': null,
-      'Sector': 0,
+      'Sector': sector,
       'ConstantMasterParent': null,
       'Vendor': null,
       'ReceiveType': null,
-      'Module': null,
+      'Module': module,
       'Flag': null,
       'CustomerId': customerId,
-      'Customer': null,
+      'Customer': customer,
       'DespatchNo': null,
       'SurveyType': null,
       'PageName': null,

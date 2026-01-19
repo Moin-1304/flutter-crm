@@ -435,6 +435,133 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
     return '${date.day.toString().padLeft(2, '0')}-${_mon(date.month)}-${date.year}';
   }
 
+  Future<void> _handleDeleteOrder(SalesOrderApiItem order) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Sales Order'),
+          content: Text(
+            'Are you sure you want to delete sales order ${order.soNumber ?? 'SO-${order.id}'}? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return; // User cancelled
+    }
+
+    // Show loading indicator
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Get user details
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+
+      if (user == null) {
+        throw Exception('User not available');
+      }
+
+      final userId = user.userId ?? user.id;
+
+      // Get bizUnit from UserDetailStore
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      // Call delete API
+      final salesRepository = getIt<SalesRepository>();
+      await salesRepository.deleteSalesOrder(
+        id: order.id,
+        bizunit: bizUnit,
+        userId: userId,
+      );
+
+      // Close loading indicator
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sales order ${order.soNumber ?? 'SO-${order.id}'} deleted successfully',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.fixed,
+          duration: const Duration(seconds: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+
+      // Refresh the list
+      _loadSalesOrders(refresh: true);
+    } catch (e) {
+      // Close loading indicator
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show error message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete sales order: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.fixed,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   /// Load Sales Orders from API
   Future<void> _loadSalesOrders({bool refresh = false}) async {
     if (!mounted) return;
@@ -453,7 +580,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
     });
 
     try {
-      // Get user info from SharedPreferences
+      // Get user info from SharedPreferences (for bizUnit and userId)
       final sharedPrefHelper = getIt<SharedPreferenceHelper>();
       final user = await sharedPrefHelper.getUser();
 
@@ -461,6 +588,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         throw Exception('User not available');
       }
 
+      // Get userId from user
       final userId = user.userId ?? user.id;
 
       // Get bizUnit from UserDetailStore
@@ -527,7 +655,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         toDate: toDateStr,
         fieldName: null,
         pageName: null,
-        userId: userId,
+        userId: userId, // Pass userId in listing API to fetch records
         menuId: menuId,
         url:
             '/sales/salescontract/list', // Relative path as per working API call
@@ -778,8 +906,8 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                                           },
                                         );
                                       },
-                                      onEdit: () {
-                                        Navigator.pushNamed(
+                                      onEdit: () async {
+                                        final result = await Navigator.pushNamed(
                                           context,
                                           Routes.saleCreate,
                                           arguments: {
@@ -787,7 +915,12 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                                             'orderData': order,
                                           },
                                         );
+                                        // Refresh list if order was saved/submitted
+                                        if (result == true) {
+                                          _loadSalesOrders(refresh: true);
+                                        }
                                       },
+                                      onDelete: () => _handleDeleteOrder(order),
                                     ),
                                   );
                                 },
@@ -919,8 +1052,15 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                 child: SizedBox(
                   height: buttonHeight,
                   child: FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pushNamed(context, Routes.saleCreate);
+                    onPressed: () async {
+                      final result = await Navigator.pushNamed(
+                        context,
+                        Routes.saleCreate,
+                      );
+                      // Refresh list if order was created
+                      if (result == true) {
+                        _loadSalesOrders(refresh: true);
+                      }
                     },
                     icon: const Icon(Icons.add, size: 18),
                     // text lenght is cutting need fix it
@@ -3040,8 +3180,14 @@ class _SalesOrderCard extends StatelessWidget {
   final SalesOrderApiItem order;
   final VoidCallback? onView;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
-  const _SalesOrderCard({required this.order, this.onView, this.onEdit});
+  const _SalesOrderCard({
+    required this.order,
+    this.onView,
+    this.onEdit,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3100,6 +3246,41 @@ class _SalesOrderCard extends StatelessWidget {
                     _getStatusChip(order.statusText ?? 'Pending'),
                   ],
                 ),
+              ),
+              // Delete icon (only for draft orders) - at the right end
+              Builder(
+                builder: (context) {
+                  final statusTextLower = order.statusText?.toLowerCase().trim() ?? '';
+                  final isDraft = statusTextLower == 'drafted' || 
+                                 statusTextLower == 'draft' ||
+                                 order.status == 0;
+                  
+                  if (isDraft && onDelete != null) {
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onDelete,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
             ],
           ),

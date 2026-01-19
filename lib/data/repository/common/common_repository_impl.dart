@@ -412,6 +412,24 @@ class CommonRepositoryImpl implements CommonRepository {
     required int bizUnit,
     int? customerId,
     String? searchText,
+    int? userId,
+    int? distributerId,
+    int? customer,
+    int? sector,
+    int? taxFlag,
+    bool? includeCancelled,
+    int? id,
+    int? transactionId,
+    int? countryId,
+    int? clusterId,
+    int? employeeId,
+    String? pageUrl,
+    int? sbuId,
+    int? cityId,
+    int? stateId,
+    int? districtId,
+    int? townId,
+    int? module,
   }) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
@@ -420,6 +438,24 @@ class CommonRepositoryImpl implements CommonRepository {
           bizUnit: bizUnit,
           customerId: customerId,
           searchText: searchText,
+          userId: userId,
+          distributerId: distributerId,
+          customer: customer,
+          sector: sector,
+          taxFlag: taxFlag,
+          includeCancelled: includeCancelled,
+          id: id,
+          transactionId: transactionId,
+          countryId: countryId,
+          clusterId: clusterId,
+          employeeId: employeeId,
+          pageUrl: pageUrl,
+          sbuId: sbuId,
+          cityId: cityId,
+          stateId: stateId,
+          districtId: districtId,
+          townId: townId,
+          module: module,
         );
         return response;
       }
@@ -590,8 +626,16 @@ class CommonRepositoryImpl implements CommonRepository {
         return response;
       }
     } catch (e) {
-      // API get UOM list failed
-      print('Error getting UOM list: $e');
+      // Check if it's a connection error (expected and handled gracefully)
+      final isConnectionError = e.toString().contains('Connection refused') || 
+                                e.toString().contains('connection error') ||
+                                e.toString().contains('SocketException');
+      
+      if (!isConnectionError) {
+        // Only log non-connection errors (connection errors are already logged in API layer)
+        print('⚠️ [Repository] UOM List API error: ${e.toString()}');
+      }
+      // Fallback to empty list if API fails - this will preserve existing UOM or use defaults
     }
 
     // Fallback to empty list if API fails

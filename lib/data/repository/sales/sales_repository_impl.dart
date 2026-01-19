@@ -21,7 +21,7 @@ class SalesRepositoryImpl implements SalesRepository {
     String? toDate,
     String? fieldName,
     String? pageName,
-    required int userId,
+    required int userId, // Required - passed in listing API to fetch records
     required int menuId,
     required String url,
     int? isFullyUsed,
@@ -46,7 +46,7 @@ class SalesRepositoryImpl implements SalesRepository {
           toDate: toDate,
           fieldName: fieldName,
           pageName: pageName,
-          userId: userId,
+          userId: userId, // Pass userId in listing API
           menuId: menuId,
           url: url,
           isFullyUsed: isFullyUsed,
@@ -164,6 +164,28 @@ class SalesRepositoryImpl implements SalesRepository {
       throw Exception('SalesApi not registered');
     } catch (e) {
       throw Exception('Failed to save sales order: ${e.toString()}');
+    }
+  }
+
+  @override
+  Future<void> deleteSalesOrder({
+    required int id,
+    required int bizunit,
+    required int userId,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        await salesApi.deleteSalesOrder(
+          id: id,
+          bizunit: bizunit,
+          userId: userId,
+        );
+        return;
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      throw Exception('Failed to delete sales order: ${e.toString()}');
     }
   }
 }

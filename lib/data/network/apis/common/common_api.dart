@@ -491,22 +491,82 @@ class CommonApi {
     required int bizUnit,
     int? customerId,
     String? searchText,
+    int? userId,
+    int? distributerId,
+    int? customer,
+    int? sector,
+    int? taxFlag,
+    bool? includeCancelled,
+    int? id,
+    int? transactionId,
+    int? countryId,
+    int? clusterId,
+    int? employeeId,
+    String? pageUrl,
+    int? sbuId,
+    int? cityId,
+    int? stateId,
+    int? districtId,
+    int? townId,
+    int? module,
   }) async {
     try {
       final request = CustomerListRequest(
         bizUnit: bizUnit,
         customerId: customerId,
         searchText: searchText,
+        userId: userId,
+        distributerId: distributerId,
+        customer: customer,
+        sector: sector ?? 0,
+        taxFlag: taxFlag ?? 0,
+        includeCancelled: includeCancelled ?? false,
+        id: id,
+        transactionId: transactionId,
+        countryId: countryId,
+        clusterId: clusterId,
+        employeeId: employeeId,
+        pageUrl: pageUrl,
+        sbuId: sbuId,
+        cityId: cityId,
+        stateId: stateId,
+        districtId: districtId,
+        townId: townId,
+        module: module,
       );
       final requestJson = request.toJson();
       
-      // Debug logging
-      print('🔵 [CommonApi] CUSTOMER LIST API REQUEST');
+      // Console logging for request payload
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 Customer List API Request (CommandType: 71)');
+      print('═══════════════════════════════════════════════════════════');
       print('📡 Endpoint: POST ${Endpoints.commonGetAuto}');
-      print('📦 Request Body:');
+      print('📦 Full Request Payload:');
+      print('   ${requestJson.toString()}');
+      print('📋 Dynamic Fields:');
+      print('   SearchText: ${requestJson['SearchText']}');
+      print('   Id: ${requestJson['Id']}');
+      print('   TransactionId: ${requestJson['TransactionId']}');
+      print('   UserId: ${requestJson['UserId']}');
       print('   CommandType: ${requestJson['CommandType']}');
       print('   BizUnit: ${requestJson['BizUnit']}');
       print('   CustomerId: ${requestJson['CustomerId']}');
+      print('   Customer: ${requestJson['Customer']}');
+      print('   DistributerId: ${requestJson['DistributerId']}');
+      print('   Sector: ${requestJson['Sector']}');
+      print('   TaxFlag: ${requestJson['TaxFlag']}');
+      print('   IncludeCancelled: ${requestJson['IncludeCancelled']}');
+      print('   CountryId: ${requestJson['CountryId']}');
+      print('   ClusterId: ${requestJson['ClusterId']}');
+      print('   EmployeeId: ${requestJson['EmployeeId']}');
+      print('   PageUrl: ${requestJson['PageUrl']}');
+      print('   SbuId: ${requestJson['SbuId']}');
+      print('   CityId: ${requestJson['CityId']}');
+      print('   StateId: ${requestJson['StateId']}');
+      print('   DistrictId: ${requestJson['DistrictId']}');
+      print('   TownId: ${requestJson['TownId']}');
+      print('   Module: ${requestJson['Module']}');
+      print('═══════════════════════════════════════════════════════════');
       
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
@@ -857,21 +917,22 @@ class CommonApi {
   }
 
   /// Get Sales Rep List (CommandType: 158)
-  /// Requires userId and customerId
+  /// Requires userId and customerId (Customer field)
   Future<List<CommonDropdownItem>> getSalesRepList({
     required int userId,
     required int customerId,
   }) async {
     try {
-      // This endpoint requires camelCase field names, not PascalCase
+      // This endpoint requires PascalCase field names
       final requestData = {
-        'commandType': 158,
-        'userId': userId,
-        'customerId': customerId,
+        'UserId': userId,
+        'CommandType': 158,
+        'Customer': customerId,
       };
       
       print('🔵 Sales Rep API Request: $requestData');
       print('🔵 Sales Rep API Endpoint: ${Endpoints.commonGetAuto}');
+      print('🔵 Sales Rep API - UserId: $userId, Customer: $customerId');
       
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
@@ -1053,7 +1114,18 @@ class CommonApi {
         throw Exception('Invalid response format - expected array');
       }
     } catch (e) {
-      print('❌ [CommonApi] UOM List API Exception: ${e.toString()}');
+      // Check if it's a connection error (expected and handled gracefully)
+      final isConnectionError = e.toString().contains('Connection refused') || 
+                                e.toString().contains('connection error') ||
+                                e.toString().contains('SocketException');
+      
+      if (isConnectionError) {
+        // Connection errors are expected and handled with fallbacks - log less verbosely
+        print('⚠️ [CommonApi] UOM List API connection error - using fallback defaults');
+      } else {
+        // Other errors should be logged fully
+        print('❌ [CommonApi] UOM List API Exception: ${e.toString()}');
+      }
       throw Exception('Failed to get UOM list: ${e.toString()}');
     }
   }
@@ -1065,13 +1137,21 @@ class CommonApi {
     required int itemId,
   }) async {
     try {
-      // This endpoint uses GET with query parameters
+      // This endpoint uses GET with JSON payload in query parameters
       final requestData = {
         'Id': itemId,
       };
       
-      print('🔵 Item Tax API Request: $requestData');
-      print('🔵 Item Tax API Endpoint: ${Endpoints.commonGetCatItemTax}');
+      // Console logging for request payload
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 Get Item Tax List API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('📡 Endpoint: GET ${Endpoints.commonGetCatItemTax}');
+      print('📦 Request Payload:');
+      print('   ${requestData.toString()}');
+      print('📋 Request Details:');
+      print('   Id: ${requestData['Id']} (Item ID)');
+      print('═══════════════════════════════════════════════════════════');
       
       final response = await _dioClient.dio.get(
         Endpoints.commonGetCatItemTax,

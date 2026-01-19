@@ -954,11 +954,55 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                             ),
                             Divider(height: 1, color: Colors.grey.shade200, thickness: 2),
                             // Grand Total Row
-                            _buildTaxTableRowReadOnly(
-                              label: 'Grand Total',
-                              value: grandTotal,
-                              isTotal: true,
-                              isTablet: isTablet,
+                            Builder(
+                              builder: (context) {
+                                const Color tealGreen = Color(0xFF4db1b3);
+                                return Container(
+                                  padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12, vertical: isTablet ? 16 : 14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    borderRadius: const BorderRadius.only(
+                                      bottomLeft: Radius.circular(8),
+                                      bottomRight: Radius.circular(8),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(width: isTablet ? 40 : 36),
+                                      SizedBox(width: isTablet ? 12 : 8),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          'Grand Total',
+                                          style: GoogleFonts.inter(
+                                            fontSize: isTablet ? 16 : 15,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.grey.shade900,
+                                            letterSpacing: 0.2,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(flex: 2, child: const SizedBox.shrink()),
+                                      SizedBox(width: isTablet ? 12 : 8),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          grandTotal == 0.0 ? '0' : _formatCurrency(grandTotal),
+                                          textAlign: TextAlign.end,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.inter(
+                                            fontSize: isTablet ? 18 : 16,
+                                            fontWeight: FontWeight.w900,
+                                            color: tealGreen,
+                                            letterSpacing: 0.1,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -1054,8 +1098,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         ),
         Text(
           value == 0.0 ? '0' : _formatCurrency(value),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.inter(
-            fontSize: isTotal ? 15 : 14,
+            fontSize: isTotal ? 16 : 14,
             fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
             color: isTotal ? tealGreen : Colors.grey.shade900,
               ),
@@ -1095,8 +1141,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             child: Text(
               value == 0.0 ? '0' : _formatCurrency(value),
               textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(
-                fontSize: isTablet ? 14 : 13,
+                fontSize: isTotal ? (isTablet ? 18 : 16) : (isTablet ? 14 : 13),
                 fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
                 color: isTotal ? tealGreen : Colors.grey.shade900,
               ),

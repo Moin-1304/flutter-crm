@@ -471,5 +471,80 @@ class SalesApi {
       throw Exception('Failed to save Sales Order: ${e.toString()}');
     }
   }
+
+  /// Delete Sales Order
+  /// Uses GET request with query parameters: Id, Bizunit, UserId
+  Future<void> deleteSalesOrder({
+    required int id,
+    required int bizunit,
+    required int userId,
+  }) async {
+    try {
+      print('═══════════════════════════════════════════════════════════');
+      print('🗑️ Sales Order Delete API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.salesOrderDelete}');
+      print('Query Parameters:');
+      print('  Id: $id');
+      print('  Bizunit: $bizunit');
+      print('  UserId: $userId');
+      print('═══════════════════════════════════════════════════════════');
+      
+      final response = await _dioClient.dio.get(
+        Endpoints.salesOrderDelete,
+        queryParameters: {
+          'Id': id,
+          'Bizunit': bizunit,
+          'UserId': userId,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('═══════════════════════════════════════════════════════════');
+      print('✅ Sales Order Delete API Response');
+      print('═══════════════════════════════════════════════════════════');
+      print('Status Code: ${response.statusCode}');
+      print('Response Data: ${response.data}');
+      print('═══════════════════════════════════════════════════════════');
+      
+      if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
+        return;
+      } else {
+        throw Exception('Failed to delete sales order: Invalid response status ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      print('═══════════════════════════════════════════════════════════');
+      print('❌ Sales Order Delete API Error');
+      print('═══════════════════════════════════════════════════════════');
+      print('Error Type: ${e.type}');
+      print('Error Message: ${e.message}');
+      
+      String errorMessage = 'Failed to delete Sales Order';
+      
+      if (e.response != null) {
+        print('Status Code: ${e.response!.statusCode}');
+        print('Response Data: ${e.response!.data}');
+        
+        final data = e.response!.data;
+        if (data is Map) {
+          errorMessage = data['message']?.toString() ?? 
+                        data['errorMessage']?.toString() ??
+                        data['error']?.toString() ??
+                        errorMessage;
+        } else if (data is String) {
+          errorMessage = data.isNotEmpty ? data : errorMessage;
+        }
+      }
+      
+      throw Exception(errorMessage);
+    } catch (e) {
+      print('❌ Sales Order Delete - Unexpected Error: $e');
+      throw Exception('Failed to delete Sales Order: ${e.toString()}');
+    }
+  }
 }
 

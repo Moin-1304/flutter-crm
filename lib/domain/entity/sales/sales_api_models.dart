@@ -14,7 +14,7 @@ class SalesOrderListRequest {
   final String? toDate;
   final String? fieldName;
   final String? pageName;
-  final int userId;
+  final int userId; // Required - passed in listing API to fetch records
   final int menuId;
   final String url;
   final int? isFullyUsed;
@@ -35,7 +35,7 @@ class SalesOrderListRequest {
     this.toDate,
     this.fieldName,
     this.pageName,
-    required this.userId,
+    required this.userId, // Required - passed in listing API to fetch records
     required this.menuId,
     required this.url,
     this.isFullyUsed,
@@ -58,7 +58,7 @@ class SalesOrderListRequest {
       'ToDate': toDate,
       'FieldName': fieldName,
       'PageName': pageName,
-      'UserId': userId,
+      'UserId': userId, // Always include userId in listing API
       'MenuId': menuId,
       'Url': url,
       'IsFullyUsed': isFullyUsed,

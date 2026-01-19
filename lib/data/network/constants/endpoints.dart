@@ -185,5 +185,6 @@ class Endpoints {
   static const String salesOrderList = "$baseUrl/SaleOrder/List";
   static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
   static const String salesOrderSave = "$baseUrl/SaleOrder/Save";
+  static const String salesOrderDelete = "$baseUrl/SaleOrder/Delete";
   static const String salesInvoiceCommonAuto = "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
 }

@@ -61,6 +61,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       TextEditingController();
   final TextEditingController _customerSearchController = TextEditingController();
   String? _selectedSalesRep;
+  List<CommonDropdownItem> _salesRepItems = []; // Store sales rep items with IDs
   String? _selectedDistributor;
   final TextEditingController _notesController = TextEditingController();
   
@@ -98,10 +99,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   // User Page Privileges (loaded from API)
   WorkflowGetUserPagePrivilegesResponse? _userPrivilegesResponse;
   Map<String, ButtonPrivilege> _buttonPrivileges = {};
-  bool _isLoadingPrivileges = false;
+  bool _isLoadingPrivileges = true; // Start as true to show loader until API completes
   bool _hasButtonSaveRight = false; // ButtonSave HasRight
   bool _hasPrintRight = false; // Print button HasRight
   bool _isDraftSaveEnabled = false; // Draft Save enabled based on ButtonSave or IsSalesRepEdit
+  bool _firstPrivilegeLoadCompleted = false; // Track if first load has completed
   bool _hasBeenSubmitted = false; // Track if order has been submitted (for WorkflowFlag logic)
   
   final List<String> _typeOptions = ['Normal', 'Bonus', 'Domestic'];
@@ -196,10 +198,32 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         throw Exception('BizUnit is 0. Please ensure user details are loaded correctly.');
       }
 
+      // Get userId
+      final int userId = user?.id ?? user?.userId ?? 43;
+
+      // Get customer ID - check orderData first (edit mode), then selected customer code
+      int? customerId;
+      
+      // In edit mode, check if we have orderData with customerId
+      if (widget.orderData?.customerId != null) {
+        customerId = widget.orderData!.customerId;
+      } else if (_loadedOrderData?.customerId != null) {
+        customerId = _loadedOrderData!.customerId;
+      } else if (_selectedCustomerCode != null && _selectedCustomerCode!.isNotEmpty) {
+        // Try to parse selected customer code (should be customer ID as string)
+        customerId = int.tryParse(_selectedCustomerCode!);
+      }
+      
+      print('🔵 [LoadCustomers] CustomerId: $customerId, UserId: $userId, BizUnit: $bizUnit');
+
       final commonRepository = getIt<CommonRepository>();
       final items = await commonRepository.getCustomerList(
         bizUnit: bizUnit,
-        customerId: null,
+        customerId: customerId,
+        userId: userId,
+        sector: 0,
+        taxFlag: 0,
+        includeCancelled: false,
       );
 
       if (mounted) {
@@ -263,6 +287,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       if (mounted) {
         setState(() {
+          // Store sales rep items with IDs
+          _salesRepItems = salesReps;
+          
           // Convert CommonDropdownItem to String list (using text field)
           _salesReps = salesReps.map((item) => item.text).toList();
           
@@ -472,7 +499,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       if (orderData != null && mounted) {
         _loadedOrderData = orderData;
-        _populateFormFromOrderData(orderData);
+        await _populateFormFromOrderData(orderData);
         // Update draft save enabled after order data is loaded (to check IsSalesRepEdit)
         _updateDraftSaveEnabled();
         setState(() {
@@ -504,7 +531,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
   }
 
-  void _populateFormFromOrderData(SalesOrderApiItem orderData) {
+  Future<void> _populateFormFromOrderData(SalesOrderApiItem orderData) async {
     // Parse date
     if (orderData.date != null) {
       try {
@@ -562,44 +589,76 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Load distributor list and set selected distributor by ID
     if (orderData.distributerForId != null && orderData.customerId != null) {
       // Load distributors first, then match by ID
-      _loadDistributorAndSetSelection(
+      await _loadDistributorAndSetSelection(
         orderData.customerId.toString(),
         orderData.distributerForId!,
-      ).then((_) {
+      );
         // Reload workflow actions and privileges after distributor is set to use correct bizUnit
-        _loadWorkflowActions();
-        _loadUserPagePrivileges();
-      });
+      await _loadWorkflowActions();
+      await _loadUserPagePrivileges();
     } else if (orderData.customerId != null) {
       // Just load distributors without setting selection
-      _loadDistributors(orderData.customerId.toString()).then((_) {
+      await _loadDistributors(orderData.customerId.toString());
         // Reload workflow actions and privileges after distributor is loaded
-        _loadWorkflowActions();
-        _loadUserPagePrivileges();
-      });
+      await _loadWorkflowActions();
+      await _loadUserPagePrivileges();
     } else {
       // Reload privileges even if no distributor
-      _loadUserPagePrivileges();
+      await _loadUserPagePrivileges();
     }
 
     // Parse items
     _items.clear();
+    print('🔵 Parsing salesContractItems...');
+    print('   salesContractItems type: ${orderData.salesContractItems.runtimeType}');
+    print('   salesContractItems is null: ${orderData.salesContractItems == null}');
+    
     if (orderData.salesContractItems != null && orderData.salesContractItems is List) {
       final itemsList = orderData.salesContractItems as List;
-      for (var itemData in itemsList) {
+      print('   Found ${itemsList.length} items in list');
+      
+      for (int i = 0; i < itemsList.length; i++) {
+        final itemData = itemsList[i];
+        print('   Processing item $i: ${itemData.runtimeType}');
+        
         if (itemData is Map<String, dynamic>) {
-          _items.add(_parseItemFromData(itemData));
+          print('     Item data keys: ${itemData.keys.toList()}');
+          if (itemData.isNotEmpty) {
+            try {
+              final parsedItem = _parseItemFromData(itemData);
+              _items.add(parsedItem);
+              print('     ✅ Successfully parsed item $i');
+            } catch (e, stackTrace) {
+              print('     ❌ Error parsing item $i: $e');
+              print('     Stack trace: $stackTrace');
+              print('     Item data: $itemData');
+              // Skip this item and continue with others
+            }
+          } else {
+            print('     ⚠️ Item $i is empty map, skipping');
+          }
+        } else {
+          print('     ⚠️ Item $i is not a Map: ${itemData.runtimeType}, skipping');
         }
+      }
+    } else {
+      print('   ⚠️ salesContractItems is not a List or is null');
+      if (orderData.salesContractItems != null) {
+        print('     Type: ${orderData.salesContractItems.runtimeType}');
       }
     }
     
+    print('   Total parsed items: ${_items.length}');
+    
     // If no items found, create a default empty item (will be populated from API when user searches)
     if (_items.isEmpty) {
+      print('   ⚠️ No items found, creating default empty item');
       final emptyProduct = Product(
         id: '0',
         name: 'Item',
         manufacturer: 'N/A',
         rate: 0.0,
+        mrp: null,
         uom: 'Unit',
         availableQty: 0,
       );
@@ -608,6 +667,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         itemDescription: '',
         rate: 0.0,
       ));
+      print('   ✅ Created default empty item');
+    }
+
+    // Set SubTotal from totalAmount first (primary source)
+    if (orderData.totalAmount != null && orderData.totalAmount! > 0) {
+      _subTotalController.text = orderData.totalAmount!.toStringAsFixed(2);
+      print('🔵 Set SubTotal from totalAmount: ${orderData.totalAmount}');
     }
 
     // Parse tax and charges from taxAndOtherChargesDetail using typeText
@@ -620,8 +686,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           final value = (charge['value'] ?? 0).toDouble();
           
           // Use typeText for exact matching (more reliable than label)
+          // Skip SubTotal from charges if totalAmount is already set
           if (typeText == 'SubTotal' || typeText.toLowerCase() == 'subtotal') {
+            // Only set from charges if totalAmount is not available
+            if (orderData.totalAmount == null || orderData.totalAmount == 0) {
             _subTotalController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
+            }
           } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax') {
             // Add tax row
             final taxRow = _TaxChargeRow(
@@ -649,11 +719,33 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               rowType: 'discount',
             );
             discountRow.valueController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
-            // Use subTypeText if available
+            
+            // Check if this is a custom discount
+            final isCustom = charge['isCustom'] == true || charge['isCustom'] == 1 || charge['isCustomSelected'] == true || charge['isCustomSelected'] == 1;
+            final customPercentage = charge['customPercentage'];
+            
+            if (isCustom) {
+              // Set selectedType to "Custom" if isCustom is true
+              discountRow.selectedType = 'Custom';
+              print('🔵 Discount isCustom=true, setting selectedType to "Custom"');
+              
+              // If customPercentage has a value, enable checkbox and set percentage
+              if (customPercentage != null) {
+                final percentageValue = (customPercentage is num) ? customPercentage.toDouble() : double.tryParse(customPercentage.toString()) ?? 0.0;
+                if (percentageValue > 0) {
+                  discountRow.isPercentageEnabled = true;
+                  discountRow.percentageController.text = percentageValue.toStringAsFixed(2);
+                  print('🔵 Discount customPercentage=$percentageValue, enabling checkbox and setting percentage');
+                }
+              }
+            } else {
+              // Use subTypeText if available (for non-custom discounts)
             final subTypeText = charge['subTypeText']?.toString();
             if (subTypeText != null && subTypeText.isNotEmpty) {
               discountRow.selectedType = subTypeText;
             }
+            }
+            
             _discountRows.add(discountRow);
           } else if (typeText == 'OtherCharge' || typeText.toLowerCase() == 'othercharge') {
             // Add other charge row
@@ -714,26 +806,157 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   _LineItem _parseItemFromData(Map<String, dynamic> itemData) {
+    print('🔵 _parseItemFromData called with keys: ${itemData.keys.toList()}');
+    
+    // Validate itemData is not null or empty
+    if (itemData.isEmpty) {
+      print('❌ Item data is empty');
+      throw Exception('Item data is empty');
+    }
+    
     // Use item description from data
-    final itemDescription = itemData['itemText'] ?? 
-                          itemData['itemName'] ?? 
-                          itemData['itemDescription'] ?? 
-                          itemData['description'] ?? 
+    final itemDescription = itemData['itemText']?.toString() ?? 
+                          itemData['itemName']?.toString() ?? 
+                          itemData['itemDescription']?.toString() ?? 
+                          itemData['description']?.toString() ?? 
                           '';
-    final rate = (itemData['rate'] ?? itemData['unitPrice'] ?? itemData['price'] ?? 0.0).toDouble();
-    final mrp = (itemData['mrp'] ?? itemData['maxRetailPrice'] ?? itemData['mrpValue'] ?? 0.0).toDouble();
-    final discount = (itemData['discount'] ?? itemData['discountAmount'] ?? 0.0).toDouble();
-    final uom = itemData['uomText']?.toString() ?? itemData['uom']?.toString();
+    
+    // Safely parse rate - handle null and type conversion
+    double rate = 0.0;
+    try {
+      final rateValue = itemData['rate'] ?? itemData['unitPrice'] ?? itemData['price'] ?? 0.0;
+      if (rateValue is num) {
+        rate = rateValue.toDouble();
+      } else if (rateValue is String) {
+        rate = double.tryParse(rateValue) ?? 0.0;
+      }
+    } catch (e) {
+      rate = 0.0;
+    }
+    
+    // Safely parse MRP
+    double? mrp;
+    try {
+      final mrpValue = itemData['mrp'] ?? itemData['maxRetailPrice'] ?? itemData['mrpValue'];
+      if (mrpValue != null) {
+        if (mrpValue is num) {
+          final mrpDouble = mrpValue.toDouble();
+          mrp = mrpDouble > 0 ? mrpDouble : null;
+        } else if (mrpValue is String) {
+          final mrpDouble = double.tryParse(mrpValue);
+          mrp = mrpDouble != null && mrpDouble > 0 ? mrpDouble : null;
+        }
+      }
+    } catch (e) {
+      mrp = null;
+    }
+    
+    // Safely parse discount
+    double discount = 0.0;
+    try {
+      final discountValue = itemData['discount'] ?? itemData['discountAmount'] ?? 0.0;
+      if (discountValue is num) {
+        discount = discountValue.toDouble();
+      } else if (discountValue is String) {
+        discount = double.tryParse(discountValue) ?? 0.0;
+      }
+    } catch (e) {
+      discount = 0.0;
+    }
+    
+    // Get UOM - prioritize uomText (actual text) over uom (numeric ID)
+    final uom = itemData['uomText']?.toString() ?? 
+                (itemData['uom'] != null ? itemData['uom'].toString() : null);
     
     // Create default product from item data (no mock data, always use API data)
-    Product defaultProduct = Product(
-      id: itemData['id']?.toString() ?? itemData['itemId']?.toString() ?? '0',
-      name: itemDescription.isNotEmpty ? itemDescription : 'Item',
-      manufacturer: itemData['manufacturerName']?.toString() ?? 'N/A',
-      rate: rate > 0 ? rate : 0.0,
-      uom: uom ?? 'Unit',
-      availableQty: (itemData['stock'] ?? itemData['availableQty'] ?? 0).toInt(),
-    );
+    // Ensure all required fields have safe defaults to prevent constructor errors
+    // Get item ID - use 'item' field (product/item ID) first, then fallback to 'id' (contract item ID)
+    final itemIdValue = itemData['item'] ?? 
+                        itemData['itemId'] ?? 
+                        itemData['id'] ?? 
+                        itemData['Id'] ?? 
+                        itemData['ItemId'];
+    final itemIdStr = (itemIdValue?.toString() ?? '0').trim();
+    
+    final itemName = itemDescription.isNotEmpty ? itemDescription.trim() : 'Item';
+    
+    final manufacturerName = (itemData['manufacturerName']?.toString() ?? 
+                            itemData['ManufacturerName']?.toString() ??
+                            'N/A').trim();
+    
+    final safeRate = rate > 0 ? rate : 0.0;
+    final safeMrp = mrp;
+    final safeUom = (uom != null && uom.trim().isNotEmpty) ? uom.trim() : 'Unit';
+    
+    // Safely parse availableQty - handle both int and string types
+    int safeAvailableQty = 0;
+    try {
+      final stockValue = itemData['stock'] ?? itemData['availableQty'] ?? itemData['Stock'] ?? itemData['AvailableQty'] ?? 0;
+      if (stockValue is int) {
+        safeAvailableQty = stockValue;
+      } else if (stockValue is String) {
+        safeAvailableQty = int.tryParse(stockValue) ?? 0;
+      } else if (stockValue is num) {
+        safeAvailableQty = stockValue.toInt();
+      }
+    } catch (e) {
+      safeAvailableQty = 0;
+    }
+    
+    // Ensure all required fields are non-null and valid before creating Product
+    // This prevents the "No constructor 'Product.' with matching arguments" error
+    final finalItemId = itemIdStr.isNotEmpty ? itemIdStr : '0';
+    final finalItemName = itemName.isNotEmpty ? itemName : 'Item';
+    final finalManufacturer = manufacturerName.isNotEmpty ? manufacturerName : 'N/A';
+    final finalUom = safeUom.isNotEmpty ? safeUom : 'Unit';
+    
+    // Debug logging before Product creation
+    print('     🔵 Creating Product with:');
+    print('        id: "$finalItemId" (type: ${finalItemId.runtimeType})');
+    print('        name: "$finalItemName" (type: ${finalItemName.runtimeType})');
+    print('        manufacturer: "$finalManufacturer" (type: ${finalManufacturer.runtimeType})');
+    print('        rate: $safeRate (type: ${safeRate.runtimeType})');
+    print('        mrp: $safeMrp (type: ${safeMrp.runtimeType})');
+    print('        uom: "$finalUom" (type: ${finalUom.runtimeType})');
+    print('        availableQty: $safeAvailableQty (type: ${safeAvailableQty.runtimeType})');
+    
+    // Double-check all values are valid and non-null
+    if (finalItemId.isEmpty) {
+      throw Exception('Invalid Product data: id is empty');
+    }
+    if (finalItemName.isEmpty) {
+      throw Exception('Invalid Product data: name is empty');
+    }
+    if (finalManufacturer.isEmpty) {
+      throw Exception('Invalid Product data: manufacturer is empty');
+    }
+    if (finalUom.isEmpty) {
+      throw Exception('Invalid Product data: uom is empty');
+    }
+    
+    // Create Product with all validated fields - ensure all parameters are explicitly provided
+    Product defaultProduct;
+    try {
+      defaultProduct = Product(
+        id: finalItemId,
+        name: finalItemName,
+        manufacturer: finalManufacturer,
+        rate: safeRate,
+        mrp: safeMrp,
+        uom: finalUom,
+        availableQty: safeAvailableQty,
+      );
+      print('     ✅ Product created successfully');
+    } catch (e, stackTrace) {
+      print('     ❌ Error creating Product: $e');
+      print('     Stack trace: $stackTrace');
+      rethrow;
+    }
+    
+    // Verify the product was created successfully
+    if (defaultProduct.id.isEmpty || defaultProduct.name.isEmpty || defaultProduct.manufacturer.isEmpty || defaultProduct.uom.isEmpty) {
+      throw Exception('Product created with invalid data: id="${defaultProduct.id}", name="${defaultProduct.name}", manufacturer="${defaultProduct.manufacturer}", uom="${defaultProduct.uom}"');
+    }
 
     // Parse required date
     DateTime reqDate = DateTime.now();
@@ -757,7 +980,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       addlBonusQty: (itemData['addlBonus'] ?? itemData['additionalBonusQuantity'] ?? 0).toInt(),
       itemDescription: itemDescription,
       rate: rate > 0 ? rate : null,
-      mrp: mrp > 0 ? mrp : null,
+      mrp: (mrp != null && mrp > 0) ? mrp : null,
       discount: discount,
       uom: uom,
       remarks: remarks,
@@ -794,6 +1017,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       print('🔵 Loading UOM for ItemId: $itemId, existingUOM: $existingUOM, current selectedUOM: ${item.selectedUOM}');
       final commonRepository = getIt<CommonRepository>();
       final uomList = await commonRepository.getUOMList(itemId: itemId);
+      item.uomItems = uomList; // Store items with IDs
       item.uomOptions = uomList.map((uom) => uom.text).toList();
       // If existingUOM is provided and exists in options, use it; otherwise preserve current or auto-select first
       if (item.uomOptions.isNotEmpty) {
@@ -829,11 +1053,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         setState(() {});
       }
     } catch (e) {
-      print('Error loading UOM for item $itemId: $e');
+      // Check if it's a connection error (expected and handled gracefully)
+      final isConnectionError = e.toString().contains('Connection refused') || 
+                                e.toString().contains('connection error') ||
+                                e.toString().contains('SocketException');
+      
+      if (!isConnectionError) {
+        // Only log non-connection errors (connection errors are already logged in API/repository layers)
+        print('⚠️ Error loading UOM for item $itemId: $e');
+      }
+      
       item.uomOptions = [];
       // Preserve existing UOM even on error
       if (existingUOM != null && existingUOM.isNotEmpty) {
         item.selectedUOM = existingUOM;
+        print('✅ Preserved existing UOM due to API unavailability: ${item.selectedUOM}');
       }
       if (onChanged != null) {
         onChanged();
@@ -1010,7 +1244,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   Future<void> _loadUserPagePrivileges() async {
-    if (_isLoadingPrivileges) return;
+    // Allow reloads - don't block even if already loading
+    // The setState will handle any race conditions
     
     try {
       setState(() {
@@ -1091,6 +1326,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           _updateDraftSaveEnabled();
           
           _isLoadingPrivileges = false;
+          _firstPrivilegeLoadCompleted = true;
         });
         print('✅ Loaded User Page Privileges');
         print('   ButtonSave HasRight: $_hasButtonSaveRight');
@@ -1105,6 +1341,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           _hasButtonSaveRight = false;
           _hasPrintRight = false;
           _isDraftSaveEnabled = false;
+          _firstPrivilegeLoadCompleted = true; // Mark as completed even on error
         });
       }
     }
@@ -2050,6 +2287,46 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 loadUOMForItem: _loadUOMForItem,
                 loadTaxForItem: _loadTaxForItem,
                 formatDate: _formatDate,
+                getDistributorId: () {
+                  // Get distributor ID - use selected distributor or fallback to bizUnit
+                  int distributorId;
+                  
+                  // Get bizUnit from user store as fallback
+                  int bizUnit = 1;
+                  try {
+                    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+                        ? getIt<UserDetailStore>()
+                        : null;
+                    
+                    int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+                    bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+                        ? bizUnitFromStore
+                        : 1;
+                  } catch (e) {
+                    print('⚠️ Error getting bizUnit, using default: $e');
+                  }
+                  
+                  // Default to bizUnit
+                  distributorId = bizUnit;
+                  
+                  // If distributor is selected, use its ID
+                  if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
+                    try {
+                      final distributorItem = _distributorItems.firstWhere(
+                        (item) => item.text == _selectedDistributor,
+                      );
+                      distributorId = distributorItem.id;
+                      print('✅ Using selected Distributor ID: $distributorId (Distributor: ${distributorItem.text})');
+                    } catch (e) {
+                      // Distributor not found, use bizUnit as fallback
+                      print('⚠️ Selected distributor not found in list, using bizUnit: $bizUnit');
+                    }
+                  } else {
+                    print('⚠️ No distributor selected, using bizUnit: $bizUnit');
+                  }
+                  
+                  return distributorId;
+                },
               ),
               if (i != _items.length - 1) const SizedBox(height: 12),
             ],
@@ -2120,43 +2397,43 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.grey.shade200, width: 1),
                 ),
-                child: Column(
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: [
+                    children: [
                     const SizedBox(height: 8),
-                    // Sub Total Row
-                    _buildTaxTableRowWithController(
-                      label: 'Sub Total',
-                      controller: _subTotalController,
-                      isTablet: isTablet,
-                    ),
+                      // Sub Total Row
+                      _buildTaxTableRowWithController(
+                        label: 'Sub Total',
+                        controller: _subTotalController,
+                        isTablet: isTablet,
+                      ),
                     Divider(height: 1, color: Colors.grey.shade200, indent: 48),
                       // Tax Rows (only shown in create mode)
                       if (!_isEditMode) ...[
-                        for (int i = 0; i < _taxRows.length; i++) ...[
-                          _buildTaxTableRowWithModel(
-                            row: _taxRows[i],
-                            index: i,
-                            rowType: 'tax',
-                            hasDeleteButton: true,
-                            isTablet: isTablet,
-                          ),
-                          Divider(height: 1, color: Colors.grey.shade200, indent: 48),
-                        ],
-                        // Add Tax Button Row (only in create mode)
-                        const SizedBox(height: 4),
-                        _buildAddButtonRow(
-                          label: 'Tax',
-                          onAdd: () {
-                            setState(() {
-                              _taxRows.add(_TaxChargeRow(
-                                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                rowType: 'tax',
-                              ));
-                            });
-                          },
+                      for (int i = 0; i < _taxRows.length; i++) ...[
+                        _buildTaxTableRowWithModel(
+                          row: _taxRows[i],
+                          index: i,
+                          rowType: 'tax',
+                          hasDeleteButton: true,
                           isTablet: isTablet,
                         ),
+                          Divider(height: 1, color: Colors.grey.shade200, indent: 48),
+                      ],
+                        // Add Tax Button Row (only in create mode)
+                        const SizedBox(height: 4),
+                      _buildAddButtonRow(
+                        label: 'Tax',
+                        onAdd: () {
+                          setState(() {
+                            _taxRows.add(_TaxChargeRow(
+                              id: DateTime.now().millisecondsSinceEpoch.toString(),
+                              rowType: 'tax',
+                            ));
+                          });
+                        },
+                        isTablet: isTablet,
+                      ),
                         const SizedBox(height: 4),
                       ],
                       // Discount Rows
@@ -2174,23 +2451,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         ),
                         Divider(height: 1, color: Colors.grey.shade200, indent: 48),
                       ],
-                      // Add Discount Button Row
-                      if (!_isEditMode) ...[
-                        const SizedBox(height: 4),
-                        _buildAddButtonRow(
-                          label: 'Discount',
-                          onAdd: () {
-                            setState(() {
-                              _discountRows.add(_TaxChargeRow(
-                                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                rowType: 'discount',
-                              ));
-                            });
-                          },
-                          isTablet: isTablet,
-                        ),
-                        const SizedBox(height: 4),
-                      ],
+                      // Add Discount Button Row (available in both create and edit mode)
+                      const SizedBox(height: 4),
+                      _buildAddButtonRow(
+                        label: 'Discount',
+                        onAdd: () {
+                          setState(() {
+                            _discountRows.add(_TaxChargeRow(
+                              id: DateTime.now().millisecondsSinceEpoch.toString(),
+                              rowType: 'discount',
+                            ));
+                          });
+                        },
+                        isTablet: isTablet,
+                      ),
+                      const SizedBox(height: 4),
                       // Other Charge Rows
                       if (_otherChargeRows.isNotEmpty || !_isEditMode) ...[
                         Divider(height: 1, color: Colors.grey.shade200, indent: 48, thickness: 1.5),
@@ -2206,23 +2481,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         ),
                         Divider(height: 1, color: Colors.grey.shade200, indent: 48),
                       ],
-                      // Add Other Charge Button Row
-                      if (!_isEditMode) ...[
-                        const SizedBox(height: 4),
-                        _buildAddButtonRow(
-                          label: 'Other Charge',
-                          onAdd: () {
-                            setState(() {
-                              _otherChargeRows.add(_TaxChargeRow(
-                                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                rowType: 'otherCharge',
-                              ));
-                            });
-                          },
-                          isTablet: isTablet,
-                        ),
-                        const SizedBox(height: 4),
-                      ],
+                      // Add Other Charge Button Row (available in both create and edit mode)
+                      const SizedBox(height: 4),
+                      _buildAddButtonRow(
+                        label: 'Other Charge',
+                        onAdd: () {
+                          setState(() {
+                            _otherChargeRows.add(_TaxChargeRow(
+                              id: DateTime.now().millisecondsSinceEpoch.toString(),
+                              rowType: 'otherCharge',
+                            ));
+                          });
+                        },
+                        isTablet: isTablet,
+                      ),
+                      const SizedBox(height: 4),
                       // Price Adjustment Row
                       Divider(height: 1, color: Colors.grey.shade200, indent: 48, thickness: 1.5),
                       const SizedBox(height: 4),
@@ -2235,7 +2508,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                       const SizedBox(height: 4),
                     Divider(height: 2, color: Colors.grey.shade300, thickness: 2),
                     const SizedBox(height: 8),
-                    // Grand Total Row
+                      // Grand Total Row
                     Builder(
                       builder: (context) {
                         const Color tealGreen = Color(0xFF4db1b3);
@@ -2278,9 +2551,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                     letterSpacing: 0.1,
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
+                      ),
+                    ],
+                  ),
                         );
                       },
                     ),
@@ -2311,39 +2584,39 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey.shade200, width: 1),
         ),
-        child: Row(
-          children: [
+      child: Row(
+        children: [
             Container(
               width: isTablet ? 32 : 28,
               height: isTablet ? 32 : 28,
-              decoration: BoxDecoration(
-                color: tealGreen,
-                shape: BoxShape.circle,
+                decoration: BoxDecoration(
+                  color: tealGreen,
+                  shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
                     color: tealGreen.withOpacity(0.3),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
-                  ),
+                ),
                 ],
               ),
               child: Icon(Icons.add, color: Colors.white, size: isTablet ? 20 : 18),
             ),
             SizedBox(width: isTablet ? 12 : 8),
-            Expanded(
-              flex: 2,
-              child: Text(
+          Expanded(
+            flex: 2,
+            child: Text(
                 'Add $label',
-                style: GoogleFonts.inter(
+              style: GoogleFonts.inter(
                   fontSize: isTablet ? 15 : 14,
                   fontWeight: FontWeight.w600,
                   color: tealGreen,
-                ),
               ),
             ),
-            Expanded(flex: 2, child: const SizedBox.shrink()),
-            Expanded(flex: 1, child: const SizedBox.shrink()),
-          ],
+          ),
+          Expanded(flex: 2, child: const SizedBox.shrink()),
+          Expanded(flex: 1, child: const SizedBox.shrink()),
+        ],
         ),
       ),
     );
@@ -2476,15 +2749,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                             color: tealGreen,
                           ),
                         ),
-                        child: Text(
-                          row.selectedType ?? 'Select',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: row.selectedType != null
-                                ? Colors.grey.shade900
-                                : Colors.grey.shade500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                              child: Text(
+                                row.selectedType ?? 'Select',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: row.selectedType != null
+                                      ? Colors.grey.shade900
+                                      : Colors.grey.shade500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       itemBuilder: (context) => dropdownOptions.map((option) {
@@ -2492,8 +2765,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           value: option,
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(minWidth: 120),
-                            child: Text(
-                              option,
+                          child: Text(
+                            option,
                               style: GoogleFonts.inter(
                                 fontSize: 12,
                                 color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
@@ -2506,9 +2779,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   ),
                 // Show checkbox, %, and percentage input when Custom is selected for discount (Mobile)
                 if (rowType == 'discount' && row.selectedType != null && row.selectedType!.trim().toLowerCase() == 'custom') ...[
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 44),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 44),
                     child: Row(
                       children: [
                         Checkbox(
@@ -2536,22 +2809,22 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextField(
+                  child: TextField(
                             controller: row.percentageController,
                             enabled: row.isPercentageEnabled,
-                            textAlign: TextAlign.end,
-                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                            style: GoogleFonts.inter(
+                    textAlign: TextAlign.end,
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    style: GoogleFonts.inter(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                               color: row.isPercentageEnabled ? const Color(0xFF111827) : Colors.grey.shade400,
-                            ),
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
+                    ),
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
                                 borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                              ),
-                              enabledBorder: OutlineInputBorder(
+                      ),
+                      enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
                                 borderSide: BorderSide(
                                   color: row.isPercentageEnabled ? const Color(0xFFD1D5DB) : Colors.grey.shade300,
@@ -2559,20 +2832,35 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                               ),
                               disabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
                                 borderSide: BorderSide(color: tealGreen, width: 2),
-                              ),
+                      ),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               isDense: true,
                               filled: true,
                               fillColor: row.isPercentageEnabled ? Colors.white : Colors.grey.shade50,
-                              hintText: '0',
-                              hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
-                            ),
-                            onChanged: (text) {
+                      hintText: '0',
+                      hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                    ),
+                    onChanged: (text) {
+                              // Auto-calculate discount value when percentage is entered
+                              if (rowType == 'discount' && 
+                                  row.selectedType != null && 
+                                  row.selectedType!.trim().toLowerCase() == 'custom' &&
+                                  row.isPercentageEnabled) {
+                                final percentage = double.tryParse(text) ?? 0.0;
+                                final subTotal = _subTotal;
+                                if (percentage > 0 && subTotal > 0) {
+                                  final calculatedDiscount = (subTotal * percentage) / 100;
+                                  row.valueController.text = calculatedDiscount.toStringAsFixed(2);
+                                  print('🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
+                                } else if (percentage == 0 || subTotal == 0) {
+                                  row.valueController.text = '0.00';
+                                }
+                              }
                               _updateTotals();
                             },
                             maxLines: 1,
@@ -2723,24 +3011,24 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                               color: tealGreen,
                             ),
                           ),
-                          child: Text(
-                            row.selectedType ?? 'Select',
-                            style: GoogleFonts.inter(
-                              fontSize: isTablet ? 13 : 12,
-                              color: row.selectedType != null
-                                  ? Colors.grey.shade900
-                                  : Colors.grey.shade500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                                child: Text(
+                                  row.selectedType ?? 'Select',
+                                  style: GoogleFonts.inter(
+                                    fontSize: isTablet ? 13 : 12,
+                                    color: row.selectedType != null
+                                        ? Colors.grey.shade900
+                                        : Colors.grey.shade500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+        ),
                         ),
                         itemBuilder: (context) => dropdownOptions.map((option) {
                           return PopupMenuItem<String>(
                             value: option,
                             child: SizedBox(
                               width: isTablet ? 150 : 120,
-                              child: Text(
-                                option,
+                            child: Text(
+                              option,
                                 style: GoogleFonts.inter(
                                   fontSize: 13,
                                   color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
@@ -2771,7 +3059,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const SizedBox(width: 8),
+              const SizedBox(width: 8),
                       // Checkbox with % label
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -2806,17 +3094,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                       // Percentage input field (enabled when checkbox is checked)
                       SizedBox(
                         width: 100,
-                        child: TextField(
+                child: TextField(
                           controller: row.percentageController,
                           enabled: row.isPercentageEnabled,
-                          textAlign: TextAlign.end,
-                          keyboardType: TextInputType.numberWithOptions(decimal: true),
-                          style: GoogleFonts.inter(
+                  textAlign: TextAlign.end,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  style: GoogleFonts.inter(
                             fontSize: isTablet ? 15 : 14,
                             fontWeight: FontWeight.w500,
                             color: row.isPercentageEnabled ? const Color(0xFF111827) : Colors.grey.shade400,
-                          ),
-                          decoration: InputDecoration(
+                  ),
+                  decoration: InputDecoration(
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
@@ -2839,15 +3127,30 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                               horizontal: isTablet ? 16 : 14,
                               vertical: isTablet ? 16 : 14,
                             ),
-                            isDense: true,
+                    isDense: true,
                             filled: true,
                             fillColor: row.isPercentageEnabled ? Colors.white : Colors.grey.shade50,
-                            hintText: '0',
-                            hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
-                          ),
-                          onChanged: (text) {
-                            _updateTotals();
-                          },
+                    hintText: '0',
+                    hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                  ),
+                  onChanged: (text) {
+                    // Auto-calculate discount value when percentage is entered
+                    if (rowType == 'discount' && 
+                        row.selectedType != null && 
+                        row.selectedType!.trim().toLowerCase() == 'custom' &&
+                        row.isPercentageEnabled) {
+                      final percentage = double.tryParse(text) ?? 0.0;
+                      final subTotal = _subTotal;
+                      if (percentage > 0 && subTotal > 0) {
+                        final calculatedDiscount = (subTotal * percentage) / 100;
+                        row.valueController.text = calculatedDiscount.toStringAsFixed(2);
+                        print('🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
+                      } else if (percentage == 0 || subTotal == 0) {
+                        row.valueController.text = '0.00';
+                      }
+                    }
+                    _updateTotals();
+                  },
                           maxLines: 1,
                           textAlignVertical: TextAlignVertical.center,
                         ),
@@ -3084,15 +3387,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           color: tealGreen,
                         ),
                       ),
-                      child: Text(
-                        dropdownValue ?? 'Select',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 13 : 12,
-                          color: dropdownValue != null
-                              ? Colors.grey.shade900
-                              : Colors.grey.shade500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                            child: Text(
+                              dropdownValue ?? 'Select',
+                              style: GoogleFonts.inter(
+                                fontSize: isTablet ? 13 : 12,
+                                color: dropdownValue != null
+                                    ? Colors.grey.shade900
+                                    : Colors.grey.shade500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     itemBuilder: (context) => (dropdownOptions ?? []).map((option) {
@@ -3100,8 +3403,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         value: option,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(minWidth: isTablet ? 150 : 120),
-                          child: Text(
-                            option,
+                        child: Text(
+                          option,
                             style: GoogleFonts.inter(
                               fontSize: 13,
                               color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
@@ -3233,15 +3536,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   color: tealGreen,
                 ),
               ),
-              child: Text(
+                    child: Text(
                 selectedValue ?? 'Select',
-                style: GoogleFonts.inter(
-                  fontSize: isTablet ? 14 : 13,
-                  color: selectedValue != null 
-                      ? Colors.grey.shade900 
-                      : Colors.grey.shade500,
-                ),
-                overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 14 : 13,
+                        color: selectedValue != null 
+                            ? Colors.grey.shade900 
+                            : Colors.grey.shade500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
               ),
             ),
             itemBuilder: (context) => options.map((option) {
@@ -3249,9 +3552,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 value: option,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minWidth: isTablet ? 150 : 120),
-                  child: Text(
-                    option,
-                    style: GoogleFonts.inter(fontSize: 14),
+                child: Text(
+                  option,
+                  style: GoogleFonts.inter(fontSize: 14),
                   ),
                 ),
               );
@@ -3509,7 +3812,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: _isLoadingWorkflowActions
+        child: (_isLoadingWorkflowActions || _isLoadingPrivileges)
             ? Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -3630,10 +3933,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0) ? bizUnitFromPrefs : 1);
 
     // Get distributor ID - use selected distributor or fallback to bizUnit
-    // Note: Pass Bizunit and SbuId as selected DistributerId while saving
+    // Note: Keep bizunit and sbuId same as listing API (user's default bizUnit)
+    // Only use distributor ID for DistributerForId field
     int distributorId = bizUnit; // Default to user's bizUnit
-    int finalBizUnit = bizUnit;
-    int finalSbuId = bizUnit;
+    // Keep finalBizUnit and finalSbuId same as listing API (always use user's default bizUnit)
+    int finalBizUnit = bizUnit; // Same as listing API
+    int finalSbuId = bizUnit; // Same as listing API
     
     if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
       try {
@@ -3641,9 +3946,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           (item) => item.text == _selectedDistributor,
         );
         distributorId = distributorItem.id;
-        // If distributor is selected, use distributor ID for both bizunit and sbuId
-        finalBizUnit = distributorId;
-        finalSbuId = distributorId;
+        // distributorId is used for DistributerForId only
+        // bizunit and sbuId remain as user's default bizUnit to match listing API
+        print('🔵 Selected Distributor ID: $distributorId, but keeping bizUnit: $finalBizUnit for consistency with listing');
       } catch (e) {
         // Distributor not found, use defaults
         print('Warning: Selected distributor not found in list, using bizUnit: $e');
@@ -3655,12 +3960,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         ? int.tryParse(_selectedCustomerCode!)
         : null;
 
-    // Get sales rep ID - need to find from name
+    // Get sales rep ID - find from stored items
     int? salesRepId;
-    if (_selectedSalesRep != null && _salesReps.contains(_selectedSalesRep)) {
-      // Try to get from API if needed - for now use a placeholder
-      // You may need to store sales rep ID when loading
-      salesRepId = 50; // Placeholder - should be fetched from API
+    if (_selectedSalesRep != null && _salesRepItems.isNotEmpty) {
+      try {
+        final salesRepItem = _salesRepItems.firstWhere(
+          (item) => item.text == _selectedSalesRep,
+        );
+        salesRepId = salesRepItem.id;
+        print('🔵 Sales Rep ID: $salesRepId for "${_selectedSalesRep}"');
+      } catch (e) {
+        print('⚠️ Sales Rep not found in list: ${_selectedSalesRep}');
+      }
     }
 
     // Get currency ID
@@ -3734,8 +4045,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // Format ReqdDate using the same ISO 8601 format helper
       final reqdDateStr = formatDateForApi(item.requiredDate);
 
-      // Get UOM ID - placeholder, should be mapped from selectedUOM
-      int uomId = 44; // Default Box - should be mapped from API
+      // Get UOM ID from stored items
+      int uomId = 44; // Default Box - fallback if not found
+      if (item.selectedUOM != null && item.uomItems.isNotEmpty) {
+        try {
+          final uomItem = item.uomItems.firstWhere(
+            (uom) => uom.text == item.selectedUOM,
+          );
+          uomId = uomItem.id;
+          print('🔵 UOM ID: $uomId for "${item.selectedUOM}"');
+        } catch (e) {
+          print('⚠️ UOM not found in list: ${item.selectedUOM}, using default: $uomId');
+        }
+      }
 
       contractItems.add(SalesContractItem(
         id: _isEditMode ? _loadedOrderData?.id : null, // Use existing item ID if editing
@@ -3805,6 +4127,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Add Discount rows
     for (final discountRow in _discountRows) {
       final value = discountRow.value;
+      final isCustom = discountRow.selectedType != null && discountRow.selectedType!.trim().toLowerCase() == 'custom';
+      final customPercentage = isCustom && discountRow.isPercentageEnabled 
+          ? discountRow.percentageValue 
+          : null;
+      
       taxCharges.add(TaxAndOtherChargeDetail(
         id: null,
         gridId: 81,
@@ -3821,8 +4148,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         subTypeText: discountRow.selectedType,
         typeText: '',
         pageName: 'SalesOrder',
-        isCustom: false,
-        isCustomSelected: false,
+        isCustom: isCustom,
+        isCustomSelected: isCustom,
+        customPercentage: customPercentage,
         label: 'Discount',
       ));
     }
@@ -3910,14 +4238,32 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     final processActionId = _workflowActions.isNotEmpty ? _workflowActions.first.processActionId : null;
     final processId = _workflowResponse?.id;
 
+    // Get dynamic userId from user
+    final dynamicUserId = user.userId;
+    
+    // Console logging for dynamic values
+    print('═══════════════════════════════════════════════════════════');
+    print('📤 Sales Order Save - Dynamic Values');
+    print('═══════════════════════════════════════════════════════════');
+    print('User ID: $dynamicUserId (from user.userId)');
+    print('Created By: ${user.userId}');
+    print('Customer ID: $customerId');
+    print('Customer Name: ${_selectedCustomer?.name}');
+    print('Customer (field): ${_selectedCustomer?.name} (sending name instead of ID)');
+    print('Sales Rep ID: $salesRepId');
+    print('BizUnit: $finalBizUnit (same as listing API)');
+    print('SbuId: $finalSbuId (same as listing API)');
+    print('Distributor ID: $distributorId (for DistributerForId field only)');
+    print('═══════════════════════════════════════════════════════════');
+
     return SalesOrderSaveRequest(
       id: _isEditMode && _loadedOrderData != null ? _loadedOrderData!.id : null,
-      createdBy: user.userId,
+      createdBy: dynamicUserId, // Dynamic userId from user
       status: 0,
-      sbuId: finalSbuId, // Use distributor ID if selected
+      sbuId: finalSbuId, // Same as listing API (user's default bizUnit)
       company: 1, // Default - should be from user/config
-      bizunit: finalBizUnit, // Use distributor ID if selected
-      userId: user.userId,
+      bizunit: finalBizUnit, // Same as listing API (user's default bizUnit)
+      userId: dynamicUserId, // Dynamic userId from user
       workflowFlag: workflowFlag,
       code: 'SO',
       department: 1, // Default - should be from user/config
@@ -3927,7 +4273,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       currencyText: _selectedCurrency,
       amount: _subTotal,
       date: dateStr,
-      customer: _selectedCustomer?.name,
+      customer: _selectedCustomer?.name, // Pass customer name instead of ID
       customerId: customerId,
       cusAddress: CustomerAddressController.text,
       customerRef: _customerPOController.text,
@@ -4012,10 +4358,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         // Update order ID if this is a new order
         if (response.data is Map && response.data['id'] != null) {
           final savedOrderId = response.data['id'];
-          if (!_isEditMode && savedOrderId != null) {
-            // Update to edit mode with the new ID
-            // You might want to navigate back or update the widget
-            print('✅ Order saved with ID: $savedOrderId');
+          print('✅ Order saved with ID: $savedOrderId');
+          
+          if (!_isEditMode) {
+            // For new orders, navigate back to listing screen with success result
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Order created successfully'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+            // Pop with result to trigger refresh in listing screen
+            Navigator.of(context).pop(true);
+            return;
           }
         }
 
@@ -4082,8 +4438,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           const SnackBar(
             content: Text('Order submitted for approval successfully'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
+        // Navigate back to listing screen with success result
+        if (!_isEditMode || true) {
+          // Pop with result to trigger refresh in listing screen
+          Navigator.of(context).pop(true);
+          return;
+        }
       } else {
         throw Exception(response.message ?? 'Failed to submit order');
       }
@@ -4311,8 +4674,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           SnackBar(
             content: Text('Order ${action.name} successfully'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
           ),
         );
+        // Navigate back to listing screen with success result
+        Navigator.of(context).pop(true);
+        return;
       } else {
         throw Exception(response.message ?? 'Failed to ${action.name} order');
       }
@@ -4351,6 +4718,7 @@ class _ItemCard extends StatelessWidget {
   final Future<void> Function(_LineItem, int, [VoidCallback?]) loadTaxForItem;
   final String Function(DateTime) formatDate;
   final bool isEditMode;
+  final int Function() getDistributorId;
 
   const _ItemCard({
     required this.index,
@@ -4364,6 +4732,7 @@ class _ItemCard extends StatelessWidget {
     required this.loadTaxForItem,
     required this.formatDate,
     required this.isEditMode,
+    required this.getDistributorId,
   });
 
   @override
@@ -4425,21 +4794,39 @@ class _ItemCard extends StatelessWidget {
                           controller: item.itemDescriptionController,
                           selectedProduct: item.product,
                           onProductSelected: (product) {
+                            print('🔵 [onProductSelected] Product selected: ${product.name}, Rate: ${product.rate}, MRP: ${product.mrp}');
+                            
+                            // Set product which will populate Rate and MRP
                             item.setProduct(product);
+                            
+                            // Ensure quantity defaults to 1 if empty for amount calculation
+                            if (item.qtyController.text.isEmpty || item.qtyController.text == '0') {
+                              item.qtyController.text = '1';
+                              print('🔵 [onProductSelected] Set default quantity to 1');
+                            }
+                            
                             // Load UOM and Tax for the selected item
                             final itemId = int.tryParse(product.id) ?? 0;
                             if (itemId > 0) {
                               loadUOMForItem(item, itemId, null, onChanged);
                               loadTaxForItem(item, itemId, onChanged);
                             }
+                            
+                            // Verify Rate and MRP are set
+                            print('🔵 [onProductSelected] After setProduct - RateController: "${item.rateController.text}", MRPController: "${item.mrpController.text}"');
+                            print('🔵 [onProductSelected] Calculated Amount: ${item.amount}, Total Amount: ${item.totalAmount}');
+                            
+                            // Trigger recalculation of totals after setting product
+                            // This will rebuild the UI with updated Rate, MRP, Amount, and Total Amount
                             onChanged();
                           },
+                          getDistributorId: getDistributorId,
                         ),
             const SizedBox(height: 16),
             
             // Row: Quantity & UOM
-            Row(
-              children: [
+                    Row(
+                      children: [
                       Expanded(
                         child: _NumberField(
                           label: 'Quantity*',
@@ -4489,7 +4876,7 @@ class _ItemCard extends StatelessWidget {
                                   // If no options, keep existing UOM or set to null
                                   if (item.selectedUOM == null || item.selectedUOM!.isEmpty) {
                                   item.selectedUOM = null;
-                                  }
+                                }
                                 }
                                 onChanged();
                               } catch (e) {
@@ -4500,24 +4887,42 @@ class _ItemCard extends StatelessWidget {
                           itemId: int.tryParse(item.product.id) ?? 0,
                         ),
                       ),
-              ],
-            ),
+                      ],
+                    ),
             const SizedBox(height: 16),
             
             // Row: Rate & MRP
                     Row(
                       children: [
                         Expanded(
-                  child: _ReadonlyField(
-                    label: 'Rate*',
-                    value: item.rateController.text.isEmpty ? '' : formatCurrency(double.tryParse(item.rateController.text) ?? 0.0),
+                  child: Builder(
+                    builder: (context) {
+                      // Calculate Rate value from controller or product rate
+                      final rateValue = item.rateController.text.isNotEmpty 
+                          ? double.tryParse(item.rateController.text) ?? 0.0
+                          : (item.product.rate > 0 ? item.product.rate : 0.0);
+                      
+                      return _ReadonlyField(
+                        label: 'Rate*',
+                        value: rateValue > 0 ? formatCurrency(rateValue) : '',
+                      );
+                    },
                       ),
                     ),
                         const SizedBox(width: 12),
                         Expanded(
-                  child: _ReadonlyField(
-                    label: 'MRP*',
-                    value: item.mrpController.text.isEmpty ? '' : formatCurrency(double.tryParse(item.mrpController.text) ?? 0.0),
+                  child: Builder(
+                    builder: (context) {
+                      // Calculate MRP value from controller or product mrp
+                      final mrpValue = item.mrpController.text.isNotEmpty
+                          ? double.tryParse(item.mrpController.text) ?? 0.0
+                          : (item.product.mrp != null && item.product.mrp! > 0 ? item.product.mrp! : 0.0);
+                      
+                      return _ReadonlyField(
+                        label: 'MRP*',
+                        value: mrpValue > 0 ? formatCurrency(mrpValue) : '',
+                      );
+                    },
                           ),
                         ),
                       ],
@@ -4586,17 +4991,15 @@ class _ItemCard extends StatelessWidget {
                         ),
                       ],
                     ),
-            // Remarks field (only in edit mode)
-            if (isEditMode) ...[
-              const SizedBox(height: 16),
-              _TextField(
-                label: 'Remarks',
-                controller: item.remarksController,
-                hintText: 'Enter remarks...',
-                maxLines: 3,
-                onChanged: (v) => onChanged(),
-              ),
-            ],
+            // Remarks field (available in both create and edit mode)
+            const SizedBox(height: 16),
+            _TextField(
+              label: 'Remarks',
+              controller: item.remarksController,
+              hintText: 'Enter remarks...',
+              maxLines: 3,
+              onChanged: (v) => onChanged(),
+            ),
           ],
         ],
       ),
@@ -4619,6 +5022,7 @@ class _LineItem {
   TextEditingController? _remarksController; // Remarks field - nullable for hot reload compatibility
   String? selectedUOM; // UOM dropdown value
   List<String> uomOptions = []; // UOM options from API
+  List<CommonDropdownItem> uomItems = []; // UOM items with IDs from API
   String? selectedTax; // Tax dropdown value
   List<String> taxOptions = []; // Tax options from API
 
@@ -4682,8 +5086,29 @@ class _LineItem {
   void setProduct(Product newProduct) {
     product = newProduct;
     itemDescriptionController.text = newProduct.name;
-    // Rate and MRP are readonly, so don't set them here
-    // They will be calculated/displayed from product.rate
+    
+    // Automatically set Rate from product.rate
+    if (newProduct.rate > 0) {
+      rateController.text = newProduct.rate.toStringAsFixed(2);
+      print('✅ [setProduct] Set Rate: ${newProduct.rate.toStringAsFixed(2)}');
+    } else {
+      rateController.clear();
+      print('⚠️ [setProduct] Product rate is 0 or empty, cleared Rate field');
+    }
+    
+    // Automatically set MRP from product.mrp if available
+    if (newProduct.mrp != null && newProduct.mrp! > 0) {
+      mrpController.text = newProduct.mrp!.toStringAsFixed(2);
+      print('✅ [setProduct] Set MRP: ${newProduct.mrp!.toStringAsFixed(2)}');
+    } else {
+      mrpController.clear();
+      print('⚠️ [setProduct] Product MRP is null or 0, cleared MRP field');
+    }
+    
+    // Recalculate Amount and Total Amount
+    // Amount = Rate * Quantity (will be calculated via getter)
+    // Total Amount = Amount - Discount (will be calculated via getter)
+    
     selectedUOM = null; // Will be auto-selected when UOM loads
   }
 
@@ -5373,12 +5798,14 @@ class _SearchableItemField extends StatefulWidget {
   final TextEditingController controller;
   final Product? selectedProduct;
   final ValueChanged<Product> onProductSelected;
+  final int Function() getDistributorId;
 
   const _SearchableItemField({
     required this.label,
     required this.controller,
     required this.selectedProduct,
     required this.onProductSelected,
+    required this.getDistributorId,
   });
 
   @override
@@ -5446,26 +5873,44 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
       final commonRepository = getIt<CommonRepository>();
       print('🔍 [SearchableItemField] CommonRepository obtained');
       
-      // Call API with search text
-      print('🔍 [SearchableItemField] ⚠️ CALLING API with SearchText: "$searchText", CommandType: 105, DistributerId: 71');
+      // Get distributor ID from parent widget callback
+      final distributorId = widget.getDistributorId();
+      
+      // Call API with search text and correct distributor ID
+      print('🔍 [SearchableItemField] CALLING API with SearchText: "$searchText", CommandType: 105, DistributerId: $distributorId');
       final items = await commonRepository.getItemList(
-        distributerId: 71,
+        distributerId: distributorId,
         searchText: searchText,
       );
 
       print('🔍 [SearchableItemField] API returned ${items.length} items');
       
+      // Log rate values from API response
+      if (items.isNotEmpty) {
+        print('🔍 [SearchableItemField] Sample item rates from API:');
+        for (var i = 0; i < (items.length > 3 ? 3 : items.length); i++) {
+          final item = items[i];
+          print('   Item ${i + 1}: ${item.text} - Rate: ${item.rate}, ID: ${item.id}');
+        }
+      }
+      
       if (mounted) {
         setState(() {
           _filteredProducts = items.map((item) {
-            return Product(
+            final product = Product(
               id: item.id.toString(),
               name: item.text,
               manufacturer: item.name.isNotEmpty ? item.name : 'N/A',
               rate: item.rate,
+              mrp: null, // MRP will be loaded from item details if needed
               uom: item.uom > 0 ? 'UOM-${item.uom}' : 'Unit',
               availableQty: item.stock,
             );
+            // Log if rate is 0 or missing
+            if (item.rate == 0 || item.rate == null) {
+              print('⚠️ [SearchableItemField] Item "${item.text}" (ID: ${item.id}) has rate = ${item.rate}');
+            }
+            return product;
           }).toList();
           _isLoading = false;
           _isInitialLoad = false;
@@ -5517,7 +5962,14 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: Colors.grey.shade200, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: _isLoading
                   ? const Padding(
@@ -5531,7 +5983,7 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                         )
                   : _filteredProducts.isEmpty
                       ? Padding(
-                          padding: const EdgeInsets.all(16.0),
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -5551,37 +6003,74 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                         )
                       : ListView.separated(
                           shrinkWrap: true,
+                          physics: const ClampingScrollPhysics(),
+                          padding: EdgeInsets.zero,
                           itemCount: _filteredProducts.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: Colors.grey.shade200,
+                            thickness: 1,
+                          ),
                           itemBuilder: (context, index) {
                             final product = _filteredProducts[index];
-                            return ListTile(
-                              dense: true,
-                              title: Text(
-                                product.name,
-                                style: GoogleFonts.inter(fontSize: 14),
-                              ),
-                              subtitle: product.manufacturer != 'N/A'
-                                  ? Text(
-                                      product.manufacturer,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    )
-                                  : null,
-                              trailing: Text(
-                                'LKR ${product.rate.toStringAsFixed(2)}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
+                            return InkWell(
                               onTap: () {
                                 widget.controller.text = product.name;
                                 widget.onProductSelected(product);
                                 _removeOverlay();
                               },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 12.0,
+                                ),
+                                color: Colors.transparent,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                product.name,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: const Color(0xFF111827),
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (product.manufacturer != 'N/A') ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                      product.manufacturer,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                                fontWeight: FontWeight.w400,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    if (product.rate > 0)
+                                      Text(
+                                        product.rate.toStringAsFixed(2),
+                                style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: const Color(0xFF111827),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             );
                           },
                         ),
@@ -5777,14 +6266,37 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
     });
 
     try {
-      final commonRepository = getIt<CommonRepository>();
-      print('🔍 [SearchableCustomerField] Searching customers with: "$searchText"');
+      // Get customer ID - try multiple sources
+      int? customerId;
       
-      // Call API with search text
+      // First try to parse selected customer code (which should be customer ID as string)
+      if (widget.selectedCustomerCode != null && widget.selectedCustomerCode!.isNotEmpty) {
+        customerId = int.tryParse(widget.selectedCustomerCode!);
+        // If parsing failed, selectedCustomerCode might be a code, not ID
+        // In that case, we might need to look it up, but for now we'll use null
+        if (customerId == null) {
+          print('⚠️ [SearchableCustomerField] Could not parse customerCode as ID: ${widget.selectedCustomerCode}');
+        }
+      }
+      
+      final commonRepository = getIt<CommonRepository>();
+      
+      // Get userId
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      final int userId = user?.id ?? user?.userId ?? 43;
+      
+      print('🔍 [SearchableCustomerField] Searching customers with: "$searchText", CustomerId: $customerId, UserId: $userId, BizUnit: ${_bizUnit}, SelectedCustomerCode: ${widget.selectedCustomerCode}');
+      
+      // Call API with search text, customer ID, userId, and other dynamic values
       final items = await commonRepository.getCustomerList(
         bizUnit: _bizUnit!,
-        customerId: null,
+        customerId: customerId,
         searchText: searchText.isEmpty ? null : searchText,
+        userId: userId,
+        sector: 0,
+        taxFlag: 0,
+        includeCancelled: false,
       );
 
       if (mounted) {
