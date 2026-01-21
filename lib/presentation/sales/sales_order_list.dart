@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../utils/routes/routes.dart';
 import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
+import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
@@ -34,6 +35,9 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
   int _currentPage = 1;
   final int _pageSize = 15;
   bool _hasMore = true;
+  
+  // Map to store loaded customer names by customerId
+  final Map<int, String> _loadedCustomerNames = {};
 
   // Date filters
   DateTime? _fromDate;
@@ -689,6 +693,9 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
               .toList();
           _customerList = ['All Customers', ...customers];
           
+          // Load customer names for orders that don't have them
+          _loadMissingCustomerNames(response.items);
+          
           // Currency list is now loaded separately via _loadCurrencyFilters()
         });
       }
@@ -700,6 +707,95 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
           _loadError = 'Failed to load sales orders: ${e.toString()}';
         });
       }
+    }
+  }
+
+  /// Get customer name for an order, using loaded names if available
+  String _getCustomerName(SalesOrderApiItem item) {
+    // First check if we have a loaded customer name
+    if (item.customerId != null && _loadedCustomerNames.containsKey(item.customerId)) {
+      return _loadedCustomerNames[item.customerId]!;
+    }
+    // Fall back to customerName or customer from API
+    return item.customerName ?? item.customer ?? '';
+  }
+
+  /// Load customer names for orders that don't have customerName or customer
+  Future<void> _loadMissingCustomerNames(List<SalesOrderApiItem> orders) async {
+    // Find all customerIds that need customer names loaded
+    final customerIdsToLoad = <int>{};
+    for (var order in orders) {
+      if (order.customerId != null &&
+          (order.customerName == null || order.customerName!.isEmpty) &&
+          (order.customer == null || order.customer!.isEmpty) &&
+          !_loadedCustomerNames.containsKey(order.customerId)) {
+        customerIdsToLoad.add(order.customerId!);
+      }
+    }
+
+    if (customerIdsToLoad.isEmpty) return;
+
+    try {
+      // Get user info for bizUnit
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+
+      if (user == null) {
+        print('Error: User not available for Customer API');
+        return;
+      }
+
+      // Get bizUnit from UserDetailStore or user prefs
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      if (bizUnit == 0) {
+        print('Error: BizUnit is 0');
+        return;
+      }
+
+      print('🔵 Loading Customer Names for ${customerIdsToLoad.length} customers, BizUnit: $bizUnit');
+
+      final commonRepository = getIt<CommonRepository>();
+      
+      // Load customer names for each customerId
+      for (var customerId in customerIdsToLoad) {
+        try {
+          final customers = await commonRepository.getCustomerList(
+            bizUnit: bizUnit,
+            customerId: customerId,
+          );
+
+          if (customers.isNotEmpty) {
+            try {
+              final customerItem = customers.firstWhere(
+                (item) => item.id == customerId,
+              );
+              if (mounted) {
+                setState(() {
+                  _loadedCustomerNames[customerId] = customerItem.text;
+                });
+                print('✅ Loaded Customer Name for ID $customerId: ${customerItem.text}');
+              }
+            } catch (e) {
+              print('⚠️ Customer not found by ID: $customerId');
+            }
+          }
+        } catch (e) {
+          print('Error loading customer name for ID $customerId: $e');
+        }
+      }
+    } catch (e) {
+      print('Error loading customer names: $e');
     }
   }
 
@@ -716,20 +812,28 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
         }
       }
 
-      // Format amount
+      // Format amount with 2 decimal places
       String amountStr =
           '${item.currencyText ?? 'LKR'}${_formatCurrency(item.amount)}';
+
+      // Format quantity with 2 decimal places
+      String qtyStr = _formatQuantity(item.totalQuantity ?? 0);
 
       // Get status text
       String statusText = item.statusText ?? 'Pending';
       String deliveryText = item.isClosed == 1 ? 'Delivered' : 'Pending';
 
+      // Show "Drafted" instead of SO Number for drafted orders
+      final orderNumber = (statusText.toLowerCase() == 'drafted')
+          ? 'Drafted'
+          : (item.soNumber ?? '');
+      
       return {
         'id': item.id.toString(),
         'date': dateStr,
-        'order': item.soNumber ?? '',
-        'customer': item.customerName ?? item.customer ?? '',
-        'qty': (item.totalQuantity ?? 0).toString(),
+        'order': orderNumber,
+        'customer': _getCustomerName(item),
+        'qty': qtyStr,
         'amount': amountStr,
         'status': statusText,
         'delivery': deliveryText,
@@ -737,18 +841,33 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
     }).toList();
   }
 
+  // Format quantity with 2 decimal places
+  static String _formatQuantity(num value) {
+    return value.toDouble().toStringAsFixed(2);
+  }
+
   String _formatCurrency(double value) {
-    final s = value.toStringAsFixed(0);
+    // Format with 2 decimal places
+    final s = value.toStringAsFixed(2);
+    // Split into integer and decimal parts
+    final parts = s.split('.');
+    final integerPart = parts[0];
+    final decimalPart = parts.length > 1 ? parts[1] : '00';
+    
+    // Add thousand separators to integer part
     final buf = StringBuffer();
     int count = 0;
-    for (int i = s.length - 1; i >= 0; i--) {
-      buf.write(s[i]);
+    for (int i = integerPart.length - 1; i >= 0; i--) {
+      buf.write(integerPart[i]);
       count++;
       if (i > 0 && ((count == 3) || (count > 3 && (count - 3) % 2 == 0))) {
         buf.write(',');
       }
     }
-    return buf.toString().split('').reversed.join();
+    final formattedInteger = buf.toString().split('').reversed.join();
+    
+    // Combine integer and decimal parts
+    return '$formattedInteger.$decimalPart';
   }
 
   @override
@@ -896,6 +1015,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: _SalesOrderCard(
                                       order: order,
+                                      customerName: _getCustomerName(order),
                                       onView: () {
                                         Navigator.pushNamed(
                                           context,
@@ -2391,7 +2511,7 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
       case 'soNumber':
         return o.soNumber;
       case 'customer':
-        return o.customerName;
+        return _getCustomerName(o);
       case 'itemDetails':
         return o.itemName;
       case 'type':
@@ -3178,12 +3298,14 @@ class SaleOrdersHeader extends StatelessWidget {
 
 class _SalesOrderCard extends StatelessWidget {
   final SalesOrderApiItem order;
+  final String customerName;
   final VoidCallback? onView;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
   const _SalesOrderCard({
     required this.order,
+    required this.customerName,
     this.onView,
     this.onEdit,
     this.onDelete,
@@ -3233,17 +3355,39 @@ class _SalesOrderCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      order.soNumber ?? 'SO-${order.id}',
-                      style: GoogleFonts.inter(
-                        fontSize: isMobile ? 12 : 14,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _getStatusChip(order.statusText ?? 'Pending'),
+                    // Show "Drafted" badge in place of SO Number for drafted orders
+                    (order.statusText ?? '').toLowerCase() == 'drafted'
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Drafted',
+                              style: GoogleFonts.inter(
+                                fontSize: isMobile ? 11 : 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                order.soNumber ?? 'SO-${order.id}',
+                                style: GoogleFonts.inter(
+                                  fontSize: isMobile ? 12 : 14,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.2,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              _getStatusChip(order.statusText ?? 'Pending'),
+                            ],
+                          ),
                   ],
                 ),
               ),
@@ -3290,6 +3434,13 @@ class _SalesOrderCard extends StatelessWidget {
           const SizedBox(height: 10),
           _iconKvRow(
             context,
+            Icons.person_outline,
+            'Customer',
+            customerName.isNotEmpty ? customerName : 'N/A',
+          ),
+          SizedBox(height: isMobile ? 6 : 8),
+          _iconKvRow(
+            context,
             Icons.calendar_today_outlined,
             'Date',
             order.date != null
@@ -3299,23 +3450,16 @@ class _SalesOrderCard extends StatelessWidget {
           SizedBox(height: isMobile ? 6 : 8),
           _iconKvRow(
             context,
-            Icons.person_outline,
-            'Customer',
-            order.customerName ?? order.customer ?? 'N/A',
+            Icons.money_outlined,
+            'Amount',
+            '${order.currencyText ?? 'LKR '}${_formatCurrencyINR(order.amount)}',
           ),
           SizedBox(height: isMobile ? 6 : 8),
           _iconKvRow(
             context,
             Icons.inventory_2_outlined,
             'Qty',
-            (order.totalQuantity ?? 0).toString(),
-          ),
-          SizedBox(height: isMobile ? 6 : 8),
-          _iconKvRow(
-            context,
-            Icons.money_outlined,
-            'Amount',
-            '${order.currencyText ?? 'LKR '}${_formatCurrencyINR(order.amount)}',
+            _SaleOrderListScreenState._formatQuantity(order.totalQuantity ?? 0),
           ),
           const SizedBox(height: 12),
           Divider(
@@ -3438,17 +3582,27 @@ class _SalesOrderCard extends StatelessWidget {
   }
 
   static String _formatCurrencyINR(double value) {
-    final s = value.toStringAsFixed(0);
+    // Format with 2 decimal places
+    final s = value.toStringAsFixed(2);
+    // Split into integer and decimal parts
+    final parts = s.split('.');
+    final integerPart = parts[0];
+    final decimalPart = parts.length > 1 ? parts[1] : '00';
+    
+    // Add thousand separators to integer part
     final buf = StringBuffer();
     int count = 0;
-    for (int i = s.length - 1; i >= 0; i--) {
-      buf.write(s[i]);
+    for (int i = integerPart.length - 1; i >= 0; i--) {
+      buf.write(integerPart[i]);
       count++;
       if (i > 0 && ((count == 3) || (count > 3 && (count - 3) % 2 == 0))) {
         buf.write(',');
       }
     }
-    return buf.toString().split('').reversed.join();
+    final formattedInteger = buf.toString().split('').reversed.join();
+    
+    // Combine integer and decimal parts
+    return '$formattedInteger.$decimalPart';
   }
 }
 
@@ -3487,11 +3641,11 @@ class _ResponsiveOrdersTable extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _kv('Date', o['date'] ?? ''),
                   _kv('Sale Order #', o['order'] ?? ''),
                   _kv('Customer', o['customer'] ?? ''),
-                  _kv('Qty', o['qty'] ?? ''),
+                  _kv('Date', o['date'] ?? ''),
                   _kv('Amount', o['amount'] ?? ''),
+                  _kv('Qty', o['qty'] ?? ''),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -3519,22 +3673,22 @@ class _ResponsiveOrdersTable extends StatelessWidget {
         columnSpacing: 24,
         horizontalMargin: 16,
         columns: const [
-          DataColumn(label: Text('Date')),
           DataColumn(label: Text('Sale Order #')),
           DataColumn(label: Text('Customer')),
-          DataColumn(label: Text('Qty')),
+          DataColumn(label: Text('Date')),
           DataColumn(label: Text('Amount')),
+          DataColumn(label: Text('Qty')),
           DataColumn(label: Text('Status')),
           DataColumn(label: Text('Delivery')),
         ],
         rows: data.map((o) {
           return DataRow(
             cells: [
-              DataCell(Text(o['date'] ?? '')),
               DataCell(Text(o['order'] ?? '')),
               DataCell(Text(o['customer'] ?? '')),
-              DataCell(Text(o['qty'] ?? '')),
+              DataCell(Text(o['date'] ?? '')),
               DataCell(Text(o['amount'] ?? '')),
+              DataCell(Text(o['qty'] ?? '')),
               DataCell(
                   _chip(o['status'] ?? '', _statusColor(o['status'] ?? ''))),
               DataCell(_chip(

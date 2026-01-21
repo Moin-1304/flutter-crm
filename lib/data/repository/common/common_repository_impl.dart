@@ -1,6 +1,6 @@
 import 'package:boilerplate/data/network/apis/common/common_api.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, TaxComponentResponse;
+    show CommonDropdownItem, TaxComponentResponse, ItemDetailResponse;
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/di/service_locator.dart';
 
@@ -610,6 +610,27 @@ class CommonRepositoryImpl implements CommonRepository {
 
     // Fallback to empty list if API fails
     return [];
+  }
+
+  @override
+  Future<ItemDetailResponse> getItemDetail({
+    required int itemId,
+    required String date,
+    required int customerId,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        return await commonApi.getItemDetail(
+          itemId: itemId,
+          date: date,
+          customerId: customerId,
+        );
+      }
+    } catch (e) {
+      print('Error getting item detail: $e');
+    }
+    throw Exception('Failed to get item detail');
   }
 
   @override

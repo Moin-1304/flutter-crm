@@ -488,6 +488,7 @@ class SalesContractItem {
   final double quantity;
   final int uom;
   final double unitPrice;
+  final double? mrp; // MRP field
   final double amount;
   final double discount;
   final double? tax;
@@ -525,6 +526,7 @@ class SalesContractItem {
     required this.quantity,
     required this.uom,
     required this.unitPrice,
+    this.mrp,
     required this.amount,
     required this.discount,
     this.tax,
@@ -564,6 +566,7 @@ class SalesContractItem {
       'Quantity': quantity,
       'UOM': uom,
       'UnitPrice': unitPrice,
+      'MRP': mrp,
       'Amount': amount,
       'Discount': discount,
       'Tax': tax,
@@ -1006,6 +1009,35 @@ class SalesOrderSaveResponse {
       success: json['id'] != null || json['status'] != null,
       message: json['message']?.toString(),
     );
+  }
+}
+
+/// Transaction Cancel Request Model
+/// API: /api/SaleOrder/TransactionCancel
+/// Type: POST
+class SalesOrderTransactionCancelRequest {
+  final int? poId;
+  final int id; // Transaction Id (required)
+  final int? itemId;
+  final int? vendorId;
+  final int processId; // Process Id from workflowget (required)
+
+  SalesOrderTransactionCancelRequest({
+    this.poId,
+    required this.id,
+    this.itemId,
+    this.vendorId,
+    required this.processId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'POId': poId,
+      'Id': id,
+      'ItemId': itemId,
+      'VendorId': vendorId,
+      'ProcessId': processId,
+    };
   }
 }
 

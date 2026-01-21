@@ -1363,7 +1363,24 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Employee Information
-                    if (item.employeeName != null || item.designation != null || item.planDate != null) ...[
+                    // Get the correct date to check if section should be shown
+                    Builder(
+                      builder: (context) {
+                        DateTime? displayDateForCheck;
+                        if (item.tourPlanDetails != null && 
+                            item.tourPlanDetails!.isNotEmpty && 
+                            item.tourPlanDetails!.first.planDate != null) {
+                          displayDateForCheck = item.tourPlanDetails!.first.planDate;
+                        } else if (item.planDate != null && item.planDate.year > 1) {
+                          displayDateForCheck = item.planDate;
+                        } else if (item.date != null) {
+                          displayDateForCheck = item.date;
+                        }
+                        
+                        if (item.employeeName != null || item.designation != null || displayDateForCheck != null) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                       Text(
                         'Employee Information',
                         style: GoogleFonts.inter(
@@ -1388,16 +1405,46 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                               if (item.employeeName != null && item.employeeName!.isNotEmpty) SizedBox(height: isTablet ? 6 : 4),
                               _DetailRow('Designation', item.designation!),
                             ],
-                            if (item.planDate != null) ...[
-                              if ((item.employeeName != null && item.employeeName!.isNotEmpty) || (item.designation != null && item.designation!.isNotEmpty))
-                                SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Date', _formatDate(item.planDate)),
-                            ],
+                            // Get the correct date - prefer tourPlanDetails[0].planDate, then item.planDate, then item.date
+                            Builder(
+                              builder: (context) {
+                                DateTime? displayDate;
+                                if (item.tourPlanDetails != null && 
+                                    item.tourPlanDetails!.isNotEmpty && 
+                                    item.tourPlanDetails!.first.planDate != null) {
+                                  // Use planDate from tourPlanDetails[0] (most accurate)
+                                  displayDate = item.tourPlanDetails!.first.planDate;
+                                } else if (item.planDate != null && 
+                                           item.planDate.year > 1) {
+                                  // Use item.planDate only if it's valid (not default '0001-01-01')
+                                  displayDate = item.planDate;
+                                } else if (item.date != null) {
+                                  // Fallback to item.date
+                                  displayDate = item.date;
+                                }
+                                
+                                if (displayDate != null) {
+                                  return Column(
+                                    children: [
+                                      if ((item.employeeName != null && item.employeeName!.isNotEmpty) || (item.designation != null && item.designation!.isNotEmpty))
+                                        SizedBox(height: isTablet ? 6 : 4),
+                                      _DetailRow('Date', _formatDate(displayDate)),
+                                    ],
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
                           ],
                         ),
                       ),
                       SizedBox(height: isTablet ? 12 : 10),
-                    ],
+                            ],
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
                     
                     // Location Details
                     if (item.cluster != null || item.clusters != null || item.territory != null) ...[

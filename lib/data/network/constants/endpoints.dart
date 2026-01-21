@@ -88,6 +88,7 @@ class Endpoints {
   static const String commonGetAuto = "$baseUrl/Common/GetAuto";
   static const String commonGetAutoBigInt = "$baseUrl/Common/GetAutoBigInt";
   static const String commonGetCatItemTax = "$baseUrl/Common/GetCatItemTax";
+  static const String commonGetItemDetail = "$baseUrl/Common/GetItemDetail";
   
   // Tax Component endpoints
   static const String taxComponentGet = "$baseUrl/TaxComponent/Get";
@@ -186,5 +187,6 @@ class Endpoints {
   static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
   static const String salesOrderSave = "$baseUrl/SaleOrder/Save";
   static const String salesOrderDelete = "$baseUrl/SaleOrder/Delete";
+  static const String salesOrderTransactionCancel = "$baseUrl/SaleOrder/TransactionCancel";
   static const String salesInvoiceCommonAuto = "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
 }

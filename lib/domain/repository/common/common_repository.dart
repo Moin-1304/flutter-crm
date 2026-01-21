@@ -1,5 +1,5 @@
 import 'package:boilerplate/domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, TaxComponentResponse;
+    show CommonDropdownItem, TaxComponentResponse, ItemDetailResponse;
 
 abstract class CommonRepository {
   Future<List<CommonDropdownItem>> getEmployeeList({int? employeeId});
@@ -106,5 +106,10 @@ abstract class CommonRepository {
     String? filterExpression,
     int? pageId,
     int? type,
+  });
+  Future<ItemDetailResponse> getItemDetail({
+    required int itemId,
+    required String date,
+    required int customerId,
   });
 }

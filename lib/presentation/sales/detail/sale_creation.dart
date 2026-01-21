@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -7,7 +8,7 @@ import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, TaxComponentResponse, ChargesType;
+    show CommonDropdownItem, TaxComponentResponse, ChargesType, ItemDetailResponse;
 import 'package:boilerplate/domain/entity/workflow/workflow_api_models.dart'
     show WorkflowGetAllActionsRequest, WorkflowGetAllActionsResponse, ProcessActionDetail,
     WorkflowGetUserPagePrivilegesRequest, WorkflowGetUserPagePrivilegesResponse, ButtonPrivilege;
@@ -38,6 +39,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   bool _isLoading = false;
   SalesOrderApiItem? _loadedOrderData;
   bool _isLoadingCustomers = false;
+  bool _isActionsMenuOpen = false; // Track if actions menu is open
 
 // Customers fetched from API
   List<Customer> Customers = [];
@@ -124,6 +126,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   
   // Order Information section
   bool _isOrderInfoExpanded = true; // Default to expanded
+
+  // Scroll controller to preserve scroll position
+  final ScrollController _scrollController = ScrollController();
+  
+  // Flag to prevent automatic focus restoration after dropdown selection
+  bool _preventingFocusRestoration = false;
 
   bool get _isEditMode => widget.contractId != null || widget.orderId != null || widget.orderData != null;
 
@@ -217,9 +225,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       print('🔵 [LoadCustomers] CustomerId: $customerId, UserId: $userId, BizUnit: $bizUnit');
 
       final commonRepository = getIt<CommonRepository>();
+      // Load ALL customers without search text filter - fetch once only
       final items = await commonRepository.getCustomerList(
         bizUnit: bizUnit,
         customerId: customerId,
+        searchText: null, // No search text - get all customers
         userId: userId,
         sector: 0,
         taxFlag: 0,
@@ -561,7 +571,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     _soNumber = orderData.soNumber;
     _selectedType = orderData.typeText;
     _selectedCurrency = orderData.currencyText ?? orderData.currency ?? 'LKR';
-    _selectedCustomerCode = orderData.customer;
+    // Use customerId (as string) instead of customer name for _selectedCustomerCode
+    // This ensures we can find the customer by ID when building save request
+    _selectedCustomerCode = orderData.customerId?.toString();
     CustomerAddressController.text = orderData.cusAddress ?? '';
     _customerSearchController.text = orderData.customerName ?? orderData.customer ?? '';
     _selectedSalesRep = orderData.salesRepName ?? orderData.salesRep;
@@ -605,6 +617,27 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     } else {
       // Reload privileges even if no distributor
       await _loadUserPagePrivileges();
+    }
+    
+    // Load customers to populate customer field correctly
+    // This is important so the customer name is displayed instead of ID
+    if (orderData.customerId != null) {
+      await _loadCustomers();
+      // After customers are loaded, update the customer search controller with the name
+      if (mounted && Customers.isNotEmpty && _selectedCustomerCode != null) {
+        try {
+          final customer = Customers.firstWhere((c) => c.code == _selectedCustomerCode);
+          _customerSearchController.text = customer.name;
+          print('✅ Updated customer search controller with name: ${customer.name}');
+        } catch (e) {
+          print('⚠️ Customer not found in list for code: $_selectedCustomerCode');
+          // If customer not found, try to use customerName from API
+          if (orderData.customerName != null && orderData.customerName!.isNotEmpty) {
+            _customerSearchController.text = orderData.customerName!;
+            print('✅ Using customerName from API: ${orderData.customerName}');
+          }
+        }
+      }
     }
 
     // Parse items
@@ -692,16 +725,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             if (orderData.totalAmount == null || orderData.totalAmount == 0) {
             _subTotalController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
             }
-          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax') {
+          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax' || label.toLowerCase() == 'tax') {
             // Add tax row
             final taxRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'tax',
             );
             taxRow.valueController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
-            // Use subTypeText if available, otherwise try to extract from label
+            // Use typeText first (e.g., "VAT 18%"), then subTypeText, otherwise try to extract from label
+            final chargeTypeText = charge['typeText']?.toString();
             final subTypeText = charge['subTypeText']?.toString();
-            if (subTypeText != null && subTypeText.isNotEmpty) {
+            if (chargeTypeText != null && chargeTypeText.isNotEmpty && chargeTypeText.toLowerCase() != 'tax') {
+              taxRow.selectedType = chargeTypeText;
+            } else if (subTypeText != null && subTypeText.isNotEmpty) {
               taxRow.selectedType = subTypeText;
             } else {
               // Try to extract tax type from label
@@ -979,8 +1015,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       bonusQty: (itemData['bonusQty'] ?? itemData['bonusQuantity'] ?? 0).toInt(),
       addlBonusQty: (itemData['addlBonus'] ?? itemData['additionalBonusQuantity'] ?? 0).toInt(),
       itemDescription: itemDescription,
-      rate: rate > 0 ? rate : null,
-      mrp: (mrp != null && mrp > 0) ? mrp : null,
+      rate: rate, // Pass rate even if 0, so it can be loaded from API later
+      mrp: mrp, // Pass MRP even if 0, so it can be loaded from API later
       discount: discount,
       uom: uom,
       remarks: remarks,
@@ -1102,6 +1138,81 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       } else if (mounted) {
         setState(() {});
       }
+    }
+  }
+
+  /// Load item details (MRP, Rate, etc.) from GetItemDetail API
+  Future<void> _loadItemDetail(_LineItem item, int itemId, [VoidCallback? onChanged]) async {
+    try {
+      // Get customer ID and date
+      final customerId = _selectedCustomerCode != null
+          ? int.tryParse(_selectedCustomerCode!)
+          : null;
+      
+      if (customerId == null) {
+        print('⚠️ Cannot load item detail: Customer not selected');
+        return;
+      }
+
+      // Format date as yyyy-MM-dd
+      final dateStr = DateFormat('yyyy-MM-dd').format(_contractDate);
+      
+      print('🔵 Loading Item Detail for ItemId: $itemId, Date: $dateStr, CustomerId: $customerId');
+      
+      final commonRepository = getIt<CommonRepository>();
+      final itemDetail = await commonRepository.getItemDetail(
+        itemId: itemId,
+        date: dateStr,
+        customerId: customerId,
+      );
+
+      print('✅ Item Detail loaded:');
+      print('   Rate: ${itemDetail.rate}');
+      print('   RetailRate: ${itemDetail.retailRate}');
+      print('   MRP: ${itemDetail.mrp}');
+      print('   UnitPrice: ${itemDetail.unitPrice}');
+      print('   UOM: ${itemDetail.uom} (${itemDetail.uomText})');
+      print('   Discount: ${itemDetail.discount}');
+
+      // Update item fields with item detail data
+      // Map retailRate to Rate field (prefer retailRate over rate)
+      if (itemDetail.retailRate != null && itemDetail.retailRate! > 0) {
+        item.rateController.text = itemDetail.retailRate!.toStringAsFixed(2);
+        print('✅ Updated Rate from RetailRate: ${item.rateController.text}');
+      } else if (itemDetail.rate != null && itemDetail.rate! > 0) {
+        item.rateController.text = itemDetail.rate!.toStringAsFixed(2);
+        print('✅ Updated Rate: ${item.rateController.text}');
+      }
+      
+      if (itemDetail.mrp != null && itemDetail.mrp! > 0) {
+        item.mrpController.text = itemDetail.mrp!.toStringAsFixed(2);
+        print('✅ Updated MRP: ${item.mrpController.text}');
+      } else if (itemDetail.unitPrice != null && itemDetail.unitPrice! > 0) {
+        // Fallback to unitPrice if MRP is not available
+        item.mrpController.text = itemDetail.unitPrice!.toStringAsFixed(2);
+        print('✅ Updated MRP from UnitPrice: ${item.mrpController.text}');
+      }
+
+      if (itemDetail.discount != null && itemDetail.discount! > 0) {
+        item.discountController.text = itemDetail.discount!.toStringAsFixed(2);
+        print('✅ Updated Discount: ${item.discountController.text}');
+      }
+
+      // Update UOM if available
+      if (itemDetail.uomText != null && itemDetail.uomText!.isNotEmpty) {
+        item.selectedUOM = itemDetail.uomText;
+        print('✅ Updated UOM: ${item.selectedUOM}');
+      }
+
+      // Trigger recalculation
+      if (onChanged != null) {
+        onChanged();
+      } else if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('⚠️ Error loading item detail for item $itemId: $e');
+      // Don't block the UI if item detail fails - continue with existing values
     }
   }
 
@@ -1623,6 +1734,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     CustomerAddressController.dispose();
     _customerSearchController.dispose();
     _notesController.dispose();
@@ -1651,13 +1763,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   void _updateTotals() {
-    // Auto-calculate sub total from items, but allow manual override
-    final calculatedSubTotal = _items.fold(0.0, (sum, item) => sum + item.lineTotal);
-    // Only update if controller is empty or matches calculated value (to allow manual edits)
-    if (_subTotalController.text.isEmpty || 
-        (double.tryParse(_subTotalController.text.replaceAll(RegExp(r'[^\d.]'), '')) ?? 0.0) == calculatedSubTotal) {
-      _subTotalController.text = calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
-    }
+    // Auto-calculate SubTotal as sum of TotalAmount of all Order Items
+    // SubTotal = Sum of (Quantity * Rate) for all items
+    final calculatedSubTotal = _items.fold(0.0, (sum, item) => sum + item.totalAmount);
+    // Always update SubTotal from items (no manual override)
+    _subTotalController.text = calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
+    print('🔵 Updated SubTotal: ${calculatedSubTotal.toStringAsFixed(2)} (Sum of ${_items.length} items)');
     
     // Update Reqd Date from items (earliest required date)
     if (_items.isNotEmpty) {
@@ -1672,6 +1783,28 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
     
     setState(() {});
+  }
+
+  void _updateTotalsWithoutSetState() {
+    // Auto-calculate SubTotal as sum of TotalAmount of all Order Items
+    // SubTotal = Sum of (Quantity * Rate) for all items
+    final calculatedSubTotal = _items.fold(0.0, (sum, item) => sum + item.totalAmount);
+    // Always update SubTotal from items (no manual override)
+    _subTotalController.text = calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
+    print('🔵 Updated SubTotal: ${calculatedSubTotal.toStringAsFixed(2)} (Sum of ${_items.length} items)');
+    
+    // Update Reqd Date from items (earliest required date)
+    if (_items.isNotEmpty) {
+      _reqdDate = _items.map((item) => item.requiredDate).reduce((a, b) => a.isBefore(b) ? a : b);
+    } else {
+      _reqdDate = null;
+    }
+    
+    // Calculate tax, discount, and other charges using formulas if available
+    if (_taxComponentFormulas.isNotEmpty) {
+      _calculateChargesUsingFormulas();
+    }
+    // Note: This version does NOT call setState() to allow caller to control when rebuild happens
   }
   
   double get _totalTaxAmount {
@@ -1713,6 +1846,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // This method is legacy - data should be loaded from API via _loadOrderData or _populateFormFromOrderData
     // Clear items - they will be populated from API
     _items.clear();
+    // Load customers once when editing order
+    _loadCustomers();
     setState(() {});
   }
 
@@ -1727,6 +1862,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     CustomerAddressController.text = '';
     _selectedDistributor = null;
     _selectedSalesRep = null;
+    // Load customers once when creating new order
+    _loadCustomers();
     _items.clear(); // Start with empty items - user will add items via API search
     _notesController.clear();
     _customerPOController.clear();
@@ -1752,7 +1889,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   String _formatDate(DateTime date) {
-    return DateFormat('dd MMM yyyy').format(date);
+    return DateFormat('dd-MMM-yyyy').format(date);
   }
 
   String _formatCurrency(double value) {
@@ -1835,16 +1972,28 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 ),
             iconTheme: const IconThemeData(color: Colors.white),
             foregroundColor: Colors.white,
-            actions: const [],
+            actions: _isEditMode ? [
+              IconButton(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _isActionsMenuOpen = !_isActionsMenuOpen;
+                  });
+                },
+                tooltip: 'More options',
+              ),
+            ] : [],
             ),
-          body: SafeArea(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : Column(
-                    children: [
-                      // Scrollable content
-                      Expanded(
-                        child: Theme(
+          body: Stack(
+            children: [
+              SafeArea(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Column(
+                        children: [
+                          // Scrollable content
+                          Expanded(
+                            child: Theme(
                           data: Theme.of(context).copyWith(
                             inputDecorationTheme: Theme.of(context).inputDecorationTheme.copyWith(
                               filled: true,
@@ -1868,6 +2017,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                             ),
                           ),
               child: SingleChildScrollView(
+                            controller: _scrollController,
                             padding: EdgeInsets.fromLTRB(
                               isTablet ? 16 : 12,
                               12,
@@ -1896,8 +2046,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                       ),
                       // Fixed bottom bar with buttons
                       _buildBottomActionBar(isTablet: isTablet),
-                    ],
-            ),
+                        ],
+                      ),
+                    ),
+              // Actions menu overlay
+              if (_isEditMode) _buildActionsMenuOverlay(isTablet: isTablet),
+            ],
           ),
         );
       },
@@ -2029,6 +2183,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       child: _SearchableCustomerField(
         controller: _customerSearchController,
         selectedCustomerCode: _selectedCustomerCode,
+        allCustomers: Customers, // Pass all loaded customers
         onCustomerSelected: (customer) {
                           setState(() {
             _selectedCustomerCode = customer.code;
@@ -2037,6 +2192,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           // Load Sales Rep and Distributor when customer is selected
           _loadSalesReps(customer.code);
           _loadDistributors(customer.code);
+        },
+        onCustomerCleared: () {
+          setState(() {
+            _selectedCustomerCode = null;
+            CustomerAddressController.clear();
+          });
         },
       ),
     );
@@ -2084,6 +2245,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               label: 'Customer Address',
       child: TextField(
               controller: CustomerAddressController,
+        readOnly: true,
         maxLines: 3,
         style: GoogleFonts.inter(
           fontSize: isTablet ? 15 : 14,
@@ -2096,12 +2258,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             vertical: isTablet ? 16 : 14,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: const Color(0xFFF3F4F6),
           border: border,
           enabledBorder: border,
-          focusedBorder: border.copyWith(
-            borderSide: const BorderSide(color: Color(0xFF4db1b3), width: 2),
-          ),
+          focusedBorder: border,
+          disabledBorder: border,
           errorBorder: border,
         ),
       ),
@@ -2286,6 +2447,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 formatCurrency: _formatCurrency,
                 loadUOMForItem: _loadUOMForItem,
                 loadTaxForItem: _loadTaxForItem,
+                loadItemDetail: _loadItemDetail,
                 formatDate: _formatDate,
                 getDistributorId: () {
                   // Get distributor ID - use selected distributor or fallback to bizUnit
@@ -2408,8 +2570,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         isTablet: isTablet,
                       ),
                     Divider(height: 1, color: Colors.grey.shade200, indent: 48),
-                      // Tax Rows (only shown in create mode)
-                      if (!_isEditMode) ...[
+                      // Tax Rows (shown in create mode OR edit mode with Draft status)
+                      if (!_isEditMode || (_isEditMode && _loadedOrderData?.status == 0)) ...[
                       for (int i = 0; i < _taxRows.length; i++) ...[
                         _buildTaxTableRowWithModel(
                           row: _taxRows[i],
@@ -2420,7 +2582,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         ),
                           Divider(height: 1, color: Colors.grey.shade200, indent: 48),
                       ],
-                        // Add Tax Button Row (only in create mode)
+                        // Add Tax Button Row (only in create mode or edit mode with Draft status)
                         const SizedBox(height: 4),
                       _buildAddButtonRow(
                         label: 'Tax',
@@ -2708,24 +2870,95 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     padding: const EdgeInsets.only(left: 44),
                     child: PopupMenuButton<String>(
                       initialValue: row.selectedType,
-                      offset: const Offset(0, 4),
+                      // Open upward to avoid overlapping with bottom buttons
+                      position: PopupMenuPosition.over,
+                      offset: const Offset(0, -4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                         side: const BorderSide(color: Color(0xFFD1D5DB)),
                       ),
                       onSelected: (value) {
-                        setState(() {
-                          // If "Select" is chosen, set to null; otherwise set the value
-                          row.selectedType = (value == 'Select') ? null : value;
-                          print('🔵 Discount dropdown selected (Mobile): "$value", final selectedType: "${row.selectedType}"');
-                          // Reset checkbox and percentage if not Custom (case-insensitive check)
-                          if (row.selectedType == null || (row.selectedType!.trim().toLowerCase() != 'custom' || rowType != 'discount')) {
-                            row.isPercentageEnabled = false;
-                            row.percentageController.clear();
-                          }
-                          _updateTotals();
-                        });
-                      },
+                            // Preserve scroll position synchronously before any async operations
+                            final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                            // Set flag to prevent automatic focus restoration
+                            _preventingFocusRestoration = true;
+                            // Prevent focus from moving to any field - use primaryFocus to clear focus
+                            final currentFocus = FocusScope.of(context);
+                            final primaryFocus = FocusManager.instance.primaryFocus;
+                            if (primaryFocus != null) {
+                              primaryFocus.unfocus();
+                            }
+                            currentFocus.unfocus();
+                            // Also prevent any automatic focus restoration
+                            WidgetsBinding.instance.focusManager.primaryFocus?.unfocus();
+                            // Update the row data first without setState
+                            row.selectedType = (value == 'Select') ? null : value;
+                            print('🔵 Discount dropdown selected (Mobile): "$value", final selectedType: "${row.selectedType}"');
+                            // Reset checkbox and percentage if not Custom (case-insensitive check)
+                            if (row.selectedType == null || (row.selectedType!.trim().toLowerCase() != 'custom' || rowType != 'discount')) {
+                              row.isPercentageEnabled = false;
+                              row.percentageController.clear();
+                            }
+                            // Update totals without setState first
+                            _updateTotalsWithoutSetState();
+                            // Use a more reliable approach: preserve scroll position and restore after rebuild
+                            if (mounted) {
+                              setState(() {});
+                              // Restore scroll position immediately and repeatedly to ensure it sticks
+                              if (_scrollController.hasClients && scrollOffset > 0) {
+                                // Immediate restoration
+                                _scrollController.jumpTo(scrollOffset);
+                                // Multiple restoration attempts to handle any delayed rebuilds
+                                Future.microtask(() {
+                                  if (_scrollController.hasClients && mounted) {
+                                    _scrollController.jumpTo(scrollOffset);
+                                    // Ensure focus stays cleared
+                                    FocusManager.instance.primaryFocus?.unfocus();
+                                  }
+                                });
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (_scrollController.hasClients && mounted) {
+                                    _scrollController.jumpTo(scrollOffset);
+                                    // Ensure focus stays cleared
+                                    FocusManager.instance.primaryFocus?.unfocus();
+                                  }
+                                });
+                                SchedulerBinding.instance.addPostFrameCallback((_) {
+                                  if (_scrollController.hasClients && mounted) {
+                                    _scrollController.jumpTo(scrollOffset);
+                                    // Ensure focus stays cleared
+                                    FocusManager.instance.primaryFocus?.unfocus();
+                                  }
+                                });
+                                // Additional delayed attempts with focus prevention
+                                Future.delayed(const Duration(milliseconds: 10), () {
+                                  if (_scrollController.hasClients && mounted) {
+                                    _scrollController.jumpTo(scrollOffset);
+                                    FocusManager.instance.primaryFocus?.unfocus();
+                                  }
+                                });
+                                Future.delayed(const Duration(milliseconds: 50), () {
+                                  if (_scrollController.hasClients && mounted) {
+                                    _scrollController.jumpTo(scrollOffset);
+                                    FocusManager.instance.primaryFocus?.unfocus();
+                                  }
+                                });
+                                // Reset flag after a longer delay to allow all focus attempts to be prevented
+                                Future.delayed(const Duration(milliseconds: 200), () {
+                                  if (mounted) {
+                                    _preventingFocusRestoration = false;
+                                  }
+                                });
+                              } else {
+                                // Reset flag even if no scroll restoration needed
+                                Future.delayed(const Duration(milliseconds: 200), () {
+                                  if (mounted) {
+                                    _preventingFocusRestoration = false;
+                                  }
+                                });
+                              }
+                            }
+                          },
                       child: InputDecorator(
                         decoration: InputDecoration(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -2774,7 +3007,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                             ),
                           ),
                         );
-                      }).toList(),
+                              }).toList(),
                     ),
                   ),
                 // Show checkbox, %, and percentage input when Custom is selected for discount (Mobile)
@@ -2876,12 +3109,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   padding: const EdgeInsets.only(left: 44),
                   child: TextField(
                     controller: row.valueController,
+                    enabled: rowType != 'tax' && (rowType == 'otherCharge' || !_isEditMode), // Enable Other Charge in edit mode, disable Tax in all modes
                     textAlign: TextAlign.end,
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: const Color(0xFF111827),
+                      color: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade400 : const Color(0xFF111827),
                     ),
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
@@ -2892,6 +3126,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         borderRadius: BorderRadius.circular(10),
                         borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
                       ),
+                      disabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                                 borderSide: BorderSide(color: tealGreen, width: 2),
@@ -2901,7 +3139,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         vertical: isTablet ? 16 : 14,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade50 : Colors.white,
                       hintText: '0',
                       hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
                     ),
@@ -2913,10 +3151,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               ],
             );
           }
-          // Desktop/Tablet: Horizontal layout
+          // Desktop/Tablet: Horizontal layout with consistent alignment
+          // Use a structured layout to ensure value fields align properly
           return Row(
             children: [
-            SizedBox(
+              // Delete button column (fixed width)
+              SizedBox(
                 width: isTablet ? 40 : 36,
                 child: hasDeleteButton
                     ? IconButton(
@@ -2931,8 +3171,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           ),
                           child: const Icon(Icons.remove, color: Colors.white, size: 18),
                         ),
-                onPressed: () {
-                  setState(() {
+                        onPressed: () {
+                          setState(() {
                             if (rowType == 'tax') {
                               row.dispose();
                               _taxRows.removeAt(index);
@@ -2944,14 +3184,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                               _otherChargeRows.removeAt(index);
                             }
                             _updateTotals();
-                  });
-                },
+                          });
+                        },
                       )
                     : const SizedBox.shrink(),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: isTablet ? 12 : 8),
+              // Label column (fixed width to match Sub Total structure)
               SizedBox(
-                width: isTablet ? 100 : 80,
+                width: isTablet ? 90 : 75,
                 child: Text(
                   rowType == 'tax' ? 'Tax' : (rowType == 'discount' ? 'Discount' : 'Other Charge'),
                   style: GoogleFonts.inter(
@@ -2961,56 +3202,133 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: isTablet ? 150 : 120,
-                child: hasDropdown
-                    ? PopupMenuButton<String>(
-                        initialValue: row.selectedType,
-                        offset: const Offset(0, 4),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: const BorderSide(color: Color(0xFFD1D5DB)),
-                        ),
-                        onSelected: (value) {
-                          setState(() {
-                            // If "Select" is chosen, set to null; otherwise set the value
-                            row.selectedType = (value == 'Select') ? null : value;
-                            print('🔵 Discount dropdown selected: "$value", final selectedType: "${row.selectedType}"');
-                            // Reset checkbox and percentage if not Custom (case-insensitive check)
-                            if (row.selectedType == null || (row.selectedType!.trim().toLowerCase() != 'custom' || rowType != 'discount')) {
-                              row.isPercentageEnabled = false;
-                              row.percentageController.clear();
-                            }
-                            _updateTotals();
-                          });
-                        },
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 14 : 12,
-                              vertical: isTablet ? 14 : 12,
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: tealGreen, width: 2),
-                            ),
-                            suffixIcon: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 20,
-                              color: tealGreen,
-                            ),
-                          ),
+              SizedBox(width: isTablet ? 8 : 6),
+              // Middle section: Dropdown + Custom fields (flexible width, but consistent structure)
+              Expanded(
+                flex: 3,
+                child: Row(
+                  children: [
+                    // Dropdown column (flexible width to prevent overflow)
+                    Flexible(
+                      flex: 2,
+                          child: hasDropdown
+                          ? PopupMenuButton<String>(
+                              initialValue: row.selectedType,
+                              // Open upward to avoid overlapping with bottom buttons
+                              position: PopupMenuPosition.over,
+                              offset: const Offset(0, -4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    side: const BorderSide(color: Color(0xFFD1D5DB)),
+                                  ),
+                                  onSelected: (value) {
+                                    // Preserve scroll position synchronously before any async operations
+                                    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                                    // Set flag to prevent automatic focus restoration
+                                    _preventingFocusRestoration = true;
+                                    // Prevent focus from moving to any field - use primaryFocus to clear focus
+                                    final currentFocus = FocusScope.of(context);
+                                    final primaryFocus = FocusManager.instance.primaryFocus;
+                                    if (primaryFocus != null) {
+                                      primaryFocus.unfocus();
+                                    }
+                                    currentFocus.unfocus();
+                                    // Also prevent any automatic focus restoration
+                                    WidgetsBinding.instance.focusManager.primaryFocus?.unfocus();
+                                    // Update the row data first without setState
+                                    row.selectedType = (value == 'Select') ? null : value;
+                                    print('🔵 Discount dropdown selected: "$value", final selectedType: "${row.selectedType}"');
+                                    // Reset checkbox and percentage if not Custom (case-insensitive check)
+                                    if (row.selectedType == null || (row.selectedType!.trim().toLowerCase() != 'custom' || rowType != 'discount')) {
+                                      row.isPercentageEnabled = false;
+                                      row.percentageController.clear();
+                                    }
+                                    // Update totals without setState first
+                                    _updateTotalsWithoutSetState();
+                                    // Use a more reliable approach: preserve scroll position and restore after rebuild
+                                    if (mounted) {
+                                      setState(() {});
+                                      // Restore scroll position immediately and repeatedly to ensure it sticks
+                                      if (_scrollController.hasClients && scrollOffset > 0) {
+                                        // Immediate restoration
+                                        _scrollController.jumpTo(scrollOffset);
+                                        // Multiple restoration attempts to handle any delayed rebuilds
+                                        Future.microtask(() {
+                                          if (_scrollController.hasClients && mounted) {
+                                            _scrollController.jumpTo(scrollOffset);
+                                            // Ensure focus stays cleared
+                                            FocusManager.instance.primaryFocus?.unfocus();
+                                          }
+                                        });
+                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                          if (_scrollController.hasClients && mounted) {
+                                            _scrollController.jumpTo(scrollOffset);
+                                            // Ensure focus stays cleared
+                                            FocusManager.instance.primaryFocus?.unfocus();
+                                          }
+                                        });
+                                        SchedulerBinding.instance.addPostFrameCallback((_) {
+                                          if (_scrollController.hasClients && mounted) {
+                                            _scrollController.jumpTo(scrollOffset);
+                                            // Ensure focus stays cleared
+                                            FocusManager.instance.primaryFocus?.unfocus();
+                                          }
+                                        });
+                                        // Additional delayed attempts with focus prevention
+                                        Future.delayed(const Duration(milliseconds: 10), () {
+                                          if (_scrollController.hasClients && mounted) {
+                                            _scrollController.jumpTo(scrollOffset);
+                                            FocusManager.instance.primaryFocus?.unfocus();
+                                          }
+                                        });
+                                        Future.delayed(const Duration(milliseconds: 50), () {
+                                          if (_scrollController.hasClients && mounted) {
+                                            _scrollController.jumpTo(scrollOffset);
+                                            FocusManager.instance.primaryFocus?.unfocus();
+                                          }
+                                        });
+                                        // Reset flag after a longer delay to allow all focus attempts to be prevented
+                                        Future.delayed(const Duration(milliseconds: 200), () {
+                                          if (mounted) {
+                                            _preventingFocusRestoration = false;
+                                          }
+                                        });
+                                      } else {
+                                        // Reset flag even if no scroll restoration needed
+                                        Future.delayed(const Duration(milliseconds: 200), () {
+                                          if (mounted) {
+                                            _preventingFocusRestoration = false;
+                                          }
+                                        });
+                                      }
+                                    }
+                                  },
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: isTablet ? 12 : 10,
+                                    vertical: isTablet ? 12 : 10,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(color: tealGreen, width: 2),
+                                  ),
+                                  suffixIcon: const Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 20,
+                                    color: tealGreen,
+                                  ),
+                                ),
                                 child: Text(
                                   row.selectedType ?? 'Select',
                                   style: GoogleFonts.inter(
@@ -3020,157 +3338,162 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                         : Colors.grey.shade500,
                                   ),
                                   overflow: TextOverflow.ellipsis,
-        ),
-                        ),
-                        itemBuilder: (context) => dropdownOptions.map((option) {
-                          return PopupMenuItem<String>(
-                            value: option,
-                            child: SizedBox(
-                              width: isTablet ? 150 : 120,
-                            child: Text(
-                              option,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
                                 ),
                               ),
-                            ),
-                          );
-                        }).toList(),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              // Show checkbox, %, and percentage input when Custom is selected for discount
-              // Check case-insensitively and trim whitespace
-              Builder(
-                builder: (context) {
-                  final showCustomFields = rowType == 'discount' && 
-                      row.selectedType != null && 
-                      row.selectedType!.trim().toLowerCase() == 'custom';
-                  
-                  if (showCustomFields) {
-                    print('🔵 ✅ Building Custom discount UI - selectedType: "${row.selectedType}", isPercentageEnabled: ${row.isPercentageEnabled}');
-                  }
-                  
-                  if (!showCustomFields) {
-                    return const SizedBox.shrink();
-                  }
-                  
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-              const SizedBox(width: 8),
-                      // Checkbox with % label
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: row.isPercentageEnabled,
-                            onChanged: (value) {
-                              setState(() {
-                                row.isPercentageEnabled = value ?? false;
-                                if (!row.isPercentageEnabled) {
-                                  // Clear percentage when unchecked
-                                  row.percentageController.clear();
-                                }
-                                _updateTotals();
-                              });
-                            },
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '%',
-                            style: GoogleFonts.inter(
-                              fontSize: isTablet ? 14 : 13,
-                              fontWeight: FontWeight.w600,
-                              color: row.isPercentageEnabled ? tealGreen : Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 8),
-                      // Percentage input field (enabled when checkbox is checked)
-                      SizedBox(
-                        width: 100,
-                child: TextField(
-                          controller: row.percentageController,
-                          enabled: row.isPercentageEnabled,
-                  textAlign: TextAlign.end,
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  style: GoogleFonts.inter(
-                            fontSize: isTablet ? 15 : 14,
-                            fontWeight: FontWeight.w500,
-                            color: row.isPercentageEnabled ? const Color(0xFF111827) : Colors.grey.shade400,
-                  ),
-                  decoration: InputDecoration(
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                color: row.isPercentageEnabled ? const Color(0xFFD1D5DB) : Colors.grey.shade300,
+                              itemBuilder: (context) => dropdownOptions.map((option) {
+                                return PopupMenuItem<String>(
+                                  value: option,
+                                  child: SizedBox(
+                                    width: isTablet ? 150 : 120,
+                                    child: Text(
+                                      option,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    SizedBox(width: isTablet ? 6 : 4),
+                    // Custom discount fields (checkbox, %, percentage input) - only for discount with Custom selected
+                    Builder(
+                      builder: (context) {
+                        final showCustomFields = rowType == 'discount' && 
+                            row.selectedType != null && 
+                            row.selectedType!.trim().toLowerCase() == 'custom';
+                        
+                        if (showCustomFields) {
+                          print('🔵 ✅ Building Custom discount UI - selectedType: "${row.selectedType}", isPercentageEnabled: ${row.isPercentageEnabled}');
+                        }
+                        
+                        if (!showCustomFields) {
+                          return const SizedBox.shrink();
+                        }
+                        
+                        return Flexible(
+                          flex: 2,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Checkbox with % label
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Checkbox(
+                                    value: row.isPercentageEnabled,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        row.isPercentageEnabled = value ?? false;
+                                        if (!row.isPercentageEnabled) {
+                                          // Clear percentage when unchecked
+                                          row.percentageController.clear();
+                                        }
+                                        _updateTotals();
+                                      });
+                                    },
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '%',
+                                    style: GoogleFonts.inter(
+                                      fontSize: isTablet ? 14 : 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: row.isPercentageEnabled ? tealGreen : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            disabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: tealGreen, width: 2),
-                            ),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 16 : 14,
-                              vertical: isTablet ? 16 : 14,
-                            ),
-                    isDense: true,
-                            filled: true,
-                            fillColor: row.isPercentageEnabled ? Colors.white : Colors.grey.shade50,
-                    hintText: '0',
-                    hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
-                  ),
-                  onChanged: (text) {
-                    // Auto-calculate discount value when percentage is entered
-                    if (rowType == 'discount' && 
-                        row.selectedType != null && 
-                        row.selectedType!.trim().toLowerCase() == 'custom' &&
-                        row.isPercentageEnabled) {
-                      final percentage = double.tryParse(text) ?? 0.0;
-                      final subTotal = _subTotal;
-                      if (percentage > 0 && subTotal > 0) {
-                        final calculatedDiscount = (subTotal * percentage) / 100;
-                        row.valueController.text = calculatedDiscount.toStringAsFixed(2);
-                        print('🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
-                      } else if (percentage == 0 || subTotal == 0) {
-                        row.valueController.text = '0.00';
-                      }
-                    }
-                    _updateTotals();
-                  },
-                          maxLines: 1,
-                          textAlignVertical: TextAlignVertical.center,
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                              const SizedBox(width: 6),
+                              // Percentage input field (enabled when checkbox is checked) - flexible width
+                              Flexible(
+                                child: TextField(
+                                  controller: row.percentageController,
+                                  enabled: row.isPercentageEnabled,
+                                  textAlign: TextAlign.end,
+                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  style: GoogleFonts.inter(
+                                    fontSize: isTablet ? 14 : 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: row.isPercentageEnabled ? const Color(0xFF111827) : Colors.grey.shade400,
+                                  ),
+                                  decoration: InputDecoration(
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: row.isPercentageEnabled ? const Color(0xFFD1D5DB) : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    disabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(color: tealGreen, width: 2),
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: isTablet ? 12 : 10,
+                                      vertical: isTablet ? 12 : 10,
+                                    ),
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor: row.isPercentageEnabled ? Colors.white : Colors.grey.shade50,
+                                    hintText: '0',
+                                    hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                                  ),
+                                  onChanged: (text) {
+                                    // Auto-calculate discount value when percentage is entered
+                                    if (rowType == 'discount' && 
+                                        row.selectedType != null && 
+                                        row.selectedType!.trim().toLowerCase() == 'custom' &&
+                                        row.isPercentageEnabled) {
+                                      final percentage = double.tryParse(text) ?? 0.0;
+                                      final subTotal = _subTotal;
+                                      if (percentage > 0 && subTotal > 0) {
+                                        final calculatedDiscount = (subTotal * percentage) / 100;
+                                        row.valueController.text = calculatedDiscount.toStringAsFixed(2);
+                                        print('🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
+                                      } else if (percentage == 0 || subTotal == 0) {
+                                        row.valueController.text = '0.00';
+                                      }
+                                    }
+                                    _updateTotals();
+                                  },
+                                  maxLines: 1,
+                                  textAlignVertical: TextAlignVertical.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: isTablet ? 120 : 100,
+              SizedBox(width: isTablet ? 8 : 6),
+              // Value input field column (fixed width to match Sub Total alignment)
+              Expanded(
+                flex: 2,
                 child: TextField(
                   controller: row.valueController,
-                  enabled: rowType != 'tax' && !_isEditMode, // Disable Tax input field in all modes
+                  enabled: rowType != 'tax' && (rowType == 'otherCharge' || !_isEditMode), // Enable Other Charge in edit mode, disable Tax in all modes
                   textAlign: TextAlign.end,
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                   style: GoogleFonts.inter(
-                    fontSize: isTablet ? 15 : 14,
+                    fontSize: isTablet ? 14 : 13,
                     fontWeight: FontWeight.w500,
-                    color: (rowType == 'tax' || _isEditMode) ? Colors.grey.shade900 : const Color(0xFF111827),
+                    color: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade900 : const Color(0xFF111827),
                   ),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -3188,17 +3511,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                        color: (rowType == 'tax' || _isEditMode) ? Colors.grey.shade300 : tealGreen,
-                        width: (rowType == 'tax' || _isEditMode) ? 1 : 2,
+                        color: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade300 : tealGreen,
+                        width: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? 1 : 2,
                       ),
                     ),
                     contentPadding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 16 : 14,
-                      vertical: isTablet ? 16 : 14,
+                      horizontal: isTablet ? 12 : 10,
+                      vertical: isTablet ? 12 : 10,
                     ),
                     isDense: true,
                     filled: true,
-                    fillColor: (rowType == 'tax' || _isEditMode) ? Colors.grey.shade50 : Colors.white,
+                    fillColor: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade50 : Colors.white,
                     hintText: '0.00',
                     hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
                   ),
@@ -3863,27 +4186,49 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           ),
         ),
                   // Workflow Action Buttons - Display dynamically from API response
+                  // Display all buttons, but enable only those with processAction value
                   ...(_workflowActions.map((action) {
-                    final isEnabled = action.hasEdit;
-                    final actionColor = _parseColorFromHex(action.color) ?? tealGreen;
+                    // Enable button if processAction has value (not null and not empty)
+                    final hasProcessAction = action.processAction != null && action.processAction!.isNotEmpty;
+                    final isEnabled = hasProcessAction && !_isLoading;
+                    
+                    // Parse color from API, but use tealGreen for enabled buttons if color is grey/light
+                    final parsedColor = _parseColorFromHex(action.color);
+                    Color enabledColor;
+                    if (isEnabled && parsedColor != null) {
+                      // Check if color is too light/grey - if so, use tealGreen instead
+                      final brightness = parsedColor.computeLuminance();
+                      if (brightness > 0.7 || action.color?.toLowerCase().contains('d3d3d3') == true) {
+                        // Color is too light or grey, use tealGreen for enabled buttons
+                        enabledColor = tealGreen;
+                      } else {
+                        enabledColor = parsedColor;
+                      }
+                    } else {
+                      enabledColor = tealGreen; // Default to tealGreen for enabled buttons
+                    }
+                    
+                    print('🔘 Workflow Button: ${action.name}, ProcessAction: ${action.processAction?.length ?? 0}, Enabled: $isEnabled, Color: ${action.color} -> ${enabledColor.value.toRadixString(16)}');
                     
                     return [
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton(
-                          onPressed: isEnabled && !_isLoading 
+                          onPressed: isEnabled 
                               ? () => _onWorkflowAction(action) 
                               : null,
             style: ElevatedButton.styleFrom(
               padding: EdgeInsets.symmetric(
                 vertical: isTablet ? 16 : 14,
               ),
-                            backgroundColor: isEnabled ? actionColor : Colors.grey.shade300,
+                            backgroundColor: isEnabled ? enabledColor : Colors.grey.shade300,
                             foregroundColor: isEnabled ? Colors.white : Colors.grey.shade600,
+              disabledBackgroundColor: Colors.grey.shade300,
+              disabledForegroundColor: Colors.grey.shade600,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              elevation: 2,
+              elevation: isEnabled ? 2 : 0,
             ),
                           child: _isLoading
                               ? SizedBox(
@@ -3910,6 +4255,284 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       ],
         ),
       ),
+    );
+  }
+
+  /// Build actions menu overlay with smooth animation
+  Widget _buildActionsMenuOverlay({required bool isTablet}) {
+    if (_buttonPrivileges.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Map button names to icons, labels, actions, and colors
+    final buttonConfig = {
+      'ButtonCancel': {
+        'icon': Icons.cancel_outlined,
+        'label': 'Cancel',
+        'color': Colors.red,
+        'action': () => _handleCancelOrder(),
+      },
+      'ButtonModify': {
+        'icon': Icons.edit_document,
+        'label': 'Modify',
+        'color': Colors.red,
+        'action': () => _handleModifyOrder(),
+      },
+      'ButtonPrint': {
+        'icon': Icons.print_outlined,
+        'label': 'Print',
+        'color': Colors.blue,
+        'action': () {
+          setState(() => _isActionsMenuOpen = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Print action triggered')),
+          );
+        },
+      },
+      'ButtonSave': {
+        'icon': Icons.save_outlined,
+        'label': 'Save',
+        'color': Colors.green,
+        'action': () {
+          setState(() => _isActionsMenuOpen = false);
+          _onSaveDraft();
+        },
+      },
+      // ButtonShortClose is removed - not needed for sales rep
+    };
+
+    // Collect buttons with hasRight = true, but exclude ButtonSave (already shown in bottom bar)
+    // Also apply special logic for ButtonCancel
+    final List<Map<String, dynamic>> enabledButtons = [];
+    for (final entry in _buttonPrivileges.entries) {
+      final buttonKey = entry.key;
+      final privilege = entry.value;
+
+      // Skip ButtonSave as it's already displayed in the bottom action bar
+      if (buttonKey == 'ButtonSave') {
+        continue;
+      }
+
+      // Skip ButtonShortClose - not needed for sales rep
+      if (buttonKey == 'ButtonShortClose') {
+        continue;
+      }
+
+      // Special handling for ButtonCancel
+      if (buttonKey == 'ButtonCancel') {
+        // Check if cancel button should be shown:
+        // 1. Must have privilege (hasRight = true)
+        // 2. transactionCompleted must be 1 (from workflow actions)
+        // 3. Must NOT be cancelled or short closed (if editing)
+        
+        if (!privilege.hasRight) {
+          continue; // No privilege, skip
+        }
+
+        // Check transactionCompleted from workflow actions
+        // transactionCompleted = 1 means transaction is complete
+        bool transactionCompleted = false;
+        if (_workflowActions.isNotEmpty) {
+          // Check if any workflow action has transactionCompleted = true
+          transactionCompleted = _workflowActions.any((action) => action.transactionCompleted == true);
+        }
+
+        // Only show if transactionCompleted = 1 (true)
+        if (!transactionCompleted) {
+          continue; // Transaction not completed, skip
+        }
+
+        // If editing, check if order is already cancelled or short closed
+        if (_isEditMode && _loadedOrderData != null) {
+          final isCancelled = _loadedOrderData!.isCancelled == 1;
+          final isShortClosed = _loadedOrderData!.isShortClosed == 1;
+          
+          if (isCancelled || isShortClosed) {
+            continue; // Already cancelled or short closed, skip
+          }
+        }
+      }
+
+      // Special handling for ButtonModify
+      if (buttonKey == 'ButtonModify') {
+        // Check if modify button should be shown:
+        // 1. Must have privilege (hasRight = true)
+        // 2. transactionCompleted must be 1 (from workflow actions) - show only when TransactionComplete = 1
+        // 3. Must NOT be cancelled or short closed (if editing)
+        
+        if (!privilege.hasRight) {
+          continue; // No privilege, skip
+        }
+
+        // Check transactionCompleted from workflow actions
+        // transactionCompleted = 1 means transaction is complete
+        // Show Modify button ONLY when TransactionComplete = 1
+        bool transactionCompleted = false;
+        if (_workflowActions.isNotEmpty) {
+          // Check if any workflow action has transactionCompleted = true
+          transactionCompleted = _workflowActions.any((action) => action.transactionCompleted == true);
+        }
+
+        // Only show if transactionCompleted = 1 (true)
+        // If TransactionComplete = 0, don't show even if privilege is true
+        if (!transactionCompleted) {
+          continue; // Transaction not completed, skip
+        }
+
+        // If editing, check if order is already cancelled or short closed
+        if (_isEditMode && _loadedOrderData != null) {
+          final isCancelled = _loadedOrderData!.isCancelled == 1;
+          final isShortClosed = _loadedOrderData!.isShortClosed == 1;
+          
+          if (isCancelled || isShortClosed) {
+            continue; // Already cancelled or short closed, skip
+          }
+        }
+      }
+
+      if (privilege.hasRight && buttonConfig.containsKey(buttonKey)) {
+        final config = Map<String, dynamic>.from(buttonConfig[buttonKey]!);
+        config['key'] = buttonKey;
+        enabledButtons.add(config);
+      }
+    }
+
+    if (enabledButtons.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Stack(
+      children: [
+        // Backdrop
+        if (_isActionsMenuOpen)
+          GestureDetector(
+            onTap: () {
+              setState(() => _isActionsMenuOpen = false);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              color: _isActionsMenuOpen
+                  ? Colors.black.withOpacity(0.3)
+                  : Colors.transparent,
+            ),
+          ),
+        // Side menu panel
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          top: _isActionsMenuOpen ? 0 : -MediaQuery.of(context).size.height,
+          right: 0,
+          child: Container(
+            width: isTablet ? 280 : 240,
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Actions',
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () {
+                          setState(() => _isActionsMenuOpen = false);
+                        },
+                        color: Colors.grey.shade700,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+                // Buttons list
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: enabledButtons.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final button = entry.value;
+                      final icon = button['icon'] as IconData;
+                      final label = button['label'] as String;
+                      final color = button['color'] as Color;
+                      final action = button['action'] as VoidCallback;
+
+                      return TweenAnimationBuilder<double>(
+                        duration: Duration(milliseconds: 200 + (index * 50)),
+                        tween: Tween(begin: 0.0, end: _isActionsMenuOpen ? 1.0 : 0.0),
+                        curve: Curves.easeOut,
+                        builder: (context, value, child) {
+                          return Transform.translate(
+                            offset: Offset(0, 20 * (1 - value)),
+                            child: Opacity(
+                              opacity: value,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: OutlinedButton.icon(
+                            onPressed: action,
+                            icon: Icon(icon, size: 22),
+                            label: Text(
+                              label,
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: color,
+                              side: BorderSide(color: color, width: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              minimumSize: const Size(double.infinity, 52),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -4037,10 +4660,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       if (itemId == 0) continue; // Skip invalid items
 
       final qty = double.tryParse(item.qtyController.text) ?? 0.0;
-      final unitPrice = double.tryParse(item.rateController.text) ?? 0.0;
+      // Get rate from controller, fallback to product rate if controller is empty
+      final rateFromController = item.rateController.text.isNotEmpty 
+          ? double.tryParse(item.rateController.text) 
+          : null;
+      final unitPrice = rateFromController ?? item.product.rate;
+      // Get MRP from controller, fallback to product MRP if controller is empty
+      final mrpFromController = item.mrpController.text.isNotEmpty 
+          ? double.tryParse(item.mrpController.text) 
+          : null;
+      final mrp = mrpFromController ?? item.product.mrp;
       final discount = double.tryParse(item.discountController.text) ?? 0.0;
       final amount = qty * unitPrice;
       final totalAmount = amount - discount;
+      
+      print('🔵 Building contract item: ItemId=$itemId, Qty=$qty, Rate=$unitPrice (from controller: ${rateFromController ?? "N/A"}, product: ${item.product.rate}), MRP=$mrp (from controller: ${mrpFromController ?? "N/A"}, product: ${item.product.mrp}), Amount=$amount, TotalAmount=$totalAmount');
       final bonusQty = double.tryParse(item.bonusQtyController.text) ?? 0.0;
       // Format ReqdDate using the same ISO 8601 format helper
       final reqdDateStr = formatDateForApi(item.requiredDate);
@@ -4073,6 +4707,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         quantity: qty,
         uom: uomId,
         unitPrice: unitPrice,
+        mrp: mrp,
         amount: amount,
         discount: discount,
         tax: null,
@@ -4096,10 +4731,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Add SubTotal (if needed - typically not sent as a charge, but included in example)
     // SubTotal is usually calculated, not sent separately
 
-    // Add Tax rows
+    // Add Tax rows - include all tax rows even if value is 0 (they might be required by the API)
     for (final taxRow in _taxRows) {
       final value = taxRow.value;
-      if (value > 0) {
+      // Include tax row if it has a selectedType (meaning it was intentionally added)
+      // or if it has a value > 0
+      if ((taxRow.selectedType != null && taxRow.selectedType!.isNotEmpty) || value > 0) {
         taxCharges.add(TaxAndOtherChargeDetail(
           id: null,
           gridId: 80, // Should be from tax component formulas
@@ -4318,6 +4955,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       distributerForId: distributorId, // Important: Pass selected DistributerId
       isFullyUsed: _loadedOrderData?.isFullyUsed ?? 0, // Use from loaded data or default to 0
       hasEdit: _loadedOrderData?.hasEdit ?? false, // Use from loaded data or default to false
+      actualCreatedBy: dynamicUserId, // Actual logged-in user ID (required for save to work)
     );
   }
 
@@ -4539,6 +5177,211 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
   }
 
+  /// Handle Modify Order action - calls Save API with WorkflowFlag = 0
+  Future<void> _handleModifyOrder() async {
+    try {
+      // Show loading indicator
+      if (!mounted) return;
+      setState(() => _isActionsMenuOpen = false);
+      
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Build save request with WorkflowFlag = 0 for Modify
+      final request = await _buildSaveRequest(0);
+
+      // Call save API
+      final salesRepository = getIt<SalesRepository>();
+      final response = await salesRepository.saveSalesOrder(request);
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (response.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} modified successfully',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.fixed,
+            duration: const Duration(seconds: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+
+        // Navigate back to listing screen
+        Navigator.of(context).pop(true);
+      } else {
+        throw Exception(response.message ?? 'Failed to modify order');
+      }
+    } catch (e) {
+      print('❌ Error modifying order: $e');
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Extract error message
+      String errorMessage = 'Failed to modify order';
+      final errorString = e.toString();
+      if (errorString.startsWith('Exception: ')) {
+        errorMessage = errorString.replaceFirst('Exception: ', '');
+      } else {
+        errorMessage = errorString;
+      }
+
+      // Show error dialog for better readability
+      _showErrorDialog('Error Modifying Order', errorMessage);
+    }
+  }
+
+  /// Handle Cancel Order action with confirmation
+  Future<void> _handleCancelOrder() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Cancel Sales Order'),
+          content: Text(
+            'Are you sure you want to cancel sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'}? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Yes, Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return; // User cancelled
+    }
+
+    // Show loading indicator
+    if (!mounted) return;
+    setState(() => _isActionsMenuOpen = false);
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Get ProcessId from workflow response
+      final processId = _workflowResponse?.id ?? _loadedOrderData?.processId;
+      
+      if (processId == null || processId == 0) {
+        throw Exception('Process ID not available. Cannot cancel order.');
+      }
+
+      // Get Transaction Id (order id)
+      final transactionId = _loadedOrderData?.id;
+      if (transactionId == null) {
+        throw Exception('Transaction ID not available.');
+      }
+
+      // Build cancel request
+      final cancelRequest = SalesOrderTransactionCancelRequest(
+        poId: null,
+        id: transactionId,
+        itemId: null,
+        vendorId: null,
+        processId: processId,
+      );
+
+      // Call cancel API
+      final salesRepository = getIt<SalesRepository>();
+      await salesRepository.transactionCancelSalesOrder(cancelRequest);
+
+      // Close loading indicator
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} cancelled successfully',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.fixed,
+          duration: const Duration(seconds: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+
+      // Navigate back to listing screen
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      // Close loading indicator
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show error message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to cancel sales order: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.fixed,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   Future<void> _onWorkflowAction(ProcessActionDetail action) async {
     // Use actionValue as workflowFlag, default to 1 if not available
     final int workflowFlag = action.actionValue;
@@ -4716,6 +5559,7 @@ class _ItemCard extends StatelessWidget {
   final String Function(double) formatCurrency;
   final Future<void> Function(_LineItem, int, [String?, VoidCallback?]) loadUOMForItem;
   final Future<void> Function(_LineItem, int, [VoidCallback?]) loadTaxForItem;
+  final Future<void> Function(_LineItem, int, [VoidCallback?]) loadItemDetail;
   final String Function(DateTime) formatDate;
   final bool isEditMode;
   final int Function() getDistributorId;
@@ -4730,6 +5574,7 @@ class _ItemCard extends StatelessWidget {
     required this.formatCurrency,
     required this.loadUOMForItem,
     required this.loadTaxForItem,
+    required this.loadItemDetail,
     required this.formatDate,
     required this.isEditMode,
     required this.getDistributorId,
@@ -4805,9 +5650,12 @@ class _ItemCard extends StatelessWidget {
                               print('🔵 [onProductSelected] Set default quantity to 1');
                             }
                             
-                            // Load UOM and Tax for the selected item
+                            // Load item details (MRP, Rate, etc.) from GetItemDetail API
                             final itemId = int.tryParse(product.id) ?? 0;
                             if (itemId > 0) {
+                              // Load item detail first to get accurate MRP and Rate
+                              loadItemDetail(item, itemId, onChanged);
+                              // Then load UOM and Tax
                               loadUOMForItem(item, itemId, null, onChanged);
                               loadTaxForItem(item, itemId, onChanged);
                             }
@@ -5073,8 +5921,8 @@ class _LineItem {
       qtyController: TextEditingController(text: qty > 0 ? qty.toString() : ''),
       bonusQtyController: TextEditingController(text: bonusQty.toString()),
       addlBonusQtyController: TextEditingController(text: addlBonusQty.toString()),
-      rateController: TextEditingController(text: rate != null && rate > 0 ? rate.toStringAsFixed(2) : ''),
-      mrpController: TextEditingController(text: mrp != null && mrp > 0 ? mrp.toStringAsFixed(2) : ''),
+      rateController: TextEditingController(text: rate != null ? rate.toStringAsFixed(2) : ''),
+      mrpController: TextEditingController(text: mrp != null ? mrp.toStringAsFixed(2) : ''),
       discountController: TextEditingController(text: discount != null ? discount.toStringAsFixed(2) : '0.00'),
       remarksController: TextEditingController(text: remarks ?? ''),
       selectedUOM: uom,
@@ -5107,7 +5955,7 @@ class _LineItem {
     
     // Recalculate Amount and Total Amount
     // Amount = Rate * Quantity (will be calculated via getter)
-    // Total Amount = Amount - Discount (will be calculated via getter)
+    // Total Amount = Quantity * Rate (will be calculated via getter, updates automatically when quantity changes)
     
     selectedUOM = null; // Will be auto-selected when UOM loads
   }
@@ -5123,7 +5971,10 @@ class _LineItem {
   }
 
   double get totalAmount {
-    return amount - discount;
+    // Total Amount = Quantity * Rate (as per requirement)
+    final qty = double.tryParse(qtyController.text) ?? 0.0;
+    final rate = double.tryParse(rateController.text) ?? 0.0;
+    return qty * rate;
   }
 
   double get lineTotal => totalAmount;
@@ -5259,7 +6110,7 @@ class _DateField extends StatelessWidget {
               ),
             ),
             child: Text(
-              '${value.month}/${value.day}/${value.year}',
+              DateFormat('dd-MMM-yyyy').format(value),
               style: GoogleFonts.inter(
                 fontSize: isTablet ? 15 : 14,
                 fontWeight: FontWeight.w500,
@@ -5311,7 +6162,7 @@ class _ReadonlyDateField extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    return DateFormat('dd MMM yyyy').format(date);
+    return DateFormat('dd-MMM-yyyy').format(date);
   }
 }
 
@@ -5820,12 +6671,15 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
   bool _isLoading = false;
   bool _isInitialLoad = true;
   Timer? _debounceTimer;
+  bool _hasText = false; // Track if text field has content
 
   @override
   void initState() {
     super.initState();
     print('🔍 [SearchableItemField] initState called');
     widget.controller.addListener(_onTextChanged);
+    // Initialize _hasText based on current controller value
+    _hasText = widget.controller.text.isNotEmpty;
   }
 
   @override
@@ -5839,6 +6693,14 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
   void _onTextChanged() {
     final query = widget.controller.text.trim();
     print('🔍 [SearchableItemField] Text changed: "$query"');
+    
+    final hasText = widget.controller.text.isNotEmpty;
+    // Update _hasText state to show/hide clear icon
+    if (_hasText != hasText) {
+      setState(() {
+        _hasText = hasText;
+      });
+    }
     
     // Cancel previous timer
     _debounceTimer?.cancel();
@@ -6016,6 +6878,10 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                             return InkWell(
                               onTap: () {
                                 widget.controller.text = product.name;
+                                // Update _hasText state
+                                setState(() {
+                                  _hasText = true;
+                                });
                                 widget.onProductSelected(product);
                                 _removeOverlay();
                               },
@@ -6116,7 +6982,28 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : const Icon(Icons.search, color: Color(0xFF4db1b3)),
+                  : _hasText
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: Color(0xFF4db1b3)),
+                          onPressed: () {
+                            // Clear the text field
+                            widget.controller.clear();
+                            // Update state immediately
+                            setState(() {
+                              _hasText = false;
+                              _filteredProducts = [];
+                            });
+                            // Remove overlay
+                            _removeOverlay();
+                          },
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.search, color: Color(0xFF4db1b3)),
+                          onPressed: () {
+                            // Load all items by searching with empty string
+                            _searchItems('');
+                          },
+                        ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 14,
@@ -6161,11 +7048,16 @@ class _SearchableCustomerField extends StatefulWidget {
   final TextEditingController controller;
   final String? selectedCustomerCode;
   final ValueChanged<Customer> onCustomerSelected;
+  final VoidCallback? onCustomerCleared; // Optional callback when field is cleared
+
+  final List<Customer> allCustomers; // All customers loaded once
 
   const _SearchableCustomerField({
     required this.controller,
     required this.selectedCustomerCode,
     required this.onCustomerSelected,
+    required this.allCustomers, // Pass all customers from parent
+    this.onCustomerCleared, // Optional callback for clearing
   });
 
   @override
@@ -6177,16 +7069,18 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
   final GlobalKey _textFieldKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   List<Customer> _filteredCustomers = [];
-  bool _isLoading = false;
-  int? _bizUnit;
   Timer? _debounceTimer;
   bool _isSettingCustomer = false; // Flag to prevent listener from triggering when setting customer
+  bool _hasText = false; // Track if text field has content
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onTextChanged);
-    _initializeBizUnit();
+    // Initialize with all customers
+    _filteredCustomers = List.from(widget.allCustomers);
+    // Initialize _hasText based on current controller value
+    _hasText = widget.controller.text.isNotEmpty;
   }
 
   @override
@@ -6197,32 +7091,17 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
     super.dispose();
   }
 
-  Future<void> _initializeBizUnit() async {
-    try {
-      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-      final user = await sharedPrefHelper.getUser();
-
-      if (user == null) return;
-
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-          ? getIt<UserDetailStore>()
-          : null;
-
-      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-      int? bizUnitFromPrefs = user.sbuId;
-      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
-          ? bizUnitFromStore
-          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
-              ? bizUnitFromPrefs
-              : 1);
-
-      if (mounted) {
-        setState(() {
-          _bizUnit = bizUnit;
-        });
+  @override
+  void didUpdateWidget(_SearchableCustomerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update filtered customers when allCustomers list changes
+    if (oldWidget.allCustomers != widget.allCustomers) {
+      final query = widget.controller.text.trim().toLowerCase();
+      if (query.isEmpty) {
+        _filteredCustomers = List.from(widget.allCustomers);
+      } else {
+        _filterCustomers(query);
       }
-    } catch (e) {
-      print('Error initializing bizUnit: $e');
     }
   }
 
@@ -6232,87 +7111,40 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
       return;
     }
     
-    final query = widget.controller.text.trim();
+    final query = widget.controller.text.trim().toLowerCase();
+    final hasText = widget.controller.text.isNotEmpty;
+    
+    // Update _hasText state to show/hide clear icon
+    if (_hasText != hasText) {
+      setState(() {
+        _hasText = hasText;
+      });
+    }
     
     // Cancel previous timer
     _debounceTimer?.cancel();
     
-    if (query.isEmpty) {
-      _filteredCustomers = [];
-      _removeOverlay();
-      return;
-    }
-
-    // Debounce API calls - wait 500ms after user stops typing
-    // Start searching with single character
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      if (query.isNotEmpty && _bizUnit != null) {
-        _searchCustomers(query);
-      } else {
-        _filteredCustomers = [];
-        _removeOverlay();
-      }
-    });
-  }
-
-  Future<void> _searchCustomers(String searchText) async {
-    if (_bizUnit == null) {
-      await _initializeBizUnit();
-      if (_bizUnit == null) return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // Get customer ID - try multiple sources
-      int? customerId;
-      
-      // First try to parse selected customer code (which should be customer ID as string)
-      if (widget.selectedCustomerCode != null && widget.selectedCustomerCode!.isNotEmpty) {
-        customerId = int.tryParse(widget.selectedCustomerCode!);
-        // If parsing failed, selectedCustomerCode might be a code, not ID
-        // In that case, we might need to look it up, but for now we'll use null
-        if (customerId == null) {
-          print('⚠️ [SearchableCustomerField] Could not parse customerCode as ID: ${widget.selectedCustomerCode}');
-        }
-      }
-      
-      final commonRepository = getIt<CommonRepository>();
-      
-      // Get userId
-      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-      final user = await sharedPrefHelper.getUser();
-      final int userId = user?.id ?? user?.userId ?? 43;
-      
-      print('🔍 [SearchableCustomerField] Searching customers with: "$searchText", CustomerId: $customerId, UserId: $userId, BizUnit: ${_bizUnit}, SelectedCustomerCode: ${widget.selectedCustomerCode}');
-      
-      // Call API with search text, customer ID, userId, and other dynamic values
-      final items = await commonRepository.getCustomerList(
-        bizUnit: _bizUnit!,
-        customerId: customerId,
-        searchText: searchText.isEmpty ? null : searchText,
-        userId: userId,
-        sector: 0,
-        taxFlag: 0,
-        includeCancelled: false,
-      );
-
-      if (mounted) {
+    // Filter customers locally based on search text
+    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
+      if (query.isEmpty) {
+        // Show all customers by default when search is empty
         setState(() {
-          // Convert CommonDropdownItem to Customer
-          _filteredCustomers = items.map((item) {
-            return Customer(
-              code: item.id.toString(),
-              name: item.text,
-              address: item.address.isNotEmpty ? item.address : 'N/A',
-              city: item.cityName.isNotEmpty ? item.cityName : 'N/A',
-            );
+          _filteredCustomers = List.from(widget.allCustomers);
+          if (_filteredCustomers.isNotEmpty) {
+            _showOverlay();
+          } else {
+            _removeOverlay();
+          }
+        });
+      } else {
+        // Filter customers locally based on search text
+        setState(() {
+          _filteredCustomers = widget.allCustomers.where((customer) {
+            // Only match customers whose names start with the entered text (case-insensitive)
+            final name = customer.name.toLowerCase();
+            return name.startsWith(query);
           }).toList();
-
-          _isLoading = false;
-
+          
           if (_filteredCustomers.isNotEmpty) {
             _showOverlay();
           } else {
@@ -6320,16 +7152,17 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
           }
         });
       }
-    } catch (e) {
-      print('Error searching customers: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _filteredCustomers = [];
-          _removeOverlay();
-        });
-      }
-    }
+    });
+  }
+
+  void _filterCustomers(String query) {
+    setState(() {
+      _filteredCustomers = widget.allCustomers.where((customer) {
+        // Only match customers whose names start with the entered text (case-insensitive)
+        final name = customer.name.toLowerCase();
+        return name.startsWith(query);
+      }).toList();
+    });
   }
 
   void _showOverlay() {
@@ -6367,12 +7200,7 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
                   ),
                 ],
               ),
-            child: _isLoading
-                ? const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : _filteredCustomers.isEmpty
+            child: _filteredCustomers.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.all(16.0),
                         child: Text('No customers found'),
@@ -6395,6 +7223,10 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
                               _isSettingCustomer = true;
                               // Set the customer name in the controller
                               widget.controller.text = customer.name;
+                              // Update _hasText state
+                              setState(() {
+                                _hasText = true;
+                              });
                               // Remove overlay first
                               _removeOverlay();
                               // Unfocus the TextField to close keyboard
@@ -6493,16 +7325,58 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
         decoration: InputDecoration(
           hintText: 'Type to search customers...',
           hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
-          suffixIcon: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+          suffixIcon: _hasText
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Clear icon
+                    IconButton(
+                      icon: const Icon(Icons.clear, color: Color(0xFF4db1b3)),
+                      onPressed: () {
+                        // Set flag to prevent listener from triggering
+                        _isSettingCustomer = true;
+                        // Clear the text field
+                        widget.controller.clear();
+                        // Update state immediately
+                        setState(() {
+                          _hasText = false;
+                          _filteredCustomers = List.from(widget.allCustomers);
+                        });
+                        // Remove overlay
+                        _removeOverlay();
+                        // Notify parent that customer was cleared
+                        widget.onCustomerCleared?.call();
+                        // Reset flag after a short delay
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (mounted) {
+                            _isSettingCustomer = false;
+                          }
+                        });
+                      },
+                    ),
+                    // Search icon - shows all customers when clicked
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Color(0xFF4db1b3)),
+                      onPressed: () {
+                        // Show all customers regardless of current text
+                        setState(() {
+                          _filteredCustomers = List.from(widget.allCustomers);
+                        });
+                        _showOverlay();
+                      },
+                    ),
+                  ],
                 )
-              : const Icon(Icons.search, color: Color(0xFF4db1b3)),
+              : IconButton(
+                  icon: const Icon(Icons.search, color: Color(0xFF4db1b3)),
+                  onPressed: () {
+                    // Show all customers when search icon is clicked
+                    setState(() {
+                      _filteredCustomers = List.from(widget.allCustomers);
+                    });
+                    _showOverlay();
+                  },
+                ),
           contentPadding: EdgeInsets.symmetric(
             horizontal: isTablet ? 16 : 14,
             vertical: isTablet ? 16 : 14,
@@ -6523,7 +7397,14 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
           ),
         ),
         onTap: () {
-          if (widget.controller.text.isNotEmpty && _filteredCustomers.isNotEmpty) {
+          // Show all customers when field is tapped/focused
+          if (widget.allCustomers.isNotEmpty) {
+            // If search text is empty, show all customers
+            if (widget.controller.text.trim().isEmpty) {
+              setState(() {
+                _filteredCustomers = List.from(widget.allCustomers);
+              });
+            }
             _showOverlay();
           }
         },

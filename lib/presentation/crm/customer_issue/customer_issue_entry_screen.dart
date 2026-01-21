@@ -2670,6 +2670,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           null; // Clear batch no when division changes
                       detail.itemDescriptionOptions = [];
                       detail.batchNoOptions = [];
+                      // Clear qty issued when division changes (only in create mode)
+                      if (!_isEditMode) {
+                        detail.qtyIssuedCtrl.clear();
+                        detail.qtyIssuedError = null; // Clear validation error
+                      }
                     });
                     if (v != null) {
                       _loadItemDescriptionsForDivision(v, detail);
@@ -2714,6 +2719,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                       detail.itemDescriptionError = null;
                       detail.batchNo = null; // Clear batch no when item changes
                       detail.batchNoOptions = [];
+                      // Clear qty issued when item description changes (only in create mode)
+                      if (!_isEditMode) {
+                        detail.qtyIssuedCtrl.clear();
+                        detail.qtyIssuedError = null; // Clear validation error
+                      }
                     });
                     if (v != null && detail.divisionCategory != null) {
                       _loadBatchNumbersForItem(v, detail);
@@ -2752,6 +2762,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   onChanged: (v) {
                     setState(() {
                       detail.batchNo = v;
+                      // Clear qty issued when batch changes (only in create mode)
+                      if (!_isEditMode) {
+                        detail.qtyIssuedCtrl.clear();
+                        detail.qtyIssuedError = null; // Clear validation error
+                      }
                       // Store batch ID when batch is selected
                       if (v != null && detail.itemDescription != null) {
                         final batchList =
@@ -2778,6 +2793,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                             } catch (e2) {
                               print('⚠️ Batch not found in list: "$v"');
                               detail.batchId = null;
+                              // Clear qty issued when batch is not found
+                              detail.qtyIssuedCtrl.clear();
+                              detail.qtyIssuedError = null; // Clear validation error
                             }
                           }
                           // Auto-fill qty in stock, UOM, and rate if available
@@ -2825,10 +2843,19 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                               print('   - Rate: ${batchItem.rate}');
                             } catch (e) {
                               print('⚠️ Error auto-filling from batch: $e');
+                              // Clear all fields including qty issued when error occurs
+                              detail.qtyInStockCtrl.clear();
+                              detail.qtyIssuedCtrl.clear();
+                              detail.qtyIssuedError = null; // Clear validation error
+                              detail.uomCtrl.clear();
+                              detail.rateCtrl.clear();
+                              _calculateAmountForItem(detail);
                             }
                           } else {
                             // Clear auto-filled fields when batch is cleared or invalid
                             detail.qtyInStockCtrl.clear();
+                            detail.qtyIssuedCtrl.clear(); // Also clear qty issued when batch is invalid
+                            detail.qtyIssuedError = null; // Clear validation error
                             detail.uomCtrl.clear();
                             detail.rateCtrl.clear();
                             _calculateAmountForItem(detail);
@@ -2837,9 +2864,15 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           print(
                               '⚠️ Batch list not loaded for item: ${detail.itemDescription}');
                           detail.batchId = null;
+                          // Clear qty issued when batch list is not loaded
+                          detail.qtyIssuedCtrl.clear();
+                          detail.qtyIssuedError = null; // Clear validation error
                         }
                       } else {
                         detail.batchId = null;
+                        // Clear qty issued when item description is null
+                        detail.qtyIssuedCtrl.clear();
+                        detail.qtyIssuedError = null; // Clear validation error
                       }
                     });
                   },
@@ -3093,7 +3126,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           print('DioException type: ${e.type}');
           print('DioException response: ${e.response}');
           print('DioException data: ${e.response?.data?.toString() ?? 'null'}');
-        } else {
+        } else if (e is Exception) {
           // Extract message from Exception (API layer already formats it)
           final errorString = e.toString();
           if (errorString.startsWith('Exception: ')) {
@@ -3101,6 +3134,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           } else {
             detailedMessage = errorString;
           }
+        } else {
+          // Fallback for any other error type
+          detailedMessage = e.toString();
         }
       } catch (ee) {
         // If error handling fails, just use the original error message

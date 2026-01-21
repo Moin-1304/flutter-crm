@@ -1814,9 +1814,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           await Future.delayed(const Duration(milliseconds: 500));
         } catch (_) {}
 
-        // Only pop back to previous screen when creating new tour plan
-        // When editing (tour plan details), stay on the current screen
-        if (mounted && !isEditing) {
+        // Pop back to previous screen after successful save/update
+        // This ensures navigation back to tour plan main page after updating
+        if (mounted) {
           Navigator.of(context).pop(true);
         }
       }
@@ -2642,14 +2642,33 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             setState(() {
               _customerTypeOptions.clear();
               _customerTypeNameToId.clear();
+              
+              // Filter customer types based on user role
+              // For sales reps (not manager/field manager), only show "Pharmacy"
+              final bool isSalesRep = !_isManagerOrFieldManager;
+              
               for (final item in items) {
                 final String typeName =
                     (item.text.isNotEmpty ? item.text : item.name).trim();
                 if (typeName.isNotEmpty) {
-                  _customerTypeOptions.add(typeName);
-                  _customerTypeNameToId[typeName] = item.id;
-                  print(
-                      'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
+                  // For sales reps, only add "Pharmacy" customer type
+                  if (isSalesRep) {
+                    if (typeName.toLowerCase() == 'pharmacy') {
+                      _customerTypeOptions.add(typeName);
+                      _customerTypeNameToId[typeName] = item.id;
+                      print(
+                          'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id} (Sales Rep - Pharmacy only)');
+                    } else {
+                      print(
+                          'NewTourPlanScreen: [CustomerType] Skipped: "$typeName" (Sales Rep - only Pharmacy allowed)');
+                    }
+                  } else {
+                    // For managers/field managers, show all customer types
+                    _customerTypeOptions.add(typeName);
+                    _customerTypeNameToId[typeName] = item.id;
+                    print(
+                        'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
+                  }
                 }
               }
             });

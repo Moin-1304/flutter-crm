@@ -2,7 +2,12 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../../../../core/data/network/dio/dio_client.dart';
 import '../../constants/endpoints.dart';
-import '../../../../domain/entity/common/common_api_models.dart';
+import '../../../../domain/entity/common/common_api_models.dart'
+    show CommonDropdownItem, CommonGetAutoRequest, TaxComponentResponse, ItemDetailResponse,
+         PurposeOfVisitRequest, CustomerTypeRequest, TourPlanProductsRequest, DcrProductsRequest,
+         MappedInstrumentsRequest, StoreListRequest, IssueToListRequest, IssueAgainstListRequest,
+         DivisionCategoryRequest, CustomerListRequest, ItemDescriptionRequest, BatchNoRequest,
+         ReportingManagerRequest, TaxComponentRequest;
 
 class CommonApi {
   final DioClient _dioClient;
@@ -1062,6 +1067,49 @@ class CommonApi {
     } catch (e) {
       print('❌ [CommonApi] Item List API Exception: ${e.toString()}');
       throw Exception('Failed to get item list: ${e.toString()}');
+    }
+  }
+
+  /// Get Item Detail from Common/GetItemDetail endpoint
+  /// Parameters: Item (itemId), Date (date string), CustomerId (customerId)
+  Future<ItemDetailResponse> getItemDetail({
+    required int itemId,
+    required String date,
+    required int customerId,
+  }) async {
+    try {
+      print('🔵 GetItemDetail API Request');
+      print('   Item: $itemId');
+      print('   Date: $date');
+      print('   CustomerId: $customerId');
+      print('   URL: ${Endpoints.commonGetItemDetail}');
+      
+      final response = await _dioClient.dio.get(
+        Endpoints.commonGetItemDetail,
+        queryParameters: {
+          'Item': itemId,
+          'Date': date,
+          'CustomerId': customerId,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('✅ GetItemDetail API Response');
+      print('   Status Code: ${response.statusCode}');
+      print('   Response Data: ${response.data}');
+
+      if (response.data != null) {
+        return ItemDetailResponse.fromJson(response.data);
+      } else {
+        throw Exception('No item detail data received');
+      }
+    } catch (e) {
+      print('❌ GetItemDetail API Error: $e');
+      throw Exception('Failed to get item detail: ${e.toString()}');
     }
   }
 

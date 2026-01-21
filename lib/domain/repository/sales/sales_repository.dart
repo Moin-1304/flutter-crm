@@ -48,6 +48,8 @@ abstract class SalesRepository {
     required int bizunit,
     required int userId,
   });
+
+  Future<void> transactionCancelSalesOrder(SalesOrderTransactionCancelRequest request);
 }
 
 

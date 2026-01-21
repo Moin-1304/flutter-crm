@@ -26,6 +26,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   bool _isLoading = false;
   SalesOrderApiItem? _orderData;
   String? _distributorName; // Store distributor name loaded from API
+  String? _loadedCustomerName; // Store customer name loaded from API
   
   // Collapsible sections
   bool _isOrderInfoExpanded = true;
@@ -63,6 +64,12 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             widget.orderData!.customerId!,
             widget.orderData!.distributerForId!,
           );
+        }
+        // Load customer name if not available in order data
+        if ((widget.orderData!.customerName == null || widget.orderData!.customerName!.isEmpty) &&
+            (widget.orderData!.customer == null || widget.orderData!.customer!.isEmpty) &&
+            widget.orderData!.customerId != null) {
+          _loadCustomerName(widget.orderData!.customerId!);
         }
       });
     } else {
@@ -112,6 +119,13 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           );
         }
         
+        // Load customer name if not available in order data
+        if ((orderData.customerName == null || orderData.customerName!.isEmpty) &&
+            (orderData.customer == null || orderData.customer!.isEmpty) &&
+            orderData.customerId != null) {
+          _loadCustomerName(orderData.customerId!);
+        }
+        
         print('✅ [SaleOrderView] State updated with order data');
       }
     } catch (e, stackTrace) {
@@ -153,10 +167,6 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline, color: Colors.white),
-            onPressed: () {},
-          ),
           IconButton(
             icon: const Icon(Icons.print_outlined, color: Colors.white),
             onPressed: () {},
@@ -337,9 +347,14 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
 
   // Top Row Field 1: Customer
   Widget _buildTopRowField1(bool isTablet) {
+    // Use loaded customer name if available, otherwise fall back to orderData fields
+    final customerName = _loadedCustomerName ?? 
+                        _orderData?.customerName ?? 
+                        _orderData?.customer ?? 
+                        '';
     return _LabeledField(
           label: 'Customer',
-          child: _buildReadOnlyField(_orderData?.customerName ?? _orderData?.customer ?? ''),
+          child: _buildReadOnlyField(customerName),
     );
   }
 
@@ -468,6 +483,74 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       if (mounted) {
         setState(() {
           _distributorName = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadCustomerName(int customerId) async {
+    try {
+      // Get user info for bizUnit
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+
+      if (user == null) {
+        print('Error: User not available for Customer API');
+        return;
+      }
+
+      // Get bizUnit from UserDetailStore or user prefs
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      if (bizUnit == 0) {
+        print('Error: BizUnit is 0');
+        return;
+      }
+
+      print('🔵 Loading Customer Name for BizUnit: $bizUnit, CustomerId: $customerId');
+
+      final commonRepository = getIt<CommonRepository>();
+      final customers = await commonRepository.getCustomerList(
+        bizUnit: bizUnit,
+        customerId: customerId,
+      );
+
+      if (mounted) {
+        // Find customer by ID
+        String? customerName;
+        try {
+          final customerItem = customers.firstWhere(
+            (item) => item.id == customerId,
+          );
+          customerName = customerItem.text;
+          print('✅ Found Customer Name: $customerName');
+        } catch (e) {
+          // Customer not found by ID
+          customerName = null;
+          print('⚠️ Customer not found by ID: $customerId');
+        }
+        
+        // Update state with the found name
+        setState(() {
+          _loadedCustomerName = customerName;
+        });
+        print('✅ Loaded Customer Name: ${_loadedCustomerName}');
+      }
+    } catch (e) {
+      print('Error loading customer name: $e');
+      if (mounted) {
+        setState(() {
+          _loadedCustomerName = null;
         });
       }
     }
@@ -781,11 +864,11 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           // Use typeText for exact matching (more reliable than label)
           if (typeText == 'SubTotal' || typeText.toLowerCase() == 'subtotal') {
             subtotal = value;
-          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax') {
+          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax' || label.toLowerCase() == 'tax') {
             taxRows.add({
               'label': label.isNotEmpty ? label : 'Tax',
               'value': value,
-              'type': charge['subTypeText']?.toString(),
+              'type': charge['typeText']?.toString() ?? charge['subTypeText']?.toString(),
             });
           } else if (typeText == 'Discount' || typeText.toLowerCase() == 'discount') {
             discountRows.add({
@@ -917,16 +1000,17 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                               isTablet: isTablet,
                             ),
                             Divider(height: 1, color: Colors.grey.shade200),
-                            // Tax Rows
-                            for (int i = 0; i < taxRows.length; i++) ...[
-                              _buildTaxTableRowReadOnlyWithConfig(
-                                label: 'Tax',
-                                value: taxRows[i]['value'] as double,
-                                configValue: taxRows[i]['type'] as String?,
-                                isTablet: isTablet,
-                              ),
-                              Divider(height: 1, color: Colors.grey.shade200),
-                            ],
+                            // Tax Rows (only show if value > 0)
+                            for (int i = 0; i < taxRows.length; i++)
+                              if ((taxRows[i]['value'] as double) > 0) ...[
+                                _buildTaxTableRowReadOnlyWithConfig(
+                                  label: 'Tax',
+                                  value: taxRows[i]['value'] as double,
+                                  configValue: taxRows[i]['type'] as String?,
+                                  isTablet: isTablet,
+                                ),
+                                Divider(height: 1, color: Colors.grey.shade200),
+                              ],
                             // Discount Rows
                             for (int i = 0; i < discountRows.length; i++) ...[
                               _buildTaxTableRowReadOnlyWithConfig(
@@ -987,7 +1071,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                                       Expanded(
                                         flex: 2,
                                         child: Text(
-                                          grandTotal == 0.0 ? '0' : _formatCurrency(grandTotal),
+                                          _formatCurrency(grandTotal),
                                           textAlign: TextAlign.end,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -1015,16 +1099,17 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                           label: 'Sub Total',
                           value: subtotal,
                         ),
-                  const SizedBox(height: 12),
-                        // Tax Rows
+                        const SizedBox(height: 12),
+                        // Tax Rows (only show if value > 0)
                         for (int i = 0; i < taxRows.length; i++)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildTaxRowMobile(
-                              label: 'Tax',
-                              value: taxRows[i]['value'] as double,
+                          if ((taxRows[i]['value'] as double) > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _buildTaxRowMobile(
+                                label: 'Tax',
+                                value: taxRows[i]['value'] as double,
+                              ),
                             ),
-                          ),
                         // Discount Rows
                         for (int i = 0; i < discountRows.length; i++)
                           Padding(
@@ -1097,7 +1182,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           ),
         ),
         Text(
-          value == 0.0 ? '0' : _formatCurrency(value),
+          _formatCurrency(value),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: GoogleFonts.inter(
@@ -1139,7 +1224,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           Expanded(
             flex: 1,
             child: Text(
-              value == 0.0 ? '0' : _formatCurrency(value),
+              _formatCurrency(value),
               textAlign: TextAlign.end,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1202,7 +1287,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           Expanded(
             flex: 1,
             child: Text(
-              value == 0.0 ? '0' : _formatCurrency(value),
+              _formatCurrency(value),
               textAlign: TextAlign.end,
               style: GoogleFonts.inter(
                 fontSize: isTablet ? 14 : 13,

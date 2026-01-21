@@ -188,5 +188,19 @@ class SalesRepositoryImpl implements SalesRepository {
       throw Exception('Failed to delete sales order: ${e.toString()}');
     }
   }
+
+  @override
+  Future<void> transactionCancelSalesOrder(SalesOrderTransactionCancelRequest request) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        await salesApi.transactionCancelSalesOrder(request);
+        return;
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      throw Exception('Failed to cancel sales order: ${e.toString()}');
+    }
+  }
 }
 

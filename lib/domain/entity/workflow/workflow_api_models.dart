@@ -206,15 +206,37 @@ class WorkflowGetUserPagePrivilegesResponse {
   factory WorkflowGetUserPagePrivilegesResponse.fromJson(Map<String, dynamic> json) {
     final Map<String, ButtonPrivilege> privileges = {};
     
-    // Parse all button privileges from the response
-    json.forEach((key, value) {
-      if (value is Map<String, dynamic>) {
-        privileges[key] = ButtonPrivilege.fromJson(value);
-      } else if (value is bool) {
-        // If value is just a boolean, create a ButtonPrivilege with hasRight = value
-        privileges[key] = ButtonPrivilege(hasRight: value);
+    // Handle nested structure with children array (new format)
+    if (json.containsKey('children') && json['children'] is List) {
+      final children = json['children'] as List;
+      for (var child in children) {
+        if (child is Map<String, dynamic>) {
+          final keyName = child['keyName']?.toString();
+          final hasRight = child['hasRight'] == true || child['hasRight'] == 1;
+          
+          if (keyName != null) {
+            // Only add buttons with hasRight = true
+            if (hasRight) {
+              privileges[keyName] = ButtonPrivilege(
+                hasRight: true,
+                buttonName: keyName,
+                action: child['focus']?.toString(),
+              );
+            }
+          }
+        }
       }
-    });
+    } else {
+      // Handle flat structure (old format)
+      json.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          privileges[key] = ButtonPrivilege.fromJson(value);
+        } else if (value is bool) {
+          // If value is just a boolean, create a ButtonPrivilege with hasRight = value
+          privileges[key] = ButtonPrivilege(hasRight: value);
+        }
+      });
+    }
     
     return WorkflowGetUserPagePrivilegesResponse(
       buttonPrivileges: privileges,

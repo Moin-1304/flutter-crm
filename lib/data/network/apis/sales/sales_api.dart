@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../../../../core/data/network/dio/dio_client.dart';
 import '../../constants/endpoints.dart';
@@ -345,12 +346,125 @@ class SalesApi {
 
       print('✅ Sales Order Save API Success');
       print('Response Status: ${response.statusCode}');
+      print('Response Data Type: ${response.data.runtimeType}');
       print('Response Data: ${response.data}');
+      print('Response Headers: ${response.headers.map}');
 
+      // Check for success headers (common in ASP.NET APIs)
+      final headers = response.headers.map;
+      final successCode = headers['successcode']?.first;
+      final successMessage = headers['successmessage']?.first ?? 'Sale Order saved successfully';
+      
+      print('   Success Code: $successCode');
+      print('   Success Message: $successMessage');
+
+      // Handle 204 No Content response (success with no body or request payload in body)
+      if (response.statusCode == 204) {
+        print('✅ 204 No Content - Success response');
+        
+        // Try to parse response.data if it exists and is not empty
+        Map<String, dynamic> responseData;
+        
+        if (response.data != null && response.data.toString().trim().isNotEmpty) {
+          if (response.data is Map<String, dynamic>) {
+            // Response data is already a Map
+            responseData = response.data as Map<String, dynamic>;
+            print('   Using response.data as Map');
+          } else if (response.data is String) {
+            // Response data is a String, try to parse as JSON
+            final dataString = (response.data as String).trim();
+            if (dataString.isNotEmpty) {
+              try {
+                responseData = jsonDecode(dataString) as Map<String, dynamic>;
+                print('   Parsed response.data from String to Map');
+              } catch (e) {
+                print('⚠️ Failed to parse response.data as JSON: $e');
+                // Fallback to request data
+                responseData = request.toJson();
+                responseData['message'] = successMessage;
+              }
+            } else {
+              // Empty string, use request data
+              print('   Empty string response.data, using request data');
+              responseData = request.toJson();
+              responseData['message'] = successMessage;
+            }
+          } else {
+            // Unknown type, use request data
+            print('⚠️ Unknown response.data type: ${response.data.runtimeType}');
+            responseData = request.toJson();
+            responseData['message'] = successMessage;
+          }
+        } else {
+          // No response data or empty, use request data
+          print('   No response.data or empty, using request data');
+          responseData = request.toJson();
+          responseData['message'] = successMessage;
+        }
+        
+        // Ensure message is set
+        if (responseData['message'] == null || responseData['message'].toString().isEmpty) {
+          responseData['message'] = successMessage;
+        }
+        
+        // Normalize id field (API uses "Id" but fromJson checks "id")
+        if (responseData['Id'] != null && responseData['id'] == null) {
+          responseData['id'] = responseData['Id'];
+        }
+        
+        // Create response directly with success=true to avoid fromJson logic issues
+        return SalesOrderSaveResponse(
+          data: responseData,
+          success: true, // Always true for 204 responses
+          message: responseData['message']?.toString() ?? successMessage,
+        );
+      }
+
+      // Handle normal JSON response (200 OK with body)
       if (response.data != null) {
-        return SalesOrderSaveResponse.fromJson(response.data);
+        // Check if response.data is a Map
+        if (response.data is Map<String, dynamic>) {
+          final responseData = response.data as Map<String, dynamic>;
+          // Add success message from headers if not present
+          if (responseData['message'] == null && successMessage.isNotEmpty) {
+            responseData['message'] = successMessage;
+          }
+          return SalesOrderSaveResponse.fromJson(responseData);
+        } else if (response.data is String) {
+          // If response is a string, try to parse it as JSON
+          try {
+            final jsonData = jsonDecode(response.data as String) as Map<String, dynamic>;
+            // Add success message from headers if not present
+            if (jsonData['message'] == null && successMessage.isNotEmpty) {
+              jsonData['message'] = successMessage;
+            }
+            return SalesOrderSaveResponse.fromJson(jsonData);
+          } catch (e) {
+            print('⚠️ Response data is string but not valid JSON: ${response.data}');
+            // Create success response from request data
+            return SalesOrderSaveResponse(
+              data: request.toJson(),
+              success: true,
+              message: successMessage,
+            );
+          }
+        } else {
+          // Unknown response type, create success response from request
+          print('⚠️ Unknown response data type: ${response.data.runtimeType}');
+          return SalesOrderSaveResponse(
+            data: request.toJson(),
+            success: true,
+            message: successMessage,
+          );
+        }
       } else {
-        throw Exception('No sales order save response received');
+        // No response data but status is success (not 204)
+        // Create success response from request data
+        return SalesOrderSaveResponse(
+          data: request.toJson(),
+          success: true,
+          message: successMessage,
+        );
       }
     } on DioException catch (e) {
       // Enhanced error handling for DioException
@@ -473,30 +587,55 @@ class SalesApi {
   }
 
   /// Delete Sales Order
-  /// Uses GET request with query parameters: Id, Bizunit, UserId
+  /// Uses GET request with query parameters matching the API specification
+  /// API: /api/SaleOrder/Delete
+  /// Type: GET API
   Future<void> deleteSalesOrder({
     required int id,
     required int bizunit,
     required int userId,
   }) async {
     try {
+      // Build query parameters matching the API JSON structure
+      final queryParams = <String, dynamic>{
+        'Id': id, // Transaction Id (required)
+        'PageNumber': 0,
+        'PageSize': 0,
+        'SortOrder': 0,
+        'Bizunit': bizunit,
+        'Active': null,
+        'SortDir': 0,
+        'SearchText': null,
+        'SortField': null,
+        'FilterExpression': null,
+        'SortExpression': null,
+        'FromDate': null,
+        'ToDate': null,
+        'FieldName': null,
+        'PageName': null,
+        'UserId': userId,
+        'MenuId': null,
+        'Url': null,
+        'IsFullyUsed': null,
+        'RefId': null,
+      };
+
+      // Remove null values from query parameters (standard practice for GET requests)
+      queryParams.removeWhere((key, value) => value == null);
+
       print('═══════════════════════════════════════════════════════════');
       print('🗑️ Sales Order Delete API Request');
       print('═══════════════════════════════════════════════════════════');
       print('URL: ${Endpoints.salesOrderDelete}');
       print('Query Parameters:');
-      print('  Id: $id');
-      print('  Bizunit: $bizunit');
-      print('  UserId: $userId');
+      queryParams.forEach((key, value) {
+        print('  $key: $value');
+      });
       print('═══════════════════════════════════════════════════════════');
       
       final response = await _dioClient.dio.get(
         Endpoints.salesOrderDelete,
-        queryParameters: {
-          'Id': id,
-          'Bizunit': bizunit,
-          'UserId': userId,
-        },
+        queryParameters: queryParams,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -544,6 +683,72 @@ class SalesApi {
     } catch (e) {
       print('❌ Sales Order Delete - Unexpected Error: $e');
       throw Exception('Failed to delete Sales Order: ${e.toString()}');
+    }
+  }
+
+  /// Transaction Cancel Sales Order
+  /// API: /api/SaleOrder/TransactionCancel
+  /// Type: POST
+  Future<void> transactionCancelSalesOrder(SalesOrderTransactionCancelRequest request) async {
+    try {
+      print('═══════════════════════════════════════════════════════════');
+      print('🚫 Sales Order Transaction Cancel API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.salesOrderTransactionCancel}');
+      print('Request JSON:');
+      print(request.toJson());
+      print('═══════════════════════════════════════════════════════════');
+
+      final response = await _dioClient.dio.post(
+        Endpoints.salesOrderTransactionCancel,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('═══════════════════════════════════════════════════════════');
+      print('✅ Sales Order Transaction Cancel API Response');
+      print('═══════════════════════════════════════════════════════════');
+      print('Status Code: ${response.statusCode}');
+      print('Response Data: ${response.data}');
+      print('═══════════════════════════════════════════════════════════');
+
+      if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
+        return;
+      } else {
+        throw Exception('Failed to cancel sales order: Invalid response status ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      print('═══════════════════════════════════════════════════════════');
+      print('❌ Sales Order Transaction Cancel API Error');
+      print('═══════════════════════════════════════════════════════════');
+      print('Error Type: ${e.type}');
+      print('Error Message: ${e.message}');
+
+      String errorMessage = 'Failed to cancel Sales Order';
+
+      if (e.response != null) {
+        print('Status Code: ${e.response!.statusCode}');
+        print('Response Data: ${e.response!.data}');
+
+        final data = e.response!.data;
+        if (data is Map) {
+          errorMessage = data['message']?.toString() ??
+                        data['errorMessage']?.toString() ??
+                        data['error']?.toString() ??
+                        errorMessage;
+        } else if (data is String) {
+          errorMessage = data.isNotEmpty ? data : errorMessage;
+        }
+      }
+
+      throw Exception(errorMessage);
+    } catch (e) {
+      print('❌ Sales Order Transaction Cancel - Unexpected Error: $e');
+      throw Exception('Failed to cancel Sales Order: ${e.toString()}');
     }
   }
 }

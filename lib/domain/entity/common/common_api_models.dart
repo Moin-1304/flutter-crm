@@ -1903,3 +1903,134 @@ enum ChargesType {
     );
   }
 }
+
+/// Item Detail Response Model from Common/GetItemDetail endpoint
+class ItemDetailResponse {
+  final int? item;
+  final double? rate;
+  final double? retailRate;
+  final double? mrp;
+  final double? unitPrice;
+  final int? uom;
+  final String? uomText;
+  final double? discount;
+  final double? amount;
+  final String? itemText;
+  final String? manufacturerName;
+  final int? divisionGroup;
+  final String? divisionGroupText;
+  final double? quantity;
+  final double? bonusQuantity;
+  final double? additionalBonusQuantity;
+  final bool? isFOC;
+  final bool? isRateUpdateConfirm;
+  final String? reqdDate;
+  final Map<String, dynamic>? otherFields;
+
+  ItemDetailResponse({
+    this.item,
+    this.rate,
+    this.retailRate,
+    this.mrp,
+    this.unitPrice,
+    this.uom,
+    this.uomText,
+    this.discount,
+    this.amount,
+    this.itemText,
+    this.manufacturerName,
+    this.divisionGroup,
+    this.divisionGroupText,
+    this.quantity,
+    this.bonusQuantity,
+    this.additionalBonusQuantity,
+    this.isFOC,
+    this.isRateUpdateConfirm,
+    this.reqdDate,
+    this.otherFields,
+  });
+
+  factory ItemDetailResponse.fromJson(Map<String, dynamic> json) {
+    // Helper to safely parse numbers
+    num? parseNum(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value;
+      if (value is String) {
+        final parsed = num.tryParse(value);
+        return parsed;
+      }
+      return null;
+    }
+
+    // Helper to safely parse doubles
+    double? parseDouble(dynamic value) {
+      final numValue = parseNum(value);
+      return numValue?.toDouble();
+    }
+
+    // Helper to safely parse ints
+    int? parseInt(dynamic value) {
+      final numValue = parseNum(value);
+      return numValue?.toInt();
+    }
+
+    // Helper to safely parse bools
+    bool? parseBool(dynamic value) {
+      if (value == null) return null;
+      if (value is bool) return value;
+      if (value is int) return value != 0;
+      if (value is String) {
+        return value.toLowerCase() == 'true' || value == '1';
+      }
+      return null;
+    }
+
+    return ItemDetailResponse(
+      item: parseInt(json['Item'] ?? json['item']),
+      rate: parseDouble(json['Rate'] ?? json['rate']),
+      retailRate: parseDouble(json['RetailRate'] ?? json['retailRate']),
+      mrp: parseDouble(json['MRP'] ?? json['mrp'] ?? json['MaxRetailPrice']),
+      unitPrice: parseDouble(json['UnitPrice'] ?? json['unitPrice'] ?? json['Price']),
+      uom: parseInt(json['UOM'] ?? json['uom']),
+      uomText: json['UOMText']?.toString() ?? json['uomText']?.toString(),
+      discount: parseDouble(json['Discount'] ?? json['discount']),
+      amount: parseDouble(json['Amount'] ?? json['amount']),
+      itemText: json['ItemText']?.toString() ?? json['itemText']?.toString(),
+      manufacturerName: json['ManufacturerName']?.toString() ?? json['manufacturerName']?.toString(),
+      divisionGroup: parseInt(json['DivisionGroup'] ?? json['divisionGroup']),
+      divisionGroupText: json['DivisionGroupText']?.toString() ?? json['divisionGroupText']?.toString(),
+      quantity: parseDouble(json['Quantity'] ?? json['quantity']),
+      bonusQuantity: parseDouble(json['BonusQuantity'] ?? json['bonusQuantity']),
+      additionalBonusQuantity: parseDouble(json['AdditionalBonusQuantity'] ?? json['additionalBonusQuantity']),
+      isFOC: parseBool(json['IsFOC'] ?? json['isFOC']),
+      isRateUpdateConfirm: parseBool(json['IsRateUpdateConfirm'] ?? json['isRateUpdateConfirm']),
+      reqdDate: json['ReqdDate']?.toString() ?? json['reqdDate']?.toString(),
+      otherFields: json,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'Item': item,
+      'Rate': rate,
+      'RetailRate': retailRate,
+      'MRP': mrp,
+      'UnitPrice': unitPrice,
+      'UOM': uom,
+      'UOMText': uomText,
+      'Discount': discount,
+      'Amount': amount,
+      'ItemText': itemText,
+      'ManufacturerName': manufacturerName,
+      'DivisionGroup': divisionGroup,
+      'DivisionGroupText': divisionGroupText,
+      'Quantity': quantity,
+      'BonusQuantity': bonusQuantity,
+      'AdditionalBonusQuantity': additionalBonusQuantity,
+      'IsFOC': isFOC,
+      'IsRateUpdateConfirm': isRateUpdateConfirm,
+      'ReqdDate': reqdDate,
+      ...?otherFields,
+    };
+  }
+}
