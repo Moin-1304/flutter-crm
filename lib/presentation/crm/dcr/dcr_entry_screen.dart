@@ -8,6 +8,10 @@ import 'package:boilerplate/domain/entity/dcr/dcr.dart';
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
+import 'package:boilerplate/data/network/apis/common/common_api.dart';
+import 'package:boilerplate/core/data/network/dio/dio_client.dart';
+import 'package:boilerplate/data/network/constants/endpoints.dart';
+import 'package:dio/dio.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
@@ -41,7 +45,9 @@ class DcrEntryScreen extends StatefulWidget {
   State<DcrEntryScreen> createState() => _DcrEntryScreenState();
 }
 
-class _DcrEntryScreenState extends State<DcrEntryScreen> {
+class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  
   String? _cluster;
   String? _customer;
   String? _purpose;
@@ -100,16 +106,66 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
   final TextEditingController _complaintCtrl = TextEditingController();
   final TextEditingController _actionTakenCtrl = TextEditingController();
   final TextEditingController _resultCtrl = TextEditingController();
-  String? _complaintStatus; // "Resolved" or "Not Resolved"
+  String? _complaintStatus; // "Resolved" or "Not Resolved" (UI value, will be converted to int)
   DateTime? _complaintDate;
   final TextEditingController _complaintRemarksCtrl = TextEditingController();
+  
+  // Service Report fields (from image)
+  String? _serviceReportCustomer;
+  final TextEditingController _contactPersonCtrl = TextEditingController();
+  final TextEditingController _contactMobileCtrl = TextEditingController();
+  final TextEditingController _serviceDateCtrl = TextEditingController();
+  DateTime? _serviceDate;
+  String? _serviceReportProduct;
+  final TextEditingController _serialNumberCtrl = TextEditingController();
+  String? _serviceType;
+  DateTime? _startTime;
+  DateTime? _endTime;
+  String? _electricitySafetyTest;
+  DateTime? _complaintDateTime;
+  final TextEditingController _serviceRateCtrl = TextEditingController();
+  String? _serviceStatus;
+  final TextEditingController _workDescriptionCtrl = TextEditingController();
+  final TextEditingController _materialsUsedCtrl = TextEditingController();
+  final TextEditingController _serviceRemarksCtrl = TextEditingController();
+  String? _feedbackOption;
+  final TextEditingController _signedByCtrl = TextEditingController();
+  // Signature field - will be handled separately
 
   // Store loaded entry for preserving detailId and clusterId during updates
   DcrEntry? _loadedEntry;
 
+  // Customer creation fields
+  final TextEditingController _customerNameCtrl = TextEditingController();
+  final TextEditingController _customerCodeCtrl = TextEditingController();
+  String? _selectedCustomerType;
+  List<String> _customerTypeOptions = [];
+  final Map<String, int> _customerTypeNameToId = <String, int>{};
+  final TextEditingController _customerMobileCtrl = TextEditingController();
+  String? _selectedCountry;
+  List<String> _countryOptions = [];
+  final Map<String, int> _countryNameToId = <String, int>{};
+  String? _selectedState;
+  List<String> _stateOptions = [];
+  final Map<String, int> _stateNameToId = <String, int>{};
+  String? _selectedCity;
+  List<String> _cityOptions = [];
+  final Map<String, int> _cityNameToId = <String, int>{};
+
   @override
   void initState() {
     super.initState();
+    
+    // Initialize TabController with dynamic tab count:
+    // If creating a new DCR and the user is a Manager (roleCategory == 1 or 2),
+    // show only the "Create DCR" tab. Otherwise show all three tabs.
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int? roleCategory = userStore?.userDetail?.roleCategory;
+    final bool isManager = roleCategory == 1 || roleCategory == 2;
+    final bool isCreatingNew = widget.dcrId == null && widget.id == null;
+    final int initialTabCount = (isManager && isCreatingNew) ? 1 : 3;
+    _tabController = TabController(length: initialTabCount, vsync: this);
 
     // Show loader immediately if we're in edit mode (when edit icon is clicked)
     if (widget.dcrId != null || widget.id != null) {
@@ -171,6 +227,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
 
     // Check if user is Service Engineer
     _checkServiceEngineer();
+    
+    // Pre-fill Service Date with today if not already set
+    if (_serviceDate == null) {
+      _serviceDate = DateTime.now();
+      try {
+        _serviceDateCtrl.text = _formatServiceDate(_serviceDate!);
+      } catch (_) {
+        // _formatServiceDate may be defined later; it's safe to ignore here
+      }
+    }
 
     // Load lists first so when details arrive we can map reliably
     // IMPORTANT: Load typeOfWork list FIRST if we have initialTypeOfWorkId to resolve purpose immediately
@@ -182,6 +248,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
           _loadClusterList(),
           _loadProductsList(),
           _initLocation(),
+          _loadCountries(),
+          _loadCustomerTypes(),
         ]).whenComplete(() {
           // Load customers after clusters are loaded (if cluster is already selected)
           if (_cluster != null && _cluster!.trim().isNotEmpty) {
@@ -197,6 +265,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         _loadTypeOfWorkList(),
         _loadProductsList(),
         _initLocation(),
+        _loadCountries(),
+        _loadCustomerTypes(),
       ]).whenComplete(() {
         // Load customers after clusters are loaded (if cluster is already selected)
         if (_cluster != null && _cluster!.trim().isNotEmpty) {
@@ -796,6 +866,171 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
     }
   }
 
+  Future<void> _loadCustomerTypes() async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? userId = userStore?.userDetail?.id;
+
+        if (userId == null || userId <= 0) {
+          print('DcrEntryScreen: [CustomerTypes] userId is null/0, skipping customer types load');
+          return;
+        }
+
+        print('DcrEntryScreen: [CustomerTypes] Loading customer types with userId: $userId');
+        final List<CommonDropdownItem> items = await repo.getCustomerTypeList(userId);
+
+        if (items.isNotEmpty && mounted) {
+          setState(() {
+            _customerTypeOptions = items
+                .map((e) => e.text.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            // Map names to IDs for submit
+            for (final item in items) {
+              final String key = item.text.trim();
+              if (key.isNotEmpty) {
+                // Store mapping if needed (assuming we'll use item.id)
+                print('DcrEntryScreen: [CustomerTypes] Mapped "$key" to ID: ${item.id}');
+              }
+            }
+          });
+          print('DcrEntryScreen: [CustomerTypes] Loaded ${_customerTypeOptions.length} customer types');
+        } else {
+          print('DcrEntryScreen: [CustomerTypes] No customer types returned from API');
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [CustomerTypes] Error loading customer types: $e');
+    }
+  }
+
+  Future<void> _loadCountries() async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        // Use CommonGetAutoRequest with CommandType for countries (typically 200 or similar)
+        // Note: Adjust CommandType value based on your API documentation
+        final request = CommonGetAutoRequest(commandType: 200);
+        final commonApi = getIt<CommonApi>();
+        final List<CommonDropdownItem> items = await commonApi.getAuto(request);
+
+        if (items.isNotEmpty && mounted) {
+          setState(() {
+            _countryOptions = items
+                .map((e) => e.text.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            // Map names to IDs
+            for (final item in items) {
+              final String key = item.text.trim();
+              if (key.isNotEmpty) {
+                _countryNameToId[key] = item.id;
+              }
+            }
+          });
+          print('DcrEntryScreen: [Countries] Loaded ${_countryOptions.length} countries');
+        } else {
+          print('DcrEntryScreen: [Countries] No countries returned from API');
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [Countries] Error loading countries: $e');
+    }
+  }
+
+  Future<void> _loadStates(int countryId) async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        // Use CommonGetAutoRequest with CommandType for states (typically 201 or similar)
+        // Note: Adjust CommandType value based on your API documentation
+        final request = CommonGetAutoRequest(commandType: 201, countryId: countryId);
+        final commonApi = getIt<CommonApi>();
+        final List<CommonDropdownItem> items = await commonApi.getAuto(request);
+
+        if (items.isNotEmpty && mounted) {
+          setState(() {
+            _stateOptions = items
+                .map((e) => e.text.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            // Map names to IDs
+            for (final item in items) {
+              final String key = item.text.trim();
+              if (key.isNotEmpty) {
+                _stateNameToId[key] = item.id;
+              }
+            }
+          });
+          print('DcrEntryScreen: [States] Loaded ${_stateOptions.length} states for countryId: $countryId');
+        } else {
+          print('DcrEntryScreen: [States] No states returned from API for countryId: $countryId');
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [States] Error loading states: $e');
+    }
+  }
+
+  Future<void> _loadCities(int stateId) async {
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        // Use CommonGetAutoRequest with CommandType for cities (typically 202 or similar)
+        // Note: Adjust CommandType value based on your API documentation
+        // Since CommonGetAutoRequest doesn't have stateId, we might need to use a different approach
+        // Let's check if we can use the getAuto method with a custom request
+        // For now, using a workaround: create a custom request with stateId
+        final requestData = {
+          'CommandType': 202,
+          'StateId': stateId,
+        };
+        final commonApi = getIt<CommonApi>();
+        final dioClient = getIt<DioClient>();
+        final response = await dioClient.dio.post(
+          Endpoints.commonGetAuto,
+          data: requestData,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+
+        if (response.data != null && response.data is List) {
+          final List<CommonDropdownItem> items = (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+
+          if (items.isNotEmpty && mounted) {
+            setState(() {
+              _cityOptions = items
+                  .map((e) => e.text.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+              // Map names to IDs
+              for (final item in items) {
+                final String key = item.text.trim();
+                if (key.isNotEmpty) {
+                  _cityNameToId[key] = item.id;
+                }
+              }
+            });
+            print('DcrEntryScreen: [Cities] Loaded ${_cityOptions.length} cities for stateId: $stateId');
+          } else {
+            print('DcrEntryScreen: [Cities] No cities returned from API for stateId: $stateId');
+          }
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [Cities] Error loading cities: $e');
+    }
+  }
+
   Future<void> _loadDcrDetails() async {
     // Only load DCR details if we have a DCR ID (editing existing DCR)
     if (widget.dcrId == null && widget.id == null) {
@@ -1092,6 +1327,20 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        bottom: _shouldShowOnlyCreateTab()
+            ? null
+            : TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: 'Create DCR'),
+                  Tab(text: 'Service Report'),
+                  Tab(text: 'Customer'),
+                ],
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                indicatorColor: Colors.white,
+                indicatorWeight: 3,
+              ),
       ),
       backgroundColor: Colors.grey.shade50,
       body: SafeArea(
@@ -1116,7 +1365,58 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
               )
             : Theme(
                 data: screenTheme,
-                child: SingleChildScrollView(
+                child: _shouldShowOnlyCreateTab()
+                    ? _buildCreateDcrTab(context, screenTheme, tealGreen)
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildCreateDcrTab(context, screenTheme, tealGreen),
+                          _buildServiceReportTab(context, screenTheme, tealGreen),
+                          _buildCustomerTab(context, screenTheme, tealGreen),
+                        ],
+                      ),
+              ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _durationCtrl.dispose();
+    _samplesCtrl.dispose();
+    _discussionCtrl.dispose();
+    _complaintCtrl.dispose();
+    _actionTakenCtrl.dispose();
+    _resultCtrl.dispose();
+    _complaintRemarksCtrl.dispose();
+    _contactPersonCtrl.dispose();
+    _contactMobileCtrl.dispose();
+    _serialNumberCtrl.dispose();
+    _serviceRateCtrl.dispose();
+    _workDescriptionCtrl.dispose();
+    _materialsUsedCtrl.dispose();
+    _serviceRemarksCtrl.dispose();
+    _signedByCtrl.dispose();
+    _serviceDateCtrl.dispose();
+    _customerNameCtrl.dispose();
+    _customerCodeCtrl.dispose();
+    _customerMobileCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _shouldShowOnlyCreateTab() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int? roleCategory = userStore?.userDetail?.roleCategory;
+    final bool isManager = roleCategory == 1 || roleCategory == 2;
+    final bool isCreatingNew = widget.dcrId == null && widget.id == null;
+    return isManager && isCreatingNew;
+  }
+
+  // Build Create DCR Tab
+  Widget _buildCreateDcrTab(BuildContext context, ThemeData screenTheme, Color tealGreen) {
+    return SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(
                       MediaQuery.of(context).size.width < 600 ? 12 : 16,
                       12,
@@ -1128,7 +1428,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // DCR Details Card
                           Card(
                             color: Colors.white,
                             surfaceTintColor: Colors.transparent,
@@ -1141,33 +1440,118 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                   MediaQuery.of(context).size.width < 600
                                       ? 16.0
                                       : 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _buildCreateDcrFields(context, screenTheme, tealGreen),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build Service Report Tab
+  Widget _buildServiceReportTab(BuildContext context, ThemeData screenTheme, Color tealGreen) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          12,
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          16 + MediaQuery.of(context).padding.bottom),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+              Card(
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(
+                      MediaQuery.of(context).size.width < 600
+                          ? 16.0
+                          : 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _buildServiceReportFields(context, screenTheme),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build Customer Tab
+  Widget _buildCustomerTab(BuildContext context, ThemeData screenTheme, Color tealGreen) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          12,
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          16 + MediaQuery.of(context).padding.bottom),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(
+                      MediaQuery.of(context).size.width < 600
+                          ? 16.0
+                          : 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _buildCustomerFields(context, screenTheme),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build Create DCR Fields - returns list of widgets
+  List<Widget> _buildCreateDcrFields(BuildContext context, ThemeData theme, Color tealGreen) {
+    return [
                                   // 1. Date
                                   _LabeledField(
                                     label: 'Date',
                                     child: _DateField(
                                       initialDate: _date,
-                                      onChanged: (d) =>
-                                          setState(() => _date = d),
+          onChanged: (d) => setState(() => _date = d),
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
                                   // 2. Employee (read-only)
                                   _LabeledField(
                                     label: 'Employee',
                                     child: Builder(
                                       builder: (context) {
-                                        final UserDetailStore? userStore = getIt
-                                                .isRegistered<UserDetailStore>()
+            final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
                                             ? getIt<UserDetailStore>()
                                             : null;
-                                        final String employeeName = userStore
-                                                ?.userDetail?.employeeName ??
-                                            '';
+            final String employeeName = userStore?.userDetail?.employeeName ?? '';
                                         return TextFormField(
                                           readOnly: true,
                                           initialValue: employeeName,
@@ -1178,9 +1562,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                       },
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
                                   // 3. Cluster / City *
                                   _LabeledField(
                                     label: 'Cluster / City',
@@ -1189,38 +1571,30 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                     child: SearchableDropdown(
                                       options: _clusters,
                                       value: _cluster,
-                                      hintText:
-                                          'Type to search cluster/city...',
+          hintText: 'Type to search cluster/city...',
                                       searchHintText: 'Search cluster...',
                                       hasError: _clusterErrorText != null,
                                       onChanged: (v) {
                                         setState(() {
                                           _cluster = v;
                                           _clusterErrorText = null;
-                                          // Clear customer selection when cluster changes
                                           _customer = null;
                                           _customerErrorText = null;
                                         });
-                                        // Load customers for the selected cluster
                                         _loadMappedCustomers();
                                       },
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
                                   // 4. Time of Visit
                                   _LabeledField(
                                     label: 'Time of Visit',
                                     child: _TimeField(
                                       initial: _time,
-                                      onChanged: (t) =>
-                                          setState(() => _time = t),
+          onChanged: (t) => setState(() => _time = t),
                                     ),
                                   ),
-
                                   const SizedBox(height: 24),
-
                                   // 5. Actual Call Details (section header)
                                   Text(
                                     'Actual Call Details',
@@ -1230,9 +1604,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                       color: const Color(0xFF4db1b3),
                                     ),
                                   ),
-
                                   const SizedBox(height: 20),
-
                                   // 6. Customer *
                                   _LabeledField(
                                     label: 'Customer',
@@ -1248,33 +1620,18 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                         setState(() {
                                           _customer = v;
                                           _customerErrorText = null;
-                                          // Clear instruments when customer changes
-                                          if (_isServiceEngineer) {
-                                            _selectedInstruments.clear();
-                                            _instrumentOptions.clear();
-                                            _instrumentNameToId.clear();
-                                          }
-                                        });
-                                        // Load instruments for selected customer (Service Engineer only)
-                                        if (_isServiceEngineer &&
-                                            v != null &&
-                                            v.trim().isNotEmpty) {
-                                          _loadInstrumentsList();
-                                        }
+            });
                                       },
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
                                   // 7. Type of Visit *
                                   _LabeledField(
                                     label: 'Type of Visit',
                                     required: true,
                                     errorText: _purposeErrorText,
                                     child: SearchableDropdown(
-                                      key: ValueKey(
-                                          'purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
+          key: ValueKey('purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
                                       options: _purposeOptions,
                                       value: _purpose,
                                       hintText: '-- Select Visit Type --',
@@ -1288,16 +1645,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                       },
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
                                   // 8. Products Discussed *
                                   _LabeledField(
                                     label: 'Products Discussed',
                                     required: true,
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         _MultiSelectDropdown(
                                           options: _productOptions,
@@ -1325,49 +1679,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                       ],
                                     ),
                                   ),
-
-                                  // 9. Mapped Instruments * (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
                                     const SizedBox(height: 16),
+      // 9. Samples Distributed
                                     _LabeledField(
-                                      label: 'Mapped Instruments',
-                                      required: true,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _MultiSelectDropdown(
-                                            options: _instrumentOptions,
-                                            selectedValues:
-                                                _selectedInstruments,
-                                            hintText: 'Mapped Instruments',
-                                            onChanged: (Set<String> selected) {
-                                              setState(() {
-                                                _selectedInstruments = selected;
-                                                if (selected.isNotEmpty) {
-                                                  _instrumentsErrorText = null;
-                                                }
-                                              });
-                                            },
-                                          ),
-                                          if (_instrumentsErrorText !=
-                                              null) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              _instrumentsErrorText!,
-                                              style: TextStyle(
-                                                color: Colors.red[700],
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-
+        label: 'Samples Distributed',
+        child: TextFormField(
+          controller: _samplesCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Enter samples distributed',
+          ),
+        ),
+      ),
                                   const SizedBox(height: 16),
-
                                   // 10. Call Duration (minutes)
                                   _LabeledField(
                                     label: 'Call Duration (minutes)',
@@ -1380,8 +1704,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                         filled: true,
                                         fillColor: Colors.white,
                                         enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(10),
                                           borderSide: BorderSide(
                                               color: _durationErrorText != null
                                                   ? Colors.red.shade400
@@ -1389,28 +1712,399 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                               width: 1),
                                         ),
                                         focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(10),
                                           borderSide: BorderSide(
                                               color: _durationErrorText != null
                                                   ? Colors.red.shade400
                                                   : const Color(0xFF4db1b3),
                                               width: 2),
                                         ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
+            contentPadding: const EdgeInsets.symmetric(
                                                 horizontal: 12, vertical: 12),
                                       ),
-                                      onChanged: (_) => setState(
-                                          () => _durationErrorText = null),
-                                    ),
-                                  ),
+          onChanged: (_) => setState(() => _durationErrorText = null),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 11. Key Discussion Points
+      _LabeledField(
+        label: 'Key Discussion Points',
+        child: TextFormField(
+          controller: _discussionCtrl,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Type discussion points',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 12. Co-Visit
+      Row(
+        children: [
+          Checkbox(
+            value: _coVisit,
+            onChanged: (value) {
+              setState(() {
+                _coVisit = value ?? false;
+                if (!_coVisit) {
+                  _selectedManager = null;
+                  _managerErrorText = null;
+                } else {
+                  _loadManagerList();
+                }
+              });
+            },
+            activeColor: const Color(0xFF4db1b3),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Co-Visit',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: Colors.grey[900],
+            ),
+          ),
+        ],
+      ),
+      // Manager selection (shown when co-visit is checked)
+      if (_coVisit) ...[
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Select Manager',
+          required: true,
+          errorText: _managerErrorText,
+          child: _isLoadingManagers
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              : SearchableDropdown(
+                  options: _managerOptions,
+                  value: _selectedManager,
+                  hintText: '-- Select Manager --',
+                  searchHintText: 'Search manager...',
+                  hasError: _managerErrorText != null,
+                  onChanged: (v) {
+                    setState(() {
+                      _selectedManager = v;
+                      _managerErrorText = null;
+                    });
+                  },
+                ),
+        ),
+      ],
+      const SizedBox(height: 20),
+      // Location picker
+      _buildLocationPicker(context, theme, tealGreen),
+      const SizedBox(height: 20),
+      // Action buttons
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _isSavingDraft ? null : _saveDraft,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: tealGreen,
+                side: BorderSide(color: tealGreen, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: _isSavingDraft
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save Draft'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton(
+              onPressed: _isSubmitting ? null : _submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: tealGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 2,
+              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text('Submit'),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
 
-                                  // 11. Complaint (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
+  // Build Service Report Fields
+  List<Widget> _buildServiceReportFields(BuildContext context, ThemeData theme) {
+    return [
+      // Customer Information Section
+      Text(
+        'Customer Information',
+        style: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade800,
+        ),
+      ),
                                     const SizedBox(height: 16),
+      // Customer Name *
                                     _LabeledField(
-                                      label: 'Complaint',
+        label: 'Customer Name',
+        required: true,
+        child: SearchableDropdown(
+          options: _customerOptions,
+          value: _serviceReportCustomer,
+          hintText: 'Select Customer',
+          searchHintText: 'Search customer...',
+          onChanged: (v) {
+            setState(() {
+              _serviceReportCustomer = v;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Contact Person *
+      _LabeledField(
+        label: 'Contact Person',
+        required: true,
+        child: TextFormField(
+          controller: _contactPersonCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Enter contact person name',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Contact Mobile *
+      _LabeledField(
+        label: 'Contact Mobile',
+        required: true,
+        child: TextFormField(
+          controller: _contactMobileCtrl,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            hintText: 'Enter contact mobile number',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Service Date *
+      _LabeledField(
+        label: 'Service Date',
+        required: true,
+        child: TextFormField(
+          controller: _serviceDateCtrl,
+          decoration: InputDecoration(
+            hintText: 'dd-MMM-yyyy',
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.calendar_today),
+              onPressed: () async {
+                final DateTime? picked = await showDatePicker(
+                  context: context,
+                  initialDate: _serviceDate ?? DateTime.now(),
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2030),
+                );
+                if (picked != null) {
+                  setState(() {
+                    _serviceDate = picked;
+                    _serviceDateCtrl.text = _formatServiceDate(picked);
+                  });
+                }
+              },
+            ),
+          ),
+          onChanged: (value) {
+            // Allow manual editing
+            // Optionally parse the date if needed
+          },
+        ),
+      ),
+      const SizedBox(height: 24),
+      
+      // Product Information Section
+      Text(
+        'Product Information',
+        style: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade800,
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Product *
+      _LabeledField(
+        label: 'Product',
+        required: true,
+        child: SearchableDropdown(
+          options: _productOptions,
+          value: _serviceReportProduct,
+          hintText: 'Select Product',
+          searchHintText: 'Search product...',
+          onChanged: (v) {
+            setState(() {
+              _serviceReportProduct = v;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Serial Number *
+      _LabeledField(
+        label: 'Serial Number',
+        required: true,
+        child: TextFormField(
+          controller: _serialNumberCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Enter serial number',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Service Type
+      _LabeledField(
+        label: 'Service Type',
+        child: SingleSelectDropdown(
+          options: const ['Preventive', 'Corrective', 'Installation', 'Calibration', 'Other'],
+          value: _serviceType,
+          hintText: 'Select Service Type',
+          onChanged: (String? value) {
+            setState(() {
+              _serviceType = value;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Start Time
+      _LabeledField(
+        label: 'Start Time',
+        child: TextFormField(
+          readOnly: true,
+          decoration: InputDecoration(
+            hintText: _startTime != null 
+                ? '${_startTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_startTime!.month)}-${_startTime!.year} ${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}'
+                : 'dd-MMM-yyyy HH:mm',
+            suffixIcon: const Icon(Icons.calendar_today),
+          ),
+          onTap: () async {
+            final DateTime? pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _startTime ?? DateTime.now(),
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2030),
+            );
+            if (pickedDate != null) {
+              final TimeOfDay? pickedTime = await showTimePicker(
+                context: context,
+                initialTime: _startTime != null 
+                    ? TimeOfDay(hour: _startTime!.hour, minute: _startTime!.minute)
+                    : TimeOfDay.now(),
+              );
+              if (pickedTime != null) {
+                setState(() {
+                  _startTime = DateTime(
+                    pickedDate.year,
+                    pickedDate.month,
+                    pickedDate.day,
+                    pickedTime.hour,
+                    pickedTime.minute,
+                  );
+                });
+              }
+            }
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // End Time
+      _LabeledField(
+        label: 'End Time',
+        child: TextFormField(
+          readOnly: true,
+          decoration: InputDecoration(
+            hintText: _endTime != null 
+                ? '${_endTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_endTime!.month)}-${_endTime!.year} ${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}'
+                : 'dd-MMM-yyyy HH:mm',
+            suffixIcon: const Icon(Icons.calendar_today),
+          ),
+          onTap: () async {
+            final DateTime? pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _endTime ?? DateTime.now(),
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2030),
+            );
+            if (pickedDate != null) {
+              final TimeOfDay? pickedTime = await showTimePicker(
+                context: context,
+                initialTime: _endTime != null 
+                    ? TimeOfDay(hour: _endTime!.hour, minute: _endTime!.minute)
+                    : TimeOfDay.now(),
+              );
+              if (pickedTime != null) {
+                setState(() {
+                  _endTime = DateTime(
+                    pickedDate.year,
+                    pickedDate.month,
+                    pickedDate.day,
+                    pickedTime.hour,
+                    pickedTime.minute,
+                  );
+                });
+              }
+            }
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Electricity Safety Test
+      _LabeledField(
+        label: 'Electricity Safety Test',
+        child: SingleSelectDropdown(
+          options: const ['Yes', 'No'],
+          value: _electricitySafetyTest,
+          hintText: 'Select',
+          onChanged: (String? value) {
+            setState(() {
+              _electricitySafetyTest = value;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 24),
+      
+      // Complaint Information Section
+      Text(
+        'Complaint Information',
+        style: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade800,
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Complaint Details
+      _LabeledField(
+        label: 'Complaint Details',
                                       child: TextFormField(
                                         controller: _complaintCtrl,
                                         maxLines: 4,
@@ -1419,11 +2113,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                         ),
                                       ),
                                     ),
-                                  ],
-
-                                  // 12. Action Taken (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
                                     const SizedBox(height: 16),
+      // Action Taken
                                     _LabeledField(
                                       label: 'Action Taken',
                                       child: TextFormField(
@@ -1434,182 +2125,519 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                         ),
                                       ),
                                     ),
-                                  ],
-
-                                  // 13. Result (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
                                     const SizedBox(height: 16),
+      // Result
                                     _LabeledField(
                                       label: 'Result',
                                       child: TextFormField(
                                         controller: _resultCtrl,
-                                        maxLines: 4,
                                         decoration: const InputDecoration(
                                           hintText: 'Enter result',
                                         ),
                                       ),
                                     ),
-                                  ],
-
-                                  // 14. Complaint Status (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
                                     const SizedBox(height: 16),
+      // Complaint Date Time
                                     _LabeledField(
-                                      label: 'Complaint Status',
-                                      child: SingleSelectDropdown(
-                                        options: const [
-                                          'Resolved',
-                                          'Not Resolved'
-                                        ],
-                                        value: _complaintStatus,
-                                        hintText: '-- Select Status --',
-                                        onChanged: (String? value) {
+        label: 'Complaint Date Time',
+        child: TextFormField(
+          readOnly: true,
+          decoration: InputDecoration(
+            hintText: _complaintDateTime != null 
+                ? '${_complaintDateTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_complaintDateTime!.month)}-${_complaintDateTime!.year} ${_complaintDateTime!.hour.toString().padLeft(2, '0')}:${_complaintDateTime!.minute.toString().padLeft(2, '0')}'
+                : 'dd-MMM-yyyy HH:mm',
+            suffixIcon: const Icon(Icons.calendar_today),
+          ),
+          onTap: () async {
+            final DateTime? pickedDate = await showDatePicker(
+              context: context,
+              initialDate: _complaintDateTime ?? DateTime.now(),
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2030),
+            );
+            if (pickedDate != null) {
+              final TimeOfDay? pickedTime = await showTimePicker(
+                context: context,
+                initialTime: _complaintDateTime != null 
+                    ? TimeOfDay(hour: _complaintDateTime!.hour, minute: _complaintDateTime!.minute)
+                    : TimeOfDay.now(),
+              );
+              if (pickedTime != null) {
                                           setState(() {
-                                            _complaintStatus = value;
+                  _complaintDateTime = DateTime(
+                    pickedDate.year,
+                    pickedDate.month,
+                    pickedDate.day,
+                    pickedTime.hour,
+                    pickedTime.minute,
+                  );
+                });
+              }
+            }
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+      // Service Rate
+                                    _LabeledField(
+        label: 'Service Rate',
+        child: TextFormField(
+          controller: _serviceRateCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            hintText: 'Enter service rate',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Service Status
+      _LabeledField(
+        label: 'Service Status',
+        child: SingleSelectDropdown(
+          options: const ['Resolved', 'Not Resolved'],
+          value: _serviceStatus,
+          hintText: 'Select Status',
+          onChanged: (String? value) {
+                                          setState(() {
+              _serviceStatus = value;
                                           });
                                         },
                                       ),
                                     ),
-                                  ],
-
-                                  // 15. Complaint Date (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
+      const SizedBox(height: 24),
+      
+      // Work Information Section
+      Text(
+        'Work Information',
+        style: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade800,
+        ),
+      ),
                                     const SizedBox(height: 16),
+      // Work Description
                                     _LabeledField(
-                                      label: 'Complaint Date',
-                                      child: _DateField(
-                                        initialDate:
-                                            _complaintDate ?? DateTime.now(),
-                                        onChanged: (DateTime date) {
-                                          setState(() {
-                                            _complaintDate = date;
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                  ],
-
-                                  // 16. Complaint Remarks (Service Engineer only)
-                                  if (_isServiceEngineer) ...[
-                                    const SizedBox(height: 16),
-                                    _LabeledField(
-                                      label: 'Complaint Remarks',
+        label: 'Work Description',
                                       child: TextFormField(
-                                        controller: _complaintRemarksCtrl,
+          controller: _workDescriptionCtrl,
                                         maxLines: 4,
                                         decoration: const InputDecoration(
-                                          hintText: 'Enter complaint remarks',
+            hintText: 'Enter work description',
                                         ),
                                       ),
                                     ),
-                                  ],
-
                                   const SizedBox(height: 16),
-
-                                  // 17. Key Discussion Points
+      // Materials Used
                                   _LabeledField(
-                                    label: 'Key Discussion Points',
+        label: 'Materials Used',
                                     child: TextFormField(
-                                      controller: _discussionCtrl,
+          controller: _materialsUsedCtrl,
                                       maxLines: 4,
                                       decoration: const InputDecoration(
-                                        hintText: 'Type discussion points',
+            hintText: 'Enter materials used',
                                       ),
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
-                                  // 18. Co-Visit
-                                  Row(
-                                    children: [
-                                      Checkbox(
-                                        value: _coVisit,
-                                        onChanged: (value) {
+      // Remarks
+      _LabeledField(
+        label: 'Remarks',
+        child: TextFormField(
+          controller: _serviceRemarksCtrl,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Enter remarks',
+          ),
+        ),
+      ),
+      const SizedBox(height: 24),
+      
+      // Customer Feedback Section
+      Text(
+        'Customer Feedback',
+        style: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade800,
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Feedback Option
+      _LabeledField(
+        label: 'Feedback Option',
+        child: SingleSelectDropdown(
+          options: const ['Satisfied', 'Neutral', 'Dissatisfied', 'Very Satisfied', 'Very Dissatisfied'],
+          value: _feedbackOption,
+          hintText: 'Select Feedback',
+          onChanged: (String? value) {
                                           setState(() {
-                                            _coVisit = value ?? false;
-                                            if (!_coVisit) {
-                                              // Clear manager selection when co-visit is unchecked
-                                              _selectedManager = null;
-                                              _managerErrorText = null;
-                                            } else {
-                                              // Load managers when co-visit is checked
-                                              _loadManagerList();
-                                            }
+              _feedbackOption = value;
                                           });
                                         },
-                                        activeColor: const Color(0xFF4db1b3),
                                       ),
-                                      const SizedBox(width: 8),
+      ),
+      const SizedBox(height: 24),
+      
+      // Signature Block Section
                                       Text(
-                                        'Co-Visit',
+        'Signature Block',
                                         style: GoogleFonts.inter(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w400,
-                                          color: Colors.grey[900],
-                                        ),
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey.shade800,
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Signed By
+      _LabeledField(
+        label: 'Signed By',
+        child: TextFormField(
+          controller: _signedByCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Enter signatory name',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Signature (placeholder for signature field)
+      _LabeledField(
+        label: 'Signature',
+        child: Container(
+          height: 120,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.edit, color: Colors.grey.shade400, size: 32),
+                const SizedBox(height: 8),
+                Text(
+                  'Tap to add signature',
+                  style: TextStyle(color: Colors.grey.shade600),
                                       ),
                                     ],
                                   ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 24),
+      // Save Service Report button
+      FilledButton(
+        onPressed: _isSubmitting
+            ? null
+            : () async {
+                // Save Service Report
+                setState(() {
+                  _isSubmitting = true;
+                });
 
-                                  // Manager selection (shown when co-visit is checked)
-                                  if (_coVisit) ...[
+                // Show loading dialog
+                if (!mounted) return;
+                showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                          child: CircularProgressIndicator(),
+                        ));
+
+                try {
+                  final dioClient =
+                      getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
+                  if (dioClient == null) {
+                    throw Exception('Network client not available');
+                  }
+
+                  final int customerId =
+                      (_customerNameToId[_serviceReportCustomer] ?? 0);
+                  final int productId =
+                      (_productNameToId[_serviceReportProduct] ?? 0);
+                  final Map<String, dynamic> payload = {
+                    'id': 0,
+                    'createdBy': 0,
+                    'status': 1,
+                    'sbuId': 0,
+                    'dcrDetailId': 0,
+                    'customerName': _serviceReportCustomer ?? '',
+                    'customerId': customerId,
+                    'contactPerson': _contactPersonCtrl.text.trim(),
+                    'contactMobile': _contactMobileCtrl.text.trim(),
+                    'serviceDate':
+                        _serviceDate?.toIso8601String() ?? DateTime.now().toIso8601String(),
+                    'productId': productId,
+                    'product': _serviceReportProduct ?? '',
+                    'serialNumber': _serialNumberCtrl.text.trim(),
+                    'serviceTypeId': 0,
+                    'serviceType': _serviceType ?? '',
+                    'startTime': _startTime?.toIso8601String(),
+                    'endTime': _endTime?.toIso8601String(),
+                    'electricitySafetyTest': _electricitySafetyTest ?? '',
+                    'electricitySafetyTestId': 0,
+                    'complaintDetails': _complaintCtrl.text.trim(),
+                    'actionTaken': _actionTakenCtrl.text.trim(),
+                    'result': _resultCtrl.text.trim(),
+                    'complaintDateTime': _complaintDateTime?.toIso8601String(),
+                    'serviceStatusId': 0,
+                    'serviceStatus': _serviceStatus ?? '',
+                    'workDescription': _workDescriptionCtrl.text.trim(),
+                    'materialsUsed': _materialsUsedCtrl.text.trim(),
+                    'remarks': _serviceRemarksCtrl.text.trim(),
+                    'feedbackOption': _feedbackOption ?? '',
+                    'feedbackOptionId': 0,
+                    'signedBy': _signedByCtrl.text.trim(),
+                    'signatureValue': null,
+                    'signatureImageBase64': null,
+                    'serviceRate': double.tryParse(_serviceRateCtrl.text.trim()) ?? 0
+                  };
+
+                  print('📞 [ServiceReport] Saving service report: ${payload}');
+
+                  final response = await dioClient.dio.post(
+                    Endpoints.serviceReportSave,
+                    data: payload,
+                    options: Options(
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                    ),
+                  );
+
+                  if (mounted) Navigator.of(context).pop(); // close loading
+
+                  if (response.statusCode != null &&
+                      response.statusCode! >= 200 &&
+                      response.statusCode! < 300) {
+                    ToastMessage.show(
+                      context,
+                      message: 'Service report saved successfully',
+                      type: ToastType.success,
+                      icon: Icons.check_circle_outline,
+                    );
+                    print('✅ [ServiceReport] Save response: ${response.data}');
+                  } else {
+                    print('❌ [ServiceReport] Save failed: ${response.statusCode} ${response.data}');
+                    ToastMessage.show(
+                      context,
+                      message: 'Failed to save service report',
+                      type: ToastType.error,
+                      icon: Icons.error_outline,
+                    );
+                  }
+                } catch (e, s) {
+                  if (mounted) Navigator.of(context).pop();
+                  print('❌ [ServiceReport] Error saving service report: $e\n$s');
+                  ToastMessage.show(
+                    context,
+                    message: 'Error: ${e.toString()}',
+                    type: ToastType.error,
+                    icon: Icons.error_outline,
+                  );
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      _isSubmitting = false;
+                    });
+                  }
+                }
+              },
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF4db1b3),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 2,
+        ),
+        child: _isSubmitting
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
+            : const Text('Save'),
+      ),
+    ];
+  }
+  
+  String _getMonthName(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[month - 1];
+  }
+  
+  String _formatServiceDate(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${date.day.toString().padLeft(2, '0')}-${months[date.month - 1]}-${date.year}';
+  }
+
+  // Build Customer Fields
+  List<Widget> _buildCustomerFields(BuildContext context, ThemeData theme) {
+    return [
+      // Customer Name
+      _LabeledField(
+        label: 'Customer',
+        child: TextFormField(
+          controller: _customerNameCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Enter customer name',
+          ),
+        ),
+      ),
                                     const SizedBox(height: 16),
+      // Code
                                     _LabeledField(
-                                      label: 'Select Manager',
+        label: 'Code',
+                                    child: TextFormField(
+          controller: _customerCodeCtrl,
+                                      decoration: const InputDecoration(
+            hintText: 'Enter customer code',
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+      // Customer Type *
+                                  _LabeledField(
+        label: 'Customer Type',
                                       required: true,
-                                      errorText: _managerErrorText,
-                                      child: _isLoadingManagers
-                                          ? const Center(
-                                              child: Padding(
-                                                padding: EdgeInsets.all(16.0),
-                                                child:
-                                                    CircularProgressIndicator(),
-                                              ),
-                                            )
-                                          : SearchableDropdown(
-                                              options: _managerOptions,
-                                              value: _selectedManager,
-                                              hintText: '-- Select Manager --',
-                                              searchHintText:
-                                                  'Search manager...',
-                                              hasError:
-                                                  _managerErrorText != null,
+        child: SearchableDropdown(
+          options: _customerTypeOptions,
+          value: _selectedCustomerType,
+          hintText: '-- Select Customer Type --',
+          searchHintText: 'Search customer type...',
+          onChanged: (v) {
+                                          setState(() {
+              _selectedCustomerType = v;
+                                          });
+                                        },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Mobile *
+      _LabeledField(
+        label: 'Mobile',
+        required: true,
+                                    child: TextFormField(
+          controller: _customerMobileCtrl,
+          keyboardType: TextInputType.phone,
+                                      decoration: const InputDecoration(
+            hintText: 'Enter mobile number',
+                                      ),
+                                    ),
+                                  ),
+                                    const SizedBox(height: 16),
+      // Country *
+                                    _LabeledField(
+        label: 'Country',
+                                      required: true,
+        child: SearchableDropdown(
+          options: _countryOptions,
+          value: _selectedCountry,
+          hintText: '-- Select Country --',
+          searchHintText: 'Search country...',
                                               onChanged: (v) {
                                                 setState(() {
-                                                  _selectedManager = v;
-                                                  _managerErrorText = null;
+              _selectedCountry = v;
+              _selectedState = null;
+              _selectedCity = null;
+              _stateOptions.clear();
+              _cityOptions.clear();
+              // Load states for selected country
+              if (v != null) {
+                final int? countryId = _countryNameToId[v];
+                if (countryId != null && countryId > 0) {
+                  _loadStates(countryId);
+                }
+              }
                                                 });
                                               },
                                             ),
                                     ),
-                                  ],
-
+      const SizedBox(height: 16),
+      // State *
+      _LabeledField(
+        label: 'State',
+        required: true,
+        child: SearchableDropdown(
+          options: _stateOptions,
+          value: _selectedState,
+          hintText: '-- Select State --',
+          searchHintText: 'Search state...',
+                                              onChanged: (v) {
+                                                setState(() {
+              _selectedState = v;
+              _selectedCity = null;
+              _cityOptions.clear();
+              // Load cities for selected state
+              if (v != null) {
+                final int? stateId = _stateNameToId[v];
+                if (stateId != null && stateId > 0) {
+                  _loadCities(stateId);
+                }
+              }
+                                                });
+                                              },
+                                            ),
+                                    ),
+                                    const SizedBox(height: 16),
+      // City *
+                                    _LabeledField(
+        label: 'City',
+                                      required: true,
+        child: SearchableDropdown(
+          options: _cityOptions,
+          value: _selectedCity,
+          hintText: '-- Select City --',
+          searchHintText: 'Search city...',
+                                              onChanged: (v) {
+                                                setState(() {
+              _selectedCity = v;
+                                                });
+                                              },
+                                            ),
+                                    ),
                                   const SizedBox(height: 20),
+      // Save Customer button
+      FilledButton(
+        onPressed: () {
+          // TODO: Implement save customer functionality
+          ToastMessage.show(
+            context,
+            message: 'Customer creation functionality will be implemented',
+            type: ToastType.info,
+            icon: Icons.info_outline,
+          );
+        },
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF4db1b3),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 2,
+        ),
+        child: const Text('Save Customer'),
+      ),
+    ];
+  }
 
-                                  // Location picker - responsive layout
-                                  _LabeledField(
+  // Build Location Picker Widget
+  Widget _buildLocationPicker(BuildContext context, ThemeData theme, Color tealGreen) {
+    return _LabeledField(
                                     label: 'Location (optional)',
                                     child: LayoutBuilder(
                                       builder: (context, constraints) {
-                                        final isMobile =
-                                            constraints.maxWidth < 600;
+          final isMobile = constraints.maxWidth < 600;
 
                                         if (isMobile) {
-                                          // Mobile: Stack elements vertically
                                           return Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(
                                                 _position == null
                                                     ? 'No location selected'
                                                     : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
-                                                style: theme
-                                                    .textTheme.bodyMedium
-                                                    ?.copyWith(
-                                                        color: Colors
-                                                            .grey.shade700),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade700),
                                               ),
                                               const SizedBox(height: 8),
                                               Row(
@@ -1617,74 +2645,43 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                                   Expanded(
                                                     child: OutlinedButton(
                                                       onPressed: () async {
-                                                        final LatLng center =
-                                                            _position != null
-                                                                ? LatLng(
-                                                                    _position!
-                                                                        .latitude,
-                                                                    _position!
-                                                                        .longitude)
-                                                                : const LatLng(
-                                                                    6.927079,
-                                                                    79.861244);
-                                                        final LatLng? picked =
-                                                            await Navigator.of(
-                                                                    context)
-                                                                .push(
+                          final LatLng center = _position != null
+                              ? LatLng(_position!.latitude, _position!.longitude)
+                              : const LatLng(6.927079, 79.861244);
+                          final LatLng? picked = await Navigator.of(context).push(
                                                           MaterialPageRoute(
-                                                              builder: (_) =>
-                                                                  MapPickerScreen(
-                                                                      initial:
-                                                                          center,
-                                                                      title:
-                                                                          'Pick DCR Location',
-                                                                      limitTo1KmDefault:
-                                                                          true)),
-                                                        );
-                                                        if (picked != null &&
-                                                            mounted) {
+                              builder: (_) => MapPickerScreen(
+                                initial: center,
+                                title: 'Pick DCR Location',
+                                limitTo1KmDefault: true,
+                              ),
+                            ),
+                          );
+                          if (picked != null && mounted) {
                                                           setState(() {
-                                                            _position =
-                                                                Position(
-                                                              latitude: picked
-                                                                  .latitude,
-                                                              longitude: picked
-                                                                  .longitude,
-                                                              timestamp:
-                                                                  DateTime
-                                                                      .now(),
+                              _position = Position(
+                                latitude: picked.latitude,
+                                longitude: picked.longitude,
+                                timestamp: DateTime.now(),
                                                               accuracy: 0,
                                                               altitude: 0,
                                                               heading: 0,
                                                               speed: 0,
                                                               speedAccuracy: 0,
-                                                              altitudeAccuracy:
-                                                                  0,
-                                                              headingAccuracy:
-                                                                  0,
+                                altitudeAccuracy: 0,
+                                headingAccuracy: 0,
                                                             );
                                                           });
                                                         }
                                                       },
-                                                      style: OutlinedButton
-                                                          .styleFrom(
-                                                        foregroundColor:
-                                                            tealGreen,
-                                                        side: const BorderSide(
-                                                            color: tealGreen,
-                                                            width: 1.5),
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                vertical: 14),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: tealGreen,
+                          side: BorderSide(color: tealGreen, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                                                         shape: RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        14)),
+                              borderRadius: BorderRadius.circular(14)),
                                                       ),
-                                                      child: const Text(
-                                                          'Pick on map'),
+                        child: const Text('Pick on map'),
                                                     ),
                                                   ),
                                                   const SizedBox(width: 8),
@@ -1693,17 +2690,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                                       onPressed: () async {
                                                         await _initLocation();
                                                       },
-                                                      style:
-                                                          TextButton.styleFrom(
-                                                        foregroundColor:
-                                                            tealGreen,
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                vertical: 14),
-                                                      ),
-                                                      child: const Text(
-                                                          'Use current'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: tealGreen,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Use current'),
                                                     ),
                                                   ),
                                                 ],
@@ -1711,7 +2702,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                             ],
                                           );
                                         } else {
-                                          // Desktop: Keep horizontal layout
                                           return Row(
                                             children: [
                                               Expanded(
@@ -1719,49 +2709,31 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                                   _position == null
                                                       ? 'No location selected'
                                                       : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
-                                                  style: theme
-                                                      .textTheme.bodyMedium
-                                                      ?.copyWith(
-                                                          color: Colors
-                                                              .grey.shade700),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey.shade700),
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
                                               OutlinedButton(
                                                 onPressed: () async {
-                                                  final LatLng center =
-                                                      _position != null
-                                                          ? LatLng(
-                                                              _position!
-                                                                  .latitude,
-                                                              _position!
-                                                                  .longitude)
-                                                          : const LatLng(
-                                                              6.927079,
-                                                              79.861244);
-                                                  final LatLng? picked =
-                                                      await Navigator.of(
-                                                              context)
-                                                          .push(
+                    final LatLng center = _position != null
+                        ? LatLng(_position!.latitude, _position!.longitude)
+                        : const LatLng(6.927079, 79.861244);
+                    final LatLng? picked = await Navigator.of(context).push(
                                                     MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            MapPickerScreen(
+                        builder: (_) => MapPickerScreen(
                                                                 initial: center,
-                                                                title:
-                                                                    'Pick DCR Location',
-                                                                limitTo1KmDefault:
-                                                                    true)),
-                                                  );
-                                                  if (picked != null &&
-                                                      mounted) {
+                          title: 'Pick DCR Location',
+                          limitTo1KmDefault: true,
+                        ),
+                      ),
+                    );
+                    if (picked != null && mounted) {
                                                     setState(() {
                                                       _position = Position(
-                                                        latitude:
-                                                            picked.latitude,
-                                                        longitude:
-                                                            picked.longitude,
-                                                        timestamp:
-                                                            DateTime.now(),
+                          latitude: picked.latitude,
+                          longitude: picked.longitude,
+                          timestamp: DateTime.now(),
                                                         accuracy: 0,
                                                         altitude: 0,
                                                         heading: 0,
@@ -1775,20 +2747,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                                 },
                                                 style: OutlinedButton.styleFrom(
                                                   foregroundColor: tealGreen,
-                                                  side: const BorderSide(
-                                                      color: tealGreen,
-                                                      width: 1.5),
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      vertical: 12,
-                                                      horizontal: 18),
+                    side: BorderSide(color: tealGreen, width: 1.5),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 18),
                                                   shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              14)),
+                        borderRadius: BorderRadius.circular(14)),
                                                 ),
-                                                child:
-                                                    const Text('Pick on map'),
+                  child: const Text('Pick on map'),
                                               ),
                                               const SizedBox(width: 8),
                                               TextButton(
@@ -1797,129 +2762,15 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> {
                                                 },
                                                 style: TextButton.styleFrom(
                                                   foregroundColor: tealGreen,
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      vertical: 12,
-                                                      horizontal: 18),
-                                                ),
-                                                child:
-                                                    const Text('Use current'),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 18),
+                  ),
+                  child: const Text('Use current'),
                                               ),
                                             ],
                                           );
                                         }
                                       },
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 20),
-
-                                  // Action buttons - show in one row
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: OutlinedButton(
-                                          onPressed: _isSavingDraft
-                                              ? null
-                                              : _saveDraft,
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: tealGreen,
-                                            side: BorderSide(
-                                                color: tealGreen, width: 1.5),
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 14),
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(14)),
-                                          ),
-                                          child: _isSavingDraft
-                                              ? const SizedBox(
-                                                  width: 20,
-                                                  height: 20,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          strokeWidth: 2),
-                                                )
-                                              : const Text('Save Draft'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: FilledButton(
-                                          onPressed:
-                                              _isSubmitting ? null : _submit,
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: tealGreen,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 14),
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(14)),
-                                            elevation: 2,
-                                          ),
-                                          child: _isSubmitting
-                                              ? const SizedBox(
-                                                  width: 20,
-                                                  height: 20,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    valueColor:
-                                                        AlwaysStoppedAnimation<
-                                                                Color>(
-                                                            Colors.white),
-                                                  ),
-                                                )
-                                              : const Text('Submit'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          // Location Status Card - Hidden
-                          // const SizedBox(height: 16),
-                          //
-                          // Card(
-                          //   color: Colors.white,
-                          //   surfaceTintColor: Colors.transparent,
-                          //   elevation: 2,
-                          //   shape: RoundedRectangleBorder(
-                          //     borderRadius: BorderRadius.circular(12),
-                          //   ),
-                          //   child: Padding(
-                          //     padding: const EdgeInsets.all(16.0),
-                          //     child: Row(
-                          //       children: [
-                          //         Icon(
-                          //           _atLocation ? Icons.place : Icons.place_outlined,
-                          //           color: _atLocation ? Colors.green : Colors.orange,
-                          //         ),
-                          //         const SizedBox(width: 8),
-                          //         Expanded(
-                          //           child: Text(
-                          //             _atLocation ? 'At location' : 'Away from planned location',
-                          //             style: theme.textTheme.bodyMedium,
-                          //           ),
-                          //         ),
-                          //         TextButton(
-                          //           onPressed: () => setState(() => _atLocation = !_atLocation),
-                          //           child: const Text('Toggle (Demo)'),
-                          //         ),
-                          //       ],
-                          //     ),
-                          //   ),
-                          // ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
       ),
     );
   }
@@ -2374,15 +3225,34 @@ extension on _DcrEntryScreenState {
         latitude: _position?.latitude,
         longitude: _position?.longitude,
         // Service Engineer specific fields
-        mappedInstruments:
-            _isServiceEngineer ? _selectedInstruments.join(', ') : null,
-        complaint: _isServiceEngineer ? _complaintCtrl.text.trim() : null,
-        actionTaken: _isServiceEngineer ? _actionTakenCtrl.text.trim() : null,
-        result: _isServiceEngineer ? _resultCtrl.text.trim() : null,
-        complaintStatus: _isServiceEngineer ? _complaintStatus : null,
-        complaintDate: _isServiceEngineer ? _complaintDate : null,
-        complaintRemarks:
-            _isServiceEngineer ? _complaintRemarksCtrl.text.trim() : null,
+        mappedInstruments: _isServiceEngineer && _selectedInstruments.isNotEmpty
+            ? _selectedInstruments.map((instrumentName) {
+                final instrumentId = _instrumentNameToId[instrumentName] ?? 0;
+                return <String, dynamic>{
+                  'productId': instrumentId,
+                  'productName': instrumentName,
+                  'customerId': customerId ?? 0,
+                };
+              }).toList()
+            : null,
+        complaint: _isServiceEngineer && _complaintCtrl.text.trim().isNotEmpty
+            ? _complaintCtrl.text.trim()
+            : null,
+        actionTaken: _isServiceEngineer && _actionTakenCtrl.text.trim().isNotEmpty
+            ? _actionTakenCtrl.text.trim()
+            : null,
+        result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
+            ? _resultCtrl.text.trim()
+            : null,
+        complaintStatus: _isServiceEngineer && _complaintStatus != null
+            ? (_complaintStatus == 'Resolved' ? 1 : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
+            : null,
+        complaintDate: _isServiceEngineer && _complaintDate != null
+            ? _complaintDate
+            : null,
+        complaintRemarks: _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
+            ? _complaintRemarksCtrl.text.trim()
+            : null,
         // Co-visit fields
         coVisit: _coVisit,
         coVisitorId: coVisitorId,
@@ -2394,18 +3264,20 @@ extension on _DcrEntryScreenState {
       print(
           'Mapped IDs - TypeOfWorkId: $typeOfWorkId, CityId: $cityId, CustomerId: $customerId');
 
+      // For update, we also use CreateDcrParams to ensure Service Report fields are included
+      // The repository will handle the update by checking if dcrId is provided
       if (widget.id != null || widget.dcrId != null) {
-        // Update existing DCR via API
+        // Update existing DCR via API - use create method with dcrId set
         // Use dcrId for root ID if available, otherwise use id
-        // The root ID should be the DCR parent ID, not the detail ID
         final String dcrIdToUpdate = widget.dcrId ?? widget.id!;
         print(
             'Updating DCR with detailId: ${_loadedEntry?.detailId}, clusterId: ${_loadedEntry?.clusterId}');
         print(
             'Using dcrIdToUpdate: $dcrIdToUpdate (from widget.dcrId: ${widget.dcrId}, widget.id: ${widget.id})');
-        final DcrEntry updated = DcrEntry(
-          id: dcrIdToUpdate,
-          date: visit, // Preserve the time component from visit DateTime
+        
+        // Create params with update info - add dcrId to params for update
+        final updateParams = CreateDcrParams(
+            date: visit,
           cluster: _cluster!,
           customer: _customer!,
           purposeOfVisit: _purpose!,
@@ -2413,24 +3285,57 @@ extension on _DcrEntryScreenState {
           productsDiscussed: _selectedProducts.join(', '),
           samplesDistributed: _samplesCtrl.text.trim(),
           keyDiscussionPoints: _discussionCtrl.text.trim(),
-          status: submit ? DcrStatus.submitted : DcrStatus.draft,
+            linkedTourPlanId: _loadedEntry?.linkedTourPlanId,
           employeeId: userDetail.employeeId.toString(),
           employeeName: userDetail.employeeName,
-          linkedTourPlanId: _loadedEntry?.linkedTourPlanId,
+            submit: submit,
           geoProximity: _atLocation ? GeoProximity.at : GeoProximity.away,
-          createdAt: _loadedEntry?.createdAt,
-          updatedAt: DateTime.now(),
           typeOfWorkId: typeOfWorkId,
           cityId: cityId,
           customerId: customerId,
-          customerLatitude: _position?.latitude,
-          customerLongitude: _position?.longitude,
+            userId: actualUserId,
+            bizunit: userDetail.sbuId,
+            latitude: _position?.latitude,
+            longitude: _position?.longitude,
+            // Service Engineer specific fields
+            mappedInstruments: _isServiceEngineer && _selectedInstruments.isNotEmpty
+                ? _selectedInstruments.map((instrumentName) {
+                    final instrumentId = _instrumentNameToId[instrumentName] ?? 0;
+                    return <String, dynamic>{
+                      'productId': instrumentId,
+                      'productName': instrumentName,
+                      'customerId': customerId ?? 0,
+                    };
+                  }).toList()
+                : null,
+            complaint: _isServiceEngineer && _complaintCtrl.text.trim().isNotEmpty
+                ? _complaintCtrl.text.trim()
+                : null,
+            actionTaken: _isServiceEngineer && _actionTakenCtrl.text.trim().isNotEmpty
+                ? _actionTakenCtrl.text.trim()
+                : null,
+            result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
+                ? _resultCtrl.text.trim()
+                : null,
+            complaintStatus: _isServiceEngineer && _complaintStatus != null
+                ? (_complaintStatus == 'Resolved' ? 1 : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
+                : null,
+            complaintDate: _isServiceEngineer && _complaintDate != null
+                ? _complaintDate
+                : null,
+            complaintRemarks: _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
+                ? _complaintRemarksCtrl.text.trim()
+                : null,
+            // Co-visit fields
+            coVisit: _coVisit,
+            coVisitorId: coVisitorId,
+          // Update fields
+          dcrId: dcrIdToUpdate,
           detailId: _loadedEntry?.detailId,
-          clusterId: _loadedEntry?.clusterId,
         );
-        print(
-            'Created DcrEntry for update with detailId: ${updated.detailId}, clusterId: ${updated.clusterId}');
-        await repo.update(updated);
+        
+        // Use create method which will handle update if dcrId is provided
+        await repo.create(updateParams);
       } else {
         await repo.create(params);
       }

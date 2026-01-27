@@ -11,6 +11,7 @@ import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dar
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:intl/intl.dart';
 
 import '../../../domain/entity/common/common_api_models.dart';
 import '../../../domain/repository/common/common_repository.dart';
@@ -43,6 +44,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
   final TextEditingController _reasonController = TextEditingController();
   final TextEditingController _impactController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _employeeNameController = TextEditingController();
   String? _deviationTypeErrorText;
   String? _reasonErrorText;
   String? _dateError;
@@ -73,6 +75,17 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
   // Store tour plan data: map from tour plan display text to cluster/customer
   Map<String, String> _tourPlanToCluster = <String, String>{};
   Map<String, String> _tourPlanToCustomer = <String, String>{};
+  
+  // Service Engineer fields for Unplanned Visit
+  bool _isServiceEngineer = false;
+  List<String> _instrumentOptions = [];
+  final Map<String, int> _instrumentNameToId = <String, int>{};
+  final Map<int, List<String>> _instrumentIdToSerialNumbers = <int, List<String>>{}; // Map instrument ID to serial numbers
+  String? _selectedInstrument;
+  String? _instrumentErrorText;
+  String? _selectedSerialNumber;
+  String? _serialNumberErrorText;
+  List<String> _serialNumberOptions = [];
 
   @override
   void initState() {
@@ -85,6 +98,18 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       _dateController.text = '${date.day.toString().padLeft(2, '0')}-${months[date.month - 1]}-${date.year}';
     }
+    
+    // Initialize employee name field with current user's name
+    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() 
+        ? getIt<UserDetailStore>() 
+        : null;
+    final String employeeName = userStore?.userDetail?.employeeName ?? '';
+    _employeeNameController.text = employeeName;
+    
+    // Check if current user is a Service Engineer
+    final String? serviceArea = userStore?.userDetail?.serviceArea;
+    _isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    print('DeviationEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
     
     // Debug logging for DCR parameters
     if (widget.dcrId != null || widget.tourPlanId != null) {
@@ -106,6 +131,11 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       
       // Load clusters and customers (for UnPlanned Visit)
       await _loadClusterList();
+      
+      // Load instruments for Service Engineers (doesn't require customer selection)
+      if (_isServiceEngineer) {
+        await _loadInstrumentsList();
+      }
       
       // If editing, load deviation data first to get the date, then load tour plans with that date
       if (_isEditing) {
@@ -281,6 +311,15 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
               
               // Set impact
               _impactController.text = deviation.impact ?? '';
+              
+              // Set employee name from deviation data, or fallback to current user's name
+              if (deviation.employeeName != null && deviation.employeeName!.isNotEmpty) {
+                _employeeNameController.text = deviation.employeeName!;
+              } else {
+                // Fallback to current user's name if not available in deviation data
+                final String employeeName = userStore?.userDetail?.employeeName ?? '';
+                _employeeNameController.text = employeeName;
+              }
               
               // Set date - convert from yyyy-MM-dd to dd-MMM-yyyy format
               if (deviation.dateOfDeviation.isNotEmpty) {
@@ -469,6 +508,130 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       }
     } catch (e) {
       print('DeviationEntryScreen: Error loading cluster list: $e');
+    }
+  }
+
+  Future<void> _loadInstrumentsList() async {
+    if (!_isServiceEngineer) return;
+    
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() 
+            ? getIt<UserDetailStore>() 
+            : null;
+
+        // Wait for user to be loaded
+        int retry = 0;
+        while (userStore?.isUserLoaded != true && retry < 20) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          retry++;
+        }
+
+        int? userId = userStore?.userDetail?.id;
+        if (userId == null || userId <= 0) {
+          print('DeviationEntryScreen: [Instruments] userId is null/0, skipping instruments load');
+          return;
+        }
+
+        print('DeviationEntryScreen: [Instruments] Loading instruments with userId: $userId (CommandType: 335)');
+        final List<CommonDropdownItem> items = await repo.getDeviationInstrumentsList(userId);
+
+        if (items.isNotEmpty && mounted) {
+          setState(() {
+            _instrumentOptions.clear();
+            _instrumentNameToId.clear();
+            _instrumentIdToSerialNumbers.clear();
+            
+            // Process instruments from API response
+            for (final item in items) {
+              final String instrumentName = (item.text.isNotEmpty ? item.text : item.name).trim();
+              if (instrumentName.isNotEmpty && !_instrumentOptions.contains(instrumentName)) {
+                _instrumentOptions.add(instrumentName);
+                _instrumentNameToId[instrumentName] = item.id;
+                // Initialize empty serial numbers list - will be loaded when instrument is selected
+                _instrumentIdToSerialNumbers[item.id] = [];
+              }
+            }
+            _instrumentOptions.sort();
+            print('DeviationEntryScreen: [Instruments] Loaded ${_instrumentOptions.length} instruments');
+          });
+        } else {
+          print('DeviationEntryScreen: [Instruments] No instruments returned from API');
+          if (mounted) {
+            setState(() {
+              _instrumentOptions.clear();
+              _instrumentNameToId.clear();
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('DeviationEntryScreen: [Instruments] Error loading instruments: $e');
+      if (mounted) {
+        setState(() {
+          _instrumentOptions.clear();
+          _instrumentNameToId.clear();
+        });
+      }
+    }
+  }
+
+  /// Load serial numbers for selected instrument using GetAutoBigInt (CommandType: 146)
+  Future<void> _loadSerialNumbersForInstrument(int instrumentId) async {
+    if (!_isServiceEngineer) return;
+    
+    try {
+      if (getIt.isRegistered<CommonRepository>()) {
+        final repo = getIt<CommonRepository>();
+        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() 
+            ? getIt<UserDetailStore>() 
+            : null;
+
+        // Get bizUnit from user detail
+        int? bizUnit = userStore?.userDetail?.sbuId;
+        if (bizUnit == null || bizUnit <= 0) {
+          bizUnit = 1; // Default fallback
+        }
+
+        // Get current date in yyyy-MM-dd format
+        final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+        print('DeviationEntryScreen: [Serial Numbers] Loading serial numbers for instrument ID: $instrumentId');
+        print('   ToDate: $toDate');
+        print('   BizUnit: $bizUnit');
+        print('   Module: 6 (Deviation)');
+        
+        final List<CommonDropdownItem> items = await repo.getDeviationSerialNumbersList(
+          instrumentId: instrumentId,
+          toDate: toDate,
+          bizUnit: bizUnit,
+          module: 6,
+        );
+
+        if (mounted) {
+          setState(() {
+            _serialNumberOptions.clear();
+            for (final item in items) {
+              final String serialNumber = (item.text.isNotEmpty ? item.text : (item.code.isNotEmpty ? item.code : item.name)).trim();
+              if (serialNumber.isNotEmpty && !_serialNumberOptions.contains(serialNumber)) {
+                _serialNumberOptions.add(serialNumber);
+              }
+            }
+            _serialNumberOptions.sort();
+            // Store serial numbers in the map for this instrument
+            _instrumentIdToSerialNumbers[instrumentId] = _serialNumberOptions;
+            print('DeviationEntryScreen: [Serial Numbers] Loaded ${_serialNumberOptions.length} serial numbers');
+          });
+        }
+      }
+    } catch (e) {
+      print('DeviationEntryScreen: [Serial Numbers] Error loading serial numbers: $e');
+      if (mounted) {
+        setState(() {
+          _serialNumberOptions.clear();
+        });
+      }
     }
   }
 
@@ -745,6 +908,10 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                   setState(() {
                     _selectedCustomer = customerName;
                   });
+                  // Load instruments if Service Engineer
+                  if (_isServiceEngineer) {
+                    _loadInstrumentsList();
+                  }
                 }
               }
             }
@@ -782,6 +949,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
     _reasonController.dispose();
     _impactController.dispose();
     _dateController.dispose();
+    _employeeNameController.dispose();
     super.dispose();
   }
 
@@ -828,6 +996,22 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
         firstMessage ??= 'Select To Customer';
       }
     }
+    
+    // Validate Instrument and Serial Number for Service Engineer with Unplanned Visit
+    String? instrumentError;
+    String? serialNumberError;
+    if (_isServiceEngineer && _deviationType?.toLowerCase() == 'unplanned visit') {
+      if (_selectedInstrument == null || _selectedInstrument!.trim().isEmpty) {
+        instrumentError = 'Please select an instrument';
+        isValid = false;
+        firstMessage ??= 'Select an instrument';
+      }
+      if (_selectedSerialNumber == null || _selectedSerialNumber!.trim().isEmpty) {
+        serialNumberError = 'Please select serial number';
+        isValid = false;
+        firstMessage ??= 'Select serial number';
+      }
+    }
 
     setState(() {
       _dateError = dateError;
@@ -835,6 +1019,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       _reasonErrorText = reasonError;
       _toClusterErrorText = toClusterError;
       _toCustomerErrorText = toCustomerError;
+      _instrumentErrorText = instrumentError;
+      _serialNumberErrorText = serialNumberError;
     });
 
     if (!isValid) {
@@ -901,6 +1087,16 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
           int customerId = 0;
           String? clusterName;
           
+          // Build description with instrument and serial number for Service Engineer
+          String description = _reasonController.text.trim();
+          if (_isServiceEngineer && _deviationType?.toLowerCase() == 'unplanned visit') {
+            if (_selectedInstrument != null && _selectedInstrument!.isNotEmpty &&
+                _selectedSerialNumber != null && _selectedSerialNumber!.isNotEmpty) {
+              final instrumentInfo = '\n\nInstrument: $_selectedInstrument\nSerial Number: $_selectedSerialNumber';
+              description = description + instrumentInfo;
+            }
+          }
+          
           if (_deviationType?.toLowerCase() == 'unplanned visit') {
             // Get selected cluster ID
             if (_selectedCluster != null && _selectedCluster!.isNotEmpty) {
@@ -937,7 +1133,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
               dcrDetailId: finalDcrDetailId,
               dateOfDeviation: dateOfDeviation,
               typeOfDeviation: typeOfDeviation,
-              description: _reasonController.text,
+              description: description,
               customerId: customerId,
               clusterId: clusterId,
               impact: _impactController.text,
@@ -971,7 +1167,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
             print('DeviationEntryScreen: Saving deviation with DCR details');
             print('  - DCRDetailId: $finalDcrDetailId');
             print('  - TourPlanDetailId: $finalTourPlanDetailId');
-            print('  - Description: ${_reasonController.text}');
+            print('  - Description: $description');
             print('  - DeviationType: ${_deviationType}');
             
             final response = await deviationRepo.saveDeviation(
@@ -984,7 +1180,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
               dcrDetailId: finalDcrDetailId,
               dateOfDeviation: dateOfDeviation,
               typeOfDeviation: typeOfDeviation,
-              description: _reasonController.text,
+              description: description,
               customerId: customerId,
               clusterId: clusterId,
               impact: _impactController.text,
@@ -1112,75 +1308,90 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                             
-                            // Date and Type row
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final bool stack = constraints.maxWidth < 500;
-                                final dateField = _LabeledField(
-                                  label: 'Deviation Date',
-                                  required: true,
-                                  errorText: _dateError,
-                                  child: _DateField(
-                                    controller: _dateController,
-                                    onChanged: (date) {
-                                      setState(() {
-                                        _dateController.text = date;
-                                        _dateError = null; // Clear error when date is selected
-                                      });
-                                      // Reload customers if cluster is selected (for UnPlanned Visit)
-                                      if (_deviationType?.toLowerCase() == 'unplanned visit' && _selectedCluster != null && _selectedCluster!.isNotEmpty) {
-                                        _loadMappedCustomers();
-                                      }
-                                    },
+                            // Date field
+                            _LabeledField(
+                              label: 'Deviation Date',
+                              required: true,
+                              errorText: _dateError,
+                              child: _DateField(
+                                controller: _dateController,
+                                onChanged: (date) {
+                                  setState(() {
+                                    _dateController.text = date;
+                                    _dateError = null; // Clear error when date is selected
+                                  });
+                                  // Reload customers if cluster is selected (for UnPlanned Visit)
+                                  if (_deviationType?.toLowerCase() == 'unplanned visit' && _selectedCluster != null && _selectedCluster!.isNotEmpty) {
+                                    _loadMappedCustomers();
+                                  }
+                                },
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 12),
+                            
+                            // Employee Name field (pre-filled and disabled)
+                            _LabeledField(
+                              label: 'Employee Name',
+                              child: TextFormField(
+                                controller: _employeeNameController,
+                                enabled: false,
+                                decoration: InputDecoration(
+                                  hintText: 'Employee Name',
+                                  filled: true,
+                                  fillColor: Colors.grey[200],
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: Colors.grey[300]!),
                                   ),
-                                );
-                                final typeField = _LabeledField(
-                                  label: 'Deviation Type',
-                                  required: true,
-                                  errorText: _deviationTypeErrorText,
-                                  child: SearchableDropdown(
-                                    options: _deviationTypes,
-                                    value: _deviationType,
-                                    hintText: 'Select deviation type',
-                                    searchHintText: 'Search deviation type...',
-                                    hasError: _deviationTypeErrorText != null,
-                                    onChanged: (v) {
-                                      setState(() {
-                                        _deviationType = v;
-                                        _deviationTypeErrorText = null;
-                                        // Clear cluster and customer selections when deviation type changes
-                                        if (v?.toLowerCase() != 'unplanned visit') {
-                                          _selectedCluster = null;
-                                          _selectedCustomer = null;
-                                          _toClusterErrorText = null;
-                                          _toCustomerErrorText = null;
-                                        }
-                                      });
-                                      // Load customers if UnPlanned Visit is selected and cluster is selected
-                                      if (v?.toLowerCase() == 'unplanned visit' && _selectedCluster != null && _selectedCluster!.isNotEmpty) {
-                                        _loadMappedCustomers();
-                                      }
-                                    },
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: Colors.grey[300]!),
                                   ),
-                                );
-                                
-                                if (stack) {
-                                  return Column(
-                                    children: [
-                                      dateField,
-                                      const SizedBox(height: 16),
-                                      typeField,
-                                    ],
-                                  );
-                                }
-                                return Row(
-                                  children: [
-                                    Expanded(child: dateField),
-                                    const SizedBox(width: 16),
-                                    Expanded(child: typeField),
-                                  ],
-                                );
-                              },
+                                  disabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: Colors.grey[300]!),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                ),
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 12),
+                            
+                            // Deviation Type field
+                            _LabeledField(
+                              label: 'Deviation Type',
+                              required: true,
+                              errorText: _deviationTypeErrorText,
+                              child: SearchableDropdown(
+                                options: _deviationTypes,
+                                value: _deviationType,
+                                hintText: 'Select deviation type',
+                                searchHintText: 'Search deviation type...',
+                                hasError: _deviationTypeErrorText != null,
+                                onChanged: (v) {
+                                  setState(() {
+                                    _deviationType = v;
+                                    _deviationTypeErrorText = null;
+                                    // Clear cluster and customer selections when deviation type changes
+                                    if (v?.toLowerCase() != 'unplanned visit') {
+                                      _selectedCluster = null;
+                                      _selectedCustomer = null;
+                                      _toClusterErrorText = null;
+                                      _toCustomerErrorText = null;
+                                    }
+                                  });
+                                  // Load customers if UnPlanned Visit is selected and cluster is selected
+                                  if (v?.toLowerCase() == 'unplanned visit' && _selectedCluster != null && _selectedCluster!.isNotEmpty) {
+                                    _loadMappedCustomers();
+                                  }
+                                },
+                              ),
                             ),
                             
                             const SizedBox(height: 12),
@@ -1327,14 +1538,99 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                                       : 'Select customer',
                                   searchHintText: 'Search customer...',
                                   hasError: _toCustomerErrorText != null,
-                                  onChanged: (v) {
-                                    setState(() {
-                                      _selectedCustomer = v;
-                                      _toCustomerErrorText = null; // Clear error when changed
-                                    });
-                                  },
+                                    onChanged: (v) {
+                                      setState(() {
+                                        _selectedCustomer = v;
+                                        _toCustomerErrorText = null; // Clear error when changed
+                                        // Clear instrument selection when customer changes
+                                        if (_isServiceEngineer) {
+                                          _selectedInstrument = null;
+                                          _selectedSerialNumber = null;
+                                          _instrumentOptions.clear();
+                                          _instrumentNameToId.clear();
+                                          _instrumentIdToSerialNumbers.clear();
+                                          _serialNumberOptions.clear();
+                                        }
+                                      });
+                                      // Load instruments for selected customer (Service Engineer only)
+                                      if (_isServiceEngineer && v != null && v.trim().isNotEmpty) {
+                                        _loadInstrumentsList();
+                                      }
+                                    },
                                 ),
                               ),
+                              
+                              // Instrument and Serial Number fields for Service Engineer
+                              if (_isServiceEngineer) ...[
+                                const SizedBox(height: 20),
+                                Divider(height: 1, color: Colors.grey.shade300),
+                                const SizedBox(height: 20),
+                                
+                                Text(
+                                  'Instrument Details',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                    letterSpacing: 0.1,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                
+                                _LabeledField(
+                                  label: 'Instrument',
+                                  required: true,
+                                  errorText: _instrumentErrorText,
+                                  child: SearchableDropdown(
+                                    options: _instrumentOptions,
+                                    value: _selectedInstrument,
+                                    hintText: _selectedCustomer == null || _selectedCustomer!.isEmpty
+                                        ? 'Select customer first'
+                                        : 'Select instruments',
+                                    searchHintText: 'Search instrument...',
+                                    hasError: _instrumentErrorText != null,
+                                    onChanged: (v) {
+                                      setState(() {
+                                        _selectedInstrument = v;
+                                        _instrumentErrorText = null;
+                                        // Clear serial number selection when instrument changes
+                                        _selectedSerialNumber = null;
+                                        _serialNumberOptions = [];
+                                      });
+                                      // Load serial numbers for selected instrument using API
+                                      if (v != null && _instrumentNameToId.containsKey(v)) {
+                                        final instrumentId = _instrumentNameToId[v]!;
+                                        _loadSerialNumbersForInstrument(instrumentId);
+                                      }
+                                    },
+                                  ),
+                                ),
+                                
+                                const SizedBox(height: 12),
+                                
+                                _LabeledField(
+                                  label: 'Serial Number',
+                                  required: true,
+                                  errorText: _serialNumberErrorText,
+                                  child: SearchableDropdown(
+                                    options: _serialNumberOptions,
+                                    value: _selectedSerialNumber,
+                                    hintText: _selectedInstrument == null || _selectedInstrument!.isEmpty
+                                        ? 'Select instrument first'
+                                        : _serialNumberOptions.isEmpty
+                                            ? 'No serial numbers available'
+                                            : 'Select serial number',
+                                    searchHintText: 'Search serial number...',
+                                    hasError: _serialNumberErrorText != null,
+                                    onChanged: (v) {
+                                      setState(() {
+                                        _selectedSerialNumber = v;
+                                        _serialNumberErrorText = null;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
                             ],
                             
                             const SizedBox(height: 12),

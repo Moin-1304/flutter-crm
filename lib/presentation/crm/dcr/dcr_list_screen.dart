@@ -10,6 +10,7 @@ import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/domain/entity/dcr/dcr.dart';
 import 'package:boilerplate/domain/entity/dcr/dcr_api_models.dart';
 import 'package:boilerplate/domain/entity/dcr/unified_dcr_item.dart';
+import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
 import 'package:boilerplate/domain/entity/expense/expense.dart';
 import 'package:geolocator/geolocator.dart';
 import '../deviation/deviation_entry_screen.dart';
@@ -2138,8 +2139,114 @@ class _DcrListScreenState extends State<DcrListScreen>
     return item.dcrStatusId == 6;
   }
 
+  /// Check if current user is a Service Engineer
+  bool _isCurrentUserServiceEngineer() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final String? serviceArea = userStore?.userDetail?.serviceArea;
+    final bool isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    print('_isCurrentUserServiceEngineer: serviceArea="$serviceArea", result=$isServiceEngineer');
+    return isServiceEngineer;
+  }
+
+  /// Check if item has Service Report data
+  bool _hasServiceReportData(UnifiedDcrItem item) {
+    final bool hasMappedInstruments = item.mappedInstruments != null && 
+        item.mappedInstruments!.isNotEmpty;
+    final bool hasComplaint = item.complaint != null && item.complaint!.isNotEmpty;
+    final bool hasActionTaken = item.actionTaken != null && item.actionTaken!.isNotEmpty;
+    final bool hasResult = item.result != null && item.result!.isNotEmpty;
+    final bool hasComplaintStatus = item.complaintStatus != null && item.complaintStatus!.isNotEmpty;
+    final bool hasComplaintDate = item.complaintDate != null && item.complaintDate!.isNotEmpty;
+    final bool hasComplaintRemarks = item.complaintRemarks != null && item.complaintRemarks!.isNotEmpty;
+    
+    final bool result = hasMappedInstruments || hasComplaint || hasActionTaken || 
+        hasResult || hasComplaintStatus || hasComplaintDate || hasComplaintRemarks;
+    
+    print('_hasServiceReportData:');
+    print('  - hasMappedInstruments: $hasMappedInstruments');
+    print('  - hasComplaint: $hasComplaint');
+    print('  - hasActionTaken: $hasActionTaken');
+    print('  - hasResult: $hasResult');
+    print('  - hasComplaintStatus: $hasComplaintStatus');
+    print('  - hasComplaintDate: $hasComplaintDate');
+    print('  - hasComplaintRemarks: $hasComplaintRemarks');
+    print('  - Result: $result');
+    
+    return result;
+  }
+
   /// Show detailed popup for DCR or Expense item
-  void _showDcrDetails(UnifiedDcrItem item) {
+  Future<void> _showDcrDetails(UnifiedDcrItem item) async {
+    // For DCR items, fetch full details using Get API to get Service Report fields
+    UnifiedDcrItem displayItem = item;
+    
+    if (item.isDcr && item.dcrId > 0) {
+      try {
+        print('Fetching DCR details using Get API - ID: ${item.id}, DCR ID: ${item.dcrId}');
+        final DcrRepository? dcrRepo =
+            getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+        
+        if (dcrRepo != null) {
+          final int detailId = item.id;
+          final int dcrId = item.dcrId;
+          
+          final dcrEntry = await dcrRepo.getById(detailId.toString(), dcrId: dcrId.toString());
+          
+          if (dcrEntry != null) {
+            // Fetch the full DCR response using the API directly
+            final dcrApi = getIt<DcrApi>();
+            final dcrGetResponse = await dcrApi.getDcrDetails(detailId, dcrId);
+            
+            // Convert to UnifiedDcrItem
+            displayItem = UnifiedDcrItem.fromDcrGetResponse(dcrGetResponse);
+            print('Successfully fetched DCR details from Get API');
+          }
+        }
+      } catch (e) {
+        print('Error fetching DCR details from Get API: $e');
+        // Fall back to using the item from list
+        print('Falling back to list item data');
+      }
+    }
+    
+    // Debug logs for Service Report Details
+    print('=== DCR Details View - Debug Info ===');
+    print('Item ID: ${displayItem.id}, DCR ID: ${displayItem.dcrId}');
+    print('Is DCR: ${displayItem.isDcr}');
+    
+    // Check if user is Service Engineer
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final String? serviceArea = userStore?.userDetail?.serviceArea;
+    final bool isServiceEngineer = _isCurrentUserServiceEngineer();
+    print('User Service Area: "$serviceArea"');
+    print('Is Service Engineer: $isServiceEngineer');
+    
+    // Check Service Report fields
+    print('Service Report Fields:');
+    print('  - mappedInstruments: "${displayItem.mappedInstruments}"');
+    print('  - complaint: "${displayItem.complaint}"');
+    print('  - actionTaken: "${displayItem.actionTaken}"');
+    print('  - result: "${displayItem.result}"');
+    print('  - complaintStatus: "${displayItem.complaintStatus}"');
+    print('  - complaintDate: "${displayItem.complaintDate}"');
+    print('  - complaintRemarks: "${displayItem.complaintRemarks}"');
+    
+    // Check if has Service Report data
+    final bool hasServiceReportData = _hasServiceReportData(displayItem);
+    print('Has Service Report Data: $hasServiceReportData');
+    
+    // Check conditions for showing Service Report section
+    final bool shouldShowServiceReport = displayItem.isDcr && isServiceEngineer && hasServiceReportData;
+    print('Should Show Service Report Section: $shouldShowServiceReport');
+    print('  - item.isDcr: ${displayItem.isDcr}');
+    print('  - isServiceEngineer: $isServiceEngineer');
+    print('  - hasServiceReportData: $hasServiceReportData');
+    print('=====================================');
+    
+    if (!mounted) return;
+    
     final isTablet = MediaQuery.of(context).size.width >= 600;
     showModalBottomSheet(
       context: context,
@@ -2193,7 +2300,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(
-                            item.isDcr
+                            displayItem.isDcr
                                 ? Icons.assignment_outlined
                                 : Icons.account_balance_wallet_outlined,
                             color: const Color(0xFF4db1b3),
@@ -2207,7 +2314,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                             children: [
                               Expanded(
                                 child: Text(
-                                  item.isDcr
+                                  displayItem.isDcr
                                       ? 'DCR Details'
                                       : 'Expense Details',
                                   style: GoogleFonts.inter(
@@ -2218,7 +2325,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _getStatusChipForItem(item),
+                              _getStatusChipForItem(displayItem),
                             ],
                           ),
                         ),
@@ -2245,38 +2352,38 @@ class _DcrListScreenState extends State<DcrListScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _DetailRow('Transaction Type', item.transactionType),
+                      _DetailRow('Transaction Type', displayItem.transactionType),
                       const SizedBox(height: 12),
                       _DetailRow('Date',
-                          _formatDate(item.parsedDate ?? DateTime.now())),
+                          _formatDate(displayItem.parsedDate ?? DateTime.now())),
                       const SizedBox(height: 12),
-                      _DetailRow('Employee', item.employeeName),
+                      _DetailRow('Employee', displayItem.employeeName),
                       const SizedBox(height: 12),
-                      if (item.designation.isNotEmpty) ...[
-                        _DetailRow('Designation', item.designation),
+                      if (displayItem.designation.isNotEmpty) ...[
+                        _DetailRow('Designation', displayItem.designation),
                         const SizedBox(height: 12),
                       ],
-                      _DetailRow('Cluster', item.clusterDisplayName),
+                      _DetailRow('Cluster', displayItem.clusterDisplayName),
                       const SizedBox(height: 12),
-                      _DetailRow('Status', item.statusText),
-                      if (item.isDcr) ...[
+                      _DetailRow('Status', displayItem.statusText),
+                      if (displayItem.isDcr) ...[
                         const SizedBox(height: 20),
                         Divider(height: 1, color: Colors.grey.shade300),
                         const SizedBox(height: 20),
-                        _DetailRow('Customer', item.customerName),
+                        _DetailRow('Customer', displayItem.customerName),
                         const SizedBox(height: 12),
-                        _DetailRow('Purpose', item.typeOfWork),
+                        _DetailRow('Purpose', displayItem.typeOfWork),
                         const SizedBox(height: 12),
-                        if (item.samplesToDistribute != null &&
-                            item.samplesToDistribute!.isNotEmpty) ...[
+                        if (displayItem.samplesToDistribute != null &&
+                            displayItem.samplesToDistribute!.isNotEmpty) ...[
                           _DetailRow('Samples to Distribute',
-                              item.samplesToDistribute!),
+                              displayItem.samplesToDistribute!),
                           const SizedBox(height: 12),
                         ],
-                        if (item.productsToDiscuss != null &&
-                            item.productsToDiscuss!.isNotEmpty) ...[
+                        if (displayItem.productsToDiscuss != null &&
+                            displayItem.productsToDiscuss!.isNotEmpty) ...[
                           _DetailRow(
-                              'Products to Discuss', item.productsToDiscuss!),
+                              'Products to Discuss', displayItem.productsToDiscuss!),
                           const SizedBox(height: 12),
                         ],
                       ] else ...[
@@ -2284,19 +2391,101 @@ class _DcrListScreenState extends State<DcrListScreen>
                         Divider(height: 1, color: Colors.grey.shade300),
                         const SizedBox(height: 20),
                         _DetailRow(
-                            'Expense Type', item.expenseType ?? 'Unknown'),
+                            'Expense Type', displayItem.expenseType ?? 'Unknown'),
                         const SizedBox(height: 12),
                         _DetailRow(
                             'Amount',
-                            item.expenseAmount != null
-                                ? 'LKR ${item.expenseAmount!.toStringAsFixed(2)}'
+                            displayItem.expenseAmount != null
+                                ? 'LKR ${displayItem.expenseAmount!.toStringAsFixed(2)}'
                                 : 'Unknown'),
                       ],
-                      if (item.remarks.isNotEmpty) ...[
+                      // Service Report details (Service Engineer only)
+                      Builder(
+                        builder: (context) {
+                          final bool isServiceEngineer = _isCurrentUserServiceEngineer();
+                          final bool hasServiceReportData = _hasServiceReportData(displayItem);
+                          final bool shouldShow = displayItem.isDcr && isServiceEngineer && hasServiceReportData;
+                          
+                          print('Service Report Section Render Check:');
+                          print('  - item.isDcr: ${displayItem.isDcr}');
+                          print('  - isServiceEngineer: $isServiceEngineer');
+                          print('  - hasServiceReportData: $hasServiceReportData');
+                          print('  - shouldShow: $shouldShow');
+                          
+                          if (!shouldShow) {
+                            return const SizedBox.shrink();
+                          }
+                          
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                         const SizedBox(height: 20),
                         Divider(height: 1, color: Colors.grey.shade300),
                         const SizedBox(height: 20),
-                        _DetailRow('Remarks', item.remarks, isMultiline: true),
+                              Text(
+                                'Service Report Details',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.grey[900],
+                                  fontSize: isTablet ? 16 : 14,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                          if (displayItem.mappedInstruments != null &&
+                              displayItem.mappedInstruments!.isNotEmpty) ...[
+                            _DetailRow(
+                              'Mapped Instruments',
+                              displayItem.mappedInstruments!
+                                  .map((e) => e['productName'] ?? e['ProductName'] ?? 'Unknown')
+                                  .join(', '),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          if (displayItem.complaint != null &&
+                              displayItem.complaint!.isNotEmpty) ...[
+                            _DetailRow('Complaint', displayItem.complaint!,
+                                isMultiline: true),
+                            const SizedBox(height: 12),
+                          ],
+                          if (displayItem.actionTaken != null &&
+                              displayItem.actionTaken!.isNotEmpty) ...[
+                            _DetailRow('Action Taken', displayItem.actionTaken!,
+                                isMultiline: true),
+                            const SizedBox(height: 12),
+                          ],
+                          if (displayItem.result != null &&
+                              displayItem.result!.isNotEmpty) ...[
+                            _DetailRow('Result', displayItem.result!,
+                                isMultiline: true),
+                            const SizedBox(height: 12),
+                          ],
+                          if (displayItem.complaintStatus != null &&
+                              displayItem.complaintStatus!.isNotEmpty) ...[
+                            _DetailRow('Complaint Status',
+                                displayItem.complaintStatus!),
+                            const SizedBox(height: 12),
+                          ],
+                          if (displayItem.complaintDate != null &&
+                              displayItem.complaintDate!.isNotEmpty) ...[
+                            _DetailRow('Complaint Date', displayItem.complaintDate!),
+                            const SizedBox(height: 12),
+                          ],
+                          if (displayItem.complaintRemarks != null &&
+                              displayItem.complaintRemarks!.isNotEmpty) ...[
+                            _DetailRow('Complaint Remarks',
+                                displayItem.complaintRemarks!,
+                                isMultiline: true),
+                            const SizedBox(height: 12),
+                          ],
+                            ],
+                          );
+                        },
+                      ),
+                      if (displayItem.remarks.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Divider(height: 1, color: Colors.grey.shade300),
+                        const SizedBox(height: 20),
+                        _DetailRow('Remarks', displayItem.remarks, isMultiline: true),
                       ],
                     ],
                   ),

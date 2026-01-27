@@ -149,6 +149,9 @@ class CreateDcrParams {
     this.complaintRemarks,
     this.coVisit = false,
     this.coVisitorId,
+    // Update fields
+    this.dcrId,
+    this.detailId,
   });
 
   final DateTime date;
@@ -173,15 +176,18 @@ class CreateDcrParams {
   final double? latitude;
   final double? longitude;
   // Service Engineer specific fields
-  final String? mappedInstruments;
+  final List<Map<String, dynamic>>? mappedInstruments; // Array of {productId, productName, customerId}
   final String? complaint;
   final String? actionTaken;
   final String? result;
-  final String? complaintStatus;
+  final int? complaintStatus; // Integer: 0 = Not Resolved, 1 = Resolved (or similar)
   final DateTime? complaintDate;
   final String? complaintRemarks;
   final bool coVisit;
   final int? coVisitorId; // Reporting manager ID for co-visit
+  // Update fields
+  final String? dcrId; // DCR ID for update
+  final int? detailId; // Detail ID for update
 }
 
 

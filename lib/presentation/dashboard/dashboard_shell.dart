@@ -197,6 +197,19 @@ class _DashboardShellState extends State<DashboardShell>
           _selected = i;
         });
         print('Current selected index: $_selected');
+        
+        // Refresh summary data when switching to home tab (index 0)
+        if (i == 0) {
+          // Use postFrameCallback to ensure the widget is fully built before refreshing
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            // Add a small delay to ensure everything is ready
+            Future.delayed(const Duration(milliseconds: 150), () {
+              print('🔄 [DashboardShell] Refreshing home screen data after tab switch...');
+              PunchHomeScreen.refreshSummaryData();
+            });
+          });
+        }
+        
         // Re-validate user when switching to a different screen
         // This ensures buttons are properly enabled/disabled based on current validation
         _validateUser();

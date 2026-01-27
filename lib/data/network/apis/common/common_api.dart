@@ -7,7 +7,7 @@ import '../../../../domain/entity/common/common_api_models.dart'
          PurposeOfVisitRequest, CustomerTypeRequest, TourPlanProductsRequest, DcrProductsRequest,
          MappedInstrumentsRequest, StoreListRequest, IssueToListRequest, IssueAgainstListRequest,
          DivisionCategoryRequest, CustomerListRequest, ItemDescriptionRequest, BatchNoRequest,
-         ReportingManagerRequest, TaxComponentRequest;
+         ReportingManagerRequest, TaxComponentRequest, DeviationInstrumentRequest, DeviationSerialNumberRequest;
 
 class CommonApi {
   final DioClient _dioClient;
@@ -276,8 +276,90 @@ class CommonApi {
     }
   }
 
-  /// Get Mapped Instruments (CommandType: 335)
-  /// UserId is dynamic, IsFromAMCUser is always 1, CustomerSelectedList contains customerId
+  /// Get Instruments List for Deviation (CommandType: 335, IsFromAMCUser: 1)
+  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(int userId) async {
+    try {
+      print('🔵 [Deviation Instruments] Loading instruments with userId: $userId');
+      final request = DeviationInstrumentRequest(userId: userId);
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          final items = (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+          print('✅ [Deviation Instruments] Loaded ${items.length} instruments');
+          return items;
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      print('❌ [Deviation Instruments] Error: ${e.toString()}');
+      throw Exception('Failed to get deviation instruments: ${e.toString()}');
+    }
+  }
+
+  /// Get Serial Numbers List for Deviation (CommandType: 146) using GetAutoBigInt
+  Future<List<CommonDropdownItem>> getDeviationSerialNumbersList({
+    required int instrumentId,
+    required String toDate,
+    required int bizUnit,
+    int module = 6,
+  }) async {
+    try {
+      print('🔵 [Deviation Serial Numbers] Loading serial numbers');
+      print('   Instrument ID: $instrumentId');
+      print('   ToDate: $toDate');
+      print('   BizUnit: $bizUnit');
+      print('   Module: $module');
+      
+      final request = DeviationSerialNumberRequest(
+        id: instrumentId,
+        toDate: toDate,
+        bizUnit: bizUnit,
+        module: module,
+      );
+      
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAutoBigInt,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          final items = (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+          print('✅ [Deviation Serial Numbers] Loaded ${items.length} serial numbers');
+          return items;
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      print('❌ [Deviation Serial Numbers] Error: ${e.toString()}');
+      throw Exception('Failed to get deviation serial numbers: ${e.toString()}');
+    }
+  }
+
   Future<List<CommonDropdownItem>> getMappedInstrumentsList(
       int userId, int customerId) async {
     try {

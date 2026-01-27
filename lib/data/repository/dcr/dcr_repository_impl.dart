@@ -48,6 +48,11 @@ class DcrRepositoryImpl implements DcrRepository {
         
         // Create tour plan DCR details with IDs from params
         final int? linkedTourPlanIdInt = int.tryParse(params.linkedTourPlanId ?? '');
+        
+        // Check if this is an update (dcrId or detailId provided)
+        final bool isUpdate = params.dcrId != null || params.detailId != null;
+        final int? dcrIdInt = params.dcrId != null ? int.tryParse(params.dcrId!) : null;
+        
         final tourPlanDetails = [
           TourPlanDcrDetailSave(
             // Required fields
@@ -65,7 +70,7 @@ class DcrRepositoryImpl implements DcrRepository {
             visitTime: _formatVisitTime(params.date),
             visitDuration: params.callDurationMinutes.toDouble(),
             // Optional fields (left mostly null to match desired payload)
-            id: null,
+            id: params.detailId, // Use detailId for update
             clusterId: null,
             customerFeedback: null,
             isDeviationRequested: false,
@@ -92,23 +97,43 @@ class DcrRepositoryImpl implements DcrRepository {
             cluster: null,
             dcrType: null,
             dcrStatus: null,
-            calls: null,
-            expenses: null,
+            calls: const [], // Use empty array instead of null
+            expenses: const [], // Use empty array instead of null
             createdAt: null,
             updatedAt: null,
             clusterNames: null,
+            // Service Engineer specific fields
+            mappedInstruments: params.mappedInstruments, // Already a List<Map<String, dynamic>>?
+            complaint: params.complaint,
+            actionTaken: params.actionTaken,
+            result: params.result,
+            complaintStatus: params.complaintStatus, // Already an int?
+            complaintDate: params.complaintDate != null 
+                ? params.complaintDate!.toIso8601String() // Full ISO DateTime string
+                : null,
+            complaintRemarks: params.complaintRemarks,
           ),
         ];
         
+        // Debug log for Service Report fields
+        print('DCR Save - Service Report Fields:');
+        print('  - mappedInstruments: ${params.mappedInstruments}');
+        print('  - complaint: "${params.complaint}"');
+        print('  - actionTaken: "${params.actionTaken}"');
+        print('  - result: "${params.result}"');
+        print('  - complaintStatus: ${params.complaintStatus}');
+        print('  - complaintDate: "${params.complaintDate}"');
+        print('  - complaintRemarks: "${params.complaintRemarks}"');
+        
         final request = DcrSaveRequest(
           // Top-level fields aligned to required contract
-          id: null,
+          id: dcrIdInt, // Use dcrId for update
           cityId: null,
           createdBy: null,
           status: 0,
           sbuId: 0,
           dcrStatusId: params.submit ? 3 : 1, // 3 for submitted, 1 for draft
-          dcrId: null,
+          dcrId: dcrIdInt, // Use dcrId for update
           tourPlanId: linkedTourPlanIdInt ?? 0,
           employeeId: employeeIdInt,
           dcrDate: params.date.toIso8601String().split('T')[0],
@@ -553,11 +578,21 @@ class DcrRepositoryImpl implements DcrRepository {
               cluster: null,
               dcrType: null,
               dcrStatus: null,
-              calls: null,
-              expenses: null,
+              calls: const [], // Use empty array instead of null
+              expenses: const [], // Use empty array instead of null
               createdAt: null,
               updatedAt: null,
               clusterNames: null,
+              // Service Engineer specific fields - Note: DcrEntry doesn't have these,
+              // so they will be null on update. To fix this, we'd need to add them to DcrEntry
+              // or change the update flow to use CreateDcrParams instead of DcrEntry
+              mappedInstruments: null, // TODO: Add Service Report fields to DcrEntry or use CreateDcrParams for update
+              complaint: null,
+              actionTaken: null,
+              result: null,
+              complaintStatus: null,
+              complaintDate: null,
+              complaintRemarks: null,
             ),
           ];
           
@@ -928,6 +963,8 @@ class DcrRepositoryImpl implements DcrRepository {
       customerId: dcrDetail.customerId,
       detailId: validDetailId,
       clusterId: dcrDetail.clusterId,
+      // Note: Service Report fields are not stored in DcrEntry
+      // They are extracted and displayed via UnifiedDcrItem in the list screen
     );
   }
 
@@ -1117,6 +1154,21 @@ class DcrRepositoryImpl implements DcrRepository {
       }
     } catch (error) {
       throw Exception('Failed to validate user: ${error.toString()}');
+    }
+  }
+
+  @override
+  Future<DcrMapDetailsResponse> getDcrMapDetails(DcrMapDetailsRequest request) async {
+    try {
+      // Use API to get DCR map details
+      if (getIt.isRegistered<DcrApi>()) {
+        final dcrApi = getIt<DcrApi>();
+        return await dcrApi.getDcrMapDetails(request);
+      } else {
+        throw Exception('DCR API not available');
+      }
+    } catch (error) {
+      throw Exception('Failed to get DCR map details: ${error.toString()}');
     }
   }
 }

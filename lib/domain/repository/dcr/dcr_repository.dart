@@ -36,6 +36,9 @@ abstract class DcrRepository {
   
   // User validation
   Future<DcrValidateUserResponse> validateUser(int userId);
+  
+  // Get DCR Map Details for manager review
+  Future<DcrMapDetailsResponse> getDcrMapDetails(DcrMapDetailsRequest request);
 }
 
 

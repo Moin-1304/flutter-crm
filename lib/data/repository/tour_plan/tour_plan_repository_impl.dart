@@ -398,6 +398,23 @@ class TourPlanRepositoryImpl implements TourPlanRepository {
   }
 
   @override
+  Future<TourPlanDashboardResponse> getTourPlanDashboard(
+      TourPlanDashboardRequest request) async {
+    try {
+      // Get auth token from SharedPreferenceHelper
+      final String? token = await _sharedPreferenceHelper.authToken;
+      if (token == null || token.isEmpty) {
+        throw Exception('Authentication token not found. Please login again.');
+      }
+
+      final res = await _apiClientInstance.getTourPlanDashboard(request, token);
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
   Future<TourPlanGetManagerSummaryResponse> getTourPlanManagerSummary(
       TourPlanGetManagerSummaryRequest request) async {
     try {

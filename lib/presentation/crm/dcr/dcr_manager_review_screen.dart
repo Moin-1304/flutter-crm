@@ -12,6 +12,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart';
+import 'package:boilerplate/presentation/crm/dcr/dcr_map_view_screen.dart';
+import 'package:boilerplate/presentation/crm/dcr/medical_rep_map_date_range_dialog.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -447,6 +449,72 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                                 ),
                               ),
                             ],
+                          ),
+                        ),
+                        // Medical Rep Map View Button
+                        Container(
+                          margin: EdgeInsets.only(right: isMobile ? 8 : 12),
+                          width: isMobile ? 48 : 56,
+                          height: isMobile ? 48 : 56,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.grey.withOpacity(0.2),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _openMedicalRepMapView,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Icon(
+                                Icons.local_hospital_rounded,
+                                color: tealGreen,
+                                size: isMobile ? 24 : 28,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Sales Rep Map View Button
+                        Container(
+                          margin: EdgeInsets.only(right: isMobile ? 8 : 12),
+                          width: isMobile ? 48 : 56,
+                          height: isMobile ? 48 : 56,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.grey.withOpacity(0.2),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _openMapView,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Icon(
+                                Icons.map_rounded,
+                                color: tealGreen,
+                                size: isMobile ? 24 : 28,
+                              ),
+                            ),
                           ),
                         ),
                         // Filter Icon with Badge
@@ -1560,6 +1628,136 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       _showFilterModal = true;
     });
     _filterModalController.forward();
+  }
+
+  Future<void> _openMapView() async {
+    try {
+      print('🗺️ [DcrManagerReviewScreen] Opening map view...');
+      
+      // Get manager ID from UserDetailStore
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final int? managerId = userStore?.userDetail?.employeeId;
+      
+      print('   Manager ID: $managerId');
+      
+      if (managerId == null) {
+        print('❌ [DcrManagerReviewScreen] Manager ID not available');
+        ToastMessage.show(
+          context,
+          message: 'Manager ID not available',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+
+      // Show loading indicator
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Call GetDCRMapDetails API
+      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+      
+      if (dcrRepo == null) {
+        print('❌ [DcrManagerReviewScreen] DCR Repository not available');
+        if (mounted) Navigator.of(context).pop(); // Close loading dialog
+        ToastMessage.show(
+          context,
+          message: 'DCR Repository not available',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+
+      final request = DcrMapDetailsRequest(
+        searchText: null,
+        pageNumber: 0,
+        pageSize: 0,
+        sortOrder: 0,
+        sortDir: 0,
+        managerId: managerId,
+      );
+
+      print('📞 [DcrManagerReviewScreen] Calling getDcrMapDetails API...');
+      print('   Request: ${request.toJson()}');
+      
+      final response = await dcrRepo.getDcrMapDetails(request);
+
+      print('✅ [DcrManagerReviewScreen] Received API response:');
+      print('   Total items: ${response.items.length}');
+      print('   Total records: ${response.totalRecords}');
+      print('   Filtered records: ${response.filteredRecords}');
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Convert DcrMapDetailsItem to UnifiedDcrItem
+      print('🔄 [DcrManagerReviewScreen] Converting items to UnifiedDcrItem...');
+      final List<UnifiedDcrItem> allMapItems = response.items
+          .map((item) => UnifiedDcrItem.fromDcrMapDetailsItem(item))
+          .toList();
+      
+      print('   Converted items: ${allMapItems.length}');
+      
+      // Filter items with valid coordinates
+      final List<UnifiedDcrItem> mapItems = allMapItems
+          .where((item) =>
+              item.customerLatitude != null &&
+              item.customerLongitude != null &&
+              item.customerLatitude != 0.0 &&
+              item.customerLongitude != 0.0)
+          .toList();
+
+      print('   Items with valid coordinates: ${mapItems.length}');
+      print('   Items filtered out (no coordinates): ${allMapItems.length - mapItems.length}');
+
+      if (mapItems.isEmpty) {
+        print('⚠️ [DcrManagerReviewScreen] No DCR visits with location data available');
+        ToastMessage.show(
+          context,
+          message: 'No DCR visits with location data available',
+          type: ToastType.info,
+          icon: Icons.info_outline,
+        );
+        return;
+      }
+
+      print('🚀 [DcrManagerReviewScreen] Opening map view with ${mapItems.length} items');
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => DcrMapViewScreen(dcrItems: mapItems),
+        ),
+      );
+      print('✅ [DcrManagerReviewScreen] Map view opened successfully');
+    } catch (e) {
+      print('❌ [DcrManagerReviewScreen] Error opening map view: ${e.toString()}');
+      print('   Error type: ${e.runtimeType}');
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        ToastMessage.show(
+          context,
+          message: 'Failed to load map data: ${e.toString()}',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+      }
+    }
+  }
+
+  void _openMedicalRepMapView() {
+    showDialog(
+      context: context,
+      builder: (context) => const MedicalRepMapDateRangeDialog(),
+    );
   }
 
   void _closeFilterModal() {

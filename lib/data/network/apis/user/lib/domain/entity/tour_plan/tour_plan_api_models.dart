@@ -1254,3 +1254,285 @@ class TourPlanCommentItem {
   }
 }
 
+// Tour Plan Dashboard API Models
+class TourPlanDashboardRequest {
+  final String? searchText;
+  final int pageNumber;
+  final int pageSize;
+  final int? sortOrder;
+  final int? sortDir;
+  final String? sortField;
+  final int? employeeId;
+  final int? clusterId;
+  final int? customerId;
+  final int? month;
+  final int? tourPlanId;
+  final int? userId;
+  final int? bizunit;
+  final String? filterExpression;
+  final int? monthNumber;
+  final int? year;
+  final int? id;
+  final int? action;
+  final String? comment;
+  final int? status;
+  final int? tourPlanAcceptId;
+  final String? remarks;
+  final List<ClusterIdModel>? clusterIds;
+  final int? selectedEmployeeId;
+  final String? date;
+  final String? planDate;
+  final int? customerTypeId;
+
+  TourPlanDashboardRequest({
+    this.searchText,
+    this.pageNumber = 1,
+    this.pageSize = 1000,
+    this.sortOrder = 0,
+    this.sortDir = 0,
+    this.sortField,
+    this.employeeId,
+    this.clusterId,
+    this.customerId,
+    this.month,
+    this.tourPlanId,
+    this.userId,
+    this.bizunit,
+    this.filterExpression,
+    this.monthNumber,
+    this.year,
+    this.id,
+    this.action,
+    this.comment,
+    this.status,
+    this.tourPlanAcceptId,
+    this.remarks,
+    this.clusterIds,
+    this.selectedEmployeeId,
+    this.date,
+    this.planDate,
+    this.customerTypeId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SearchText': searchText,
+      'PageNumber': pageNumber,
+      'PageSize': pageSize,
+      'SortOrder': sortOrder,
+      'SortDir': sortDir,
+      'SortField': sortField,
+      'EmployeeId': employeeId,
+      'ClusterId': clusterId,
+      'CustomerId': customerId,
+      'Month': month,
+      'TourPlanId': tourPlanId,
+      'UserId': userId,
+      'Bizunit': bizunit,
+      'FilterExpression': filterExpression,
+      'MonthNumber': monthNumber,
+      'Year': year,
+      'Id': id,
+      'Action': action,
+      'Comment': comment,
+      'Status': status,
+      'TourPlanAcceptId': tourPlanAcceptId,
+      'Remarks': remarks,
+      'ClusterIds': clusterIds?.map((e) => e.toJson()).toList(),
+      'SelectedEmployeeId': selectedEmployeeId,
+      'Date': date,
+      'PlanDate': planDate,
+      'CustomerTypeId': customerTypeId,
+    };
+  }
+}
+
+class TourPlanDashboardResponse {
+  final int? id;
+  final int? tourPlanId;
+  final int? createdBy;
+  final int status;
+  final int sbuId;
+  final int employee;
+  final int? month;
+  final int? year;
+  final int statusId;
+  final String? submittedDate;
+  final String? remarks;
+  final bool active;
+  final int userId;
+  final int? employeeId;
+  final String? date;
+  final String? territory;
+  final String? cluster;
+  final int? clusterId;
+  final String? tourPlanType;
+  final String? objective;
+  final String? tourPlanStatus;
+  final String? tourPlanHeaderStatus;
+  final String? summary;
+  final List<dynamic>? tourPlanDetails;
+  final String? createdAt;
+  final String? updatedAt;
+  final String? submittedAt;
+  final String? approvedAt;
+  final String? rejectedAt;
+  final String? rejectionReason;
+  final String? managerComments;
+  final String? actionComments;
+  final List<dynamic>? comments;
+  final int bizunit;
+  final bool isSelected;
+  final String employeeName;
+  final String designation;
+  final String statusText;
+  final String planDate;
+  final int customerId;
+  final String customerName;
+  final String clusters;
+  final String? samplesToDistribute;
+  final String? productsToDiscuss;
+  final String? notes;
+  final bool? fromDeviation;
+  final int totalCustomers;
+  final int plannedMonth;
+  final double plannedPercentage;
+  final int visitedMonth;
+  final double visitedPercentage;
+  final int pendingMonth;
+  final int plannedToday;
+  final int visitedToday;
+  final int repType;
+  final String? customerType;
+  final String? customerTypeText;
+
+  TourPlanDashboardResponse({
+    this.id,
+    this.tourPlanId,
+    this.createdBy,
+    required this.status,
+    required this.sbuId,
+    required this.employee,
+    this.month,
+    this.year,
+    required this.statusId,
+    this.submittedDate,
+    this.remarks,
+    required this.active,
+    required this.userId,
+    this.employeeId,
+    this.date,
+    this.territory,
+    this.cluster,
+    this.clusterId,
+    this.tourPlanType,
+    this.objective,
+    this.tourPlanStatus,
+    this.tourPlanHeaderStatus,
+    this.summary,
+    this.tourPlanDetails,
+    this.createdAt,
+    this.updatedAt,
+    this.submittedAt,
+    this.approvedAt,
+    this.rejectedAt,
+    this.rejectionReason,
+    this.managerComments,
+    this.actionComments,
+    this.comments,
+    required this.bizunit,
+    required this.isSelected,
+    required this.employeeName,
+    required this.designation,
+    required this.statusText,
+    required this.planDate,
+    required this.customerId,
+    required this.customerName,
+    required this.clusters,
+    this.samplesToDistribute,
+    this.productsToDiscuss,
+    this.notes,
+    this.fromDeviation,
+    required this.totalCustomers,
+    required this.plannedMonth,
+    required this.plannedPercentage,
+    required this.visitedMonth,
+    required this.visitedPercentage,
+    required this.pendingMonth,
+    required this.plannedToday,
+    required this.visitedToday,
+    required this.repType,
+    this.customerType,
+    this.customerTypeText,
+  });
+
+  factory TourPlanDashboardResponse.fromJson(Map<String, dynamic> json) {
+    return TourPlanDashboardResponse(
+      id: json['id'],
+      tourPlanId: json['tourPlanId'],
+      createdBy: json['createdBy'],
+      status: json['status'] ?? 0,
+      sbuId: json['sbuId'] ?? 0,
+      employee: json['employee'] ?? 0,
+      month: json['month'],
+      year: json['year'],
+      statusId: json['statusId'] ?? 0,
+      submittedDate: json['submittedDate'],
+      remarks: json['remarks'],
+      active: json['active'] ?? false,
+      userId: json['userId'] ?? 0,
+      employeeId: json['employeeId'],
+      date: json['date'],
+      territory: json['territory'],
+      cluster: json['cluster'],
+      clusterId: json['clusterId'],
+      tourPlanType: json['tourPlanType'],
+      objective: json['objective'],
+      tourPlanStatus: json['tourPlanStatus'],
+      tourPlanHeaderStatus: json['tourPlanHeaderStatus'],
+      summary: json['summary'],
+      tourPlanDetails: json['tourPlanDetails'],
+      createdAt: json['createdAt'],
+      updatedAt: json['updatedAt'],
+      submittedAt: json['submittedAt'],
+      approvedAt: json['approvedAt'],
+      rejectedAt: json['rejectedAt'],
+      rejectionReason: json['rejectionReason'],
+      managerComments: json['managerComments'],
+      actionComments: json['actionComments'],
+      comments: json['comments'],
+      bizunit: json['bizunit'] ?? 0,
+      isSelected: json['isSelected'] ?? false,
+      employeeName: json['employeeName'] ?? '',
+      designation: json['designation'] ?? '',
+      statusText: json['statusText'] ?? '',
+      planDate: json['planDate'] ?? '',
+      customerId: json['customerId'] ?? 0,
+      customerName: json['customerName'] ?? '',
+      clusters: json['clusters'] ?? '',
+      samplesToDistribute: json['samplesToDistribute'],
+      productsToDiscuss: json['productsToDiscuss'],
+      notes: json['notes'],
+      fromDeviation: json['fromDeviation'],
+      totalCustomers: json['totalCustomers'] ?? 0,
+      plannedMonth: json['plannedMonth'] ?? 0,
+      plannedPercentage: (json['plannedPercentage'] is num) 
+          ? (json['plannedPercentage'] as num).toDouble() 
+          : (json['plannedPercentage'] is String) 
+              ? double.tryParse(json['plannedPercentage']) ?? 0.0 
+              : 0.0,
+      visitedMonth: json['visitedMonth'] ?? 0,
+      visitedPercentage: (json['visitedPercentage'] is num) 
+          ? (json['visitedPercentage'] as num).toDouble() 
+          : (json['visitedPercentage'] is String) 
+              ? double.tryParse(json['visitedPercentage']) ?? 0.0 
+              : 0.0,
+      pendingMonth: json['pendingMonth'] ?? 0,
+      plannedToday: json['plannedToday'] ?? 0,
+      visitedToday: json['visitedToday'] ?? 0,
+      repType: json['repType'] ?? 1,
+      customerType: json['customerType'],
+      customerTypeText: json['customerTypeText'],
+    );
+  }
+}

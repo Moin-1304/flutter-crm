@@ -27,6 +27,13 @@ abstract class CommonRepository {
   Future<List<CommonDropdownItem>> getDcrProductsList(int userId);
   Future<List<CommonDropdownItem>> getMappedInstrumentsList(
       int userId, int customerId);
+  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(int userId);
+  Future<List<CommonDropdownItem>> getDeviationSerialNumbersList({
+    required int instrumentId,
+    required String toDate,
+    required int bizUnit,
+    int module = 6,
+  });
   Future<List<CommonDropdownItem>> getCustomerTypeList(int userId,
       {String type = 'Service Engineer'});
   Future<List<CommonDropdownItem>> getPurposeOfVisitList(

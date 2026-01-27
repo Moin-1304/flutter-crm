@@ -49,10 +49,35 @@ class DcrApi {
             },
             validateStatus: (status) {
               // Accept 200, 204, and 500 (server sometimes returns 500 with valid data)
-              return status != null && (status < 500 || status == 500);
+              // Reject 400 Bad Request explicitly
+              return status != null && status != 400 && (status < 500 || status == 500);
             },
           ),
         );
+
+        // Handle 400 Bad Request - this is an error, not a success
+        if (response.statusCode == 400) {
+          String errorMessage = 'Bad Request: Invalid data sent to server';
+          if (response.data != null) {
+            try {
+              // Try to extract error message from response
+              if (response.data is Map) {
+                final errorData = response.data as Map<String, dynamic>;
+                errorMessage = errorData['message']?.toString() ?? 
+                              errorData['error']?.toString() ?? 
+                              errorData['Message']?.toString() ?? 
+                              errorData['Error']?.toString() ?? 
+                              errorMessage;
+              } else if (response.data is String) {
+                errorMessage = response.data as String;
+              }
+            } catch (e) {
+              // If parsing fails, use default message
+              print('Error parsing 400 response: $e');
+            }
+          }
+          throw Exception('Failed to save DCR: $errorMessage');
+        }
 
         // Handle 204 No Content response (successful save)
         if (response.statusCode == 204) {
@@ -75,7 +100,17 @@ class DcrApi {
 
           // If we have valid JSON data, treat it as success despite 500 status
           try {
-            return DcrSaveResponse.fromJson(response.data);
+            // Check if response.data is a Map before trying to parse
+            if (response.data is Map<String, dynamic>) {
+              return DcrSaveResponse.fromJson(response.data as Map<String, dynamic>);
+            } else {
+              // If it's not a Map, treat as success but with a note
+              return DcrSaveResponse(
+                success: true,
+                message:
+                    'DCR saved successfully (server returned 500 but operation completed)',
+              );
+            }
           } catch (e) {
             // If parsing fails, still treat as success since server returned data
             return DcrSaveResponse(
@@ -96,7 +131,13 @@ class DcrApi {
             );
           }
 
-          return DcrSaveResponse.fromJson(response.data);
+          // Check if response.data is a Map before trying to parse
+          if (response.data is! Map<String, dynamic>) {
+            // If it's a List or other type, it's likely an error response
+            throw Exception('Failed to save DCR: Invalid response format from server');
+          }
+
+          return DcrSaveResponse.fromJson(response.data as Map<String, dynamic>);
         } else {
           throw Exception('No response data received');
         }
@@ -490,6 +531,66 @@ class DcrApi {
     } catch (e) {
       print('❌ [DcrApi] validateUser API Error: ${e.toString()}');
       throw Exception('Failed to validate user: ${e.toString()}');
+    }
+  }
+
+  /// Get DCR Map Details for manager review
+  Future<DcrMapDetailsResponse> getDcrMapDetails(DcrMapDetailsRequest request) async {
+    try {
+      print('🗺️ [DcrApi] getDcrMapDetails API Call:');
+      print('   URL: ${Endpoints.dcrGetMapDetails}');
+      print('   Request: ${request.toJson()}');
+      print('   ManagerId: ${request.managerId}');
+
+      final response = await _dioClient.dio.post(
+        Endpoints.dcrGetMapDetails,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('✅ [DcrApi] getDcrMapDetails API Response:');
+      print('   Status Code: ${response.statusCode}');
+      print('   Response Data Type: ${response.data.runtimeType}');
+
+      if (response.data != null) {
+        final result = DcrMapDetailsResponse.fromJson(response.data);
+        print('   Total Items: ${result.items.length}');
+        print('   Total Records: ${result.totalRecords}');
+        print('   Filtered Records: ${result.filteredRecords}');
+        
+        // Log items with coordinates
+        final itemsWithCoords = result.items.where((item) => 
+          (item.latitude != null && item.longitude != null) ||
+          (item.customerLatitude != null && item.customerLongitude != null)
+        ).toList();
+        print('   Items with coordinates: ${itemsWithCoords.length}');
+        
+        // Log first few items for debugging
+        if (result.items.isNotEmpty) {
+          print('   Sample Items:');
+          for (int i = 0; i < (result.items.length > 3 ? 3 : result.items.length); i++) {
+            final item = result.items[i];
+            print('     Item $i:');
+            print('       - DCR ID: ${item.dcrId}, Employee: ${item.employeeName}');
+            print('       - Customer: ${item.customerName}');
+            print('       - Latitude: ${item.latitude ?? item.customerLatitude}');
+            print('       - Longitude: ${item.longitude ?? item.customerLongitude}');
+            print('       - DCR Date: ${item.dcrDate}');
+          }
+        }
+        
+        return result;
+      } else {
+        print('❌ [DcrApi] getDcrMapDetails: No response data received');
+        throw Exception('No DCR map details received');
+      }
+    } catch (e) {
+      print('❌ [DcrApi] getDcrMapDetails API Error: ${e.toString()}');
+      throw Exception('Failed to fetch DCR map details: ${e.toString()}');
     }
   }
 }

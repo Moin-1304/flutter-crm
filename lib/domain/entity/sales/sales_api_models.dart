@@ -1040,4 +1040,3 @@ class SalesOrderTransactionCancelRequest {
     };
   }
 }
-

@@ -302,6 +302,44 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
+  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(int userId) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getDeviationInstrumentsList(userId);
+        return response;
+      }
+    } catch (e) {
+      print('Error getting deviation instruments list: $e');
+    }
+    return [];
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getDeviationSerialNumbersList({
+    required int instrumentId,
+    required String toDate,
+    required int bizUnit,
+    int module = 6,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getDeviationSerialNumbersList(
+          instrumentId: instrumentId,
+          toDate: toDate,
+          bizUnit: bizUnit,
+          module: module,
+        );
+        return response;
+      }
+    } catch (e) {
+      print('Error getting deviation serial numbers list: $e');
+    }
+    return [];
+  }
+
+  @override
   Future<List<CommonDropdownItem>> getCustomerTypeList(int userId,
       {String type = 'Service Engineer'}) async {
     try {

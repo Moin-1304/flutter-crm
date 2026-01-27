@@ -11,6 +11,10 @@ import 'package:boilerplate/domain/entity/attendance/punch_in_out_api_models.dar
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/core/widgets/animated_toast.dart';
 import '../../../di/service_locator.dart';
+import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
+import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
+import 'package:boilerplate/domain/entity/tour_plan/tour_plan.dart';
+import 'package:intl/intl.dart';
 
 class PunchHomeScreen extends StatefulWidget {
   const PunchHomeScreen({super.key});
@@ -19,6 +23,16 @@ class PunchHomeScreen extends StatefulWidget {
   static _PunchHomeScreenState? _currentInstance;
   static Future<void> refreshCurrent() async {
     await _currentInstance?._hardRefresh();
+  }
+
+  // Static method to refresh summary data (Monthly Status and Planned vs Visited)
+  static Future<void> refreshSummaryData() async {
+    if (_currentInstance != null && _currentInstance!.mounted) {
+      print('🔄 [PunchHomeScreen] Refreshing summary data...');
+      await _currentInstance!._refreshSummaryData();
+    } else {
+      print('⚠️ [PunchHomeScreen] Cannot refresh: instance is null or not mounted');
+    }
   }
 
   // Static method to punch out programmatically (e.g., on logout)
@@ -33,7 +47,10 @@ class PunchHomeScreen extends StatefulWidget {
   State<PunchHomeScreen> createState() => _PunchHomeScreenState();
 }
 
-class _PunchHomeScreenState extends State<PunchHomeScreen> {
+class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   bool _punchedIn = false;
   DateTime? _punchedInSince;
   final List<_LogEntry> _todayLog = <_LogEntry>[];
@@ -52,6 +69,31 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
   bool _isLoading = false;
   Timer? _postSaveRefresher;
 
+
+
+  // Track current employee ID to detect user changes
+  int? _currentEmployeeId;
+
+
+  // Planned vs Visited Summary
+  int _totalCustomers = 0;
+  int _plannedCustomers = 0;
+  int _visitedCustomers = 0;
+  int _pendingCustomers = 0;
+  int _plannedToday = 0;
+  int _visitedToday = 0;
+  bool _isLoadingPlannedVsVisited = false;
+
+  // Monthly Status Summary
+  int _plannedDays = 0;
+  int _approvedDays = 0;
+  int _pendingDays = 0;
+  int _sentBackDays = 0;
+  int _leaveDays = 0;
+  int _notEnteredDays = 0;
+  int _rejectedDays = 0;
+  bool _isLoadingMonthlyStatus = false;
+
   // Theme color matching login screen
   final Color tealGreen = const Color(0xFF4db1b3);
 
@@ -65,7 +107,9 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Always update the static instance to ensure it's current
     PunchHomeScreen._currentInstance = this;
+    print('✅ [PunchHomeScreen] Instance set in initState');
     _punchInOutUseCase = getIt<PunchInOutUseCase>();
     _sharedPreferenceHelper = getIt<SharedPreferenceHelper>();
     _userDetailStore = getIt<UserDetailStore>();
@@ -79,16 +123,54 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
     
     // Try to load punch records immediately, and also listen for user details
     _loadTodayPunchRecords();
+    // Only load Planned vs Visited Summary if user is not a Service Engineer
+    if (!_isServiceEngineer()) {
+      _loadPlannedVsVisitedSummary();
+    }
+    _loadMonthlyStatusSummary();
     
     // Listen for user details changes to reload punch records when ready
     _userDetailStore.addListener(_onUserDetailsChanged);
+    
+    // Initialize current employee ID if user details are already loaded
+    final userDetail = _userDetailStore.userDetail;
+    if (userDetail?.employeeId != null) {
+      _currentEmployeeId = userDetail!.employeeId;
+    }
   }
 
   void _onUserDetailsChanged() {
-    // When user details are loaded, reload punch records immediately
-    if (_userDetailStore.userDetail != null) {
-      _loadTodayPunchRecords();
+    // When user details change (login/logout), reload all data
+    final userDetail = _userDetailStore.userDetail;
+    final newEmployeeId = userDetail?.employeeId;
+
+    if (userDetail != null && newEmployeeId != null) {
+      // Update current employee ID
+      _currentEmployeeId = newEmployeeId;
+      
+      // New user logged in - reload all data with a small delay to ensure everything is ready
+      Future.microtask(() {
+        if (mounted && _userDetailStore.userDetail?.employeeId == newEmployeeId && _currentEmployeeId == newEmployeeId) {
+          _loadTodayPunchRecords();
+          // Only load Planned vs Visited Summary if user is not a Service Engineer
+          if (!_isServiceEngineer()) {
+            _loadPlannedVsVisitedSummary();
+          }
+          _loadMonthlyStatusSummary();
+        }
+      });
+    } else {
+      // User logged out - reset tracked employee ID
+      _currentEmployeeId = null;
     }
+  }
+
+  /// Check if current user is a Service Engineer
+  bool _isServiceEngineer() {
+    final userDetail = _userDetailStore.userDetail;
+    final String? serviceArea = userDetail?.serviceArea;
+    final bool isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    return isServiceEngineer;
   }
 
   @override
@@ -104,6 +186,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final String statusText = _punchedIn
         ? 'Punched In since ${_formatTime(_punchedInSince ?? _now)}'
@@ -259,7 +342,12 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
                       const SizedBox(height: 24),
                       _buildLocationCard(),
                       const SizedBox(height: 16),
-                      _buildActivityCard(),
+                      _buildPunchActivityCard(),
+                      const SizedBox(height: 16),
+                      // Hide Planned vs Visited Summary for Service Engineers
+                      if (!_isServiceEngineer()) _buildPlannedVsVisitedSummaryCard(),
+                      if (!_isServiceEngineer()) const SizedBox(height: 16),
+                      _buildMonthlyStatusSummaryCard(),
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -552,7 +640,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
     );
   }
 
-  Widget _buildActivityCard() {
+  Widget _buildPunchActivityCard() {
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,7 +662,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  "Today's Activity",
+                  "Punch In/Out History",
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -674,6 +762,329 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
                 );
               },
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlannedVsVisitedSummaryCard() {
+    final plannedPercentage = _totalCustomers > 0 
+        ? (_plannedCustomers / _totalCustomers * 100) 
+        : 0.0;
+    final executionPercentage = _plannedCustomers > 0 
+        ? (_visitedCustomers / _plannedCustomers * 100) 
+        : 0.0;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: tealGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.analytics_rounded,
+                  color: tealGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Planned vs Visited Summary',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.6,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (_isLoadingPlannedVsVisited)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: CircularProgressIndicator(color: tealGreen),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildSummaryCard(
+                    'TOTAL CUSTOMERS',
+                    _totalCustomers.toString(),
+                    'Total Database',
+                    const Color(0xFF3498DB),
+                    Colors.blue[50]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'PLANNED',
+                    _plannedCustomers.toString(),
+                    '${plannedPercentage.toStringAsFixed(2)} % of Total Base',
+                    const Color(0xFF3498DB),
+                    Colors.blue[50]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'VISITED',
+                    _visitedCustomers.toString(),
+                    '${executionPercentage.toStringAsFixed(2)} % Execution',
+                    const Color(0xFF2ECC71),
+                    Colors.green[50]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'PENDING',
+                    _pendingCustomers.toString(),
+                    'Remaining in Plan',
+                    const Color(0xFFE74C3C),
+                    Colors.red[50]!,
+                    isRed: true,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'PLANNED',
+                    _plannedToday.toString(),
+                    'TODAY',
+                    const Color(0xFF9B59B6),
+                    Colors.purple[50]!,
+                    isPurple: true,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'VISITED',
+                    _visitedToday.toString(),
+                    'TODAY',
+                    const Color(0xFF9B59B6),
+                    Colors.purple[50]!,
+                    isPurple: true,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthlyStatusSummaryCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: tealGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.calendar_month_rounded,
+                  color: tealGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Monthly Status Summary',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.grey[900],
+                    letterSpacing: -0.6,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (_isLoadingMonthlyStatus)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: CircularProgressIndicator(color: tealGreen),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildSummaryCard(
+                    'PLANNED DAYS',
+                    _plannedDays.toString(),
+                    '',
+                    const Color(0xFF3498DB),
+                    Colors.blue[50]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'APPROVED DAYS',
+                    _approvedDays.toString(),
+                    '',
+                    const Color(0xFF2ECC71),
+                    Colors.green[50]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'PENDING DAYS',
+                    _pendingDays.toString(),
+                    '',
+                    const Color(0xFFFFA41C),
+                    Colors.orange[50]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'SENT BACK DAYS',
+                    _sentBackDays.toString(),
+                    '',
+                    const Color(0xFFE74C3C),
+                    Colors.red[50]!,
+                    isRed: true,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'LEAVE DAYS',
+                    _leaveDays.toString(),
+                    '',
+                    const Color(0xFF9B59B6),
+                    Colors.purple[50]!,
+                    isPurple: true,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'NOT ENTERED DAYS',
+                    _notEnteredDays.toString(),
+                    '',
+                    Colors.grey[700]!,
+                    Colors.grey[100]!,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryCard(
+                    'REJECTED DAYS',
+                    _rejectedDays.toString(),
+                    '',
+                    const Color(0xFFE74C3C),
+                    Colors.red[50]!,
+                    isRed: true,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(String title, String value, String subtitle, Color textColor, Color bgColor, {bool isRed = false, bool isPurple = false}) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: textColor.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey[700],
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: isRed ? const Color(0xFFE74C3C) : (isPurple ? const Color(0xFF9B59B6) : textColor),
+              letterSpacing: -1.0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+              letterSpacing: 0.2,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildStatBox(String label, String value, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                    letterSpacing: 0.2,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: -0.5,
+            ),
+          ),
         ],
       ),
     );
@@ -981,8 +1392,186 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> {
     if (withLocation) {
       await _loadLocation();
     }
+    // Only load Planned vs Visited Summary if user is not a Service Engineer
+    if (!_isServiceEngineer()) {
+      _loadPlannedVsVisitedSummary();
+    }
+    _loadMonthlyStatusSummary();
     if (mounted) setState(() {});
   }
+
+  /// Refresh only summary data (Monthly Status and Planned vs Visited)
+  Future<void> _refreshSummaryData() async {
+    if (!mounted) return;
+    print('🔄 [PunchHomeScreen] Starting summary data refresh...');
+    final List<Future<void>> refreshTasks = [
+      _loadMonthlyStatusSummary(),
+    ];
+    // Only refresh Planned vs Visited Summary if user is not a Service Engineer
+    if (!_isServiceEngineer()) {
+      refreshTasks.add(_loadPlannedVsVisitedSummary());
+    }
+    await Future.wait(refreshTasks);
+    if (mounted) {
+      setState(() {});
+      print('✅ [PunchHomeScreen] Summary data refresh completed');
+    }
+  }
+
+  /// Load Planned vs Visited Summary from TourPlanDashboard API
+  Future<void> _loadPlannedVsVisitedSummary() async {
+    if (_isLoadingPlannedVsVisited) return;
+    
+    setState(() {
+      _isLoadingPlannedVsVisited = true;
+    });
+
+    try {
+      final userDetail = _userDetailStore.userDetail;
+      if (userDetail?.employeeId == null || userDetail?.employeeId != _currentEmployeeId) {
+        setState(() {
+          _isLoadingPlannedVsVisited = false;
+        });
+        return;
+      }
+
+      final now = DateTime.now();
+      final todayDateStr = DateFormat('yyyy-MM-dd').format(now);
+
+      // Call TourPlanDashboard API
+      final tourPlanRepo = getIt<TourPlanRepository>();
+      final request = TourPlanDashboardRequest(
+        userId: userDetail!.employeeId,
+        bizunit: userDetail.sbuId > 0 ? userDetail.sbuId : 1,
+        month: now.month,
+        year: now.year,
+        planDate: todayDateStr,
+        pageNumber: 1,
+        pageSize: 1000,
+      );
+
+      final dashboardData = await tourPlanRepo.getTourPlanDashboard(request);
+
+      // Verify employeeId still matches before setting values
+      final currentUserDetail = _userDetailStore.userDetail;
+      if (mounted && currentUserDetail?.employeeId == userDetail.employeeId && _currentEmployeeId == userDetail.employeeId) {
+        setState(() {
+          _totalCustomers = dashboardData.totalCustomers;
+          _plannedCustomers = dashboardData.plannedMonth;
+          _visitedCustomers = dashboardData.visitedMonth;
+          _pendingCustomers = dashboardData.pendingMonth;
+          _plannedToday = dashboardData.plannedToday;
+          _visitedToday = dashboardData.visitedToday;
+          _isLoadingPlannedVsVisited = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isLoadingPlannedVsVisited = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading planned vs visited summary: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingPlannedVsVisited = false;
+        });
+      }
+    }
+  }
+
+  /// Load Monthly Status Summary
+  Future<void> _loadMonthlyStatusSummary() async {
+    if (_isLoadingMonthlyStatus) return;
+    
+    setState(() {
+      _isLoadingMonthlyStatus = true;
+    });
+
+    try {
+      final userDetail = _userDetailStore.userDetail;
+      if (userDetail?.employeeId == null || userDetail?.employeeId != _currentEmployeeId) {
+        setState(() {
+          _isLoadingMonthlyStatus = false;
+        });
+        return;
+      }
+
+      final now = DateTime.now();
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      
+      if (user == null) {
+        setState(() {
+          _isLoadingMonthlyStatus = false;
+        });
+        return;
+      }
+
+      // Get tour plan summary using API
+      final tourPlanRepo = getIt<TourPlanRepository>();
+      final request = TourPlanGetSummaryRequest(
+        month: now.month,
+        year: now.year,
+        userId: user.id,
+        bizunit: user.sbuId > 0 ? user.sbuId : 1,
+      );
+
+      final summary = await tourPlanRepo.getTourPlanSummary(request);
+      
+      // Get tour plan entries to calculate leaveDays, notEnteredDays, and rejectedDays
+      final plannedEntries = await tourPlanRepo.listMonth(
+        month: now,
+        employeeId: userDetail!.employeeId.toString(),
+      );
+      
+      // Calculate additional status counts from entries
+      int notEntered = 0;
+      int rejected = 0;
+      int leave = 0;
+      
+      for (final entry in plannedEntries) {
+        switch (entry.status) {
+          case TourPlanEntryStatus.draft:
+            notEntered++;
+            break;
+          case TourPlanEntryStatus.rejected:
+            rejected++;
+            break;
+          // Note: leaveDays would need to be identified by a specific field or status
+          // For now, we'll keep it at 0 unless the API provides it
+          default:
+            break;
+        }
+      }
+      
+      // Verify employeeId still matches before setting values
+      final currentUserDetail = _userDetailStore.userDetail;
+      if (mounted && currentUserDetail?.employeeId == userDetail.employeeId && _currentEmployeeId == userDetail.employeeId) {
+        setState(() {
+          _plannedDays = summary.planedDays;
+          _approvedDays = summary.approvedDays;
+          _pendingDays = summary.pendingDays;
+          _sentBackDays = summary.sentBackDays;
+          _notEnteredDays = notEntered;
+          _rejectedDays = rejected;
+          _leaveDays = leave; // Will be 0 unless API provides leave tracking
+          _isLoadingMonthlyStatus = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isLoadingMonthlyStatus = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading monthly status summary: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingMonthlyStatus = false;
+        });
+      }
+    }
+  }
+
 
   /// Clear transient state and refetch everything (hard refresh for UI)
   Future<void> _hardRefresh() async {

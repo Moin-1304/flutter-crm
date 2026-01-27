@@ -84,6 +84,9 @@ abstract class TourPlanRepository {
   /// Get tour plan summary
   Future<TourPlanGetSummaryResponse> getTourPlanSummary(TourPlanGetSummaryRequest request);
 
+  /// Get tour plan dashboard data
+  Future<TourPlanDashboardResponse> getTourPlanDashboard(TourPlanDashboardRequest request);
+
   /// Get tour plan manager summary
   Future<TourPlanGetManagerSummaryResponse> getTourPlanManagerSummary(TourPlanGetManagerSummaryRequest request);
 

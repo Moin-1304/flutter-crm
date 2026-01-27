@@ -358,6 +358,48 @@ class UserApiClient {
     }
   }
 
+  /// Get tour plan dashboard data
+  Future<TourPlanDashboardResponse> getTourPlanDashboard(
+    TourPlanDashboardRequest request,
+    String token,
+  ) async {
+    try {
+      final payload = request.toJson();
+      print('===========================================');
+      print('TourPlanDashboard API Call');
+      print('URL: ${Endpoints.tourPlanDashboard}');
+      print('Payload: $payload');
+      print('===========================================');
+      
+      final response = await _dioClient.dio.post(
+        Endpoints.tourPlanDashboard,
+        data: payload,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('===========================================');
+      print('TourPlanDashboard API Response');
+      print('Status Code: ${response.statusCode}');
+      print('Response Data: ${response.data}');
+      print('===========================================');
+
+      if (response.data != null) {
+        return TourPlanDashboardResponse.fromJson(response.data);
+      } else {
+        throw Exception('No tour plan dashboard data received');
+      }
+    } catch (e) {
+      print('TourPlanDashboard API Error: $e');
+      throw Exception(
+          'Failed to fetch tour plan dashboard: ${e.toString()}');
+    }
+  }
+
   /// Get tour plan manager summary
   Future<TourPlanGetManagerSummaryResponse> getTourPlanManagerSummary(
     TourPlanGetManagerSummaryRequest request,

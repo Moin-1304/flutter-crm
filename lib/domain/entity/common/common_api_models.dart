@@ -299,6 +299,62 @@ class DcrProductsRequest {
   }
 }
 
+/// Request model for Instruments (CommandType: 335) for Deviation
+/// Matches the curl request: UserId, IsFromAMCUser: 1
+class DeviationInstrumentRequest {
+  final int userId;
+
+  DeviationInstrumentRequest({required this.userId});
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SearchText': null,
+      'Id': null,
+      'TransactionId': null,
+      'UserId': userId,
+      'CommandType': 335,
+      'TaxFlag': 0,
+      'IncludeCancelled': false,
+      'Sector': 0,
+      'IsMaterialIssue': false,
+      'IsItemIssue': false,
+      'IsFromAMCUser': 1,
+    };
+  }
+}
+
+/// Request model for Serial Numbers (CommandType: 146) using GetAutoBigInt
+/// Matches the curl request: Id (instrument ID), ToDate, BizUnit, Sector: 0, Module: 6
+class DeviationSerialNumberRequest {
+  final int id; // Instrument ID
+  final String toDate; // Format: "yyyy-MM-dd"
+  final int bizUnit;
+  final int module; // 6 for Deviation
+
+  DeviationSerialNumberRequest({
+    required this.id,
+    required this.toDate,
+    required this.bizUnit,
+    this.module = 6,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SearchText': null,
+      'Id': id,
+      'CommandType': 146,
+      'TaxFlag': 0,
+      'IncludeCancelled': false,
+      'ToDate': toDate,
+      'BizUnit': bizUnit,
+      'Sector': 0,
+      'Module': module,
+      'IsMaterialIssue': false,
+      'IsItemIssue': false,
+    };
+  }
+}
+
 /// Request model for Mapped Instruments (CommandType: 335)
 /// UserId is dynamic, IsFromAMCUser is always 1, CustomerSelectedList contains selected customer
 class MappedInstrumentsRequest {

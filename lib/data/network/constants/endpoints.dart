@@ -38,6 +38,9 @@ class Endpoints {
   static const String tourPlanGetSummary =
       "$baseUrl/PharmaCRM/TourPlan/GetSummary";
 
+  static const String tourPlanDashboard =
+      "$baseUrl/PharmaCRM/TourPlan/TourPlanDashboard";
+
   static const String tourPlanGetManagerSummary =
       "$baseUrl/PharmaCRM/TourPlan/GetManagerSummary";
 
@@ -83,6 +86,9 @@ class Endpoints {
   static const String dcrBulkApprove = "$baseUrl/PharmaCRM/DCR/BulkApprove";
   static const String dcrBulkSendBack = "$baseUrl/PharmaCRM/DCR/BulkReject";
   static const String dcrValidateUser = "$baseUrl/PharmaCRM/DCR/ValidateUser";
+  static const String dcrGetMapDetails = "$baseUrl/PharmaCRM/DCR/GetDCRMapDetails";
+  // Service Report Save endpoint
+  static const String serviceReportSave = "$baseUrl/PharmaCRM/ServiceReport/Save";
 
 // Common endpoints for dropdowns
   static const String commonGetAuto = "$baseUrl/Common/GetAuto";

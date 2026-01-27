@@ -2123,6 +2123,9 @@ class _TourPlanScreenState extends State<TourPlanScreen>
 
         final response = await repo.getMappedCustomersByEmployeeId(request);
 
+        // Check if widget is still mounted before calling setState
+        if (!mounted) return;
+
         if (response.customers.isNotEmpty) {
           final names = response.customers
               .map((e) => e.customerName.trim())
@@ -2130,18 +2133,20 @@ class _TourPlanScreenState extends State<TourPlanScreen>
               .toSet();
 
           if (names.isNotEmpty) {
-            setState(() {
-              _customerOptions = names.toList()..sort();
-              _customerNameToId.clear();
-              for (final customer in response.customers) {
-                final String key = customer.customerName.trim();
-                if (key.isNotEmpty) {
-                  _customerNameToId[key] = customer.customerId;
+            if (mounted) {
+              setState(() {
+                _customerOptions = names.toList()..sort();
+                _customerNameToId.clear();
+                for (final customer in response.customers) {
+                  final String key = customer.customerName.trim();
+                  if (key.isNotEmpty) {
+                    _customerNameToId[key] = customer.customerId;
+                  }
                 }
-              }
-            });
-            print(
-                'TourPlanScreen: Loaded ${_customerOptions.length} customers for employee $employeeId');
+              });
+              print(
+                  'TourPlanScreen: Loaded ${_customerOptions.length} customers for employee $employeeId');
+            }
           }
         } else {
           print('TourPlanScreen: No customers found for employee $employeeId');

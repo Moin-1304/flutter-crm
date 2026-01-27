@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class DcrListRequest {
   // Full payload fields (server expects PascalCase keys)
   final String? searchText;
@@ -258,6 +260,14 @@ class TourPlanDcrDetail {
   final String customerName;
   final String visitTime;
   final double visitDuration;
+  // Service Engineer specific fields (Service Report details)
+  final List<Map<String, dynamic>>? mappedInstruments;
+  final String? complaint;
+  final String? actionTaken;
+  final String? result;
+  final int? complaintStatus;
+  final String? complaintDate;
+  final String? complaintRemarks;
 
   TourPlanDcrDetail({
     required this.id,
@@ -305,6 +315,14 @@ class TourPlanDcrDetail {
     required this.customerName,
     required this.visitTime,
     required this.visitDuration,
+    // Service Engineer specific fields
+    this.mappedInstruments,
+    this.complaint,
+    this.actionTaken,
+    this.result,
+    this.complaintStatus,
+    this.complaintDate,
+    this.complaintRemarks,
   });
 
   factory TourPlanDcrDetail.fromJson(Map<String, dynamic> json) {
@@ -358,7 +376,72 @@ class TourPlanDcrDetail {
       customerName: json['customerName'] ?? '',
       visitTime: json['visitTime'] ?? '',
       visitDuration: (json['visitDuration'] ?? 0).toDouble(),
+      // Service Engineer specific fields - extract from JSON if available
+      // Check both PascalCase and camelCase for API compatibility
+      mappedInstruments: _parseMappedInstruments(
+        json['MappedInstruments'] ?? json['mappedInstruments'],
+      ),
+      complaint: (json['Complaint'] ?? json['complaint'])?.toString(),
+      actionTaken: (json['ActionTaken'] ?? json['actionTaken'])?.toString(),
+      result: (json['Result'] ?? json['result'])?.toString(),
+      complaintStatus: _parseComplaintStatus(
+        json['ComplaintStatus'] ?? json['complaintStatus'],
+      ),
+      complaintDate: (json['ComplaintDate'] ?? json['complaintDate'])?.toString(),
+      complaintRemarks: (json['ComplaintRemarks'] ?? json['complaintRemarks'])?.toString(),
     );
+  }
+
+  /// Helper method to parse mappedInstruments from JSON
+  /// Handles both List<dynamic> and String (JSON string) formats
+  static List<Map<String, dynamic>>? _parseMappedInstruments(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value
+          .map((item) {
+            if (item is Map<String, dynamic>) {
+              return item;
+            } else if (item is Map) {
+              return Map<String, dynamic>.from(item);
+            }
+            return null;
+          })
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    }
+    if (value is String && value.isNotEmpty) {
+      try {
+        // Parse JSON string
+        final parsed = jsonDecode(value);
+        if (parsed is List) {
+          return parsed
+              .map((item) {
+                if (item is Map<String, dynamic>) {
+                  return item;
+                } else if (item is Map) {
+                  return Map<String, dynamic>.from(item);
+                }
+                return null;
+              })
+              .whereType<Map<String, dynamic>>()
+              .toList();
+        }
+      } catch (e) {
+        print('Error parsing mappedInstruments JSON string: $e');
+      }
+    }
+    return null;
+  }
+
+  /// Helper method to parse complaintStatus from JSON
+  /// Handles both int and String formats
+  static int? _parseComplaintStatus(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String && value.isNotEmpty) {
+      return int.tryParse(value);
+    }
+    return null;
   }
 }
 
@@ -882,6 +965,14 @@ class TourPlanDcrDetailSave {
   final String? createdAt;
   final String? updatedAt;
   final String? clusterNames;
+  // Service Engineer specific fields (Service Report details)
+  final List<Map<String, dynamic>>? mappedInstruments; // Array of {productId, productName, customerId}
+  final String? complaint;
+  final String? actionTaken;
+  final String? result;
+  final int? complaintStatus; // Integer: 0 = Not Resolved, 1 = Resolved
+  final String? complaintDate; // ISO DateTime string
+  final String? complaintRemarks;
 
   TourPlanDcrDetailSave({
     required this.planDate,
@@ -929,6 +1020,14 @@ class TourPlanDcrDetailSave {
     this.createdAt,
     this.updatedAt,
     this.clusterNames,
+    // Service Engineer specific fields
+    this.mappedInstruments,
+    this.complaint,
+    this.actionTaken,
+    this.result,
+    this.complaintStatus,
+    this.complaintDate,
+    this.complaintRemarks,
   });
 
   Map<String, dynamic> toJson() {
@@ -972,14 +1071,22 @@ class TourPlanDcrDetailSave {
       'Cluster': cluster,
       'DCRType': dcrType,
       'DCRStatus': dcrStatus,
-      'Calls': calls,
-      'Expenses': expenses,
+      'Calls': calls ?? [],
+      'Expenses': expenses ?? [],
       'CreatedAt': createdAt,
       'UpdatedAt': updatedAt,
       'ClusterNames': clusterNames,
       'CustomerName': customerName,
       'VisitTime': visitTime,
       'VisitDuration': visitDuration,
+      // Service Engineer specific fields
+      'MappedInstruments': mappedInstruments ?? [],
+      'Complaint': complaint,
+      'ActionTaken': actionTaken,
+      'Result': result,
+      'ComplaintStatus': complaintStatus,
+      'ComplaintDate': complaintDate, // Should be ISO DateTime string if provided
+      'ComplaintRemarks': complaintRemarks,
     };
   }
 }
@@ -1183,6 +1290,14 @@ class TourPlanDcrDetailGet {
   final double visitDuration;
   final double? customerLatitude;
   final double? customerLongitude;
+  // Service Engineer specific fields (Service Report details)
+  final List<Map<String, dynamic>>? mappedInstruments;
+  final String? complaint;
+  final String? actionTaken;
+  final String? result;
+  final int? complaintStatus;
+  final String? complaintDate;
+  final String? complaintRemarks;
 
   TourPlanDcrDetailGet({
     this.id,
@@ -1232,6 +1347,14 @@ class TourPlanDcrDetailGet {
     required this.visitDuration,
     this.customerLatitude,
     this.customerLongitude,
+    // Service Engineer specific fields
+    this.mappedInstruments,
+    this.complaint,
+    this.actionTaken,
+    this.result,
+    this.complaintStatus,
+    this.complaintDate,
+    this.complaintRemarks,
   });
 
   factory TourPlanDcrDetailGet.fromJson(Map<String, dynamic> json) {
@@ -1298,6 +1421,19 @@ class TourPlanDcrDetailGet {
       visitDuration: (json['visitDuration'] ?? 0).toDouble(),
       customerLatitude: (json['customerLatitude'] == null) ? null : (json['customerLatitude'] as num).toDouble(),
       customerLongitude: (json['customerLongitude'] == null) ? null : (json['customerLongitude'] as num).toDouble(),
+      // Service Engineer specific fields - extract from JSON if available
+      // Check both PascalCase and camelCase for API compatibility
+      mappedInstruments: TourPlanDcrDetail._parseMappedInstruments(
+        json['MappedInstruments'] ?? json['mappedInstruments'],
+      ),
+      complaint: (json['Complaint'] ?? json['complaint'])?.toString(),
+      actionTaken: (json['ActionTaken'] ?? json['actionTaken'])?.toString(),
+      result: (json['Result'] ?? json['result'])?.toString(),
+      complaintStatus: TourPlanDcrDetail._parseComplaintStatus(
+        json['ComplaintStatus'] ?? json['complaintStatus'],
+      ),
+      complaintDate: (json['ComplaintDate'] ?? json['complaintDate'])?.toString(),
+      complaintRemarks: (json['ComplaintRemarks'] ?? json['complaintRemarks'])?.toString(),
     );
   }
 }
@@ -1339,5 +1475,178 @@ class DcrValidateUserResponse {
     } else {
       return DcrValidateUserResponse(isValid: false);
     }
+  }
+}
+
+/// Request model for GetDCRMapDetails API
+class DcrMapDetailsRequest {
+  final String? searchText;
+  final int pageNumber;
+  final int pageSize;
+  final int sortOrder;
+  final int sortDir;
+  final int managerId;
+
+  DcrMapDetailsRequest({
+    this.searchText,
+    this.pageNumber = 0,
+    this.pageSize = 0,
+    this.sortOrder = 0,
+    this.sortDir = 0,
+    required this.managerId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SearchText': searchText,
+      'PageNumber': pageNumber,
+      'PageSize': pageSize,
+      'SortOrder': sortOrder,
+      'SortDir': sortDir,
+      'ManagerId': managerId,
+    };
+  }
+}
+
+/// Response item model for GetDCRMapDetails API
+class DcrMapDetailsItem {
+  final String? createdDate;
+  final int? modifiedBy;
+  final String? modifiedDate;
+  final int? id;
+  final int? cityId;
+  final int? createdBy;
+  final int? status;
+  final int? sbuId;
+  final int? dcrStatusId;
+  final int? dcrId;
+  final int? tourPlanId;
+  final int? employeeId;
+  final String? dcrDate;
+  final bool? isDeviationRequested;
+  final bool? isBasedOnPlan;
+  final int? deviatedFrom;
+  final double? customerLatitude;
+  final double? customerLongitude;
+  final double? latitude;
+  final double? longitude;
+  final String? remarks;
+  final bool? active;
+  final int? userId;
+  final String? employeeName;
+  final String? designation;
+  final String? clusterNames;
+  final String? statusText;
+  final String? typeOfWork;
+  final String? customerName;
+  final int? customerId;
+  final String? samplesToDistribute;
+  final String? productsToDiscuss;
+  final String? transactionType;
+  final int? typeOfWorkId;
+  final int? isGeneric;
+  final bool? coVisit;
+
+  DcrMapDetailsItem({
+    this.createdDate,
+    this.modifiedBy,
+    this.modifiedDate,
+    this.id,
+    this.cityId,
+    this.createdBy,
+    this.status,
+    this.sbuId,
+    this.dcrStatusId,
+    this.dcrId,
+    this.tourPlanId,
+    this.employeeId,
+    this.dcrDate,
+    this.isDeviationRequested,
+    this.isBasedOnPlan,
+    this.deviatedFrom,
+    this.customerLatitude,
+    this.customerLongitude,
+    this.latitude,
+    this.longitude,
+    this.remarks,
+    this.active,
+    this.userId,
+    this.employeeName,
+    this.designation,
+    this.clusterNames,
+    this.statusText,
+    this.typeOfWork,
+    this.customerName,
+    this.customerId,
+    this.samplesToDistribute,
+    this.productsToDiscuss,
+    this.transactionType,
+    this.typeOfWorkId,
+    this.isGeneric,
+    this.coVisit,
+  });
+
+  factory DcrMapDetailsItem.fromJson(Map<String, dynamic> json) {
+    return DcrMapDetailsItem(
+      createdDate: json['createdDate'],
+      modifiedBy: json['modifiedBy'],
+      modifiedDate: json['modifiedDate'],
+      id: json['id'],
+      cityId: json['cityId'],
+      createdBy: json['createdBy'],
+      status: json['status'],
+      sbuId: json['sbuId'],
+      dcrStatusId: json['dcrStatusId'],
+      dcrId: json['dcrId'],
+      tourPlanId: json['tourPlanId'],
+      employeeId: json['employeeId'],
+      dcrDate: json['dcrDate'],
+      isDeviationRequested: json['isDeviationRequested'],
+      isBasedOnPlan: json['isBasedOnPlan'],
+      deviatedFrom: json['deviatedFrom'],
+      customerLatitude: json['customerLatitude'] != null ? (json['customerLatitude'] as num).toDouble() : null,
+      customerLongitude: json['customerLongitude'] != null ? (json['customerLongitude'] as num).toDouble() : null,
+      latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
+      longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
+      remarks: json['remarks'],
+      active: json['active'],
+      userId: json['userId'],
+      employeeName: json['employeeName'],
+      designation: json['designation'],
+      clusterNames: json['clusterNames'],
+      statusText: json['statusText'],
+      typeOfWork: json['typeOfWork'],
+      customerName: json['customerName'],
+      customerId: json['customerId'],
+      samplesToDistribute: json['samplesToDistribute'],
+      productsToDiscuss: json['productsToDiscuss'],
+      transactionType: json['transactionType'],
+      typeOfWorkId: json['typeOfWorkId'],
+      isGeneric: json['isGeneric'],
+      coVisit: json['coVisit'],
+    );
+  }
+}
+
+/// Response model for GetDCRMapDetails API
+class DcrMapDetailsResponse {
+  final List<DcrMapDetailsItem> items;
+  final int totalRecords;
+  final int filteredRecords;
+
+  DcrMapDetailsResponse({
+    required this.items,
+    required this.totalRecords,
+    required this.filteredRecords,
+  });
+
+  factory DcrMapDetailsResponse.fromJson(Map<String, dynamic> json) {
+    return DcrMapDetailsResponse(
+      items: (json['items'] as List<dynamic>?)
+          ?.map((item) => DcrMapDetailsItem.fromJson(item))
+          .toList() ?? [],
+      totalRecords: json['totalRecords'] ?? 0,
+      filteredRecords: json['filteredRecords'] ?? 0,
+    );
   }
 }

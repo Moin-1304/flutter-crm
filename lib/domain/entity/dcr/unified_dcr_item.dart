@@ -28,6 +28,14 @@ class UnifiedDcrItem {
     this.samplesToDistribute,
     this.productsToDiscuss,
     this.expenses,
+    // Service Engineer specific fields
+    this.mappedInstruments,
+    this.complaint,
+    this.actionTaken,
+    this.result,
+    this.complaintStatus,
+    this.complaintDate,
+    this.complaintRemarks,
   });
 
   final int id;
@@ -53,6 +61,14 @@ class UnifiedDcrItem {
   final String? samplesToDistribute;
   final String? productsToDiscuss;
   final List<ExpenseApiItem>? expenses;
+  // Service Engineer specific fields (Service Report details)
+  final List<Map<String, dynamic>>? mappedInstruments;
+  final String? complaint;
+  final String? actionTaken;
+  final String? result;
+  final String? complaintStatus; // Display string: "Resolved" or "Not Resolved"
+  final String? complaintDate;
+  final String? complaintRemarks;
 
   /// Factory constructor to create from DcrApiItem
   factory UnifiedDcrItem.fromDcrApiItem(DcrApiItem item) {
@@ -70,6 +86,42 @@ class UnifiedDcrItem {
         }
       }
     }
+    
+    // Extract Service Report fields from the first TourPlanDcrDetail if available
+    final TourPlanDcrDetail? detail = item.tourPlanDCRDetails.isNotEmpty
+        ? item.tourPlanDCRDetails.first
+        : null;
+
+    final List<Map<String, dynamic>>? mappedInstruments = detail?.mappedInstruments;
+    final String? complaint = detail?.complaint;
+    final String? actionTaken = detail?.actionTaken;
+    final String? result = detail?.result;
+    final String? complaintStatus = detail?.complaintStatus != null
+        ? (detail!.complaintStatus == 1 ? 'Resolved' : 'Not Resolved')
+        : null;
+    final String? complaintDate = detail?.complaintDate;
+    final String? complaintRemarks = detail?.complaintRemarks;
+
+    print('UnifiedDcrItem.fromDcrApiItem - Service Report Fields Extraction:');
+    print('  - DCR ID: ${item.dcrId}, Item ID: ${item.id}');
+    print('  - tourPlanDCRDetails count: ${item.tourPlanDCRDetails.length}');
+    if (detail != null) {
+      print('  - First detail ID: ${detail.id}');
+      print('  - mappedInstruments from API: "${detail.mappedInstruments}"');
+      print('  - complaint from API: "${detail.complaint}"');
+      print('  - actionTaken from API: "${detail.actionTaken}"');
+      print('  - result from API: "${detail.result}"');
+      print('  - complaintStatus from API: "${detail.complaintStatus}"');
+      print('  - complaintDate from API: "${detail.complaintDate}"');
+      print('  - complaintRemarks from API: "${detail.complaintRemarks}"');
+    }
+    print('  - Extracted mappedInstruments: "$mappedInstruments"');
+    print('  - Extracted complaint: "$complaint"');
+    print('  - Extracted actionTaken: "$actionTaken"');
+    print('  - Extracted result: "$result"');
+    print('  - Extracted complaintStatus: "$complaintStatus"');
+    print('  - Extracted complaintDate: "$complaintDate"');
+    print('  - Extracted complaintRemarks: "$complaintRemarks"');
     
     return UnifiedDcrItem(
       id: item.id,
@@ -95,6 +147,157 @@ class UnifiedDcrItem {
       samplesToDistribute: item.samplesToDistribute,
       productsToDiscuss: item.productsToDiscuss,
       expenses: item.expenses,
+      // Extract Service Report fields from tourPlanDCRDetails if available
+      mappedInstruments: mappedInstruments,
+      complaint: complaint,
+      actionTaken: actionTaken,
+      result: result,
+      complaintStatus: complaintStatus,
+      complaintDate: complaintDate,
+      complaintRemarks: complaintRemarks,
+    );
+  }
+
+  /// Factory constructor to create from DcrMapDetailsItem
+  factory UnifiedDcrItem.fromDcrMapDetailsItem(DcrMapDetailsItem item) {
+    // Use latitude/longitude from the item (prefer latitude/longitude over customerLatitude/customerLongitude)
+    double? latitude = item.latitude;
+    double? longitude = item.longitude;
+    
+    // Fallback to customerLatitude/customerLongitude if latitude/longitude are null
+    if (latitude == null || longitude == null) {
+      latitude = item.customerLatitude;
+      longitude = item.customerLongitude;
+    }
+
+    // For managers, prefer createdDate (when DCR was entered) over dcrDate
+    // createdDate represents the actual time when the DCR was entered
+    String dcrDateTime;
+    if (item.createdDate != null && 
+        item.createdDate!.isNotEmpty && 
+        !item.createdDate!.startsWith('0001-01-01')) {
+      // Use createdDate if it's valid (not the default null date)
+      dcrDateTime = item.createdDate!;
+    } else if (item.dcrDate != null && 
+               item.dcrDate!.isNotEmpty && 
+               !item.dcrDate!.startsWith('0001-01-01')) {
+      // Fallback to dcrDate if createdDate is not valid
+      dcrDateTime = item.dcrDate!;
+    } else {
+      // Use current time as last resort
+      dcrDateTime = DateTime.now().toIso8601String();
+    }
+
+    return UnifiedDcrItem(
+      id: item.id ?? 0,
+      transactionType: item.transactionType ?? 'DCR',
+      employeeName: item.employeeName ?? 'Unknown',
+      designation: item.designation ?? '',
+      clusterNames: item.clusterNames ?? '',
+      statusText: item.statusText ?? 'Unknown',
+      dcrDate: dcrDateTime,
+      remarks: item.remarks ?? '',
+      customerName: item.customerName ?? 'Unknown Customer',
+      typeOfWork: item.typeOfWork ?? '',
+      customerId: item.customerId ?? 0,
+      cityId: item.cityId ?? 0,
+      employeeId: item.employeeId ?? 0,
+      dcrId: item.dcrId ?? 0,
+      tourPlanId: item.tourPlanId ?? 0,
+      dcrStatusId: item.dcrStatusId ?? 0,
+      typeOfWorkId: item.typeOfWorkId ?? 0,
+      isGeneric: item.isGeneric ?? 0,
+      customerLatitude: latitude,
+      customerLongitude: longitude,
+      samplesToDistribute: item.samplesToDistribute,
+      productsToDiscuss: item.productsToDiscuss,
+      expenses: null,
+    );
+  }
+
+  /// Factory constructor to create from DcrGetResponse (Get API)
+  factory UnifiedDcrItem.fromDcrGetResponse(DcrGetResponse response) {
+    // Get the first DCR detail from tourPlanDCRDetails array
+    final TourPlanDcrDetailGet? detail = response.tourPlanDCRDetails.isNotEmpty
+        ? response.tourPlanDCRDetails.first
+        : null;
+
+    if (detail == null) {
+      throw Exception('No DCR details found in response');
+    }
+
+    // Extract Service Report fields from TourPlanDcrDetailGet
+    final List<Map<String, dynamic>>? mappedInstruments = detail.mappedInstruments;
+    final String? complaint = detail.complaint;
+    final String? actionTaken = detail.actionTaken;
+    final String? result = detail.result;
+    final String? complaintStatus = detail.complaintStatus != null
+        ? (detail.complaintStatus == 1 ? 'Resolved' : 'Not Resolved')
+        : null;
+    final String? complaintDate = detail.complaintDate;
+    final String? complaintRemarks = detail.complaintRemarks;
+
+    // Get coordinates
+    double? latitude = detail.customerLatitude;
+    double? longitude = detail.customerLongitude;
+    if (latitude == null || longitude == null || latitude == 0.0 || longitude == 0.0) {
+      latitude = detail.latitude != 0.0 ? detail.latitude : null;
+      longitude = detail.longitude != 0.0 ? detail.longitude : null;
+    }
+
+    print('UnifiedDcrItem.fromDcrGetResponse - Service Report Fields Extraction:');
+    print('  - DCR ID: ${response.dcrId}, Response ID: ${response.id}');
+    print('  - tourPlanDCRDetails count: ${response.tourPlanDCRDetails.length}');
+    if (detail != null) {
+      print('  - First detail ID: ${detail.id}');
+      print('  - mappedInstruments from Get API: "${detail.mappedInstruments}"');
+      print('  - complaint from Get API: "${detail.complaint}"');
+      print('  - actionTaken from Get API: "${detail.actionTaken}"');
+      print('  - result from Get API: "${detail.result}"');
+      print('  - complaintStatus from Get API: "${detail.complaintStatus}"');
+      print('  - complaintDate from Get API: "${detail.complaintDate}"');
+      print('  - complaintRemarks from Get API: "${detail.complaintRemarks}"');
+    }
+    print('  - Extracted mappedInstruments: "$mappedInstruments"');
+    print('  - Extracted complaint: "$complaint"');
+    print('  - Extracted actionTaken: "$actionTaken"');
+    print('  - Extracted result: "$result"');
+    print('  - Extracted complaintStatus: "$complaintStatus"');
+    print('  - Extracted complaintDate: "$complaintDate"');
+    print('  - Extracted complaintRemarks: "$complaintRemarks"');
+
+    return UnifiedDcrItem(
+      id: detail.id ?? response.id,
+      transactionType: response.transactionType.isNotEmpty ? response.transactionType : 'DCR',
+      employeeName: response.employeeName.isNotEmpty ? response.employeeName : 'Unknown',
+      designation: response.designation.isNotEmpty ? response.designation : '',
+      clusterNames: detail.clusterNames.isNotEmpty ? detail.clusterNames : (response.clusterNames.isNotEmpty ? response.clusterNames : 'Unknown'),
+      statusText: response.statusText.isNotEmpty ? response.statusText : 'Unknown',
+      dcrDate: response.dcrDate.isNotEmpty ? response.dcrDate : DateTime.now().toIso8601String(),
+      remarks: detail.remarks.isNotEmpty ? detail.remarks : (response.remarks.isNotEmpty ? response.remarks : ''),
+      customerName: detail.customerName.isNotEmpty ? detail.customerName : (response.customerName.isNotEmpty ? response.customerName : 'Unknown Customer'),
+      typeOfWork: response.typeOfWork.isNotEmpty ? response.typeOfWork : 'Visit',
+      customerId: detail.customerId,
+      cityId: detail.cityId,
+      employeeId: response.employeeId,
+      dcrId: response.dcrId > 0 ? response.dcrId : response.id,
+      tourPlanId: response.tourPlanId,
+      dcrStatusId: response.dcrStatusId,
+      typeOfWorkId: detail.typeOfWorkId,
+      isGeneric: response.isGeneric,
+      customerLatitude: latitude,
+      customerLongitude: longitude,
+      samplesToDistribute: detail.samplesToDistribute.isNotEmpty ? detail.samplesToDistribute : (response.samplesToDistribute.isNotEmpty ? response.samplesToDistribute : null),
+      productsToDiscuss: detail.productsToDiscuss.isNotEmpty ? detail.productsToDiscuss : (response.productsToDiscuss.isNotEmpty ? response.productsToDiscuss : null),
+      expenses: response.expenses.isNotEmpty ? response.expenses : null,
+      // Service Report fields from Get API
+      mappedInstruments: mappedInstruments,
+      complaint: complaint,
+      actionTaken: actionTaken,
+      result: result,
+      complaintStatus: complaintStatus,
+      complaintDate: complaintDate,
+      complaintRemarks: complaintRemarks,
     );
   }
 
@@ -181,6 +384,13 @@ class UnifiedDcrItem {
     String? samplesToDistribute,
     String? productsToDiscuss,
     List<ExpenseApiItem>? expenses,
+    List<Map<String, dynamic>>? mappedInstruments,
+    String? complaint,
+    String? actionTaken,
+    String? result,
+    String? complaintStatus,
+    String? complaintDate,
+    String? complaintRemarks,
   }) {
     return UnifiedDcrItem(
       id: id ?? this.id,
@@ -206,6 +416,13 @@ class UnifiedDcrItem {
       samplesToDistribute: samplesToDistribute ?? this.samplesToDistribute,
       productsToDiscuss: productsToDiscuss ?? this.productsToDiscuss,
       expenses: expenses ?? this.expenses,
+      mappedInstruments: mappedInstruments ?? this.mappedInstruments,
+      complaint: complaint ?? this.complaint,
+      actionTaken: actionTaken ?? this.actionTaken,
+      result: result ?? this.result,
+      complaintStatus: complaintStatus ?? this.complaintStatus,
+      complaintDate: complaintDate ?? this.complaintDate,
+      complaintRemarks: complaintRemarks ?? this.complaintRemarks,
     );
   }
 }
