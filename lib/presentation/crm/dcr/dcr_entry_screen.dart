@@ -21,6 +21,130 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/presentation/common/map_picker_screen.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'dart:convert';
+import 'package:flutter/rendering.dart';
+
+// Service report enums and helpers
+enum ServiceReportType {
+  Installation,
+  Service,
+  Repair,
+  Calibration,
+  PM,
+}
+
+extension ServiceReportTypeX on ServiceReportType {
+  /// Human-friendly description (like C# DescriptionAttribute)
+  String get description {
+    switch (this) {
+      case ServiceReportType.Installation:
+        return 'Installation';
+      case ServiceReportType.Service:
+        return 'Service';
+      case ServiceReportType.Repair:
+        return 'Repair';
+      case ServiceReportType.Calibration:
+        return 'Calibration';
+      case ServiceReportType.PM:
+        return 'PM';
+    }
+  }
+
+  /// Integer value for backend mapping
+  int get value {
+    switch (this) {
+      case ServiceReportType.Installation:
+        return 1;
+      case ServiceReportType.Service:
+        return 2;
+      case ServiceReportType.Repair:
+        return 3;
+      case ServiceReportType.Calibration:
+        return 4;
+      case ServiceReportType.PM:
+        return 5;
+    }
+  }
+}
+
+// Electricity safety test enum
+enum ElectricitySafetyTestStatus { Yes, No }
+
+extension ElectricitySafetyTestStatusX on ElectricitySafetyTestStatus {
+  String get description {
+    switch (this) {
+      case ElectricitySafetyTestStatus.Yes:
+        return 'Yes';
+      case ElectricitySafetyTestStatus.No:
+        return 'No';
+    }
+  }
+
+  int get value {
+    switch (this) {
+      case ElectricitySafetyTestStatus.Yes:
+        return 1;
+      case ElectricitySafetyTestStatus.No:
+        return 2;
+    }
+  }
+}
+
+// Service report status enum
+enum ServiceReportStatus { Resolved, NotResolved }
+
+extension ServiceReportStatusX on ServiceReportStatus {
+  String get description {
+    switch (this) {
+      case ServiceReportStatus.Resolved:
+        return 'Resolved';
+      case ServiceReportStatus.NotResolved:
+        return 'Not Resolved';
+    }
+  }
+
+  int get value {
+    switch (this) {
+      case ServiceReportStatus.Resolved:
+        return 1;
+      case ServiceReportStatus.NotResolved:
+        return 2;
+    }
+  }
+}
+
+// Feedback status enum
+enum ServiceFeedbackStatus { Bad, Good, Fair, Excellent }
+
+extension ServiceFeedbackStatusX on ServiceFeedbackStatus {
+  String get description {
+    switch (this) {
+      case ServiceFeedbackStatus.Bad:
+        return 'Bad';
+      case ServiceFeedbackStatus.Good:
+        return 'Good';
+      case ServiceFeedbackStatus.Fair:
+        return 'Fair';
+      case ServiceFeedbackStatus.Excellent:
+        return 'Excellent';
+    }
+  }
+
+  int get value {
+    switch (this) {
+      case ServiceFeedbackStatus.Bad:
+        return 1;
+      case ServiceFeedbackStatus.Good:
+        return 2;
+      case ServiceFeedbackStatus.Fair:
+        return 3;
+      case ServiceFeedbackStatus.Excellent:
+        return 4;
+    }
+  }
+}
 
 class DcrEntryScreen extends StatefulWidget {
   final String? dcrId; // Optional DCR ID for editing existing DCR
@@ -116,19 +240,35 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   final TextEditingController _contactMobileCtrl = TextEditingController();
   final TextEditingController _serviceDateCtrl = TextEditingController();
   DateTime? _serviceDate;
+  // Signature storage
+  String? _signatureImageBase64;
+  String? _signatureValue;
   String? _serviceReportProduct;
   final TextEditingController _serialNumberCtrl = TextEditingController();
   String? _serviceType;
+  ServiceReportType? _selectedServiceType;
+  ElectricitySafetyTestStatus? _selectedElectricitySafetyTest;
+  ServiceReportStatus? _selectedServiceReportStatus;
+  ServiceFeedbackStatus? _selectedFeedbackOption;
+  List<String> _serviceTypeOptions = [];
+  final Map<String, int> _serviceTypeNameToId = <String, int>{};
   DateTime? _startTime;
   DateTime? _endTime;
   String? _electricitySafetyTest;
+  int? _serviceReportId;
+  List<String> _electricitySafetyOptions = [];
+  final Map<String, int> _electricitySafetyNameToId = <String, int>{};
   DateTime? _complaintDateTime;
   final TextEditingController _serviceRateCtrl = TextEditingController();
   String? _serviceStatus;
+  List<String> _serviceStatusOptions = [];
+  final Map<String, int> _serviceStatusNameToId = <String, int>{};
   final TextEditingController _workDescriptionCtrl = TextEditingController();
   final TextEditingController _materialsUsedCtrl = TextEditingController();
   final TextEditingController _serviceRemarksCtrl = TextEditingController();
   String? _feedbackOption;
+  List<String> _feedbackOptions = [];
+  final Map<String, int> _feedbackNameToId = <String, int>{};
   final TextEditingController _signedByCtrl = TextEditingController();
   // Signature field - will be handled separately
 
@@ -166,6 +306,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
     final bool isCreatingNew = widget.dcrId == null && widget.id == null;
     final int initialTabCount = (isManager && isCreatingNew) ? 1 : 3;
     _tabController = TabController(length: initialTabCount, vsync: this);
+    // When user switches to Service Report tab, load mapped customers for service report
+    _tabController.addListener(() {
+      try {
+        if (!_tabController.indexIsChanging && _tabController.index == 1) {
+          // Load mapped customers for Service Report tab (no cluster filter)
+          _loadMappedCustomersForServiceReport();
+        }
+      } catch (e) {
+        print('DcrEntryScreen: Error in tab listener: $e');
+      }
+    });
 
     // Show loader immediately if we're in edit mode (when edit icon is clicked)
     if (widget.dcrId != null || widget.id != null) {
@@ -250,6 +401,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           _initLocation(),
           _loadCountries(),
           _loadCustomerTypes(),
+          _loadServiceDropdowns(),
         ]).whenComplete(() {
           // Load customers after clusters are loaded (if cluster is already selected)
           if (_cluster != null && _cluster!.trim().isNotEmpty) {
@@ -267,6 +419,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         _initLocation(),
         _loadCountries(),
         _loadCustomerTypes(),
+        _loadServiceDropdowns(),
       ]).whenComplete(() {
         // Load customers after clusters are loaded (if cluster is already selected)
         if (_cluster != null && _cluster!.trim().isNotEmpty) {
@@ -557,6 +710,99 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
     }
   }
 
+  /// Load dropdowns for Service Report: Service Type, Electricity Safety Test,
+  /// Service Status, and Feedback Option using Common/GetAuto (CommandType: 335).
+  Future<void> _loadServiceDropdowns() async {
+    try {
+      if (!getIt.isRegistered<CommonRepository>()) {
+        print('DcrEntryScreen: [ServiceReport Dropdowns] CommonRepository not registered - skipping');
+        return;
+      }
+
+      final repo = getIt<CommonRepository>();
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+
+      // Wait until user is loaded (same retry logic as products)
+      int retry = 0;
+      while (userStore?.isUserLoaded != true && retry < 20) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        retry++;
+      }
+
+      int? userId = userStore?.userDetail?.id;
+      int? employeeId = userStore?.userDetail?.employeeId;
+      String? serviceArea = userStore?.userDetail?.serviceArea;
+
+      if (userId == null || userId <= 0) {
+        print('DcrEntryScreen: [ServiceReport Dropdowns] userId is null/0 - skipping');
+        return;
+      }
+
+      // For Service Engineer use employeeId as UserId, otherwise use userId
+      int? actualUserId = employeeId;
+      if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+        if (employeeId != null && employeeId > 0) {
+          actualUserId = employeeId;
+        } else {
+          actualUserId = userId;
+        }
+      } else {
+        actualUserId = userId;
+      }
+
+      print('DcrEntryScreen: [ServiceReport Dropdowns] Loading using UserId: $actualUserId');
+
+      // CommandType 335 as requested
+      final List<CommonDropdownItem> items = await repo.getCommonAuto(335, userId: actualUserId);
+
+      if (items.isEmpty) {
+        print('DcrEntryScreen: [ServiceReport Dropdowns] No items returned for commandType 335');
+        return;
+      }
+
+      // Populate all four dropdowns using the same returned list (backend returns appropriate entries)
+      setState(() {
+        _serviceTypeOptions = [];
+        _electricitySafetyOptions = [];
+        _serviceStatusOptions = [];
+        _feedbackOptions = [];
+        _serviceTypeNameToId.clear();
+        _electricitySafetyNameToId.clear();
+        _serviceStatusNameToId.clear();
+        _feedbackNameToId.clear();
+
+        for (final it in items) {
+          final String display = (it.text.isNotEmpty ? it.text : (it.name ?? '')).trim();
+          if (display.isEmpty) continue;
+          // Use same set for all — backend should return type-distinguished items
+          _serviceTypeOptions.add(display);
+          _serviceTypeNameToId[display] = it.id;
+
+          _electricitySafetyOptions.add(display);
+          _electricitySafetyNameToId[display] = it.id;
+
+          _serviceStatusOptions.add(display);
+          _serviceStatusNameToId[display] = it.id;
+
+          _feedbackOptions.add(display);
+          _feedbackNameToId[display] = it.id;
+        }
+
+        // Deduplicate and sort
+        _serviceTypeOptions = _serviceTypeOptions.toSet().toList()..sort();
+        _electricitySafetyOptions = _electricitySafetyOptions.toSet().toList()..sort();
+        _serviceStatusOptions = _serviceStatusOptions.toSet().toList()..sort();
+        _feedbackOptions = _feedbackOptions.toSet().toList()..sort();
+      });
+
+      print('DcrEntryScreen: [ServiceReport Dropdowns] Loaded serviceType=${_serviceTypeOptions.length}, safety=${_electricitySafetyOptions.length}, status=${_serviceStatusOptions.length}, feedback=${_feedbackOptions.length}');
+    } catch (e) {
+      print('DcrEntryScreen: [ServiceReport Dropdowns] Error loading dropdowns: $e');
+    }
+  }
+
   Future<void> _loadMappedCustomers() async {
     try {
       print('DcrEntryScreen: [Customers] Start loading mapped customers');
@@ -694,6 +940,89 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
     } catch (e) {
       print('DcrEntryScreen: [Customers] Error loading customers: $e');
       // Silent fail - don't clear existing customers on error
+    }
+  }
+
+  /// Load mapped customers for Service Report tab specifically.
+  /// This does not require a selected cluster and will fetch all mapped customers
+  /// for the employee (optionally filtered by customerTypeId or date).
+  Future<void> _loadMappedCustomersForServiceReport() async {
+    try {
+      print('DcrEntryScreen: [ServiceReport - Customers] Start loading mapped customers');
+      if (!getIt.isRegistered<TourPlanRepository>()) {
+        print(
+            'DcrEntryScreen: [ServiceReport - Customers] TourPlanRepository not registered - skipping');
+        return;
+      }
+
+      final repo = getIt<TourPlanRepository>();
+      final userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      final int? employeeId = userStore?.userDetail?.employeeId;
+      if (employeeId == null) {
+        print('DcrEntryScreen: [ServiceReport - Customers] employeeId is null - skipping');
+        return;
+      }
+
+      final String dateStr = _serviceDate != null
+          ? _serviceDate!.toIso8601String().split('T').first
+          : DateTime.now().toIso8601String().split('T').first;
+
+      final req = GetMappedCustomersByEmployeeIdRequest(
+        searchText: null,
+        pageNumber: 0,
+        pageSize: 0,
+        sortOrder: 0,
+        sortDir: 0,
+        sortField: null,
+        employeeId: null,
+        clusterId: null,
+        customerId: null,
+        month: null,
+        tourPlanId: null,
+        userId: null,
+        bizunit: null,
+        filterExpression: null,
+        monthNumber: null,
+        year: null,
+        id: employeeId,
+        action: null,
+        comment: null,
+        status: null,
+        tourPlanAcceptId: null,
+        remarks: null,
+        clusterIds: null,
+        selectedEmployeeId: null,
+        date: dateStr,
+        customerTypeId: 0,
+      );
+
+      print('DcrEntryScreen: [ServiceReport - Customers] Request body => ${req.toJson()}');
+      final res = await repo.getMappedCustomersByEmployeeId(req);
+      print('DcrEntryScreen: [ServiceReport - Customers] API returned ${res.customers.length} customers');
+
+      if (res.customers.isEmpty) {
+        setState(() {
+          _customerOptions = [];
+          _customerNameToId.clear();
+        });
+        return;
+      }
+
+      setState(() {
+        _customerOptions = [];
+        _customerNameToId.clear();
+        for (final mc in res.customers) {
+          _customerOptions.add(mc.customerName);
+          _customerNameToId[mc.customerName] = mc.customerId;
+        }
+        _customerOptions = _customerOptions.toSet().toList();
+        _customerOptions.sort();
+      });
+      print('DcrEntryScreen: [ServiceReport - Customers] Loaded ${_customerOptions.length} customers');
+    } catch (e) {
+      print('DcrEntryScreen: [ServiceReport - Customers] Error loading customers: $e');
     }
   }
 
@@ -868,34 +1197,47 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
 
   Future<void> _loadCustomerTypes() async {
     try {
-      if (getIt.isRegistered<CommonRepository>()) {
-        final repo = getIt<CommonRepository>();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-            ? getIt<UserDetailStore>()
-            : null;
-        final int? userId = userStore?.userDetail?.id;
+      if (getIt.isRegistered<DioClient>()) {
+        final dioClient = getIt<DioClient>();
+        final requestData = {
+          'SearchText': null,
+          'Id': null,
+          'TransactionId': null,
+          'UserId': null,
+          'CommandType': 102,
+          'CommandText': null,
+          'Value': null,
+          'CountryId': null,
+          'Key': null,
+          'Text': null,
+          'Type': 'CUSTOMER SUBTYPE',
+          'TaxFlag': 0,
+          'IncludeCancelled': false,
+        };
 
-        if (userId == null || userId <= 0) {
-          print('DcrEntryScreen: [CustomerTypes] userId is null/0, skipping customer types load');
-          return;
-        }
+        print('DcrEntryScreen: [CustomerTypes] Requesting CommandType=102 (CUSTOMER SUBTYPE)');
+        final response = await dioClient.dio.post(
+          Endpoints.commonGetAuto,
+          data: requestData,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
 
-        print('DcrEntryScreen: [CustomerTypes] Loading customer types with userId: $userId');
-        final List<CommonDropdownItem> items = await repo.getCustomerTypeList(userId);
-
-        if (items.isNotEmpty && mounted) {
+        if (response.data != null && response.data is List && mounted) {
+          final List<CommonDropdownItem> items = (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
           setState(() {
             _customerTypeOptions = items
                 .map((e) => e.text.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
-            // Map names to IDs for submit
             for (final item in items) {
               final String key = item.text.trim();
-              if (key.isNotEmpty) {
-                // Store mapping if needed (assuming we'll use item.id)
-                print('DcrEntryScreen: [CustomerTypes] Mapped "$key" to ID: ${item.id}');
-              }
+              if (key.isNotEmpty) _customerTypeNameToId[key] = item.id;
             }
           });
           print('DcrEntryScreen: [CustomerTypes] Loaded ${_customerTypeOptions.length} customer types');
@@ -910,21 +1252,44 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
 
   Future<void> _loadCountries() async {
     try {
-      if (getIt.isRegistered<CommonRepository>()) {
-        final repo = getIt<CommonRepository>();
-        // Use CommonGetAutoRequest with CommandType for countries (typically 200 or similar)
-        // Note: Adjust CommandType value based on your API documentation
-        final request = CommonGetAutoRequest(commandType: 200);
-        final commonApi = getIt<CommonApi>();
-        final List<CommonDropdownItem> items = await commonApi.getAuto(request);
+      if (getIt.isRegistered<DioClient>()) {
+        final dioClient = getIt<DioClient>();
+        final requestData = {
+          'SearchText': null,
+          'Id': null,
+          'TransactionId': null,
+          'UserId': null,
+          'CommandType': 5,
+          'CommandText': null,
+          'Value': null,
+          'CountryId': null,
+          'Key': null,
+          'Text': null,
+          'Type': null,
+          'TaxFlag': 0,
+          'IncludeCancelled': false,
+        };
 
-        if (items.isNotEmpty && mounted) {
+        print('DcrEntryScreen: [Countries] Requesting CommandType=5 for countries');
+        final response = await dioClient.dio.post(
+          Endpoints.commonGetAuto,
+          data: requestData,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+
+        if (response.data != null && response.data is List && mounted) {
+          final List<CommonDropdownItem> items = (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
           setState(() {
             _countryOptions = items
                 .map((e) => e.text.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
-            // Map names to IDs
             for (final item in items) {
               final String key = item.text.trim();
               if (key.isNotEmpty) {
@@ -944,21 +1309,43 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
 
   Future<void> _loadStates(int countryId) async {
     try {
-      if (getIt.isRegistered<CommonRepository>()) {
-        final repo = getIt<CommonRepository>();
-        // Use CommonGetAutoRequest with CommandType for states (typically 201 or similar)
-        // Note: Adjust CommandType value based on your API documentation
-        final request = CommonGetAutoRequest(commandType: 201, countryId: countryId);
-        final commonApi = getIt<CommonApi>();
-        final List<CommonDropdownItem> items = await commonApi.getAuto(request);
+      if (getIt.isRegistered<DioClient>()) {
+        final dioClient = getIt<DioClient>();
+        final requestData = {
+          'SearchText': null,
+          'Id': null,
+          'TransactionId': null,
+          'UserId': null,
+          'CommandType': 14,
+          'CommandText': null,
+          'Value': null,
+          'CountryId': countryId,
+          'Key': null,
+          'Text': null,
+          'TaxFlag': 0,
+          'IncludeCancelled': false,
+        };
 
-        if (items.isNotEmpty && mounted) {
+        print('DcrEntryScreen: [States] Requesting CommandType=14 for countryId: $countryId');
+        final response = await dioClient.dio.post(
+          Endpoints.commonGetAuto,
+          data: requestData,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+
+        if (response.data != null && response.data is List && mounted) {
+          final List<CommonDropdownItem> items = (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
           setState(() {
             _stateOptions = items
                 .map((e) => e.text.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
-            // Map names to IDs
             for (final item in items) {
               final String key = item.text.trim();
               if (key.isNotEmpty) {
@@ -986,7 +1373,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         // Let's check if we can use the getAuto method with a custom request
         // For now, using a workaround: create a custom request with stateId
         final requestData = {
-          'CommandType': 202,
+          'CommandType': 10,
           'StateId': stateId,
         };
         final commonApi = getIt<CommonApi>();
@@ -1982,15 +2369,32 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       // Service Type
       _LabeledField(
         label: 'Service Type',
-        child: SingleSelectDropdown(
-          options: const ['Preventive', 'Corrective', 'Installation', 'Calibration', 'Other'],
-          value: _serviceType,
-          hintText: 'Select Service Type',
-          onChanged: (String? value) {
+        child: DropdownButtonFormField<ServiceReportType>(
+          value: _selectedServiceType,
+          decoration: InputDecoration(
+            hintText: 'Select Service Type',
+            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            filled: true,
+            fillColor: Colors.white,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+            ),
+          ),
+          items: ServiceReportType.values.map((ServiceReportType t) {
+            return DropdownMenuItem<ServiceReportType>(
+              value: t,
+              child: Text(t.description, style: theme.textTheme.bodyMedium),
+            );
+          }).toList(),
+          onChanged: (ServiceReportType? val) {
             setState(() {
-              _serviceType = value;
+              _selectedServiceType = val;
+              // keep legacy string value in sync for other code paths
+              _serviceType = val?.description;
             });
           },
+          isExpanded: true,
         ),
       ),
       const SizedBox(height: 16),
@@ -2079,15 +2483,31 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       // Electricity Safety Test
       _LabeledField(
         label: 'Electricity Safety Test',
-        child: SingleSelectDropdown(
-          options: const ['Yes', 'No'],
-          value: _electricitySafetyTest,
-          hintText: 'Select',
-          onChanged: (String? value) {
+        child: DropdownButtonFormField<ElectricitySafetyTestStatus>(
+          value: _selectedElectricitySafetyTest,
+          decoration: InputDecoration(
+            hintText: 'Select',
+            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            filled: true,
+            fillColor: Colors.white,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+            ),
+          ),
+          items: ElectricitySafetyTestStatus.values.map((s) {
+            return DropdownMenuItem<ElectricitySafetyTestStatus>(
+              value: s,
+              child: Text(s.description, style: theme.textTheme.bodyMedium),
+            );
+          }).toList(),
+          onChanged: (ElectricitySafetyTestStatus? val) {
             setState(() {
-              _electricitySafetyTest = value;
+              _selectedElectricitySafetyTest = val;
+              _electricitySafetyTest = val?.description;
             });
           },
+          isExpanded: true,
         ),
       ),
       const SizedBox(height: 24),
@@ -2193,17 +2613,33 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       // Service Status
       _LabeledField(
         label: 'Service Status',
-        child: SingleSelectDropdown(
-          options: const ['Resolved', 'Not Resolved'],
-          value: _serviceStatus,
-          hintText: 'Select Status',
-          onChanged: (String? value) {
+        child: DropdownButtonFormField<ServiceReportStatus>(
+          value: _selectedServiceReportStatus,
+          decoration: InputDecoration(
+            hintText: 'Select Status',
+            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            filled: true,
+            fillColor: Colors.white,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+            ),
+          ),
+          items: ServiceReportStatus.values.map((s) {
+            return DropdownMenuItem<ServiceReportStatus>(
+              value: s,
+              child: Text(s.description, style: theme.textTheme.bodyMedium),
+            );
+          }).toList(),
+          onChanged: (ServiceReportStatus? val) {
                                           setState(() {
-              _serviceStatus = value;
+              _selectedServiceReportStatus = val;
+              _serviceStatus = val?.description;
                                           });
                                         },
-                                      ),
-                                    ),
+          isExpanded: true,
+        ),
+      ),
       const SizedBox(height: 24),
       
       // Work Information Section
@@ -2266,15 +2702,31 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       // Feedback Option
       _LabeledField(
         label: 'Feedback Option',
-        child: SingleSelectDropdown(
-          options: const ['Satisfied', 'Neutral', 'Dissatisfied', 'Very Satisfied', 'Very Dissatisfied'],
-          value: _feedbackOption,
-          hintText: 'Select Feedback',
-          onChanged: (String? value) {
+        child: DropdownButtonFormField<ServiceFeedbackStatus>(
+          value: _selectedFeedbackOption,
+          decoration: InputDecoration(
+            hintText: 'Select Feedback',
+            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            filled: true,
+            fillColor: Colors.white,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+            ),
+          ),
+          items: ServiceFeedbackStatus.values.map((s) {
+            return DropdownMenuItem<ServiceFeedbackStatus>(
+              value: s,
+              child: Text(s.description, style: theme.textTheme.bodyMedium),
+            );
+          }).toList(),
+          onChanged: (ServiceFeedbackStatus? val) {
                                           setState(() {
-              _feedbackOption = value;
+              _selectedFeedbackOption = val;
+              _feedbackOption = val?.description;
                                           });
                                         },
+          isExpanded: true,
                                       ),
       ),
       const SizedBox(height: 24),
@@ -2303,24 +2755,45 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       // Signature (placeholder for signature field)
       _LabeledField(
         label: 'Signature',
-        child: Container(
-          height: 120,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.edit, color: Colors.grey.shade400, size: 32),
-                const SizedBox(height: 8),
-                Text(
-                  'Tap to add signature',
-                  style: TextStyle(color: Colors.grey.shade600),
+        child: InkWell(
+          onTap: () async {
+            // Ensure any text fields lose focus so keyboard doesn't interact with background
+            FocusScope.of(context).unfocus();
+            final String? base64 = await _openSignaturePad(context);
+            if (base64 != null && base64.isNotEmpty) {
+              setState(() {
+                _signatureImageBase64 = base64;
+                _signatureValue = 'Captured';
+              });
+            }
+          },
+          child: Container(
+            height: 120,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: _signatureImageBase64 == null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.edit, color: Colors.grey.shade400, size: 32),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tap to add signature',
+                          style: TextStyle(color: Colors.grey.shade600),
                                       ),
                                     ],
                                   ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Image.memory(
+                      base64Decode(_signatureImageBase64!),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
           ),
         ),
       ),
@@ -2355,9 +2828,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                       (_customerNameToId[_serviceReportCustomer] ?? 0);
                   final int productId =
                       (_productNameToId[_serviceReportProduct] ?? 0);
+                  final int currentUserId = getIt.isRegistered<UserDetailStore>() ? (getIt<UserDetailStore>().userDetail?.id ?? 0) : 0;
                   final Map<String, dynamic> payload = {
-                    'id': 0,
-                    'createdBy': 0,
+                    'id': _serviceReportId ?? 0,
+                    'createdBy': currentUserId,
                     'status': 1,
                     'sbuId': 0,
                     'dcrDetailId': 0,
@@ -2370,33 +2844,35 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                     'productId': productId,
                     'product': _serviceReportProduct ?? '',
                     'serialNumber': _serialNumberCtrl.text.trim(),
-                    'serviceTypeId': 0,
-                    'serviceType': _serviceType ?? '',
+                    'serviceTypeId': _selectedServiceType?.value ?? 0,
+                    'serviceType': _selectedServiceType?.description ?? '',
                     'startTime': _startTime?.toIso8601String(),
                     'endTime': _endTime?.toIso8601String(),
-                    'electricitySafetyTest': _electricitySafetyTest ?? '',
-                    'electricitySafetyTestId': 0,
+                    'electricitySafetyTest': _selectedElectricitySafetyTest?.description ?? '',
+                    'electricitySafetyTestId': _selectedElectricitySafetyTest?.value ?? 0,
                     'complaintDetails': _complaintCtrl.text.trim(),
                     'actionTaken': _actionTakenCtrl.text.trim(),
                     'result': _resultCtrl.text.trim(),
                     'complaintDateTime': _complaintDateTime?.toIso8601String(),
-                    'serviceStatusId': 0,
-                    'serviceStatus': _serviceStatus ?? '',
+                    'serviceStatusId': _selectedServiceReportStatus?.value ?? 0,
+                    'serviceStatus': _selectedServiceReportStatus?.description ?? '',
                     'workDescription': _workDescriptionCtrl.text.trim(),
                     'materialsUsed': _materialsUsedCtrl.text.trim(),
                     'remarks': _serviceRemarksCtrl.text.trim(),
-                    'feedbackOption': _feedbackOption ?? '',
-                    'feedbackOptionId': 0,
+                    'feedbackOption': _selectedFeedbackOption?.description ?? '',
+                    'feedbackOptionId': _selectedFeedbackOption?.value ?? 0,
                     'signedBy': _signedByCtrl.text.trim(),
                     'signatureValue': null,
                     'signatureImageBase64': null,
                     'serviceRate': double.tryParse(_serviceRateCtrl.text.trim()) ?? 0
                   };
 
-                  print('📞 [ServiceReport] Saving service report: ${payload}');
-
+                  final String url = (_serviceReportId != null && _serviceReportId! > 0)
+                      ? Endpoints.serviceReportUpdate
+                      : Endpoints.serviceReportSave;
+                  print('📞 [ServiceReport] Sending to $url payload: ${payload}');
                   final response = await dioClient.dio.post(
-                    Endpoints.serviceReportSave,
+                    url,
                     data: payload,
                     options: Options(
                       headers: {
@@ -2469,6 +2945,21 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
     return '${date.day.toString().padLeft(2, '0')}-${months[date.month - 1]}-${date.year}';
   }
 
+  Future<String?> _openSignaturePad(BuildContext context) async {
+    final String? result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 300,
+          child: _SignaturePadDialog(),
+        ),
+      ),
+    );
+    return result;
+  }
   // Build Customer Fields
   List<Widget> _buildCustomerFields(BuildContext context, ThemeData theme) {
     return [
@@ -3919,4 +4410,136 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
     final firstTwo = values.take(2).join(', ');
     return '$firstTwo +${values.length - 2}';
   }
+}
+
+// Signature Pad Dialog
+class _SignaturePadDialog extends StatefulWidget {
+  @override
+  State<_SignaturePadDialog> createState() => _SignaturePadDialogState();
+}
+
+class _SignaturePadDialogState extends State<_SignaturePadDialog> {
+  final GlobalKey _repaintKey = GlobalKey();
+  List<Offset?> _points = [];
+
+  void _clear() {
+    setState(() {
+      _points = [];
+    });
+  }
+
+  Future<void> _save() async {
+    try {
+      final boundary = _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
+      final base64 = base64Encode(bytes);
+      Navigator.of(context).pop(base64);
+    } catch (e, s) {
+      print('❌ Signature save error: $e\n$s');
+      Navigator.of(context).pop(null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Add Signature', style: Theme.of(context).textTheme.titleMedium),
+              Row(
+                children: [
+                  IconButton(icon: const Icon(Icons.clear), onPressed: _clear),
+                  IconButton(icon: const Icon(Icons.check), onPressed: _save),
+                ],
+              )
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: RepaintBoundary(
+            key: _repaintKey,
+            child: GestureDetector(
+              onPanStart: (details) {
+                final box = _repaintKey.currentContext?.findRenderObject() as RenderBox?;
+                if (box == null) return;
+                final localPos = box.globalToLocal(details.globalPosition);
+                final Size sz = box.size;
+                final bool inside = localPos.dx >= 0 &&
+                    localPos.dy >= 0 &&
+                    localPos.dx <= sz.width &&
+                    localPos.dy <= sz.height;
+                if (!inside) {
+                  // end previous stroke if any
+                  setState(() => _points = List.from(_points)..add(null));
+                  return;
+                }
+                setState(() {
+                  _points = List.from(_points)..add(localPos);
+                });
+              },
+              onPanUpdate: (details) {
+                final box = _repaintKey.currentContext?.findRenderObject() as RenderBox?;
+                if (box == null) return;
+                final localPos = box.globalToLocal(details.globalPosition);
+                final Size sz = box.size;
+                final bool inside = localPos.dx >= 0 &&
+                    localPos.dy >= 0 &&
+                    localPos.dx <= sz.width &&
+                    localPos.dy <= sz.height;
+                if (!inside) {
+                  // mark stroke break when pointer leaves modal area
+                  setState(() => _points = List.from(_points)..add(null));
+                  return;
+                }
+                setState(() {
+                  _points = List.from(_points)..add(localPos);
+                });
+              },
+              onPanEnd: (details) => setState(() => _points.add(null)),
+              child: ClipRect(
+                child: CustomPaint(
+                  painter: _SignaturePainter(_points),
+                  size: Size.infinite,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
+class _SignaturePainter extends CustomPainter {
+  final List<Offset?> points;
+  _SignaturePainter(this.points);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+    for (int i = 0; i < points.length - 1; i++) {
+      final p = points[i];
+      final p2 = points[i + 1];
+      if (p != null && p2 != null) {
+        canvas.drawLine(p, p2, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SignaturePainter oldDelegate) => oldDelegate.points != points;
+ 
 }

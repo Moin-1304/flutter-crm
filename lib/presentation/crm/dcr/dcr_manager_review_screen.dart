@@ -1708,31 +1708,31 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       
       // Filter items with valid coordinates
       final List<UnifiedDcrItem> mapItems = allMapItems
-          .where((item) =>
-              item.customerLatitude != null &&
-              item.customerLongitude != null &&
-              item.customerLatitude != 0.0 &&
-              item.customerLongitude != 0.0)
-          .toList();
+        .where((item) =>
+            item.customerLatitude != null &&
+            item.customerLongitude != null &&
+            item.customerLatitude != 0.0 &&
+            item.customerLongitude != 0.0)
+        .toList();
 
       print('   Items with valid coordinates: ${mapItems.length}');
       print('   Items filtered out (no coordinates): ${allMapItems.length - mapItems.length}');
 
       if (mapItems.isEmpty) {
         print('⚠️ [DcrManagerReviewScreen] No DCR visits with location data available');
-        ToastMessage.show(
-          context,
-          message: 'No DCR visits with location data available',
-          type: ToastType.info,
-          icon: Icons.info_outline,
-        );
-        return;
-      }
+      ToastMessage.show(
+        context,
+        message: 'No DCR visits with location data available',
+        type: ToastType.info,
+        icon: Icons.info_outline,
+      );
+      return;
+    }
 
       print('🚀 [DcrManagerReviewScreen] Opening map view with ${mapItems.length} items');
       if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
+    Navigator.of(context).push(
+      MaterialPageRoute(
           builder: (context) => DcrMapViewScreen(dcrItems: mapItems),
         ),
       );
@@ -1748,7 +1748,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
           message: 'Failed to load map data: ${e.toString()}',
           type: ToastType.error,
           icon: Icons.error_outline,
-        );
+    );
       }
     }
   }

@@ -125,33 +125,33 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
     try {
       // Try parsing with time first (ISO format: yyyy-MM-ddTHH:mm:ss)
       if (dcrDate.contains('T') && dcrDate.length >= 19) {
-        final dateTime = DateFormat('yyyy-MM-ddTHH:mm:ss').parse(dcrDate);
+      final dateTime = DateFormat('yyyy-MM-ddTHH:mm:ss').parse(dcrDate);
         // Check if it's a valid date (not the default null date)
         if (dateTime.year > 1900) {
-          // Format: "Jan 13, 2026 at 10:30 AM" for better readability
-          return DateFormat('MMM dd, yyyy \'at\' hh:mm a').format(dateTime);
+      // Format: "Jan 13, 2026 at 10:30 AM" for better readability
+      return DateFormat('MMM dd, yyyy \'at\' hh:mm a').format(dateTime);
         }
       }
     } catch (e) {
       // Continue to next format
     }
     
-    try {
+      try {
       // Try parsing with milliseconds (ISO format: yyyy-MM-ddTHH:mm:ss.SSS)
       if (dcrDate.contains('T') && dcrDate.contains('.')) {
         final dateTime = DateFormat('yyyy-MM-ddTHH:mm:ss.SSS').parse(dcrDate);
         if (dateTime.year > 1900) {
-          return DateFormat('MMM dd, yyyy \'at\' hh:mm a').format(dateTime);
+        return DateFormat('MMM dd, yyyy \'at\' hh:mm a').format(dateTime);
         }
       }
-    } catch (e2) {
+      } catch (e2) {
       // Continue to next format
     }
     
-    try {
+        try {
       // Try parsing date only (yyyy-MM-dd)
       if (dcrDate.length >= 10 && !dcrDate.contains('T')) {
-        final dateTime = DateFormat('yyyy-MM-dd').parse(dcrDate);
+          final dateTime = DateFormat('yyyy-MM-dd').parse(dcrDate);
         if (dateTime.year > 1900) {
           return DateFormat('MMM dd, yyyy').format(dateTime);
         }
@@ -222,86 +222,86 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(),
-            )
-          : Stack(
-              children: [
+                )
+              : Stack(
+                  children: [
                 // Always show the map
-                GoogleMap(
-                  onMapCreated: (GoogleMapController controller) {
-                    _mapController = controller;
+                    GoogleMap(
+                      onMapCreated: (GoogleMapController controller) {
+                        _mapController = controller;
                     if (_markers.isNotEmpty) {
-                      _fitMarkers();
+                        _fitMarkers();
                     }
-                  },
-                  initialCameraPosition: CameraPosition(
-                    target: _center ?? const LatLng(7.8731, 80.7718),
-                    zoom: 10,
-                  ),
-                  markers: _markers,
-                  myLocationEnabled: false,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: true,
-                  mapToolbarEnabled: false,
-                ),
+                      },
+                      initialCameraPosition: CameraPosition(
+                        target: _center ?? const LatLng(7.8731, 80.7718),
+                        zoom: 10,
+                      ),
+                      markers: _markers,
+                      myLocationEnabled: false,
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: true,
+                      mapToolbarEnabled: false,
+                    ),
                 // Info card showing total DCRs (only show if there are markers or alwaysShowMap is true)
                 if (_markers.isNotEmpty || widget.alwaysShowMap)
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                color: tealGreen,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color: tealGreen,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${_markers.length} Visit${_markers.length != 1 ? 's' : ''}',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (widget.dateRangeText != null) ...[
+                              const SizedBox(height: 4),
                               Text(
-                                '${_markers.length} Visit${_markers.length != 1 ? 's' : ''}',
+                                widget.dateRangeText!,
                                 style: GoogleFonts.inter(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[800],
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[600],
                                 ),
                               ),
                             ],
-                          ),
-                          if (widget.dateRangeText != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.dateRangeText!,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey[600],
-                              ),
-                            ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  ),
                 // Show empty state overlay if no markers and alwaysShowMap is true
                 if (_markers.isEmpty && widget.alwaysShowMap)
                   Center(
@@ -349,8 +349,8 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
                       ),
                     ),
                   ),
-              ],
-            ),
+                  ],
+                ),
     );
   }
 

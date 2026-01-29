@@ -1,6 +1,6 @@
 import 'package:boilerplate/data/network/apis/common/common_api.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, TaxComponentResponse, ItemDetailResponse;
+    show CommonDropdownItem, TaxComponentResponse, ItemDetailResponse, CommonGetAutoRequest;
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/di/service_locator.dart';
 
@@ -504,6 +504,36 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
+  Future<List<CommonDropdownItem>> getMappedCustomersByEmployeeId({
+    String? searchText,
+    int? pageNumber,
+    int? pageSize,
+    int? employeeId,
+    int? clusterId,
+    int? customerTypeId,
+    int? id,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final response = await commonApi.getMappedCustomersByEmployeeId(
+          searchText: searchText,
+          pageNumber: pageNumber,
+          pageSize: pageSize,
+          employeeId: employeeId,
+          clusterId: clusterId,
+          customerTypeId: customerTypeId,
+          id: id,
+        );
+        return response;
+      }
+    } catch (e) {
+      print('Error getting mapped customers: $e');
+    }
+    return [];
+  }
+
+  @override
   Future<List<CommonDropdownItem>> getItemDescriptionList(
     int? divisionId, {
     int? distributerId,
@@ -669,6 +699,20 @@ class CommonRepositoryImpl implements CommonRepository {
       print('Error getting item detail: $e');
     }
     throw Exception('Failed to get item detail');
+  }
+
+  @override
+  Future<List<CommonDropdownItem>> getCommonAuto(int commandType, {int? userId}) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        final request = CommonGetAutoRequest(commandType: commandType, userId: userId);
+        return await commonApi.getAuto(request);
+      }
+    } catch (e) {
+      print('Error getting common auto for commandType $commandType: $e');
+    }
+    return [];
   }
 
   @override

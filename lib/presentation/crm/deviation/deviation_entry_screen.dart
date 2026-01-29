@@ -122,6 +122,14 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
     // Auto-refresh removed: APIs will only be called once during initialization
   }
 
+  // Hide deviation lock option for Service Engineers: helper
+  bool _shouldShowDeviationLock() {
+    // If service engineer, do not show lock option
+    if (_isServiceEngineer) return false;
+    // fallback: show by default
+    return true;
+  }
+
   Future<void> _initializeData() async {
     setState(() => _isLoading = true);
     
@@ -1113,6 +1121,12 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
           final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
           final userDetail = userStore?.userDetail;
 
+          // Determine if deviation should be auto-approved for Service Engineers
+          final bool isServiceOrApplication = _deviationType != null &&
+              (_deviationType!.toLowerCase() == 'service' ||
+                  _deviationType!.toLowerCase() == 'application');
+          final bool autoApprove = _isServiceEngineer && isServiceOrApplication;
+
           if (_isEditing && widget.deviationId != null) {
             // Update existing deviation
             final finalTourPlanDetailId = widget.tourPlanId ?? tourPlanDetailId;
@@ -1126,7 +1140,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
             final response = await deviationRepo.updateDeviation(
               id: widget.deviationId!,
               createdBy: user.userId,
-              status: 0,
+              status: autoApprove ? 1 : 0,
               sbuId: user.sbuId,
               bizUnit: user.sbuId,
               tourPlanDetailId: finalTourPlanDetailId,
@@ -1138,7 +1152,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
               clusterId: clusterId,
               impact: _impactController.text,
               deviationType: _deviationType!,
-              deviationStatus: 'Open',
+              deviationStatus: autoApprove ? 'Approved' : 'Open',
               commentCount: null,
               clusterName: clusterName,
               employeeId: userDetail!.employeeId,
@@ -1150,7 +1164,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
             if (mounted) {
               ToastMessage.show(
                 context,
-                message: 'Deviation updated successfully',
+                message: autoApprove ? 'Deviation updated and auto-approved' : 'Deviation updated successfully',
                 type: ToastType.success,
                 useRootNavigator: true,
                 duration: const Duration(seconds: 3),
@@ -1173,7 +1187,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
             final response = await deviationRepo.saveDeviation(
               id: null,
               createdBy: user.userId,
-              status: 0,
+              status: autoApprove ? 1 : 0,
               sbuId: user.sbuId,
               bizUnit: user.sbuId,
               tourPlanDetailId: finalTourPlanDetailId,
@@ -1185,7 +1199,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
               clusterId: clusterId,
               impact: _impactController.text,
               deviationType: _deviationType!,
-              deviationStatus: 'Open',
+              deviationStatus: autoApprove ? 'Approved' : 'Open',
               commentCount: null,
               clusterName: clusterName,
               employeeId: userDetail!.employeeId,
@@ -1197,7 +1211,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
             if (mounted) {
               ToastMessage.show(
                 context,
-                message: 'Deviation saved successfully',
+                message: autoApprove ? 'Deviation saved and auto-approved' : 'Deviation saved successfully',
                 type: ToastType.success,
                 useRootNavigator: true,
                 duration: const Duration(seconds: 3),

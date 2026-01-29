@@ -70,6 +70,15 @@ abstract class CommonRepository {
     int? distributerId,
     String? searchText,
   });
+  Future<List<CommonDropdownItem>> getMappedCustomersByEmployeeId({
+    String? searchText,
+    int? pageNumber,
+    int? pageSize,
+    int? employeeId,
+    int? clusterId,
+    int? customerTypeId,
+    int? id,
+  });
   Future<List<CommonDropdownItem>> getBatchNoList({
     required int itemId,
     required int employeeId,
@@ -119,4 +128,6 @@ abstract class CommonRepository {
     required String date,
     required int customerId,
   });
+  /// Generic GetAuto call by CommandType
+  Future<List<CommonDropdownItem>> getCommonAuto(int commandType, {int? userId});
 }

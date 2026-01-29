@@ -89,6 +89,7 @@ class Endpoints {
   static const String dcrGetMapDetails = "$baseUrl/PharmaCRM/DCR/GetDCRMapDetails";
   // Service Report Save endpoint
   static const String serviceReportSave = "$baseUrl/PharmaCRM/ServiceReport/Save";
+  static const String serviceReportUpdate = "$baseUrl/PharmaCRM/ServiceReport/Update";
 
 // Common endpoints for dropdowns
   static const String commonGetAuto = "$baseUrl/Common/GetAuto";

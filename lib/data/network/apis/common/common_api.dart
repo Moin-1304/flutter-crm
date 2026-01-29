@@ -250,15 +250,41 @@ class CommonApi {
   Future<List<CommonDropdownItem>> getDcrProductsList(int userId) async {
     try {
       final request = DcrProductsRequest(userId: userId);
+      final requestJson = request.toJson();
+      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestJson);
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 DCR Products (CommandType:335) API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.commonGetAuto}');
+      print('Method: POST');
+      print('Headers: Content-Type: application/json');
+      print('');
+      print('Request Payload (pretty JSON):');
+      print(requestJsonString);
+      print('═══════════════════════════════════════════════════════════');
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
-        data: request.toJson(),
+        data: requestJson,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
           },
         ),
       );
+
+      print('═══════════════════════════════════════════════════════════');
+      print('📥 DCR Products API Response');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.commonGetAuto}');
+      print('Status Code: ${response.statusCode}');
+      print('Response Type: ${response.data.runtimeType}');
+      if (response.data is List) {
+        print('Response Count: ${(response.data as List).length}');
+      } else if (response.data is Map) {
+        print('Response Keys: ${(response.data as Map).keys}');
+      }
+      print('═══════════════════════════════════════════════════════════');
 
       if (response.data != null) {
         if (response.data is List) {
@@ -684,6 +710,116 @@ class CommonApi {
       }
     } catch (e) {
       throw Exception('Failed to get customer list: ${e.toString()}');
+    }
+  }
+
+  /// Get Mapped Customers By Employee Id
+  /// Endpoint: POST /PharmaCRM/TourPlan/GetMappedCustomersByEmployeeId
+  /// Accepts a PascalCase payload similar to:
+  /// {
+  ///   "SearchText": null,
+  ///   "PageNumber": 0,
+  ///   "PageSize": 0,
+  ///   ...,
+  ///   "EmployeeId": null,
+  ///   "ClusterId": null,
+  ///   "CustomerTypeId": 0,
+  ///   "Id": 141
+  /// }
+  Future<List<CommonDropdownItem>> getMappedCustomersByEmployeeId({
+    String? searchText,
+    int? pageNumber,
+    int? pageSize,
+    int? employeeId,
+    int? clusterId,
+    int? customerTypeId,
+    int? id,
+  }) async {
+    try {
+      final requestData = {
+        'SearchText': searchText,
+        'PageNumber': pageNumber ?? 0,
+        'PageSize': pageSize ?? 0,
+        'SortOrder': 0,
+        'SortDir': 0,
+        'SortField': null,
+        'EmployeeId': employeeId,
+        'ClusterId': clusterId,
+        'CustomerId': null,
+        'Month': null,
+        'TourPlanId': null,
+        'UserId': null,
+        'Bizunit': null,
+        'FilterExpression': null,
+        'MonthNumber': null,
+        'Year': null,
+        'Id': id,
+        'Action': null,
+        'Comment': null,
+        'Status': null,
+        'TourPlanAcceptId': null,
+        'Remarks': null,
+        'ClusterIds': null,
+        'SelectedEmployeeId': null,
+        'Date': null,
+        'PlanDate': null,
+        'CustomerTypeId': customerTypeId ?? 0,
+      };
+
+      // Console logging for request details
+      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestData);
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 GetMappedCustomersByEmployeeId API Request');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.tourPlanGetMappedCustomersByEmployeeId}');
+      print('Method: POST');
+      print('Headers: Content-Type: application/json');
+      print('');
+      print('Request Payload (pretty JSON):');
+      print(requestJsonString);
+      print('═══════════════════════════════════════════════════════════');
+
+      final response = await _dioClient.dio.post(
+        Endpoints.tourPlanGetMappedCustomersByEmployeeId,
+        data: requestData,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      // Console logging for response details
+      print('═══════════════════════════════════════════════════════════');
+      print('📥 GetMappedCustomersByEmployeeId API Response');
+      print('═══════════════════════════════════════════════════════════');
+      print('URL: ${Endpoints.tourPlanGetMappedCustomersByEmployeeId}');
+      print('Status Code: ${response.statusCode}');
+      print('Response Type: ${response.data.runtimeType}');
+      if (response.data is List) {
+        print('Response Count: ${(response.data as List).length}');
+      } else if (response.data is Map) {
+        print('Response Keys: ${(response.data as Map).keys}');
+      }
+      print('═══════════════════════════════════════════════════════════');
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else if (response.data is Map && response.data.containsKey('data') && response.data['data'] is List) {
+          return (response.data['data'] as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception('Failed to get mapped customers: ${e.toString()}');
     }
   }
 

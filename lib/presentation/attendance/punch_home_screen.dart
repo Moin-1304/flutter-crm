@@ -125,7 +125,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     _loadTodayPunchRecords();
     // Only load Planned vs Visited Summary if user is not a Service Engineer
     if (!_isServiceEngineer()) {
-      _loadPlannedVsVisitedSummary();
+    _loadPlannedVsVisitedSummary();
     }
     _loadMonthlyStatusSummary();
     
@@ -154,7 +154,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
           _loadTodayPunchRecords();
           // Only load Planned vs Visited Summary if user is not a Service Engineer
           if (!_isServiceEngineer()) {
-            _loadPlannedVsVisitedSummary();
+          _loadPlannedVsVisitedSummary();
           }
           _loadMonthlyStatusSummary();
         }
@@ -1394,7 +1394,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     }
     // Only load Planned vs Visited Summary if user is not a Service Engineer
     if (!_isServiceEngineer()) {
-      _loadPlannedVsVisitedSummary();
+    _loadPlannedVsVisitedSummary();
     }
     _loadMonthlyStatusSummary();
     if (mounted) setState(() {});
