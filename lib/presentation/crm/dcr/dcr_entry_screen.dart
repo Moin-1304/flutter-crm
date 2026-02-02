@@ -169,9 +169,10 @@ class DcrEntryScreen extends StatefulWidget {
   State<DcrEntryScreen> createState() => _DcrEntryScreenState();
 }
 
-class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProviderStateMixin {
+class _DcrEntryScreenState extends State<DcrEntryScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  
+
   String? _cluster;
   String? _customer;
   String? _purpose;
@@ -230,10 +231,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   final TextEditingController _complaintCtrl = TextEditingController();
   final TextEditingController _actionTakenCtrl = TextEditingController();
   final TextEditingController _resultCtrl = TextEditingController();
-  String? _complaintStatus; // "Resolved" or "Not Resolved" (UI value, will be converted to int)
+  String?
+      _complaintStatus; // "Resolved" or "Not Resolved" (UI value, will be converted to int)
   DateTime? _complaintDate;
   final TextEditingController _complaintRemarksCtrl = TextEditingController();
-  
+
   // Service Report fields (from image)
   String? _serviceReportCustomer;
   final TextEditingController _contactPersonCtrl = TextEditingController();
@@ -295,7 +297,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
-    
+
     // Initialize TabController with dynamic tab count:
     // If creating a new DCR and the user is a Manager (roleCategory == 1 or 2),
     // show only the "Create DCR" tab. Otherwise show all three tabs.
@@ -378,7 +380,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
 
     // Check if user is Service Engineer
     _checkServiceEngineer();
-    
+
     // Pre-fill Service Date with today if not already set
     if (_serviceDate == null) {
       _serviceDate = DateTime.now();
@@ -398,6 +400,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         Future.wait([
           _loadClusterList(),
           _loadProductsList(),
+          _loadInstrumentsList(),
           _initLocation(),
           _loadCountries(),
           _loadCustomerTypes(),
@@ -416,6 +419,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         _loadClusterList(),
         _loadTypeOfWorkList(),
         _loadProductsList(),
+        _loadInstrumentsList(),
         _initLocation(),
         _loadCountries(),
         _loadCustomerTypes(),
@@ -715,7 +719,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   Future<void> _loadServiceDropdowns() async {
     try {
       if (!getIt.isRegistered<CommonRepository>()) {
-        print('DcrEntryScreen: [ServiceReport Dropdowns] CommonRepository not registered - skipping');
+        print(
+            'DcrEntryScreen: [ServiceReport Dropdowns] CommonRepository not registered - skipping');
         return;
       }
 
@@ -736,7 +741,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       String? serviceArea = userStore?.userDetail?.serviceArea;
 
       if (userId == null || userId <= 0) {
-        print('DcrEntryScreen: [ServiceReport Dropdowns] userId is null/0 - skipping');
+        print(
+            'DcrEntryScreen: [ServiceReport Dropdowns] userId is null/0 - skipping');
         return;
       }
 
@@ -752,13 +758,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         actualUserId = userId;
       }
 
-      print('DcrEntryScreen: [ServiceReport Dropdowns] Loading using UserId: $actualUserId');
+      print(
+          'DcrEntryScreen: [ServiceReport Dropdowns] Loading using UserId: $actualUserId');
 
       // CommandType 335 as requested
-      final List<CommonDropdownItem> items = await repo.getCommonAuto(335, userId: actualUserId);
+      final List<CommonDropdownItem> items =
+          await repo.getCommonAuto(335, userId: actualUserId);
 
       if (items.isEmpty) {
-        print('DcrEntryScreen: [ServiceReport Dropdowns] No items returned for commandType 335');
+        print(
+            'DcrEntryScreen: [ServiceReport Dropdowns] No items returned for commandType 335');
         return;
       }
 
@@ -774,7 +783,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         _feedbackNameToId.clear();
 
         for (final it in items) {
-          final String display = (it.text.isNotEmpty ? it.text : (it.name ?? '')).trim();
+          final String display =
+              (it.text.isNotEmpty ? it.text : (it.name ?? '')).trim();
           if (display.isEmpty) continue;
           // Use same set for all — backend should return type-distinguished items
           _serviceTypeOptions.add(display);
@@ -792,14 +802,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
 
         // Deduplicate and sort
         _serviceTypeOptions = _serviceTypeOptions.toSet().toList()..sort();
-        _electricitySafetyOptions = _electricitySafetyOptions.toSet().toList()..sort();
+        _electricitySafetyOptions = _electricitySafetyOptions.toSet().toList()
+          ..sort();
         _serviceStatusOptions = _serviceStatusOptions.toSet().toList()..sort();
         _feedbackOptions = _feedbackOptions.toSet().toList()..sort();
       });
 
-      print('DcrEntryScreen: [ServiceReport Dropdowns] Loaded serviceType=${_serviceTypeOptions.length}, safety=${_electricitySafetyOptions.length}, status=${_serviceStatusOptions.length}, feedback=${_feedbackOptions.length}');
+      print(
+          'DcrEntryScreen: [ServiceReport Dropdowns] Loaded serviceType=${_serviceTypeOptions.length}, safety=${_electricitySafetyOptions.length}, status=${_serviceStatusOptions.length}, feedback=${_feedbackOptions.length}');
     } catch (e) {
-      print('DcrEntryScreen: [ServiceReport Dropdowns] Error loading dropdowns: $e');
+      print(
+          'DcrEntryScreen: [ServiceReport Dropdowns] Error loading dropdowns: $e');
     }
   }
 
@@ -948,7 +961,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   /// for the employee (optionally filtered by customerTypeId or date).
   Future<void> _loadMappedCustomersForServiceReport() async {
     try {
-      print('DcrEntryScreen: [ServiceReport - Customers] Start loading mapped customers');
+      print(
+          'DcrEntryScreen: [ServiceReport - Customers] Start loading mapped customers');
       if (!getIt.isRegistered<TourPlanRepository>()) {
         print(
             'DcrEntryScreen: [ServiceReport - Customers] TourPlanRepository not registered - skipping');
@@ -961,7 +975,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           : null;
       final int? employeeId = userStore?.userDetail?.employeeId;
       if (employeeId == null) {
-        print('DcrEntryScreen: [ServiceReport - Customers] employeeId is null - skipping');
+        print(
+            'DcrEntryScreen: [ServiceReport - Customers] employeeId is null - skipping');
         return;
       }
 
@@ -998,9 +1013,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         customerTypeId: 0,
       );
 
-      print('DcrEntryScreen: [ServiceReport - Customers] Request body => ${req.toJson()}');
+      print(
+          'DcrEntryScreen: [ServiceReport - Customers] Request body => ${req.toJson()}');
       final res = await repo.getMappedCustomersByEmployeeId(req);
-      print('DcrEntryScreen: [ServiceReport - Customers] API returned ${res.customers.length} customers');
+      print(
+          'DcrEntryScreen: [ServiceReport - Customers] API returned ${res.customers.length} customers');
 
       if (res.customers.isEmpty) {
         setState(() {
@@ -1020,9 +1037,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         _customerOptions = _customerOptions.toSet().toList();
         _customerOptions.sort();
       });
-      print('DcrEntryScreen: [ServiceReport - Customers] Loaded ${_customerOptions.length} customers');
+      print(
+          'DcrEntryScreen: [ServiceReport - Customers] Loaded ${_customerOptions.length} customers');
     } catch (e) {
-      print('DcrEntryScreen: [ServiceReport - Customers] Error loading customers: $e');
+      print(
+          'DcrEntryScreen: [ServiceReport - Customers] Error loading customers: $e');
     }
   }
 
@@ -1215,7 +1234,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           'IncludeCancelled': false,
         };
 
-        print('DcrEntryScreen: [CustomerTypes] Requesting CommandType=102 (CUSTOMER SUBTYPE)');
+        print(
+            'DcrEntryScreen: [CustomerTypes] Requesting CommandType=102 (CUSTOMER SUBTYPE)');
         final response = await dioClient.dio.post(
           Endpoints.commonGetAuto,
           data: requestData,
@@ -1240,9 +1260,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
               if (key.isNotEmpty) _customerTypeNameToId[key] = item.id;
             }
           });
-          print('DcrEntryScreen: [CustomerTypes] Loaded ${_customerTypeOptions.length} customer types');
+          print(
+              'DcrEntryScreen: [CustomerTypes] Loaded ${_customerTypeOptions.length} customer types');
         } else {
-          print('DcrEntryScreen: [CustomerTypes] No customer types returned from API');
+          print(
+              'DcrEntryScreen: [CustomerTypes] No customer types returned from API');
         }
       }
     } catch (e) {
@@ -1270,7 +1292,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           'IncludeCancelled': false,
         };
 
-        print('DcrEntryScreen: [Countries] Requesting CommandType=5 for countries');
+        print(
+            'DcrEntryScreen: [Countries] Requesting CommandType=5 for countries');
         final response = await dioClient.dio.post(
           Endpoints.commonGetAuto,
           data: requestData,
@@ -1297,7 +1320,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
               }
             }
           });
-          print('DcrEntryScreen: [Countries] Loaded ${_countryOptions.length} countries');
+          print(
+              'DcrEntryScreen: [Countries] Loaded ${_countryOptions.length} countries');
         } else {
           print('DcrEntryScreen: [Countries] No countries returned from API');
         }
@@ -1326,7 +1350,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           'IncludeCancelled': false,
         };
 
-        print('DcrEntryScreen: [States] Requesting CommandType=14 for countryId: $countryId');
+        print(
+            'DcrEntryScreen: [States] Requesting CommandType=14 for countryId: $countryId');
         final response = await dioClient.dio.post(
           Endpoints.commonGetAuto,
           data: requestData,
@@ -1353,9 +1378,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
               }
             }
           });
-          print('DcrEntryScreen: [States] Loaded ${_stateOptions.length} states for countryId: $countryId');
+          print(
+              'DcrEntryScreen: [States] Loaded ${_stateOptions.length} states for countryId: $countryId');
         } else {
-          print('DcrEntryScreen: [States] No states returned from API for countryId: $countryId');
+          print(
+              'DcrEntryScreen: [States] No states returned from API for countryId: $countryId');
         }
       }
     } catch (e) {
@@ -1407,9 +1434,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                 }
               }
             });
-            print('DcrEntryScreen: [Cities] Loaded ${_cityOptions.length} cities for stateId: $stateId');
+            print(
+                'DcrEntryScreen: [Cities] Loaded ${_cityOptions.length} cities for stateId: $stateId');
           } else {
-            print('DcrEntryScreen: [Cities] No cities returned from API for stateId: $stateId');
+            print(
+                'DcrEntryScreen: [Cities] No cities returned from API for stateId: $stateId');
           }
         }
       }
@@ -1758,7 +1787,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                         controller: _tabController,
                         children: [
                           _buildCreateDcrTab(context, screenTheme, tealGreen),
-                          _buildServiceReportTab(context, screenTheme, tealGreen),
+                          _buildServiceReportTab(
+                              context, screenTheme, tealGreen),
                           _buildCustomerTab(context, screenTheme, tealGreen),
                         ],
                       ),
@@ -1802,85 +1832,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   }
 
   // Build Create DCR Tab
-  Widget _buildCreateDcrTab(BuildContext context, ThemeData screenTheme, Color tealGreen) {
-    return SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                      MediaQuery.of(context).size.width < 600 ? 12 : 16,
-                      12,
-                      MediaQuery.of(context).size.width < 600 ? 12 : 16,
-                      16 + MediaQuery.of(context).padding.bottom),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 800),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Card(
-                            color: Colors.white,
-                            surfaceTintColor: Colors.transparent,
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(
-                                  MediaQuery.of(context).size.width < 600
-                                      ? 16.0
-                                      : 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _buildCreateDcrFields(context, screenTheme, tealGreen),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Build Service Report Tab
-  Widget _buildServiceReportTab(BuildContext context, ThemeData screenTheme, Color tealGreen) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-          MediaQuery.of(context).size.width < 600 ? 12 : 16,
-          12,
-          MediaQuery.of(context).size.width < 600 ? 12 : 16,
-          16 + MediaQuery.of(context).padding.bottom),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-              Card(
-                color: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(
-                      MediaQuery.of(context).size.width < 600
-                          ? 16.0
-                          : 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _buildServiceReportFields(context, screenTheme),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Build Customer Tab
-  Widget _buildCustomerTab(BuildContext context, ThemeData screenTheme, Color tealGreen) {
+  Widget _buildCreateDcrTab(
+      BuildContext context, ThemeData screenTheme, Color tealGreen) {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
           MediaQuery.of(context).size.width < 600 ? 12 : 16,
@@ -1902,9 +1855,84 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                 ),
                 child: Padding(
                   padding: EdgeInsets.all(
-                      MediaQuery.of(context).size.width < 600
-                          ? 16.0
-                          : 20.0),
+                      MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children:
+                        _buildCreateDcrFields(context, screenTheme, tealGreen),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build Service Report Tab
+  Widget _buildServiceReportTab(
+      BuildContext context, ThemeData screenTheme, Color tealGreen) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          12,
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          16 + MediaQuery.of(context).padding.bottom),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(
+                      MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _buildServiceReportFields(context, screenTheme),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Build Customer Tab
+  Widget _buildCustomerTab(
+      BuildContext context, ThemeData screenTheme, Color tealGreen) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          12,
+          MediaQuery.of(context).size.width < 600 ? 12 : 16,
+          16 + MediaQuery.of(context).padding.bottom),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(
+                      MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: _buildCustomerFields(context, screenTheme),
@@ -1919,156 +1947,199 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   }
 
   // Build Create DCR Fields - returns list of widgets
-  List<Widget> _buildCreateDcrFields(BuildContext context, ThemeData theme, Color tealGreen) {
+  List<Widget> _buildCreateDcrFields(
+      BuildContext context, ThemeData theme, Color tealGreen) {
     return [
-                                  // 1. Date
-                                  _LabeledField(
-                                    label: 'Date',
-                                    child: _DateField(
-                                      initialDate: _date,
+      // 1. Date
+      _LabeledField(
+        label: 'Date',
+        child: _DateField(
+          initialDate: _date,
           onChanged: (d) => setState(() => _date = d),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  // 2. Employee (read-only)
-                                  _LabeledField(
-                                    label: 'Employee',
-                                    child: Builder(
-                                      builder: (context) {
-            final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-                                            ? getIt<UserDetailStore>()
-                                            : null;
-            final String employeeName = userStore?.userDetail?.employeeName ?? '';
-                                        return TextFormField(
-                                          readOnly: true,
-                                          initialValue: employeeName,
-                                          decoration: const InputDecoration(
-                                            hintText: 'Employee name',
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  // 3. Cluster / City *
-                                  _LabeledField(
-                                    label: 'Cluster / City',
-                                    required: true,
-                                    errorText: _clusterErrorText,
-                                    child: SearchableDropdown(
-                                      options: _clusters,
-                                      value: _cluster,
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 2. Employee (read-only)
+      _LabeledField(
+        label: 'Employee',
+        child: Builder(
+          builder: (context) {
+            final UserDetailStore? userStore =
+                getIt.isRegistered<UserDetailStore>()
+                    ? getIt<UserDetailStore>()
+                    : null;
+            final String employeeName =
+                userStore?.userDetail?.employeeName ?? '';
+            return TextFormField(
+              readOnly: true,
+              initialValue: employeeName,
+              decoration: const InputDecoration(
+                hintText: 'Employee name',
+              ),
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 3. Cluster / City *
+      _LabeledField(
+        label: 'Cluster / City',
+        required: true,
+        errorText: _clusterErrorText,
+        child: SearchableDropdown(
+          options: _clusters,
+          value: _cluster,
           hintText: 'Type to search cluster/city...',
-                                      searchHintText: 'Search cluster...',
-                                      hasError: _clusterErrorText != null,
-                                      onChanged: (v) {
-                                        setState(() {
-                                          _cluster = v;
-                                          _clusterErrorText = null;
-                                          _customer = null;
-                                          _customerErrorText = null;
-                                        });
-                                        _loadMappedCustomers();
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  // 4. Time of Visit
-                                  _LabeledField(
-                                    label: 'Time of Visit',
-                                    child: _TimeField(
-                                      initial: _time,
-          onChanged: (t) => setState(() => _time = t),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                  // 5. Actual Call Details (section header)
-                                  Text(
-                                    'Actual Call Details',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
-                                      color: const Color(0xFF4db1b3),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 20),
-                                  // 6. Customer *
-                                  _LabeledField(
-                                    label: 'Customer',
-                                    required: true,
-                                    errorText: _customerErrorText,
-                                    child: SearchableDropdown(
-                                      options: _customerOptions,
-                                      value: _customer,
-                                      hintText: '-- Select Customer --',
-                                      searchHintText: 'Search customer...',
-                                      hasError: _customerErrorText != null,
-                                      onChanged: (v) {
-                                        setState(() {
-                                          _customer = v;
-                                          _customerErrorText = null;
+          searchHintText: 'Search cluster...',
+          hasError: _clusterErrorText != null,
+          onChanged: (v) {
+            setState(() {
+              _cluster = v;
+              _clusterErrorText = null;
+              _customer = null;
+              _customerErrorText = null;
             });
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  // 7. Type of Visit *
-                                  _LabeledField(
-                                    label: 'Type of Visit',
-                                    required: true,
-                                    errorText: _purposeErrorText,
-                                    child: SearchableDropdown(
-          key: ValueKey('purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
-                                      options: _purposeOptions,
-                                      value: _purpose,
-                                      hintText: '-- Select Visit Type --',
-                                      searchHintText: 'Search purpose...',
-                                      hasError: _purposeErrorText != null,
-                                      onChanged: (v) {
-                                        setState(() {
-                                          _purpose = v;
-                                          _purposeErrorText = null;
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  // 8. Products Discussed *
-                                  _LabeledField(
-                                    label: 'Products Discussed',
-                                    required: true,
-                                    child: Column(
+            _loadMappedCustomers();
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 4. Time of Visit
+      _LabeledField(
+        label: 'Time of Visit',
+        child: _TimeField(
+          initial: _time,
+          onChanged: (t) => setState(() => _time = t),
+        ),
+      ),
+      const SizedBox(height: 24),
+      // 5. Actual Call Details (section header)
+      Text(
+        'Actual Call Details',
+        style: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF4db1b3),
+        ),
+      ),
+      const SizedBox(height: 20),
+      // 6. Customer *
+      _LabeledField(
+        label: 'Customer',
+        required: true,
+        errorText: _customerErrorText,
+        child: SearchableDropdown(
+          options: _customerOptions,
+          value: _customer,
+          hintText: '-- Select Customer --',
+          searchHintText: 'Search customer...',
+          hasError: _customerErrorText != null,
+          onChanged: (v) {
+            setState(() {
+              _customer = v;
+              _customerErrorText = null;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 7. Type of Visit *
+      _LabeledField(
+        label: 'Type of Visit',
+        required: true,
+        errorText: _purposeErrorText,
+        child: SearchableDropdown(
+          key: ValueKey(
+              'purpose_${_purpose ?? 'null'}_${_purposeOptions.length}_v$_purposeVersion'),
+          options: _purposeOptions,
+          value: _purpose,
+          hintText: '-- Select Visit Type --',
+          searchHintText: 'Search purpose...',
+          hasError: _purposeErrorText != null,
+          onChanged: (v) {
+            setState(() {
+              _purpose = v;
+              _purposeErrorText = null;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // 8. Products Discussed *
+      _LabeledField(
+        label: 'Products Discussed',
+        required: true,
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _MultiSelectDropdown(
-                                          options: _productOptions,
-                                          selectedValues: _selectedProducts,
-                                          hintText: 'Select Products',
-                                          onChanged: (Set<String> selected) {
-                                            setState(() {
-                                              _selectedProducts = selected;
-                                              if (selected.isNotEmpty) {
-                                                _productsErrorText = null;
-                                              }
-                                            });
-                                          },
-                                        ),
-                                        if (_productsErrorText != null) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _productsErrorText!,
-                                            style: TextStyle(
-                                              color: Colors.red[700],
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                    const SizedBox(height: 16),
-      // 9. Samples Distributed
-                                    _LabeledField(
+          children: [
+            _MultiSelectDropdown(
+              options: _productOptions,
+              selectedValues: _selectedProducts,
+              hintText: 'Select Products',
+              onChanged: (Set<String> selected) {
+                setState(() {
+                  _selectedProducts = selected;
+                  if (selected.isNotEmpty) {
+                    _productsErrorText = null;
+                  }
+                });
+              },
+            ),
+            if (_productsErrorText != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _productsErrorText!,
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+
+      // add if condition if the logged in person is service engineer than only show this field
+    if (_isServiceEngineer) ...[
+      const SizedBox(height: 16),
+      // 9. Mapped Instruments *
+      _LabeledField(
+        label: 'Equipment',
+        required: true,
+        
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _MultiSelectDropdown(
+              options: _instrumentOptions,
+              selectedValues: _selectedInstruments,
+              hintText: 'Equipment',
+              onChanged: (Set<String> selected) {
+                setState(() {
+                  _selectedInstruments = selected;
+                  if (selected.isNotEmpty) {
+                    _instrumentsErrorText = null;
+                  }
+                });
+              },
+            ),
+            if (_productsErrorText != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _productsErrorText!,
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ],
+      const SizedBox(height: 16),
+      // 10. Samples Distributed
+      _LabeledField(
         label: 'Samples Distributed',
         child: TextFormField(
           controller: _samplesCtrl,
@@ -2078,42 +2149,42 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           ),
         ),
       ),
-                                  const SizedBox(height: 16),
-                                  // 10. Call Duration (minutes)
-                                  _LabeledField(
-                                    label: 'Call Duration (minutes)',
-                                    errorText: _durationErrorText,
-                                    child: TextFormField(
-                                      controller: _durationCtrl,
-                                      keyboardType: TextInputType.number,
-                                      decoration: InputDecoration(
-                                        hintText: 'Enter duration in minutes',
-                                        filled: true,
-                                        fillColor: Colors.white,
-                                        enabledBorder: OutlineInputBorder(
+      const SizedBox(height: 16),
+      // 11. Call Duration (minutes)
+      _LabeledField(
+        label: 'Call Duration (minutes)',
+        errorText: _durationErrorText,
+        child: TextFormField(
+          controller: _durationCtrl,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: 'Enter duration in minutes',
+            filled: true,
+            fillColor: Colors.white,
+            enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-                                          borderSide: BorderSide(
-                                              color: _durationErrorText != null
-                                                  ? Colors.red.shade400
-                                                  : Colors.grey.shade300,
-                                              width: 1),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                  color: _durationErrorText != null
+                      ? Colors.red.shade400
+                      : Colors.grey.shade300,
+                  width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-                                          borderSide: BorderSide(
-                                              color: _durationErrorText != null
-                                                  ? Colors.red.shade400
-                                                  : const Color(0xFF4db1b3),
-                                              width: 2),
-                                        ),
-            contentPadding: const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 12),
-                                      ),
+              borderSide: BorderSide(
+                  color: _durationErrorText != null
+                      ? Colors.red.shade400
+                      : const Color(0xFF4db1b3),
+                  width: 2),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          ),
           onChanged: (_) => setState(() => _durationErrorText = null),
         ),
       ),
       const SizedBox(height: 16),
-      // 11. Key Discussion Points
+      // 12. Key Discussion Points
       _LabeledField(
         label: 'Key Discussion Points',
         child: TextFormField(
@@ -2125,7 +2196,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         ),
       ),
       const SizedBox(height: 16),
-      // 12. Co-Visit
+      // 13. Co-Visit
       Row(
         children: [
           Checkbox(
@@ -2239,7 +2310,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   }
 
   // Build Service Report Fields
-  List<Widget> _buildServiceReportFields(BuildContext context, ThemeData theme) {
+  List<Widget> _buildServiceReportFields(
+      BuildContext context, ThemeData theme) {
     return [
       // Customer Information Section
       Text(
@@ -2250,9 +2322,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           color: Colors.grey.shade800,
         ),
       ),
-                                    const SizedBox(height: 16),
+      const SizedBox(height: 16),
       // Customer Name *
-                                    _LabeledField(
+      _LabeledField(
         label: 'Customer Name',
         required: true,
         child: SearchableDropdown(
@@ -2326,7 +2398,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         ),
       ),
       const SizedBox(height: 24),
-      
+
       // Product Information Section
       Text(
         'Product Information',
@@ -2373,7 +2445,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           value: _selectedServiceType,
           decoration: InputDecoration(
             hintText: 'Select Service Type',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            hintStyle: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w400),
             filled: true,
             fillColor: Colors.white,
             enabledBorder: OutlineInputBorder(
@@ -2404,7 +2477,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         child: TextFormField(
           readOnly: true,
           decoration: InputDecoration(
-            hintText: _startTime != null 
+            hintText: _startTime != null
                 ? '${_startTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_startTime!.month)}-${_startTime!.year} ${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}'
                 : 'dd-MMM-yyyy HH:mm',
             suffixIcon: const Icon(Icons.calendar_today),
@@ -2419,8 +2492,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
             if (pickedDate != null) {
               final TimeOfDay? pickedTime = await showTimePicker(
                 context: context,
-                initialTime: _startTime != null 
-                    ? TimeOfDay(hour: _startTime!.hour, minute: _startTime!.minute)
+                initialTime: _startTime != null
+                    ? TimeOfDay(
+                        hour: _startTime!.hour, minute: _startTime!.minute)
                     : TimeOfDay.now(),
               );
               if (pickedTime != null) {
@@ -2445,7 +2519,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         child: TextFormField(
           readOnly: true,
           decoration: InputDecoration(
-            hintText: _endTime != null 
+            hintText: _endTime != null
                 ? '${_endTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_endTime!.month)}-${_endTime!.year} ${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}'
                 : 'dd-MMM-yyyy HH:mm',
             suffixIcon: const Icon(Icons.calendar_today),
@@ -2460,7 +2534,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
             if (pickedDate != null) {
               final TimeOfDay? pickedTime = await showTimePicker(
                 context: context,
-                initialTime: _endTime != null 
+                initialTime: _endTime != null
                     ? TimeOfDay(hour: _endTime!.hour, minute: _endTime!.minute)
                     : TimeOfDay.now(),
               );
@@ -2487,7 +2561,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           value: _selectedElectricitySafetyTest,
           decoration: InputDecoration(
             hintText: 'Select',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            hintStyle: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w400),
             filled: true,
             fillColor: Colors.white,
             enabledBorder: OutlineInputBorder(
@@ -2511,7 +2586,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         ),
       ),
       const SizedBox(height: 24),
-      
+
       // Complaint Information Section
       Text(
         'Complaint Information',
@@ -2525,45 +2600,45 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       // Complaint Details
       _LabeledField(
         label: 'Complaint Details',
-                                      child: TextFormField(
-                                        controller: _complaintCtrl,
-                                        maxLines: 4,
-                                        decoration: const InputDecoration(
-                                          hintText: 'Enter complaint details',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
+        child: TextFormField(
+          controller: _complaintCtrl,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Enter complaint details',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Action Taken
-                                    _LabeledField(
-                                      label: 'Action Taken',
-                                      child: TextFormField(
-                                        controller: _actionTakenCtrl,
-                                        maxLines: 4,
-                                        decoration: const InputDecoration(
-                                          hintText: 'Enter action taken',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
+      _LabeledField(
+        label: 'Action Taken',
+        child: TextFormField(
+          controller: _actionTakenCtrl,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Enter action taken',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Result
-                                    _LabeledField(
-                                      label: 'Result',
-                                      child: TextFormField(
-                                        controller: _resultCtrl,
-                                        decoration: const InputDecoration(
-                                          hintText: 'Enter result',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
+      _LabeledField(
+        label: 'Result',
+        child: TextFormField(
+          controller: _resultCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Enter result',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Complaint Date Time
-                                    _LabeledField(
+      _LabeledField(
         label: 'Complaint Date Time',
         child: TextFormField(
           readOnly: true,
           decoration: InputDecoration(
-            hintText: _complaintDateTime != null 
+            hintText: _complaintDateTime != null
                 ? '${_complaintDateTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_complaintDateTime!.month)}-${_complaintDateTime!.year} ${_complaintDateTime!.hour.toString().padLeft(2, '0')}:${_complaintDateTime!.minute.toString().padLeft(2, '0')}'
                 : 'dd-MMM-yyyy HH:mm',
             suffixIcon: const Icon(Icons.calendar_today),
@@ -2578,12 +2653,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
             if (pickedDate != null) {
               final TimeOfDay? pickedTime = await showTimePicker(
                 context: context,
-                initialTime: _complaintDateTime != null 
-                    ? TimeOfDay(hour: _complaintDateTime!.hour, minute: _complaintDateTime!.minute)
+                initialTime: _complaintDateTime != null
+                    ? TimeOfDay(
+                        hour: _complaintDateTime!.hour,
+                        minute: _complaintDateTime!.minute)
                     : TimeOfDay.now(),
               );
               if (pickedTime != null) {
-                                          setState(() {
+                setState(() {
                   _complaintDateTime = DateTime(
                     pickedDate.year,
                     pickedDate.month,
@@ -2594,12 +2671,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                 });
               }
             }
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
       // Service Rate
-                                    _LabeledField(
+      _LabeledField(
         label: 'Service Rate',
         child: TextFormField(
           controller: _serviceRateCtrl,
@@ -2617,7 +2694,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           value: _selectedServiceReportStatus,
           decoration: InputDecoration(
             hintText: 'Select Status',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            hintStyle: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w400),
             filled: true,
             fillColor: Colors.white,
             enabledBorder: OutlineInputBorder(
@@ -2632,16 +2710,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
             );
           }).toList(),
           onChanged: (ServiceReportStatus? val) {
-                                          setState(() {
+            setState(() {
               _selectedServiceReportStatus = val;
               _serviceStatus = val?.description;
-                                          });
-                                        },
+            });
+          },
           isExpanded: true,
         ),
       ),
       const SizedBox(height: 24),
-      
+
       // Work Information Section
       Text(
         'Work Information',
@@ -2651,31 +2729,31 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           color: Colors.grey.shade800,
         ),
       ),
-                                    const SizedBox(height: 16),
+      const SizedBox(height: 16),
       // Work Description
-                                    _LabeledField(
+      _LabeledField(
         label: 'Work Description',
-                                      child: TextFormField(
+        child: TextFormField(
           controller: _workDescriptionCtrl,
-                                        maxLines: 4,
-                                        decoration: const InputDecoration(
+          maxLines: 4,
+          decoration: const InputDecoration(
             hintText: 'Enter work description',
-                                        ),
-                                      ),
-                                    ),
-                                  const SizedBox(height: 16),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Materials Used
-                                  _LabeledField(
+      _LabeledField(
         label: 'Materials Used',
-                                    child: TextFormField(
+        child: TextFormField(
           controller: _materialsUsedCtrl,
-                                      maxLines: 4,
-                                      decoration: const InputDecoration(
+          maxLines: 4,
+          decoration: const InputDecoration(
             hintText: 'Enter materials used',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Remarks
       _LabeledField(
         label: 'Remarks',
@@ -2688,7 +2766,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
         ),
       ),
       const SizedBox(height: 24),
-      
+
       // Customer Feedback Section
       Text(
         'Customer Feedback',
@@ -2706,7 +2784,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           value: _selectedFeedbackOption,
           decoration: InputDecoration(
             hintText: 'Select Feedback',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w400),
+            hintStyle: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w400),
             filled: true,
             fillColor: Colors.white,
             enabledBorder: OutlineInputBorder(
@@ -2721,20 +2800,20 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
             );
           }).toList(),
           onChanged: (ServiceFeedbackStatus? val) {
-                                          setState(() {
+            setState(() {
               _selectedFeedbackOption = val;
               _feedbackOption = val?.description;
-                                          });
-                                        },
+            });
+          },
           isExpanded: true,
-                                      ),
+        ),
       ),
       const SizedBox(height: 24),
-      
+
       // Signature Block Section
-                                      Text(
+      Text(
         'Signature Block',
-                                        style: GoogleFonts.inter(
+        style: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: Colors.grey.shade800,
@@ -2770,7 +2849,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           child: Container(
             height: 120,
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
+              border: Border.all(
+                  color: Colors.grey.shade300, style: BorderStyle.solid),
               borderRadius: BorderRadius.circular(8),
             ),
             child: _signatureImageBase64 == null
@@ -2783,9 +2863,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                         Text(
                           'Tap to add signature',
                           style: TextStyle(color: Colors.grey.shade600),
-                                      ),
-                                    ],
-                                  ),
+                        ),
+                      ],
+                    ),
                   )
                 : Padding(
                     padding: const EdgeInsets.all(8.0),
@@ -2818,8 +2898,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                         ));
 
                 try {
-                  final dioClient =
-                      getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
+                  final dioClient = getIt.isRegistered<DioClient>()
+                      ? getIt<DioClient>()
+                      : null;
                   if (dioClient == null) {
                     throw Exception('Network client not available');
                   }
@@ -2828,7 +2909,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                       (_customerNameToId[_serviceReportCustomer] ?? 0);
                   final int productId =
                       (_productNameToId[_serviceReportProduct] ?? 0);
-                  final int currentUserId = getIt.isRegistered<UserDetailStore>() ? (getIt<UserDetailStore>().userDetail?.id ?? 0) : 0;
+                  final int currentUserId =
+                      getIt.isRegistered<UserDetailStore>()
+                          ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
+                          : 0;
                   final Map<String, dynamic> payload = {
                     'id': _serviceReportId ?? 0,
                     'createdBy': currentUserId,
@@ -2839,8 +2923,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                     'customerId': customerId,
                     'contactPerson': _contactPersonCtrl.text.trim(),
                     'contactMobile': _contactMobileCtrl.text.trim(),
-                    'serviceDate':
-                        _serviceDate?.toIso8601String() ?? DateTime.now().toIso8601String(),
+                    'serviceDate': _serviceDate?.toIso8601String() ??
+                        DateTime.now().toIso8601String(),
                     'productId': productId,
                     'product': _serviceReportProduct ?? '',
                     'serialNumber': _serialNumberCtrl.text.trim(),
@@ -2848,29 +2932,36 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                     'serviceType': _selectedServiceType?.description ?? '',
                     'startTime': _startTime?.toIso8601String(),
                     'endTime': _endTime?.toIso8601String(),
-                    'electricitySafetyTest': _selectedElectricitySafetyTest?.description ?? '',
-                    'electricitySafetyTestId': _selectedElectricitySafetyTest?.value ?? 0,
+                    'electricitySafetyTest':
+                        _selectedElectricitySafetyTest?.description ?? '',
+                    'electricitySafetyTestId':
+                        _selectedElectricitySafetyTest?.value ?? 0,
                     'complaintDetails': _complaintCtrl.text.trim(),
                     'actionTaken': _actionTakenCtrl.text.trim(),
                     'result': _resultCtrl.text.trim(),
                     'complaintDateTime': _complaintDateTime?.toIso8601String(),
                     'serviceStatusId': _selectedServiceReportStatus?.value ?? 0,
-                    'serviceStatus': _selectedServiceReportStatus?.description ?? '',
+                    'serviceStatus':
+                        _selectedServiceReportStatus?.description ?? '',
                     'workDescription': _workDescriptionCtrl.text.trim(),
                     'materialsUsed': _materialsUsedCtrl.text.trim(),
                     'remarks': _serviceRemarksCtrl.text.trim(),
-                    'feedbackOption': _selectedFeedbackOption?.description ?? '',
+                    'feedbackOption':
+                        _selectedFeedbackOption?.description ?? '',
                     'feedbackOptionId': _selectedFeedbackOption?.value ?? 0,
                     'signedBy': _signedByCtrl.text.trim(),
                     'signatureValue': null,
                     'signatureImageBase64': null,
-                    'serviceRate': double.tryParse(_serviceRateCtrl.text.trim()) ?? 0
+                    'serviceRate':
+                        double.tryParse(_serviceRateCtrl.text.trim()) ?? 0
                   };
 
-                  final String url = (_serviceReportId != null && _serviceReportId! > 0)
-                      ? Endpoints.serviceReportUpdate
-                      : Endpoints.serviceReportSave;
-                  print('📞 [ServiceReport] Sending to $url payload: ${payload}');
+                  final String url =
+                      (_serviceReportId != null && _serviceReportId! > 0)
+                          ? Endpoints.serviceReportUpdate
+                          : Endpoints.serviceReportSave;
+                  print(
+                      '📞 [ServiceReport] Sending to $url payload: ${payload}');
                   final response = await dioClient.dio.post(
                     url,
                     data: payload,
@@ -2894,7 +2985,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                     );
                     print('✅ [ServiceReport] Save response: ${response.data}');
                   } else {
-                    print('❌ [ServiceReport] Save failed: ${response.statusCode} ${response.data}');
+                    print(
+                        '❌ [ServiceReport] Save failed: ${response.statusCode} ${response.data}');
                     ToastMessage.show(
                       context,
                       message: 'Failed to save service report',
@@ -2904,7 +2996,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                   }
                 } catch (e, s) {
                   if (mounted) Navigator.of(context).pop();
-                  print('❌ [ServiceReport] Error saving service report: $e\n$s');
+                  print(
+                      '❌ [ServiceReport] Error saving service report: $e\n$s');
                   ToastMessage.show(
                     context,
                     message: 'Error: ${e.toString()}',
@@ -2929,19 +3022,50 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           elevation: 2,
         ),
         child: _isSubmitting
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
             : const Text('Save'),
       ),
     ];
   }
-  
+
   String _getMonthName(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return months[month - 1];
   }
-  
+
   String _formatServiceDate(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${date.day.toString().padLeft(2, '0')}-${months[date.month - 1]}-${date.year}';
   }
 
@@ -2960,6 +3084,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
     );
     return result;
   }
+
   // Build Customer Fields
   List<Widget> _buildCustomerFields(BuildContext context, ThemeData theme) {
     return [
@@ -2973,32 +3098,32 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           ),
         ),
       ),
-                                    const SizedBox(height: 16),
+      const SizedBox(height: 16),
       // Code
-                                    _LabeledField(
+      _LabeledField(
         label: 'Code',
-                                    child: TextFormField(
+        child: TextFormField(
           controller: _customerCodeCtrl,
-                                      decoration: const InputDecoration(
+          decoration: const InputDecoration(
             hintText: 'Enter customer code',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Customer Type *
-                                  _LabeledField(
+      _LabeledField(
         label: 'Customer Type',
-                                      required: true,
+        required: true,
         child: SearchableDropdown(
           options: _customerTypeOptions,
           value: _selectedCustomerType,
           hintText: '-- Select Customer Type --',
           searchHintText: 'Search customer type...',
           onChanged: (v) {
-                                          setState(() {
+            setState(() {
               _selectedCustomerType = v;
-                                          });
-                                        },
+            });
+          },
         ),
       ),
       const SizedBox(height: 16),
@@ -3006,26 +3131,26 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
       _LabeledField(
         label: 'Mobile',
         required: true,
-                                    child: TextFormField(
+        child: TextFormField(
           controller: _customerMobileCtrl,
           keyboardType: TextInputType.phone,
-                                      decoration: const InputDecoration(
+          decoration: const InputDecoration(
             hintText: 'Enter mobile number',
-                                      ),
-                                    ),
-                                  ),
-                                    const SizedBox(height: 16),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Country *
-                                    _LabeledField(
+      _LabeledField(
         label: 'Country',
-                                      required: true,
+        required: true,
         child: SearchableDropdown(
           options: _countryOptions,
           value: _selectedCountry,
           hintText: '-- Select Country --',
           searchHintText: 'Search country...',
-                                              onChanged: (v) {
-                                                setState(() {
+          onChanged: (v) {
+            setState(() {
               _selectedCountry = v;
               _selectedState = null;
               _selectedCity = null;
@@ -3038,10 +3163,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                   _loadStates(countryId);
                 }
               }
-                                                });
-                                              },
-                                            ),
-                                    ),
+            });
+          },
+        ),
+      ),
       const SizedBox(height: 16),
       // State *
       _LabeledField(
@@ -3052,8 +3177,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
           value: _selectedState,
           hintText: '-- Select State --',
           searchHintText: 'Search state...',
-                                              onChanged: (v) {
-                                                setState(() {
+          onChanged: (v) {
+            setState(() {
               _selectedState = v;
               _selectedCity = null;
               _cityOptions.clear();
@@ -3064,28 +3189,28 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                   _loadCities(stateId);
                 }
               }
-                                                });
-                                              },
-                                            ),
-                                    ),
-                                    const SizedBox(height: 16),
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
       // City *
-                                    _LabeledField(
+      _LabeledField(
         label: 'City',
-                                      required: true,
+        required: true,
         child: SearchableDropdown(
           options: _cityOptions,
           value: _selectedCity,
           hintText: '-- Select City --',
           searchHintText: 'Search city...',
-                                              onChanged: (v) {
-                                                setState(() {
+          onChanged: (v) {
+            setState(() {
               _selectedCity = v;
-                                                });
-                                              },
-                                            ),
-                                    ),
-                                  const SizedBox(height: 20),
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 20),
       // Save Customer button
       FilledButton(
         onPressed: () {
@@ -3112,35 +3237,38 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
   }
 
   // Build Location Picker Widget
-  Widget _buildLocationPicker(BuildContext context, ThemeData theme, Color tealGreen) {
+  Widget _buildLocationPicker(
+      BuildContext context, ThemeData theme, Color tealGreen) {
     return _LabeledField(
-                                    label: 'Location (optional)',
-                                    child: LayoutBuilder(
-                                      builder: (context, constraints) {
+      label: 'Location (optional)',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
           final isMobile = constraints.maxWidth < 600;
 
-                                        if (isMobile) {
-                                          return Column(
+          if (isMobile) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                _position == null
-                                                    ? 'No location selected'
-                                                    : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey.shade700),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: OutlinedButton(
-                                                      onPressed: () async {
+              children: [
+                Text(
+                  _position == null
+                      ? 'No location selected'
+                      : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
                           final LatLng center = _position != null
-                              ? LatLng(_position!.latitude, _position!.longitude)
+                              ? LatLng(
+                                  _position!.latitude, _position!.longitude)
                               : const LatLng(6.927079, 79.861244);
-                          final LatLng? picked = await Navigator.of(context).push(
-                                                          MaterialPageRoute(
+                          final LatLng? picked =
+                              await Navigator.of(context).push(
+                            MaterialPageRoute(
                               builder: (_) => MapPickerScreen(
                                 initial: center,
                                 title: 'Pick DCR Location',
@@ -3149,119 +3277,119 @@ class _DcrEntryScreenState extends State<DcrEntryScreen> with SingleTickerProvid
                             ),
                           );
                           if (picked != null && mounted) {
-                                                          setState(() {
+                            setState(() {
                               _position = Position(
                                 latitude: picked.latitude,
                                 longitude: picked.longitude,
                                 timestamp: DateTime.now(),
-                                                              accuracy: 0,
-                                                              altitude: 0,
-                                                              heading: 0,
-                                                              speed: 0,
-                                                              speedAccuracy: 0,
+                                accuracy: 0,
+                                altitude: 0,
+                                heading: 0,
+                                speed: 0,
+                                speedAccuracy: 0,
                                 altitudeAccuracy: 0,
                                 headingAccuracy: 0,
-                                                            );
-                                                          });
-                                                        }
-                                                      },
+                              );
+                            });
+                          }
+                        },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: tealGreen,
                           side: BorderSide(color: tealGreen, width: 1.5),
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                                                        shape: RoundedRectangleBorder(
+                          shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14)),
-                                                      ),
+                        ),
                         child: const Text('Pick on map'),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                    child: TextButton(
-                                                      onPressed: () async {
-                                                        await _initLocation();
-                                                      },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () async {
+                          await _initLocation();
+                        },
                         style: TextButton.styleFrom(
                           foregroundColor: tealGreen,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         child: const Text('Use current'),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          );
-                                        } else {
-                                          return Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  _position == null
-                                                      ? 'No location selected'
-                                                      : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey.shade700),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              OutlinedButton(
-                                                onPressed: () async {
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          } else {
+            return Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _position == null
+                        ? 'No location selected'
+                        : 'Lat: ${_position!.latitude.toStringAsFixed(6)}, Lng: ${_position!.longitude.toStringAsFixed(6)}',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: Colors.grey.shade700),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () async {
                     final LatLng center = _position != null
                         ? LatLng(_position!.latitude, _position!.longitude)
                         : const LatLng(6.927079, 79.861244);
                     final LatLng? picked = await Navigator.of(context).push(
-                                                    MaterialPageRoute(
+                      MaterialPageRoute(
                         builder: (_) => MapPickerScreen(
-                                                                initial: center,
+                          initial: center,
                           title: 'Pick DCR Location',
                           limitTo1KmDefault: true,
                         ),
                       ),
                     );
                     if (picked != null && mounted) {
-                                                    setState(() {
-                                                      _position = Position(
+                      setState(() {
+                        _position = Position(
                           latitude: picked.latitude,
                           longitude: picked.longitude,
                           timestamp: DateTime.now(),
-                                                        accuracy: 0,
-                                                        altitude: 0,
-                                                        heading: 0,
-                                                        speed: 0,
-                                                        speedAccuracy: 0,
-                                                        altitudeAccuracy: 0,
-                                                        headingAccuracy: 0,
-                                                      );
-                                                    });
-                                                  }
-                                                },
-                                                style: OutlinedButton.styleFrom(
-                                                  foregroundColor: tealGreen,
+                          accuracy: 0,
+                          altitude: 0,
+                          heading: 0,
+                          speed: 0,
+                          speedAccuracy: 0,
+                          altitudeAccuracy: 0,
+                          headingAccuracy: 0,
+                        );
+                      });
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: tealGreen,
                     side: BorderSide(color: tealGreen, width: 1.5),
                     padding: const EdgeInsets.symmetric(
                         vertical: 12, horizontal: 18),
-                                                  shape: RoundedRectangleBorder(
+                    shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
-                                                ),
+                  ),
                   child: const Text('Pick on map'),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              TextButton(
-                                                onPressed: () async {
-                                                  await _initLocation();
-                                                },
-                                                style: TextButton.styleFrom(
-                                                  foregroundColor: tealGreen,
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () async {
+                    await _initLocation();
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: tealGreen,
                     padding: const EdgeInsets.symmetric(
                         vertical: 12, horizontal: 18),
                   ),
                   child: const Text('Use current'),
-                                              ),
-                                            ],
-                                          );
-                                        }
-                                      },
+                ),
+              ],
+            );
+          }
+        },
       ),
     );
   }
@@ -3729,21 +3857,25 @@ extension on _DcrEntryScreenState {
         complaint: _isServiceEngineer && _complaintCtrl.text.trim().isNotEmpty
             ? _complaintCtrl.text.trim()
             : null,
-        actionTaken: _isServiceEngineer && _actionTakenCtrl.text.trim().isNotEmpty
-            ? _actionTakenCtrl.text.trim()
-            : null,
+        actionTaken:
+            _isServiceEngineer && _actionTakenCtrl.text.trim().isNotEmpty
+                ? _actionTakenCtrl.text.trim()
+                : null,
         result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
             ? _resultCtrl.text.trim()
             : null,
         complaintStatus: _isServiceEngineer && _complaintStatus != null
-            ? (_complaintStatus == 'Resolved' ? 1 : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
+            ? (_complaintStatus == 'Resolved'
+                ? 1
+                : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
             : null,
         complaintDate: _isServiceEngineer && _complaintDate != null
             ? _complaintDate
             : null,
-        complaintRemarks: _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
-            ? _complaintRemarksCtrl.text.trim()
-            : null,
+        complaintRemarks:
+            _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
+                ? _complaintRemarksCtrl.text.trim()
+                : null,
         // Co-visit fields
         coVisit: _coVisit,
         coVisitorId: coVisitorId,
@@ -3765,10 +3897,10 @@ extension on _DcrEntryScreenState {
             'Updating DCR with detailId: ${_loadedEntry?.detailId}, clusterId: ${_loadedEntry?.clusterId}');
         print(
             'Using dcrIdToUpdate: $dcrIdToUpdate (from widget.dcrId: ${widget.dcrId}, widget.id: ${widget.id})');
-        
+
         // Create params with update info - add dcrId to params for update
         final updateParams = CreateDcrParams(
-            date: visit,
+          date: visit,
           cluster: _cluster!,
           customer: _customer!,
           purposeOfVisit: _purpose!,
@@ -3776,55 +3908,60 @@ extension on _DcrEntryScreenState {
           productsDiscussed: _selectedProducts.join(', '),
           samplesDistributed: _samplesCtrl.text.trim(),
           keyDiscussionPoints: _discussionCtrl.text.trim(),
-            linkedTourPlanId: _loadedEntry?.linkedTourPlanId,
+          linkedTourPlanId: _loadedEntry?.linkedTourPlanId,
           employeeId: userDetail.employeeId.toString(),
           employeeName: userDetail.employeeName,
-            submit: submit,
+          submit: submit,
           geoProximity: _atLocation ? GeoProximity.at : GeoProximity.away,
           typeOfWorkId: typeOfWorkId,
           cityId: cityId,
           customerId: customerId,
-            userId: actualUserId,
-            bizunit: userDetail.sbuId,
-            latitude: _position?.latitude,
-            longitude: _position?.longitude,
-            // Service Engineer specific fields
-            mappedInstruments: _isServiceEngineer && _selectedInstruments.isNotEmpty
-                ? _selectedInstruments.map((instrumentName) {
-                    final instrumentId = _instrumentNameToId[instrumentName] ?? 0;
-                    return <String, dynamic>{
-                      'productId': instrumentId,
-                      'productName': instrumentName,
-                      'customerId': customerId ?? 0,
-                    };
-                  }).toList()
-                : null,
-            complaint: _isServiceEngineer && _complaintCtrl.text.trim().isNotEmpty
-                ? _complaintCtrl.text.trim()
-                : null,
-            actionTaken: _isServiceEngineer && _actionTakenCtrl.text.trim().isNotEmpty
-                ? _actionTakenCtrl.text.trim()
-                : null,
-            result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
-                ? _resultCtrl.text.trim()
-                : null,
-            complaintStatus: _isServiceEngineer && _complaintStatus != null
-                ? (_complaintStatus == 'Resolved' ? 1 : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
-                : null,
-            complaintDate: _isServiceEngineer && _complaintDate != null
-                ? _complaintDate
-                : null,
-            complaintRemarks: _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
-                ? _complaintRemarksCtrl.text.trim()
-                : null,
-            // Co-visit fields
-            coVisit: _coVisit,
-            coVisitorId: coVisitorId,
+          userId: actualUserId,
+          bizunit: userDetail.sbuId,
+          latitude: _position?.latitude,
+          longitude: _position?.longitude,
+          // Service Engineer specific fields
+          mappedInstruments: _isServiceEngineer &&
+                  _selectedInstruments.isNotEmpty
+              ? _selectedInstruments.map((instrumentName) {
+                  final instrumentId = _instrumentNameToId[instrumentName] ?? 0;
+                  return <String, dynamic>{
+                    'productId': instrumentId,
+                    'productName': instrumentName,
+                    'customerId': customerId ?? 0,
+                  };
+                }).toList()
+              : null,
+          complaint: _isServiceEngineer && _complaintCtrl.text.trim().isNotEmpty
+              ? _complaintCtrl.text.trim()
+              : null,
+          actionTaken:
+              _isServiceEngineer && _actionTakenCtrl.text.trim().isNotEmpty
+                  ? _actionTakenCtrl.text.trim()
+                  : null,
+          result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
+              ? _resultCtrl.text.trim()
+              : null,
+          complaintStatus: _isServiceEngineer && _complaintStatus != null
+              ? (_complaintStatus == 'Resolved'
+                  ? 1
+                  : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
+              : null,
+          complaintDate: _isServiceEngineer && _complaintDate != null
+              ? _complaintDate
+              : null,
+          complaintRemarks:
+              _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
+                  ? _complaintRemarksCtrl.text.trim()
+                  : null,
+          // Co-visit fields
+          coVisit: _coVisit,
+          coVisitorId: coVisitorId,
           // Update fields
           dcrId: dcrIdToUpdate,
           detailId: _loadedEntry?.detailId,
         );
-        
+
         // Use create method which will handle update if dcrId is provided
         await repo.create(updateParams);
       } else {
@@ -4430,10 +4567,12 @@ class _SignaturePadDialogState extends State<_SignaturePadDialog> {
 
   Future<void> _save() async {
     try {
-      final boundary = _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary = _repaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
       if (boundary == null) return;
       final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       final bytes = byteData.buffer.asUint8List();
       final base64 = base64Encode(bytes);
@@ -4453,7 +4592,8 @@ class _SignaturePadDialogState extends State<_SignaturePadDialog> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Add Signature', style: Theme.of(context).textTheme.titleMedium),
+              Text('Add Signature',
+                  style: Theme.of(context).textTheme.titleMedium),
               Row(
                 children: [
                   IconButton(icon: const Icon(Icons.clear), onPressed: _clear),
@@ -4469,7 +4609,8 @@ class _SignaturePadDialogState extends State<_SignaturePadDialog> {
             key: _repaintKey,
             child: GestureDetector(
               onPanStart: (details) {
-                final box = _repaintKey.currentContext?.findRenderObject() as RenderBox?;
+                final box = _repaintKey.currentContext?.findRenderObject()
+                    as RenderBox?;
                 if (box == null) return;
                 final localPos = box.globalToLocal(details.globalPosition);
                 final Size sz = box.size;
@@ -4487,7 +4628,8 @@ class _SignaturePadDialogState extends State<_SignaturePadDialog> {
                 });
               },
               onPanUpdate: (details) {
-                final box = _repaintKey.currentContext?.findRenderObject() as RenderBox?;
+                final box = _repaintKey.currentContext?.findRenderObject()
+                    as RenderBox?;
                 if (box == null) return;
                 final localPos = box.globalToLocal(details.globalPosition);
                 final Size sz = box.size;
@@ -4540,6 +4682,6 @@ class _SignaturePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SignaturePainter oldDelegate) => oldDelegate.points != points;
- 
+  bool shouldRepaint(covariant _SignaturePainter oldDelegate) =>
+      oldDelegate.points != points;
 }
