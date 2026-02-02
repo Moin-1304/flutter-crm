@@ -1110,9 +1110,11 @@ class CommonApi {
 
   /// Get Reporting Manager List (CommandType: 333, Id: 91)
   /// Returns list of reporting managers for co-visit dropdown
-  Future<List<CommonDropdownItem>> getReportingManagerList() async {
+  Future<List<CommonDropdownItem>> getReportingManagerList({
+    required int id,
+  }) async {
     try {
-      final request = ReportingManagerRequest();
+      final request = ReportingManagerRequest(id:id);
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: request.toJson(),

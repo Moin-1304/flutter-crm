@@ -88,7 +88,9 @@ abstract class CommonRepository {
     int module = 6,
     int transactionType = 14,
   });
-  Future<List<CommonDropdownItem>> getReportingManagerList();
+  Future<List<CommonDropdownItem>> getReportingManagerList({
+    required int id,
+  });
   Future<List<CommonDropdownItem>> getSalesRepList({
     required int userId,
     required int customerId,

@@ -1539,12 +1539,16 @@ class CustomerListRequest {
 
 /// Request model for Reporting Manager List (CommandType: 333, Id: 91)
 class ReportingManagerRequest {
-  ReportingManagerRequest();
+  
+  final int? id;
+  ReportingManagerRequest({
+    this.id,
+  });
 
   Map<String, dynamic> toJson() {
     return {
       'SearchText': null,
-      'Id': 91,
+      'Id': id,
       'TransactionId': null,
       'UserId': null,
       'CommandType': 333,

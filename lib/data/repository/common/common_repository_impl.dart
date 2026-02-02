@@ -592,12 +592,14 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
-  Future<List<CommonDropdownItem>> getReportingManagerList() async {
+  Future<List<CommonDropdownItem>> getReportingManagerList({
+    required int id,
+  }) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
 
-        final response = await commonApi.getReportingManagerList();
+        final response = await commonApi.getReportingManagerList(id:id);
         return response;
       }
     } catch (e) {

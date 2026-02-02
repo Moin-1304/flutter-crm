@@ -456,10 +456,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     });
 
     try {
+      final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
         final List<CommonDropdownItem> items =
-            await repo.getReportingManagerList();
+            await repo.getReportingManagerList(id:userStore?.userDetail?.id ?? 0);
         if (items.isNotEmpty) {
           setState(() {
             _managerOptions = items
