@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
@@ -7,6 +10,11 @@ import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/di/service_locator.dart';
+import 'package:boilerplate/data/network/constants/endpoints.dart';
+import 'package:boilerplate/core/data/network/dio/ssl_config_io.dart'
+    if (dart.library.html) 'package:boilerplate/core/data/network/dio/ssl_config_web.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SaleOrderViewScreen extends StatefulWidget {
   final String? orderId;
@@ -27,7 +35,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   SalesOrderApiItem? _orderData;
   String? _distributorName; // Store distributor name loaded from API
   String? _loadedCustomerName; // Store customer name loaded from API
-  
+  bool _isDownloadingAttachment = false;
+  final Map<String, Uint8List> _attachmentImageCache = {};
+  final Map<String, String> _downloadedAttachmentPaths = {};
+
   // Collapsible sections
   bool _isOrderInfoExpanded = true;
   bool _isOrderDetailsExpanded = true;
@@ -41,10 +52,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
     print('   orderId: ${widget.orderId}');
     print('   orderData: ${widget.orderData?.id}');
     print('   orderData SO Number: ${widget.orderData?.soNumber}');
-    
+
     // Use orderData for immediate display if provided
     _orderData = widget.orderData;
-    
+
     // ALWAYS call API if orderId is provided to get complete details with all fields
     // This ensures we have the full data including salesContractItems and taxAndOtherChargesDetail
     if (widget.orderId != null) {
@@ -59,15 +70,18 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       });
       // Load distributor name if available
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (widget.orderData!.distributerForId != null && widget.orderData!.customerId != null) {
+        if (widget.orderData!.distributerForId != null &&
+            widget.orderData!.customerId != null) {
           _loadDistributorName(
             widget.orderData!.customerId!,
             widget.orderData!.distributerForId!,
           );
         }
         // Load customer name if not available in order data
-        if ((widget.orderData!.customerName == null || widget.orderData!.customerName!.isEmpty) &&
-            (widget.orderData!.customer == null || widget.orderData!.customer!.isEmpty) &&
+        if ((widget.orderData!.customerName == null ||
+                widget.orderData!.customerName!.isEmpty) &&
+            (widget.orderData!.customer == null ||
+                widget.orderData!.customer!.isEmpty) &&
             widget.orderData!.customerId != null) {
           _loadCustomerName(widget.orderData!.customerId!);
         }
@@ -82,9 +96,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       print('⚠️ [SaleOrderView] _loadOrderData: No orderId provided');
       return;
     }
-    
-    print('🔄 [SaleOrderView] _loadOrderData: Starting API call for orderId: ${widget.orderId}');
-    
+
+    print(
+        '🔄 [SaleOrderView] _loadOrderData: Starting API call for orderId: ${widget.orderId}');
+
     setState(() {
       _isLoading = true;
     });
@@ -98,34 +113,37 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       print('📞 [SaleOrderView] Calling getSalesOrderById with id: $orderId');
       final salesRepository = getIt<SalesRepository>();
       final orderData = await salesRepository.getSalesOrderById(orderId);
-      
+
       print('✅ [SaleOrderView] API call successful');
       print('   Order ID: ${orderData.id}');
       print('   SO Number: ${orderData.soNumber}');
       print('   Customer: ${orderData.customer}');
-      print('   Items count: ${orderData.salesContractItems is List ? (orderData.salesContractItems as List).length : 0}');
-      
+      print(
+          '   Items count: ${orderData.salesContractItems is List ? (orderData.salesContractItems as List).length : 0}');
+
       if (mounted) {
         setState(() {
           _orderData = orderData;
           _isLoading = false;
         });
-        
+
         // Load distributor name if available
-        if (orderData.distributerForId != null && orderData.customerId != null) {
+        if (orderData.distributerForId != null &&
+            orderData.customerId != null) {
           _loadDistributorName(
             orderData.customerId!,
             orderData.distributerForId!,
           );
         }
-        
+
         // Load customer name if not available in order data
-        if ((orderData.customerName == null || orderData.customerName!.isEmpty) &&
+        if ((orderData.customerName == null ||
+                orderData.customerName!.isEmpty) &&
             (orderData.customer == null || orderData.customer!.isEmpty) &&
             orderData.customerId != null) {
           _loadCustomerName(orderData.customerId!);
         }
-        
+
         print('✅ [SaleOrderView] State updated with order data');
       }
     } catch (e, stackTrace) {
@@ -179,53 +197,56 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
               ? const Center(child: Text('Order not found'))
               : Theme(
                   data: Theme.of(context).copyWith(
-                    inputDecorationTheme: Theme.of(context).inputDecorationTheme.copyWith(
-                      filled: true,
-                      fillColor: Colors.grey.withOpacity(0.05),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFF4db1b3), width: 2),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: isTablet ? 16 : 14,
-                        vertical: isTablet ? 16 : 14,
-                      ),
-                    ),
+                    inputDecorationTheme: Theme.of(context)
+                        .inputDecorationTheme
+                        .copyWith(
+                          filled: true,
+                          fillColor: Colors.grey.withOpacity(0.05),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF4db1b3), width: 2),
+                          ),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: isTablet ? 16 : 14,
+                            vertical: isTablet ? 16 : 14,
+                          ),
+                        ),
                   ),
                   child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    isTablet ? 16 : 12,
-                    12,
-                    isTablet ? 16 : 12,
-                    16 + MediaQuery.of(context).padding.bottom,
-                  ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 800),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildSaleOrderDetailsSection(isTablet),
-                          const SizedBox(height: 14),
-                          _buildOrderDetailsSection(isTablet),
-                          const SizedBox(height: 14),
-                          _buildTaxSection(isTablet),
-                          const SizedBox(height: 14),
-                          _buildAttachmentsSection(isTablet),
-                        ],
+                    padding: EdgeInsets.fromLTRB(
+                      isTablet ? 16 : 12,
+                      12,
+                      isTablet ? 16 : 12,
+                      16 + MediaQuery.of(context).padding.bottom,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 800),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildSaleOrderDetailsSection(isTablet),
+                            const SizedBox(height: 14),
+                            _buildOrderDetailsSection(isTablet),
+                            const SizedBox(height: 14),
+                            _buildTaxSection(isTablet),
+                            const SizedBox(height: 14),
+                            _buildAttachmentsSection(isTablet),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
     );
   }
 
@@ -253,18 +274,19 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
+                    children: [
+                      Text(
                         'Sales Order Details',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 18 : 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade900,
-              ),
-            ),
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 18 : 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
                       Icon(
                         _isOrderInfoExpanded
                             ? Icons.expand_less
@@ -279,8 +301,8 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             ),
             // Content (shown when expanded)
             if (_isOrderInfoExpanded) ...[
-            const SizedBox(height: 20),
-            _buildDetailsForm(isTablet),
+              const SizedBox(height: 20),
+              _buildDetailsForm(isTablet),
             ],
           ],
         ),
@@ -297,8 +319,8 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 children: [
                   // Top Row: Customer, SO Number, Date
                   Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Expanded(child: _buildTopRowField1(isTablet)),
                       const SizedBox(width: 16),
                       Expanded(child: _buildTopRowField2(isTablet)),
@@ -348,33 +370,34 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   // Top Row Field 1: Customer
   Widget _buildTopRowField1(bool isTablet) {
     // Use loaded customer name if available, otherwise fall back to orderData fields
-    final customerName = _loadedCustomerName ?? 
-                        _orderData?.customerName ?? 
-                        _orderData?.customer ?? 
-                        '';
+    final customerName = _loadedCustomerName ??
+        _orderData?.customerName ??
+        _orderData?.customer ??
+        '';
     return _LabeledField(
-          label: 'Customer',
-          child: _buildReadOnlyField(customerName),
+      label: 'Customer',
+      child: _buildReadOnlyField(customerName),
     );
   }
 
   // Top Row Field 2: SO Number
   Widget _buildTopRowField2(bool isTablet) {
     return _LabeledField(
-          label: 'SO Number',
-          child: _buildReadOnlyField(_orderData?.soNumber ?? ''),
+      label: 'SO Number',
+      child: _buildReadOnlyField(_orderData?.soNumber ?? ''),
     );
   }
 
   // Top Row Field 3: Date
   Widget _buildTopRowField3(bool isTablet) {
     return _LabeledField(
-          label: 'Date',
-          child: _buildReadOnlyField(
-            _orderData?.date != null
-                ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.date!))
-                : '',
-          ),
+      label: 'Date',
+      child: _buildReadOnlyField(
+        _orderData?.date != null
+            ? DateFormat('dd-MMM-yyyy')
+                .format(DateTime.parse(_orderData!.date!))
+            : '',
+      ),
     );
   }
 
@@ -390,9 +413,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   Widget _buildBottomRowField2(bool isTablet) {
     return _LabeledField(
       label: 'Delivery Date',
-                child: _buildReadOnlyField(
+      child: _buildReadOnlyField(
         _orderData?.deliveryDate != null
-            ? DateFormat('dd-MMM-yyyy').format(DateTime.parse(_orderData!.deliveryDate!))
+            ? DateFormat('dd-MMM-yyyy')
+                .format(DateTime.parse(_orderData!.deliveryDate!))
             : '',
       ),
     );
@@ -402,7 +426,8 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   Widget _buildBottomRowField3(bool isTablet) {
     return _LabeledField(
       label: 'Sales Rep',
-      child: _buildReadOnlyField(_orderData?.salesRepName ?? _orderData?.salesRep ?? ''),
+      child: _buildReadOnlyField(
+          _orderData?.salesRepName ?? _orderData?.salesRep ?? ''),
     );
   }
 
@@ -410,7 +435,9 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   Widget _buildBottomRowField4(bool isTablet) {
     // Display distributor name if loaded, otherwise show ID as fallback
     String distributorText = _distributorName ?? '';
-    if (distributorText.isEmpty && _orderData?.distributerForId != null && _orderData!.distributerForId! > 0) {
+    if (distributorText.isEmpty &&
+        _orderData?.distributerForId != null &&
+        _orderData!.distributerForId! > 0) {
       // Fallback to ID if name not loaded yet
       distributorText = 'ID: ${_orderData!.distributerForId}';
     }
@@ -437,19 +464,18 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           : null;
 
       int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnitFromPrefs = user.sbuId;
       final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
           ? bizUnitFromStore
-          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
-              ? bizUnitFromPrefs
-              : 1);
+          : ((bizUnitFromPrefs > 0) ? bizUnitFromPrefs : 1);
 
       if (bizUnit == 0) {
         print('Error: BizUnit is 0');
         return;
       }
 
-      print('🔵 Loading Distributor Name for BizUnit: $bizUnit, CustomerId: $customerId, DistributorId: $distributorId');
+      print(
+          '🔵 Loading Distributor Name for BizUnit: $bizUnit, CustomerId: $customerId, DistributorId: $distributorId');
 
       final commonRepository = getIt<CommonRepository>();
       final distributors = await commonRepository.getDistributorList(
@@ -471,7 +497,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           distributorName = null;
           print('⚠️ Distributor not found by ID: $distributorId');
         }
-        
+
         // Update state with the found name
         setState(() {
           _distributorName = distributorName;
@@ -505,19 +531,18 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           : null;
 
       int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnitFromPrefs = user.sbuId;
       final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
           ? bizUnitFromStore
-          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
-              ? bizUnitFromPrefs
-              : 1);
+          : ((bizUnitFromPrefs > 0) ? bizUnitFromPrefs : 1);
 
       if (bizUnit == 0) {
         print('Error: BizUnit is 0');
         return;
       }
 
-      print('🔵 Loading Customer Name for BizUnit: $bizUnit, CustomerId: $customerId');
+      print(
+          '🔵 Loading Customer Name for BizUnit: $bizUnit, CustomerId: $customerId');
 
       final commonRepository = getIt<CommonRepository>();
       final customers = await commonRepository.getCustomerList(
@@ -539,7 +564,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
           customerName = null;
           print('⚠️ Customer not found by ID: $customerId');
         }
-        
+
         // Update state with the found name
         setState(() {
           _loadedCustomerName = customerName;
@@ -562,7 +587,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return TextFormField(
       key: ValueKey(value), // Force rebuild when value changes
       readOnly: true,
@@ -592,7 +617,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
 
   List<Map<String, dynamic>> _parseOrderItems() {
     if (_orderData == null) return [];
-    
+
     // Try to parse salesContractItems
     final items = _orderData!.salesContractItems;
     if (items == null) {
@@ -616,36 +641,50 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         }
       ];
     }
-    
+
     // If items is a List, parse it
     if (items is List) {
       return items.map((item) {
         final map = item is Map<String, dynamic> ? item : {};
         return {
-          'itemDescription': map['itemText'] ?? map['itemName'] ?? map['itemDescription'] ?? '-',
+          'itemDescription': map['itemText'] ??
+              map['itemName'] ??
+              map['itemDescription'] ??
+              '-',
           'quantity': (map['quantity'] ?? 0).toDouble(),
           'uom': map['uomText'] ?? map['uom'] ?? '-',
           'rate': (map['unitPrice'] ?? map['rate'] ?? 0).toDouble(),
-          'mrp': (map['mrp'] ?? map['maxRetailPrice'] ?? map['mrpValue'] ?? 0).toDouble(),
+          'mrp': (map['mrp'] ?? map['maxRetailPrice'] ?? map['mrpValue'] ?? 0)
+              .toDouble(),
           'amount': (map['amount'] ?? 0).toDouble(),
           'bonusQty': (map['bonusQuantity'] ?? map['bonusQty'] ?? 0).toDouble(),
-          'addlBonus': (map['additionalQuantity'] ?? map['addlBonus'] ?? map['additionalBonusQuantity'] ?? 0).toDouble(),
-          'discount': (map['discount'] ?? map['discountAmount'] ?? 0).toDouble(),
+          'addlBonus': (map['additionalQuantity'] ??
+                  map['addlBonus'] ??
+                  map['additionalBonusQuantity'] ??
+                  0)
+              .toDouble(),
+          'discount':
+              (map['discount'] ?? map['discountAmount'] ?? 0).toDouble(),
           'tax': (map['tax'] ?? 0).toDouble(),
           'totalAmount': (map['totalAmount'] ?? map['amount'] ?? 0).toDouble(),
           'manufacturer': map['manufacturerName'] ?? map['manufacturer'] ?? '-',
-          'reqdDate': map['reqdDate'] ?? map['requiredDate'] ?? map['deliveryDate'],
-          'division': map['divisionGroupName'] ?? map['divisionGroupText'] ?? map['divisionText'] ?? map['division'] ?? '-',
+          'reqdDate':
+              map['reqdDate'] ?? map['requiredDate'] ?? map['deliveryDate'],
+          'division': map['divisionGroupName'] ??
+              map['divisionGroupText'] ??
+              map['divisionText'] ??
+              map['division'] ??
+              '-',
         };
       }).toList();
     }
-    
+
     return [];
   }
 
   Widget _buildOrderDetailsSection(bool isTablet) {
     final items = _parseOrderItems();
-    
+
     return Card(
       color: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -669,18 +708,19 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Order Details',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 18 : 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade900,
-              ),
-            ),
+                    children: [
+                      Text(
+                        'Order Details',
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 18 : 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
                       Icon(
                         _isOrderDetailsExpanded
                             ? Icons.expand_less
@@ -695,26 +735,27 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             ),
             // Content (shown when expanded)
             if (_isOrderDetailsExpanded) ...[
-            const SizedBox(height: 20),
-            if (items.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(40),
-                child: Center(
-                  child: Text(
-                    'No items found',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.grey.shade500,
+              const SizedBox(height: 20),
+              if (items.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(
+                    child: Text(
+                      'No items found',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
                   ),
-                ),
-              )
-            else
-              ...items.asMap().entries.map((entry) {
-                final index = entry.key;
-                final item = entry.value;
-                return _buildOrderItemCard(item, index, items.length, isTablet);
-              }),
+                )
+              else
+                ...items.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  return _buildOrderItemCard(
+                      item, index, items.length, isTablet);
+                }),
             ],
           ],
         ),
@@ -722,12 +763,14 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
     );
   }
 
-  Widget _buildOrderItemCard(Map<String, dynamic> item, int index, int total, bool isTablet) {
+  Widget _buildOrderItemCard(
+      Map<String, dynamic> item, int index, int total, bool isTablet) {
     final reqdDate = item['reqdDate'] != null
         ? (item['reqdDate'] is String
             ? (() {
                 try {
-                  return DateFormat('dd-MMM-yyyy').format(DateTime.parse(item['reqdDate']));
+                  return DateFormat('dd-MMM-yyyy')
+                      .format(DateTime.parse(item['reqdDate']));
                 } catch (e) {
                   return item['reqdDate'].toString();
                 }
@@ -753,45 +796,71 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildItemField('Item Description', item['itemDescription'].toString(), isTablet),
+          _buildItemField(
+              'Item Description', item['itemDescription'].toString(), isTablet),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildItemField('Quantity', (item['quantity'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField('Quantity',
+                      (item['quantity'] as num).toStringAsFixed(2), isTablet)),
               const SizedBox(width: 12),
-              Expanded(child: _buildItemField('UOM', item['uom'].toString(), isTablet)),
+              Expanded(
+                  child:
+                      _buildItemField('UOM', item['uom'].toString(), isTablet)),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildItemField('Rate', (item['rate'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField('Rate',
+                      (item['rate'] as num).toStringAsFixed(2), isTablet)),
               const SizedBox(width: 12),
-              Expanded(child: _buildItemField('MRP', (item['mrp'] as num? ?? 0) > 0 ? (item['mrp'] as num).toStringAsFixed(2) : '-', isTablet)),
+              Expanded(
+                  child: _buildItemField(
+                      'MRP',
+                      (item['mrp'] as num? ?? 0) > 0
+                          ? (item['mrp'] as num).toStringAsFixed(2)
+                          : '-',
+                      isTablet)),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildItemField('Amount', (item['amount'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField('Amount',
+                      (item['amount'] as num).toStringAsFixed(2), isTablet)),
               const SizedBox(width: 12),
-              Expanded(child: _buildItemField('Disc.', (item['discount'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField('Disc.',
+                      (item['discount'] as num).toStringAsFixed(2), isTablet)),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildItemField('Bonus Qty', (item['bonusQty'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField('Bonus Qty',
+                      (item['bonusQty'] as num).toStringAsFixed(2), isTablet)),
               const SizedBox(width: 12),
-              Expanded(child: _buildItemField('Addl. Bonus', (item['addlBonus'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField('Addl. Bonus',
+                      (item['addlBonus'] as num).toStringAsFixed(2), isTablet)),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildItemField('Total Amount', (item['totalAmount'] as num).toStringAsFixed(2), isTablet)),
+              Expanded(
+                  child: _buildItemField(
+                      'Total Amount',
+                      (item['totalAmount'] as num).toStringAsFixed(2),
+                      isTablet)),
               const SizedBox(width: 12),
-              Expanded(child: _buildItemField('Reqd. Date', reqdDate, isTablet)),
+              Expanded(
+                  child: _buildItemField('Reqd. Date', reqdDate, isTablet)),
             ],
           ),
         ],
@@ -804,7 +873,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -853,37 +922,45 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
     final List<Map<String, dynamic>> discountRows = [];
     final List<Map<String, dynamic>> otherChargeRows = [];
 
-    if (_orderData?.taxAndOtherChargesDetail != null && _orderData!.taxAndOtherChargesDetail is List) {
+    if (_orderData?.taxAndOtherChargesDetail != null &&
+        _orderData!.taxAndOtherChargesDetail is List) {
       final charges = _orderData!.taxAndOtherChargesDetail as List;
       for (var charge in charges) {
         if (charge is Map<String, dynamic>) {
           final typeText = charge['typeText']?.toString() ?? '';
           final label = charge['label']?.toString() ?? '';
           final value = (charge['value'] ?? 0).toDouble();
-          
+
           // Use typeText for exact matching (more reliable than label)
           if (typeText == 'SubTotal' || typeText.toLowerCase() == 'subtotal') {
             subtotal = value;
-          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax' || label.toLowerCase() == 'tax') {
+          } else if (typeText == 'Tax' ||
+              typeText.toLowerCase() == 'tax' ||
+              label.toLowerCase() == 'tax') {
             taxRows.add({
               'label': label.isNotEmpty ? label : 'Tax',
               'value': value,
-              'type': charge['typeText']?.toString() ?? charge['subTypeText']?.toString(),
+              'type': charge['typeText']?.toString() ??
+                  charge['subTypeText']?.toString(),
             });
-          } else if (typeText == 'Discount' || typeText.toLowerCase() == 'discount') {
+          } else if (typeText == 'Discount' ||
+              typeText.toLowerCase() == 'discount') {
             discountRows.add({
               'label': label.isNotEmpty ? label : 'Discount',
               'value': value,
               'type': charge['subTypeText']?.toString(),
             });
-          } else if (typeText == 'OtherCharge' || typeText.toLowerCase() == 'othercharge') {
+          } else if (typeText == 'OtherCharge' ||
+              typeText.toLowerCase() == 'othercharge') {
             otherChargeRows.add({
               'label': label.isNotEmpty ? label : 'Other Charge',
               'value': value,
             });
-          } else if (typeText == 'PriceAdjustment' || typeText.toLowerCase() == 'priceadjustment') {
+          } else if (typeText == 'PriceAdjustment' ||
+              typeText.toLowerCase() == 'priceadjustment') {
             adjustment = value;
-          } else if (typeText == 'GrandTotal' || typeText.toLowerCase() == 'grandtotal') {
+          } else if (typeText == 'GrandTotal' ||
+              typeText.toLowerCase() == 'grandtotal') {
             grandTotalFromAPI = value;
           }
         }
@@ -891,9 +968,10 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
     }
 
     // Fallback to direct fields if taxAndOtherChargesDetail is not available
-    if (subtotal == 0.0) subtotal = _orderData?.totalAmount ?? _orderData?.amount ?? 0.0;
+    if (subtotal == 0.0)
+      subtotal = _orderData?.totalAmount ?? _orderData?.amount ?? 0.0;
     if (adjustment == 0.0) adjustment = _orderData?.totalAdjust ?? 0.0;
-    
+
     // If no tax rows found, try to create from direct fields
     if (taxRows.isEmpty && (_orderData?.totalTax ?? 0.0) > 0) {
       taxRows.add({
@@ -917,11 +995,14 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
     }
 
     // Calculate totals - use GrandTotal from API if available, otherwise calculate
-    final totalTax = taxRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
-    final totalDiscount = discountRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
-    final totalOtherCharge = otherChargeRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
-    final grandTotal = grandTotalFromAPI > 0.0 
-        ? grandTotalFromAPI 
+    final totalTax =
+        taxRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
+    final totalDiscount =
+        discountRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
+    final totalOtherCharge =
+        otherChargeRows.fold(0.0, (sum, row) => sum + (row['value'] as double));
+    final grandTotal = grandTotalFromAPI > 0.0
+        ? grandTotalFromAPI
         : (subtotal + totalTax - totalDiscount + totalOtherCharge + adjustment);
 
     return Card(
@@ -947,18 +1028,19 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Tax',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 18 : 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade900,
-              ),
-            ),
+                    children: [
+                      Text(
+                        'Tax',
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 18 : 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
                       Icon(
                         _isTaxSectionExpanded
                             ? Icons.expand_less
@@ -978,21 +1060,22 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
               isTablet
                   ? Container(
                       constraints: const BoxConstraints(maxHeight: 400),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200, width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                            Border.all(color: Colors.grey.shade200, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
                       child: SingleChildScrollView(
-              child: Column(
-                children: [
+                        child: Column(
+                          children: [
                             // Sub Total Row
                             _buildTaxTableRowReadOnly(
                               label: 'Sub Total',
@@ -1022,7 +1105,9 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                               Divider(height: 1, color: Colors.grey.shade200),
                             ],
                             // Other Charge Rows
-                            for (int i = 0; i < otherChargeRows.length; i++) ...[
+                            for (int i = 0;
+                                i < otherChargeRows.length;
+                                i++) ...[
                               _buildTaxTableRowReadOnly(
                                 label: 'Other Charge',
                                 value: otherChargeRows[i]['value'] as double,
@@ -1036,13 +1121,18 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                               value: adjustment,
                               isTablet: isTablet,
                             ),
-                            Divider(height: 1, color: Colors.grey.shade200, thickness: 2),
+                            Divider(
+                                height: 1,
+                                color: Colors.grey.shade200,
+                                thickness: 2),
                             // Grand Total Row
                             Builder(
                               builder: (context) {
                                 const Color tealGreen = Color(0xFF4db1b3);
                                 return Container(
-                                  padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12, vertical: isTablet ? 16 : 14),
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: isTablet ? 16 : 12,
+                                      vertical: isTablet ? 16 : 14),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.shade50,
                                     borderRadius: const BorderRadius.only(
@@ -1066,7 +1156,9 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                                           ),
                                         ),
                                       ),
-                                      Expanded(flex: 2, child: const SizedBox.shrink()),
+                                      Expanded(
+                                          flex: 2,
+                                          child: const SizedBox.shrink()),
                                       SizedBox(width: isTablet ? 12 : 8),
                                       Expanded(
                                         flex: 2,
@@ -1136,7 +1228,8 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                             value: adjustment,
                           ),
                         ),
-                        const Divider(height: 24, thickness: 1, color: Colors.grey),
+                        const Divider(
+                            height: 24, thickness: 1, color: Colors.grey),
                         // Grand Total Row
                         _buildTaxRowMobile(
                           label: 'Grand Total',
@@ -1150,18 +1243,6 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
         ),
       ),
     );
-  }
-
-  String? _extractTaxType(String label) {
-    if (label.contains('VAT') || label.contains('18%')) return 'VAT 18%';
-    if (label.contains('GST') || label.contains('5%')) return 'GST 5%';
-    return null;
-  }
-
-  String? _extractDiscountType(String label) {
-    if (label.contains('Percent') || label.contains('%')) return 'Percentage';
-    if (label.contains('Fixed')) return 'Fixed Amount';
-    return null;
   }
 
   Widget _buildTaxRowMobile({
@@ -1189,9 +1270,9 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             fontSize: isTotal ? 16 : 14,
             fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
             color: isTotal ? tealGreen : Colors.grey.shade900,
-              ),
-            ),
-          ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1267,7 +1348,8 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             flex: 2,
             child: configValue != null
                 ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(8),
@@ -1301,30 +1383,6 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
     );
   }
 
-  Widget _buildTaxRow(String label, double value, {bool isTotal = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: isTotal ? 16 : 14,
-            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-            color: Colors.grey.shade900,
-          ),
-        ),
-        Text(
-          _formatCurrency(value),
-          style: GoogleFonts.inter(
-            fontSize: isTotal ? 16 : 14,
-            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-            color: Colors.grey.shade900,
-          ),
-        ),
-      ],
-    );
-  }
-
   String _formatCurrency(double value) {
     final s = value.toStringAsFixed(2);
     final parts = s.split('.');
@@ -1344,6 +1402,9 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   }
 
   Widget _buildAttachmentsSection(bool isTablet) {
+    final attachments =
+        _orderData?.fileUploadDetails ?? const <FileUploadDetail>[];
+
     return Card(
       color: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -1367,18 +1428,19 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Attachments',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 18 : 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade900,
-              ),
-            ),
+                    children: [
+                      Text(
+                        'Attachments',
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 18 : 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
                       Icon(
                         _isAttachmentsExpanded
                             ? Icons.expand_less
@@ -1393,35 +1455,440 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
             ),
             // Content (shown when expanded)
             if (_isAttachmentsExpanded) ...[
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(40),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200, width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+              const SizedBox(height: 20),
+              if (attachments.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(40),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200, width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  'No attachments',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
+                  child: Center(
+                    child: Text(
+                      'No attachments',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
+                )
+              else
+                Column(
+                  children: [
+                    if (_isDownloadingAttachment)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          children: [
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Downloading attachment...',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ListView.separated(
+                      itemCount: attachments.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final att = attachments[index];
+                        return _buildAttachmentTile(att, isTablet);
+                      },
+                    ),
+                  ],
                 ),
-              ),
-            ),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentTile(FileUploadDetail att, bool isTablet) {
+    final name = (att.fileName ?? '').trim().isNotEmpty
+        ? att.fileName!.trim()
+        : 'Attachment';
+    final url = _buildAttachmentUrl(att.url);
+    print('Image url ---- $url');
+    final ext = (att.extension ?? _inferExtension(name, att.url)).toLowerCase();
+    final isImage = _isImageExtension(ext);
+
+    return InkWell(
+      onTap: url == null ? null : () => _openAttachment(url, isImage),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: EdgeInsets.all(isTablet ? 14 : 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildAttachmentPreview(url: url, isImage: isImage),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 14 : 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Text(
+                          ext.isNotEmpty
+                              ? ext.replaceAll('.', '').toUpperCase()
+                              : 'FILE',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      if (url == null)
+                        Text(
+                          'Invalid URL',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.red.shade600,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: [
+                      _buildAttachmentActionButton(
+                        icon: Icons.open_in_new,
+                        label: 'Open',
+                        onPressed: url == null
+                            ? null
+                            : () => _openAttachment(url, isImage),
+                      ),
+                      _buildAttachmentActionButton(
+                        icon: Icons.download_outlined,
+                        label: 'Download',
+                        onPressed: url == null
+                            ? null
+                            : () => _downloadAttachment(url, name),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        side: BorderSide(color: Colors.grey.shade300),
+        foregroundColor: const Color(0xFF4db1b3),
+        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentPreview(
+      {required String? url, required bool isImage}) {
+    final borderRadius = BorderRadius.circular(10);
+
+    Widget content;
+    if (isImage && url != null) {
+      final cached = _attachmentImageCache[url];
+      if (cached != null) {
+        content = ClipRRect(
+          borderRadius: borderRadius,
+          child: Image.memory(
+            cached,
+            width: 72,
+            height: 72,
+            fit: BoxFit.cover,
+          ),
+        );
+      } else {
+        // Fetch preview bytes once using Dio with SSL config
+        _fetchAttachmentPreview(url);
+        content = const Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+    } else {
+      content = _buildFileIconPreview(Icons.insert_drive_file_outlined);
+    }
+
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: borderRadius,
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: content,
+    );
+  }
+
+  Widget _buildFileIconPreview(IconData icon) {
+    return Center(
+      child: Icon(
+        icon,
+        color: Colors.grey.shade600,
+        size: 30,
+      ),
+    );
+  }
+
+  String? _buildAttachmentUrl(String? rawUrl) {
+    final trimmed = rawUrl?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+
+    // Already absolute
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return Uri.encodeFull(trimmed);
+    }
+
+    // Backend serves files from: https://103.141.54.146:1445/erpweb + <path>
+    final origin =
+        Uri.parse(Endpoints.baseUrl).origin; // https://103.141.54.146:1445
+    final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    final base = '$origin/erpweb';
+    return Uri.encodeFull('$base$path');
+  }
+
+  bool _isImageExtension(String ext) {
+    final e = ext.toLowerCase();
+    return e == '.png' ||
+        e == '.jpg' ||
+        e == '.jpeg' ||
+        e == '.gif' ||
+        e == '.webp';
+  }
+
+  String _inferExtension(String fileName, String? url) {
+    final lower = fileName.toLowerCase();
+    final idx = lower.lastIndexOf('.');
+    if (idx > 0 && idx < lower.length - 1) {
+      return lower.substring(idx);
+    }
+    final u = (url ?? '').toLowerCase();
+    final uIdx = u.lastIndexOf('.');
+    if (uIdx > 0 && uIdx < u.length - 1) {
+      final maybe = u.substring(uIdx);
+      if (maybe.length <= 6) return maybe;
+    }
+    return '';
+  }
+
+  Future<void> _openAttachment(String url, bool isImage) async {
+    // For now we focus on images: show full-screen preview using cached bytes if available.
+    if (isImage) {
+      final bytes = _attachmentImageCache[url];
+      if (!mounted) return;
+      if (bytes == null) {
+        // If somehow not cached, try to fetch once more, then open.
+        await _fetchAttachmentPreview(url);
+      }
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _FullScreenImageViewer(
+            imageBytes: _attachmentImageCache[url],
+            imageUrl: url,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Non-image fallback: open in browser.
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  String _sanitizeFileName(String input) {
+    var name = input.trim();
+    if (name.isEmpty) name = 'attachment';
+    // Replace characters that commonly break file paths.
+    name = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return name;
+  }
+
+  Future<void> _fetchAttachmentPreview(String url) async {
+    // If we already have it cached, skip
+    if (_attachmentImageCache.containsKey(url)) return;
+
+    try {
+      final dio = Dio();
+      configureSSL(dio);
+      final response = await dio.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = Uint8List.fromList(response.data ?? const []);
+      if (bytes.isEmpty || !mounted) return;
+      setState(() {
+        _attachmentImageCache[url] = bytes;
+      });
+    } catch (_) {
+      // Ignore preview failures; tile will fall back to generic icon
+    }
+  }
+
+  Future<void> _downloadAttachment(String url, String fileName) async {
+    if (_isDownloadingAttachment) return;
+    setState(() => _isDownloadingAttachment = true);
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final attachmentsDir = Directory('${dir.path}/attachments');
+      if (!await attachmentsDir.exists()) {
+        await attachmentsDir.create(recursive: true);
+      }
+
+      final safeName = _sanitizeFileName(fileName);
+      final savePath = '${attachmentsDir.path}/$safeName';
+
+      final dio = Dio();
+      configureSSL(dio);
+      await dio.download(url, savePath);
+
+      _downloadedAttachmentPaths[url] = savePath;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloaded: $safeName',
+              style: GoogleFonts.inter(color: Colors.white)),
+          backgroundColor: Color(0xFF4db1b3), // Use theme color for success
+          action: SnackBarAction(
+            label: 'Open',
+            textColor: Colors.white,
+            onPressed: () {
+              final ext = _inferExtension(fileName, url);
+              _openAttachment(url, _isImageExtension(ext));
+            },
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e',
+              style: GoogleFonts.inter(color: Colors.white)),
+          backgroundColor: Color(0xFF4db1b3), // Consistent error color
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isDownloadingAttachment = false);
+    }
+  }
+}
+
+class _FullScreenImageViewer extends StatelessWidget {
+  final Uint8List? imageBytes;
+  final String imageUrl;
+
+  const _FullScreenImageViewer({
+    required this.imageBytes,
+    required this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Attachment'),
+      ),
+      body: Center(
+        child: imageBytes != null
+            ? InteractiveViewer(
+                child: Image.memory(
+                  imageBytes!,
+                  fit: BoxFit.contain,
+                ),
+              )
+            : const Text(
+                'Unable to load image',
+                style: TextStyle(color: Colors.white),
+              ),
       ),
     );
   }
@@ -1456,4 +1923,3 @@ class _LabeledField extends StatelessWidget {
     );
   }
 }
-

@@ -306,7 +306,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final int? roleCategory = userStore?.userDetail?.roleCategory;
     final bool isManager = roleCategory == 1 || roleCategory == 2;
     final bool isCreatingNew = widget.dcrId == null && widget.id == null;
-    final int initialTabCount = (isManager && isCreatingNew) ? 1 : 3;
+    final int initialTabCount =
+        (isManager && isCreatingNew) ? 1 : (_isServiceEngineer ? 2 : 3);
     _tabController = TabController(length: initialTabCount, vsync: this);
     // When user switches to Service Report tab, load mapped customers for service report
     _tabController.addListener(() {
@@ -400,7 +401,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         Future.wait([
           _loadClusterList(),
           _loadProductsList(),
-          _loadInstrumentsList(),
           _initLocation(),
           _loadCountries(),
           _loadCustomerTypes(),
@@ -411,6 +411,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             _loadMappedCustomers();
           }
           _loadDcrDetails();
+        }).whenComplete(() {
+          _loadInstrumentsList();
         });
       });
     } else {
@@ -419,7 +421,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         _loadClusterList(),
         _loadTypeOfWorkList(),
         _loadProductsList(),
-        _loadInstrumentsList(),
         _initLocation(),
         _loadCountries(),
         _loadCustomerTypes(),
@@ -430,6 +431,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           _loadMappedCustomers();
         }
         _loadDcrDetails();
+      }).whenComplete(() {
+        _loadInstrumentsList();
       });
     }
   }
@@ -456,12 +459,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     });
 
     try {
-      final UserDetailStore? userStore =
-        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final List<CommonDropdownItem> items =
-            await repo.getReportingManagerList(id:userStore?.userDetail?.id ?? 0);
+        final List<CommonDropdownItem> items = await repo
+            .getReportingManagerList(id: userStore?.userDetail?.id ?? 0);
         if (items.isNotEmpty) {
           setState(() {
             _managerOptions = items
@@ -537,6 +541,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
         // Get selected customer ID - instruments are loaded based on selected customer
         int? customerId = _customerNameToId[_customer];
+        print('Customer id ---- $customerId');
         if (customerId == null || customerId <= 0) {
           print(
               'DcrEntryScreen: [Instruments] customerId is null/0, skipping instruments load');
@@ -1749,10 +1754,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             ? null
             : TabBar(
                 controller: _tabController,
-                tabs: const [
-                  Tab(text: 'Create DCR'),
-                  Tab(text: 'Service Report'),
-                  Tab(text: 'Customer'),
+                tabs: [
+                  const Tab(text: 'Create DCR'),
+                  if (_isServiceEngineer) ...[
+                    const Tab(text: 'Service Report'),
+                  ],
+                  const Tab(text: 'Customer'),
                 ],
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
@@ -1789,8 +1796,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                         controller: _tabController,
                         children: [
                           _buildCreateDcrTab(context, screenTheme, tealGreen),
-                          _buildServiceReportTab(
-                              context, screenTheme, tealGreen),
+                          if (_isServiceEngineer) ...[
+                            _buildServiceReportTab(
+                                context, screenTheme, tealGreen)
+                          ],
                           _buildCustomerTab(context, screenTheme, tealGreen),
                         ],
                       ),
@@ -1875,35 +1884,58 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   // Build Service Report Tab
   Widget _buildServiceReportTab(
       BuildContext context, ThemeData screenTheme, Color tealGreen) {
+    final bool isExistingDcr =
+        widget.dcrId != null || widget.id != null || _loadedEntry != null;
+
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-          MediaQuery.of(context).size.width < 600 ? 12 : 16,
-          12,
-          MediaQuery.of(context).size.width < 600 ? 12 : 16,
-          16 + MediaQuery.of(context).padding.bottom),
+        MediaQuery.of(context).size.width < 600 ? 12 : 16,
+        12,
+        MediaQuery.of(context).size.width < 600 ? 12 : 16,
+        16 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Card(
-                color: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(
-                      MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _buildServiceReportFields(context, screenTheme),
-                  ),
-                ),
+          child: Card(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(
+                MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0,
               ),
-            ],
+              child: isExistingDcr
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: _buildServiceReportFields(context, screenTheme),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Please save DCR first',
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: tealGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'You need to add and save a DCR record before you can add a Service Report.',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         ),
       ),
@@ -2040,6 +2072,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             setState(() {
               _customer = v;
               _customerErrorText = null;
+              _loadInstrumentsList();
             });
           },
         ),
@@ -2070,7 +2103,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       // 8. Products Discussed *
       _LabeledField(
         label: 'Products Discussed',
-        required: true,
+        required: !_isServiceEngineer,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2102,43 +2135,42 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       ),
 
       // add if condition if the logged in person is service engineer than only show this field
-    if (_isServiceEngineer) ...[
-      const SizedBox(height: 16),
-      // 9. Mapped Instruments *
-      _LabeledField(
-        label: 'Equipment',
-        required: true,
-        
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _MultiSelectDropdown(
-              options: _instrumentOptions,
-              selectedValues: _selectedInstruments,
-              hintText: 'Equipment',
-              onChanged: (Set<String> selected) {
-                setState(() {
-                  _selectedInstruments = selected;
-                  if (selected.isNotEmpty) {
-                    _instrumentsErrorText = null;
-                  }
-                });
-              },
-            ),
-            if (_productsErrorText != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                _productsErrorText!,
-                style: TextStyle(
-                  color: Colors.red[700],
-                  fontSize: 12,
-                ),
+      if (_isServiceEngineer) ...[
+        const SizedBox(height: 16),
+        // 9. Mapped Instruments *
+        _LabeledField(
+          label: 'Equipment',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _MultiSelectDropdown(
+                options: _instrumentOptions,
+                selectedValues: _selectedInstruments,
+                hintText: 'Equipment',
+                onChanged: (Set<String> selected) {
+                  setState(() {
+                    _selectedInstruments = selected;
+
+                    // if (selected.isNotEmpty) {
+                    //   _instrumentsErrorText = null;
+                    // }
+                  });
+                },
               ),
+              if (_productsErrorText != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _productsErrorText!,
+                  style: TextStyle(
+                    color: Colors.red[700],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
-      ),
-    ],
+      ],
       const SizedBox(height: 16),
       // 10. Samples Distributed
       _LabeledField(
@@ -2915,12 +2947,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                       getIt.isRegistered<UserDetailStore>()
                           ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
                           : 0;
+                  final int dcrDetailId = _loadedEntry?.detailId ?? 0;
                   final Map<String, dynamic> payload = {
                     'id': _serviceReportId ?? 0,
                     'createdBy': currentUserId,
                     'status': 1,
                     'sbuId': 0,
-                    'dcrDetailId': 0,
+                    'dcrDetailId': dcrDetailId,
                     'customerName': _serviceReportCustomer ?? '',
                     'customerId': customerId,
                     'contactPerson': _contactPersonCtrl.text.trim(),
@@ -3671,19 +3704,19 @@ extension on _DcrEntryScreenState {
     }
 
     String? productsError;
-    if (_selectedProducts.isEmpty) {
+    if (!_isServiceEngineer && _selectedProducts.isEmpty) {
       productsError = 'Please select at least one product to discuss';
       isValid = false;
       firstMessage ??= 'Select at least one product to discuss';
     }
 
     // Service Engineer specific validation
-    String? instrumentsError;
-    if (_isServiceEngineer && _selectedInstruments.isEmpty) {
-      instrumentsError = 'Please select at least one mapped instrument';
-      isValid = false;
-      firstMessage ??= 'Select at least one mapped instrument';
-    }
+    // String? instrumentsError;
+    // if (_isServiceEngineer && _selectedInstruments.isEmpty) {
+    //   instrumentsError = 'Please select at least one mapped instrument';
+    //   isValid = false;
+    //   firstMessage ??= 'Select at least one mapped instrument';
+    // }
 
     // Co-visit manager validation
     String? managerError;
@@ -3705,7 +3738,7 @@ extension on _DcrEntryScreenState {
       _purposeErrorText = purposeError;
       _durationErrorText = durationError;
       _productsErrorText = productsError;
-      _instrumentsErrorText = instrumentsError;
+      // _instrumentsErrorText = instrumentsError;
       _managerErrorText = managerError;
     });
 

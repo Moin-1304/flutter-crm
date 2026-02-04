@@ -127,7 +127,30 @@ class SalesOrderApiItem {
   final String? salesRepName;
   final int? taxId;
   final dynamic salesContractItems;
-  final dynamic fileUploadDetails;
+  final dynamic _fileUploadDetailsRaw;
+  List<FileUploadDetail>? get fileUploadDetails {
+    final raw = _fileUploadDetailsRaw;
+    if (raw == null) return null;
+    if (raw is List<FileUploadDetail>) return raw;
+    if (raw is List) {
+      return raw
+          .where((e) => e != null)
+          .map((e) {
+            if (e is FileUploadDetail) return e;
+            if (e is Map<String, dynamic>) return FileUploadDetail.fromJson(e);
+            if (e is Map) {
+              // Defensive: if map isn't typed, coerce to <String, dynamic>.
+              return FileUploadDetail.fromJson(Map<String, dynamic>.from(e));
+            }
+            // Unknown element shape; skip it.
+            return null;
+          })
+          .whereType<FileUploadDetail>()
+          .toList();
+    }
+    return null;
+  }
+
   final dynamic taxAndOtherChargesDetail;
   final int? pageId;
   final int? refid;
@@ -228,7 +251,7 @@ class SalesOrderApiItem {
     this.salesRepName,
     this.taxId,
     this.salesContractItems,
-    this.fileUploadDetails,
+    dynamic fileUploadDetails,
     this.taxAndOtherChargesDetail,
     this.pageId,
     this.refid,
@@ -290,7 +313,7 @@ class SalesOrderApiItem {
     this.taxInclusive,
     this.bonusEnabled,
     this.discountEnabled,
-  });
+  }) : _fileUploadDetailsRaw = fileUploadDetails;
 
   factory SalesOrderApiItem.fromJson(Map<String, dynamic> json) {
     return SalesOrderApiItem(
@@ -388,11 +411,36 @@ class SalesOrderApiItem {
       saleOrderType: json['saleOrderType']?.toString(),
       isBonusSO: json['isBonusSO'],
       soType: json['soType'],
-      isSalesRepEdit: json['isSalesRepEdit'] == 1 || json['isSalesRepEdit'] == true,
+      isSalesRepEdit:
+          json['isSalesRepEdit'] == 1 || json['isSalesRepEdit'] == true,
       vatRegistered: json['vatRegistered'],
       taxInclusive: json['taxInclusive'],
       bonusEnabled: json['bonusEnabled'],
       discountEnabled: json['discountEnabled'],
+    );
+  }
+}
+
+// fileUploadDetails
+class FileUploadDetail {
+  final int id;
+  final String? url;
+  final String? fileName;
+  final String? extension;
+
+  FileUploadDetail({
+    required this.id,
+    this.url,
+    this.fileName,
+    this.extension,
+  });
+
+  factory FileUploadDetail.fromJson(Map<String, dynamic> json) {
+    return FileUploadDetail(
+      id: json['id'] ?? 0,
+      url: json['url'],
+      fileName: json['fileName'],
+      extension: json['extension'],
     );
   }
 }
@@ -927,9 +975,11 @@ class SalesOrderSaveRequest {
       'SalesRep': salesRep,
       'SalesRepName': salesRepName,
       'TaxId': taxId,
-      'SalesContractItems': salesContractItems.map((item) => item.toJson()).toList(),
+      'SalesContractItems':
+          salesContractItems.map((item) => item.toJson()).toList(),
       'FileUploadDetails': fileUploadDetails,
-      'TaxAndOtherChargesDetail': taxAndOtherChargesDetail.map((item) => item.toJson()).toList(),
+      'TaxAndOtherChargesDetail':
+          taxAndOtherChargesDetail.map((item) => item.toJson()).toList(),
       'PageId': pageId,
       'Refid': refid,
       'ProcessId': processId,
@@ -963,8 +1013,10 @@ class SalesOrderSaveRequest {
       'TenderNo': tenderNo,
       'ReqNo': reqNo,
       'SOStatus': soStatus,
-      'IsCancel': _convertBoolToInt(isCancel), // Convert bool? to int (1 for true, 0 for false/null)
-      'IsFullyUsed': isFullyUsed ?? 0, // Default to 0 if null to avoid .NET parsing error
+      'IsCancel': _convertBoolToInt(
+          isCancel), // Convert bool? to int (1 for true, 0 for false/null)
+      'IsFullyUsed':
+          isFullyUsed ?? 0, // Default to 0 if null to avoid .NET parsing error
       'DOCounts': doCounts,
       'DOCount': doCount,
       'IsShortClosed': isShortClosed,
@@ -972,13 +1024,15 @@ class SalesOrderSaveRequest {
       'IsClosed': isClosed,
       'DecimalFormat': decimalFormat,
       'RateFormat': rateFormat,
-      'HasEdit': hasEdit ?? false, // Default to false if null to avoid .NET parsing error
+      'HasEdit': hasEdit ??
+          false, // Default to false if null to avoid .NET parsing error
       'DespatchedQty': despatchedQty,
       'InvoiceNo': invoiceNo,
       'DespatchNo': despatchNo,
       'IsFullyUsedText': isFullyUsedText,
       'DeliveryAddress': deliveryAddress,
-      'IsCustomerPODuplicateAllowed': isCustomerPODuplicateAllowed ?? false, // Default to false if null
+      'IsCustomerPODuplicateAllowed':
+          isCustomerPODuplicateAllowed ?? false, // Default to false if null
       'DistributerForId': distributerForId,
       'ActualCreatedBy': actualCreatedBy,
       'SaleOrderType': saleOrderType,
