@@ -299,10 +299,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     super.initState();
 
     // Initialize TabController with dynamic tab count:
-    // If creating a new DCR and the user is a Manager (roleCategory == 1 or 2),
-    // show only the "Create DCR" tab.
-    // If the user is a Service Engineer creating a new DCR, show "Create DCR" + "Service Report" tabs.
-    // Otherwise show all three tabs (Create DCR, Service Report [if SE], Customer).
+    // - Manager creating new: only "Create DCR" (1 tab).
+    // - Service Engineer (creating or updating): "Create DCR" + "Service Report" (2 tabs). No Customer tab.
+    // - Updating DCR (any role): no Customer tab (customer cannot be updated). So 1 or 2 tabs.
+    // - Creating new, not SE, not manager: "Create DCR" + "Customer" (2 tabs).
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final int? roleCategory = userStore?.userDetail?.roleCategory;
@@ -315,13 +315,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     int initialTabCount;
     if (isManager && isCreatingNew) {
       initialTabCount = 1; // Only Create DCR
-    } else if (_isServiceEngineer && isCreatingNew) {
-      initialTabCount = 2; // Create DCR + Service Report (no Customer tab)
     } else if (_isServiceEngineer) {
-      initialTabCount = 3; // Service Engineer editing existing: show all three
-    } else {
       initialTabCount =
-          3; // Non-service engineer: always three tabs when not manager-new
+          2; // Create DCR + Service Report (no Customer tab ever for SE)
+    } else if (!isCreatingNew) {
+      initialTabCount =
+          1; // Updating DCR: only Create DCR (no Customer tab for anyone)
+    } else {
+      initialTabCount = 2; // Creating new, not SE: Create DCR + Customer
     }
     _tabController = TabController(length: initialTabCount, vsync: this);
     // When user switches to Service Report tab, load mapped customers for service report
@@ -2095,10 +2096,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                   if (_isServiceEngineer) ...[
                     const Tab(text: 'Service Report'),
                   ],
-                  // For Service Engineers creating a NEW DCR, hide the Customer tab.
-                  if (!(_isServiceEngineer &&
-                      widget.dcrId == null &&
-                      widget.id == null)) ...[
+                  // Show Customer tab only when creating new DCR and user is not Service Engineer.
+                  // Never show when updating (customer cannot be updated) or for SE.
+                  if ((widget.dcrId == null && widget.id == null) &&
+                      !_isServiceEngineer) ...[
                     const Tab(text: 'Customer'),
                   ],
                 ],
@@ -2143,10 +2144,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                             _buildServiceReportTab(
                                 context, screenTheme, tealGreen),
                           ],
-                          // Tab 2: Customer (hidden for Service Engineer when creating new DCR)
-                          if (!(_isServiceEngineer &&
-                              widget.dcrId == null &&
-                              widget.id == null)) ...[
+                          // Customer tab: only when creating new and not Service Engineer (never when updating)
+                          if ((widget.dcrId == null && widget.id == null) &&
+                              !_isServiceEngineer) ...[
                             _buildCustomerTab(context, screenTheme, tealGreen),
                           ],
                         ],
