@@ -21,38 +21,44 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Use IDs from params if available, otherwise get from shared preferences
         int employeeIdInt = int.tryParse(params.employeeId) ?? 0;
         int userIdInt = params.userId ?? 0;
         int bizunitInt = params.bizunit ?? 0;
         String employeeName = params.employeeName;
-        
+
         // Fallback to shared preferences if IDs not provided
         if (employeeIdInt == 0 || userIdInt == 0 || bizunitInt == 0) {
           final sharedPrefHelper = getIt<SharedPreferenceHelper>();
           final user = await sharedPrefHelper.getUser();
-          
+
           if (user != null) {
             employeeIdInt = employeeIdInt == 0 ? user.id : employeeIdInt;
             userIdInt = userIdInt == 0 ? (user.userId ?? user.id) : userIdInt;
             bizunitInt = bizunitInt == 0 ? user.sbuId : bizunitInt;
-            employeeName = params.employeeName.isEmpty ? user.name : params.employeeName;
+            employeeName =
+                params.employeeName.isEmpty ? user.name : params.employeeName;
           }
         }
-        
+
         // Validate required IDs
-        if (params.typeOfWorkId == null || params.cityId == null || params.customerId == null) {
-          throw Exception('Missing required IDs (typeOfWorkId, cityId, or customerId)');
+        if (params.typeOfWorkId == null ||
+            params.cityId == null ||
+            params.customerId == null) {
+          throw Exception(
+              'Missing required IDs (typeOfWorkId, cityId, or customerId)');
         }
-        
+
         // Create tour plan DCR details with IDs from params
-        final int? linkedTourPlanIdInt = int.tryParse(params.linkedTourPlanId ?? '');
-        
+        final int? linkedTourPlanIdInt =
+            int.tryParse(params.linkedTourPlanId ?? '');
+
         // Check if this is an update (dcrId or detailId provided)
         final bool isUpdate = params.dcrId != null || params.detailId != null;
-        final int? dcrIdInt = params.dcrId != null ? int.tryParse(params.dcrId!) : null;
-        
+        final int? dcrIdInt =
+            params.dcrId != null ? int.tryParse(params.dcrId!) : null;
+
         final tourPlanDetails = [
           TourPlanDcrDetailSave(
             // Required fields
@@ -60,12 +66,20 @@ class DcrRepositoryImpl implements DcrRepository {
             typeOfWorkId: params.typeOfWorkId!,
             cityId: params.cityId!,
             customerId: params.customerId!,
-            statusId: params.submit ? 3 : 0, // 3 for submitted as per API, 0 for draft
-            remarks: params.keyDiscussionPoints.isNotEmpty ? params.keyDiscussionPoints : params.purposeOfVisit,
+            statusId: params.submit
+                ? 3
+                : 0, // 3 for submitted as per API, 0 for draft
+            remarks: params.keyDiscussionPoints.isNotEmpty
+                ? params.keyDiscussionPoints
+                : params.purposeOfVisit,
             isBasedOnPlan: 1,
             bizunit: bizunitInt,
-            samplesToDistribute: params.samplesDistributed.isNotEmpty ? params.samplesDistributed : '',
-            productsToDiscuss: params.productsDiscussed.isNotEmpty ? params.productsDiscussed : '',
+            samplesToDistribute: params.samplesDistributed.isNotEmpty
+                ? params.samplesDistributed
+                : '',
+            productsToDiscuss: params.productsDiscussed.isNotEmpty
+                ? params.productsDiscussed
+                : '',
             customerName: params.customer,
             visitTime: _formatVisitTime(params.date),
             visitDuration: params.callDurationMinutes.toDouble(),
@@ -103,18 +117,20 @@ class DcrRepositoryImpl implements DcrRepository {
             updatedAt: null,
             clusterNames: null,
             // Service Engineer specific fields
-            mappedInstruments: params.mappedInstruments, // Already a List<Map<String, dynamic>>?
+            mappedInstruments: params
+                .mappedInstruments, // Already a List<Map<String, dynamic>>?
             complaint: params.complaint,
             actionTaken: params.actionTaken,
             result: params.result,
             complaintStatus: params.complaintStatus, // Already an int?
-            complaintDate: params.complaintDate != null 
-                ? params.complaintDate!.toIso8601String() // Full ISO DateTime string
+            complaintDate: params.complaintDate != null
+                ? params.complaintDate!
+                    .toIso8601String() // Full ISO DateTime string
                 : null,
             complaintRemarks: params.complaintRemarks,
           ),
         ];
-        
+
         // Debug log for Service Report fields
         print('DCR Save - Service Report Fields:');
         print('  - mappedInstruments: ${params.mappedInstruments}');
@@ -124,7 +140,7 @@ class DcrRepositoryImpl implements DcrRepository {
         print('  - complaintStatus: ${params.complaintStatus}');
         print('  - complaintDate: "${params.complaintDate}"');
         print('  - complaintRemarks: "${params.complaintRemarks}"');
-        
+
         final request = DcrSaveRequest(
           // Top-level fields aligned to required contract
           id: dcrIdInt, // Use dcrId for update
@@ -173,15 +189,16 @@ class DcrRepositoryImpl implements DcrRepository {
                 ]
               : const [], // Empty array when coVisit is false
         );
-        
+
         final response = await dcrApi.saveDcr(request);
-        
+
         if (response.success) {
           // Create local entry for UI consistency
           final DateTime now = DateTime.now();
           final DcrEntry entry = DcrEntry(
             id: _genId(),
-            date: DateTime(params.date.year, params.date.month, params.date.day),
+            date:
+                DateTime(params.date.year, params.date.month, params.date.day),
             cluster: params.cluster,
             customer: params.customer,
             purposeOfVisit: params.purposeOfVisit,
@@ -206,7 +223,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       rethrow; // Re-throw to show error to user
     }
-    
+
     // Fallback to local save
     final DateTime now = DateTime.now();
     final DcrEntry entry = DcrEntry(
@@ -242,22 +259,21 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           // Parse the ID to get both id and dcrId
           final intId = int.tryParse(id) ?? 0;
           final intDcrId = dcrId != null ? int.tryParse(dcrId) ?? intId : intId;
-          
+
           // First try direct GET API call with provided dcrId
           try {
             final response = await dcrApi.getDcrDetails(intId, intDcrId);
             return _convertApiResponseToDcrEntry(response);
           } catch (e) {
-            
             // Get the correct dcrId from List API with better parameters
             try {
               final listReq = DcrListRequest(
@@ -268,8 +284,14 @@ class DcrRepositoryImpl implements DcrRepository {
                 employeeId: user.id,
                 // Use current date and wider range
                 dcrDate: DateTime.now().toIso8601String().split('T')[0],
-                fromDate: DateTime.now().subtract(const Duration(days: 365)).toIso8601String().split('T')[0], // 1 year back
-                toDate: DateTime.now().add(const Duration(days: 365)).toIso8601String().split('T')[0], // 1 year forward
+                fromDate: DateTime.now()
+                    .subtract(const Duration(days: 365))
+                    .toIso8601String()
+                    .split('T')[0], // 1 year back
+                toDate: DateTime.now()
+                    .add(const Duration(days: 365))
+                    .toIso8601String()
+                    .split('T')[0], // 1 year forward
                 id: intId, // Search by ID instead of dcrId
                 dcrId: null, // Don't filter by dcrId
                 status: null,
@@ -280,17 +302,19 @@ class DcrRepositoryImpl implements DcrRepository {
                 sortField: null,
                 transactionType: '',
               );
-              
+
               final listResp = await dcrApi.getDcrList(listReq);
-              
+
               if (listResp.items.isNotEmpty) {
                 // Find the matching DcrApiItem by id
-                final match = listResp.items.firstWhere((e) => e.id == intId, orElse: () => listResp.items.first);
+                final match = listResp.items.firstWhere((e) => e.id == intId,
+                    orElse: () => listResp.items.first);
                 final correctDcrId = match.dcrId;
-                
+
                 // Now call the GET API with the correct dcrId
                 try {
-                  final response = await dcrApi.getDcrDetails(intId, correctDcrId);
+                  final response =
+                      await dcrApi.getDcrDetails(intId, correctDcrId);
                   return _convertApiResponseToDcrEntry(response);
                 } catch (e2) {
                   // Fallback: use the list data directly
@@ -308,7 +332,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API get failed, fallback to local data
     }
-    
+
     // Fallback to local data
     try {
       return _items.firstWhere((e) => e.id == id);
@@ -329,19 +353,22 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           final request = DcrListRequest(
             pageNumber: 1,
             pageSize: 1000,
             userId: user.userId, // Get from user session
             bizunit: user.sbuId, // Get from user session
-            employeeId: employeeId != null ? int.tryParse(employeeId) ?? user.id : user.id,
-            dcrDate: start.toIso8601String().split('T')[0], // Format as YYYY-MM-DD
+            employeeId: employeeId != null
+                ? int.tryParse(employeeId) ?? user.id
+                : user.id,
+            dcrDate:
+                start.toIso8601String().split('T')[0], // Format as YYYY-MM-DD
             status: statusId,
             // Defaults for server contract
             searchText: null,
@@ -361,7 +388,7 @@ class DcrRepositoryImpl implements DcrRepository {
             remarks: null,
             managerId: 0,
           );
-          
+
           final response = await dcrApi.getDcrList(request);
           return _convertApiResponseToDcrEntries(response);
         }
@@ -369,13 +396,14 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // Fall back to local data if API fails
     }
-    
+
     // Fallback to local data
     return _items.where((e) {
       final bool inRange = !e.date.isBefore(start) && !e.date.isAfter(end);
       final bool byEmp = employeeId == null || e.employeeId == employeeId;
       final bool byCustomer = customer == null || e.customer == customer;
-      final bool byStatus = statusId == null || _mapStatusToServer(e.status) == statusId;
+      final bool byStatus =
+          statusId == null || _mapStatusToServer(e.status) == statusId;
       return inRange && byEmp && byCustomer && byStatus;
     }).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
@@ -393,20 +421,22 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           // Format dates with full ISO8601 format (with time)
-          final String fromDateStr = DateTime(start.year, start.month, start.day, 0, 0, 0, 0)
-              .toIso8601String()
-              .replaceAll(RegExp(r'\.\d{6}'), '.000'); // Ensure .000 format
-          final String toDateStr = DateTime(end.year, end.month, end.day, 23, 59, 59, 999)
-              .toIso8601String()
-              .replaceAll(RegExp(r'\.\d{6}'), '.000'); // Ensure .000 format
-          
+          final String fromDateStr =
+              DateTime(start.year, start.month, start.day, 0, 0, 0, 0)
+                  .toIso8601String()
+                  .replaceAll(RegExp(r'\.\d{6}'), '.000'); // Ensure .000 format
+          final String toDateStr =
+              DateTime(end.year, end.month, end.day, 23, 59, 59, 999)
+                  .toIso8601String()
+                  .replaceAll(RegExp(r'\.\d{6}'), '.000'); // Ensure .000 format
+
           final request = DcrListRequest(
             pageNumber: 1,
             pageSize: 1000,
@@ -419,10 +449,11 @@ class DcrRepositoryImpl implements DcrRepository {
             bizunit: user.sbuId,
             status: statusId,
             employeeId: employeeId != null ? int.tryParse(employeeId) ?? 0 : 0,
-            transactionType: transactionType ?? '', // Use provided transactionType or empty string for both
+            transactionType: transactionType ??
+                '', // Use provided transactionType or empty string for both
             dcrDate: null, // Set to null as per requirement
           );
-          
+
           final response = await dcrApi.getDcrList(request);
           return response.items;
         }
@@ -430,7 +461,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // Error loading unified DCR list from API
     }
-    
+
     // Fallback to empty list if API fails
     return [];
   }
@@ -446,9 +477,9 @@ class DcrRepositoryImpl implements DcrRepository {
           action: 5, // Approve action
           comment: 'Approved',
         );
-        
+
         final response = await dcrApi.approveDcr(request);
-        
+
         if (response.status) {
           _bulkUpdate(ids, DcrStatus.approved);
           return;
@@ -459,7 +490,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API approve failed, falling back to local update
     }
-    
+
     // Fallback to local update
     _bulkUpdate(ids, DcrStatus.approved);
   }
@@ -477,12 +508,13 @@ class DcrRepositoryImpl implements DcrRepository {
         final dcrApi = getIt<DcrApi>();
         final request = DcrSendBackRequest(
           id: int.tryParse(ids.first) ?? 0,
-          action: 2, // Send back action (matches _mapStatusToServer where sentBack = 2)
+          action:
+              2, // Send back action (matches _mapStatusToServer where sentBack = 2)
           comment: comment,
         );
-        
+
         final response = await dcrApi.sendBackDcr(request);
-        
+
         if (response.status) {
           _bulkUpdate(ids, DcrStatus.sentBack);
           return;
@@ -493,7 +525,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API send back failed, falling back to local update
     }
-    
+
     // Fallback to local update
     _bulkUpdate(ids, DcrStatus.sentBack);
   }
@@ -503,9 +535,9 @@ class DcrRepositoryImpl implements DcrRepository {
       case DcrStatus.draft:
         return 1;
       case DcrStatus.submitted:
-        return 3;  // Based on your JSON example
+        return 3; // Based on your JSON example
       case DcrStatus.approved:
-        return 5;  // Based on your logs showing dcrStatusId=5 for approved
+        return 5; // Based on your logs showing dcrStatusId=5 for approved
       case DcrStatus.rejected:
         return 4;
       case DcrStatus.sentBack:
@@ -524,15 +556,16 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first for update
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           // Use the same structure as create for update - convert DcrEntry to DcrSaveRequest
-          final int? linkedTourPlanIdInt = int.tryParse(entry.linkedTourPlanId ?? '');
-          
+          final int? linkedTourPlanIdInt =
+              int.tryParse(entry.linkedTourPlanId ?? '');
+
           // Create tour plan DCR details for update
           final tourPlanDetails = [
             TourPlanDcrDetailSave(
@@ -542,11 +575,17 @@ class DcrRepositoryImpl implements DcrRepository {
               cityId: entry.cityId ?? 0,
               customerId: entry.customerId ?? 1, // Use 1 as default
               statusId: _mapStatusToServer(entry.status),
-              remarks: entry.keyDiscussionPoints.isNotEmpty ? entry.keyDiscussionPoints : entry.purposeOfVisit,
+              remarks: entry.keyDiscussionPoints.isNotEmpty
+                  ? entry.keyDiscussionPoints
+                  : entry.purposeOfVisit,
               isBasedOnPlan: 1, // Always 1 as per requirement
               bizunit: 1, // Always 1 as per requirement
-              samplesToDistribute: entry.samplesDistributed.isNotEmpty ? entry.samplesDistributed : '',
-              productsToDiscuss: entry.productsDiscussed.isNotEmpty ? entry.productsDiscussed : '',
+              samplesToDistribute: entry.samplesDistributed.isNotEmpty
+                  ? entry.samplesDistributed
+                  : '',
+              productsToDiscuss: entry.productsDiscussed.isNotEmpty
+                  ? entry.productsDiscussed
+                  : '',
               customerName: entry.customer,
               visitTime: _formatVisitTime(entry.date),
               visitDuration: entry.callDurationMinutes.toDouble(),
@@ -586,7 +625,8 @@ class DcrRepositoryImpl implements DcrRepository {
               // Service Engineer specific fields - Note: DcrEntry doesn't have these,
               // so they will be null on update. To fix this, we'd need to add them to DcrEntry
               // or change the update flow to use CreateDcrParams instead of DcrEntry
-              mappedInstruments: null, // TODO: Add Service Report fields to DcrEntry or use CreateDcrParams for update
+              mappedInstruments:
+                  null, // TODO: Add Service Report fields to DcrEntry or use CreateDcrParams for update
               complaint: null,
               actionTaken: null,
               result: null,
@@ -595,7 +635,7 @@ class DcrRepositoryImpl implements DcrRepository {
               complaintRemarks: null,
             ),
           ];
-          
+
           // Create save request using DcrSaveRequest (use Save endpoint for edit)
           final saveRequest = DcrSaveRequest(
             // Use the existing ID for update
@@ -616,7 +656,8 @@ class DcrRepositoryImpl implements DcrRepository {
             active: true,
             userId: user.userId ?? user.id,
             tourPlanDCRDetails: tourPlanDetails,
-            employeeName: entry.employeeName.isNotEmpty ? entry.employeeName : 'Unknown',
+            employeeName:
+                entry.employeeName.isNotEmpty ? entry.employeeName : 'Unknown',
             designation: null,
             clusterNames: null,
             statusText: null,
@@ -645,9 +686,9 @@ class DcrRepositoryImpl implements DcrRepository {
                   ]
                 : const [], // Empty array when coVisit is false
           );
-          
+
           final response = await dcrApi.saveDcr(saveRequest);
-          
+
           if (response.success) {
             // Update local entry with server response
             final updatedEntry = entry.copyWith(updatedAt: DateTime.now());
@@ -666,7 +707,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API update failed, falling back to local update
     }
-    
+
     // Fallback to local update
     final int i = _items.indexWhere((e) => e.id == entry.id);
     final DateTime now = DateTime.now();
@@ -725,8 +766,10 @@ class DcrRepositoryImpl implements DcrRepository {
       }
 
       // Prefer detail-level fields when available
-      final detail = apiItem.tourPlanDCRDetails.isNotEmpty ? apiItem.tourPlanDCRDetails.first : null;
-      
+      final detail = apiItem.tourPlanDCRDetails.isNotEmpty
+          ? apiItem.tourPlanDCRDetails.first
+          : null;
+
       // Parse visitTime to extract time component and combine with date
       DateTime finalDcrDate = dcrDate;
       if (detail != null && detail.visitTime.isNotEmpty) {
@@ -747,9 +790,12 @@ class DcrRepositoryImpl implements DcrRepository {
         }
       }
       final String cluster = (apiItem.clusterNames.isNotEmpty
+                  ? apiItem.clusterNames
+                  : (detail?.clusterNames ?? ''))
+              .isNotEmpty
+          ? (apiItem.clusterNames.isNotEmpty
               ? apiItem.clusterNames
-              : (detail?.clusterNames ?? '')).isNotEmpty
-          ? (apiItem.clusterNames.isNotEmpty ? apiItem.clusterNames : (detail?.clusterNames ?? ''))
+              : (detail?.clusterNames ?? ''))
           : (detail?.cluster ?? '');
       final String customer = (detail?.customerName ?? '').isNotEmpty
           ? detail!.customerName
@@ -759,13 +805,21 @@ class DcrRepositoryImpl implements DcrRepository {
           : (apiItem.remarks.isNotEmpty ? apiItem.remarks : '');
       final int visitDuration = (detail?.visitDuration ?? 0) > 0
           ? detail!.visitDuration.round()
-          : (apiItem.tourPlanDCRDetails.isNotEmpty ? apiItem.tourPlanDCRDetails.first.visitDuration.round() : 0);
-      final String productsToDiscuss = (detail?.productsToDiscuss ?? '').isNotEmpty
-          ? detail!.productsToDiscuss
-          : (apiItem.productsToDiscuss.isNotEmpty ? apiItem.productsToDiscuss : '');
-      final String samplesToDistribute = (detail?.samplesToDistribute ?? '').isNotEmpty
-          ? detail!.samplesToDistribute
-          : (apiItem.samplesToDistribute.isNotEmpty ? apiItem.samplesToDistribute : '');
+          : (apiItem.tourPlanDCRDetails.isNotEmpty
+              ? apiItem.tourPlanDCRDetails.first.visitDuration.round()
+              : 0);
+      final String productsToDiscuss =
+          (detail?.productsToDiscuss ?? '').isNotEmpty
+              ? detail!.productsToDiscuss
+              : (apiItem.productsToDiscuss.isNotEmpty
+                  ? apiItem.productsToDiscuss
+                  : '');
+      final String samplesToDistribute =
+          (detail?.samplesToDistribute ?? '').isNotEmpty
+              ? detail!.samplesToDistribute
+              : (apiItem.samplesToDistribute.isNotEmpty
+                  ? apiItem.samplesToDistribute
+                  : '');
       final String remarks = apiItem.remarks.isNotEmpty
           ? apiItem.remarks
           : ((detail?.remarks ?? '').isNotEmpty ? detail!.remarks : '');
@@ -782,8 +836,10 @@ class DcrRepositoryImpl implements DcrRepository {
         keyDiscussionPoints: remarks,
         status: status,
         employeeId: apiItem.employeeId.toString(),
-        employeeName: apiItem.employeeName.isNotEmpty ? apiItem.employeeName : 'Unknown',
-        linkedTourPlanId: apiItem.tourPlanId > 0 ? apiItem.tourPlanId.toString() : null,
+        employeeName:
+            apiItem.employeeName.isNotEmpty ? apiItem.employeeName : 'Unknown',
+        linkedTourPlanId:
+            apiItem.tourPlanId > 0 ? apiItem.tourPlanId.toString() : null,
         geoProximity: GeoProximity.away,
         customerLatitude: apiItem.customerLatitude ?? detail?.latitude,
         customerLongitude: apiItem.customerLongitude ?? detail?.longitude,
@@ -824,17 +880,27 @@ class DcrRepositoryImpl implements DcrRepository {
     return DcrEntry(
       id: apiItem.id.toString(),
       date: dcrDate,
-      cluster: apiItem.clusterNames.isNotEmpty ? apiItem.clusterNames : 'Unknown',
-      customer: apiItem.customerName.isNotEmpty ? apiItem.customerName : 'Unknown Customer',
-      purposeOfVisit: apiItem.typeOfWork.isNotEmpty ? apiItem.typeOfWork : 'Visit',
+      cluster:
+          apiItem.clusterNames.isNotEmpty ? apiItem.clusterNames : 'Unknown',
+      customer: apiItem.customerName.isNotEmpty
+          ? apiItem.customerName
+          : 'Unknown Customer',
+      purposeOfVisit:
+          apiItem.typeOfWork.isNotEmpty ? apiItem.typeOfWork : 'Visit',
       callDurationMinutes: 0, // Not available in list response
-      productsDiscussed: apiItem.productsToDiscuss ?? '',
-      samplesDistributed: apiItem.samplesToDistribute ?? '',
-      keyDiscussionPoints: apiItem.remarks ?? '',
+      productsDiscussed: apiItem.tourPlanDCRDetails.isNotEmpty
+          ? (apiItem.tourPlanDCRDetails[0].productsToBeDiscussed ?? [])
+              .map((p) => p.productName)
+              .join(', ')
+          : '',
+      samplesDistributed: apiItem.samplesToDistribute,
+      keyDiscussionPoints: apiItem.remarks,
       status: status,
       employeeId: apiItem.employeeId.toString(),
-      employeeName: apiItem.employeeName.isNotEmpty ? apiItem.employeeName : 'Unknown',
-      linkedTourPlanId: apiItem.tourPlanId > 0 ? apiItem.tourPlanId.toString() : null,
+      employeeName:
+          apiItem.employeeName.isNotEmpty ? apiItem.employeeName : 'Unknown',
+      linkedTourPlanId:
+          apiItem.tourPlanId > 0 ? apiItem.tourPlanId.toString() : null,
       geoProximity: GeoProximity.away,
       customerLatitude: apiItem.customerLatitude,
       customerLongitude: apiItem.customerLongitude,
@@ -848,10 +914,11 @@ class DcrRepositoryImpl implements DcrRepository {
 
   DcrEntry _convertApiResponseToDcrEntry(DcrGetResponse response) {
     // Get the first DCR detail from tourPlanDCRDetails array
-    final TourPlanDcrDetailGet? dcrDetail = response.tourPlanDCRDetails.isNotEmpty 
-        ? response.tourPlanDCRDetails.first 
-        : null;
-    
+    final TourPlanDcrDetailGet? dcrDetail =
+        response.tourPlanDCRDetails.isNotEmpty
+            ? response.tourPlanDCRDetails.first
+            : null;
+
     if (dcrDetail == null) {
       throw Exception('No DCR details found in response');
     }
@@ -882,7 +949,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       dcrDate = DateTime.now();
     }
-    
+
     // Parse visitTime to extract time component and combine with date
     DateTime finalDcrDate = dcrDate;
     if (dcrDetail.visitTime.isNotEmpty) {
@@ -904,22 +971,31 @@ class DcrRepositoryImpl implements DcrRepository {
     }
 
     // Use data from tourPlanDCRDetails array
-    final String cluster = dcrDetail.clusterNames.isNotEmpty ? dcrDetail.clusterNames : 'Unknown';
-    final String customer = dcrDetail.customerName.isNotEmpty ? dcrDetail.customerName : 'Unknown Customer';
-    final String purpose = dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : 'Visit';
-    final String productsToDiscuss = dcrDetail.productsToDiscuss.isNotEmpty ? dcrDetail.productsToDiscuss : '';
-    final String samplesToDistribute = dcrDetail.samplesToDistribute.isNotEmpty ? dcrDetail.samplesToDistribute : '';
-    final String remarks = dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : '';
+    final String cluster =
+        dcrDetail.clusterNames.isNotEmpty ? dcrDetail.clusterNames : 'Unknown';
+    final String customer = dcrDetail.customerName.isNotEmpty
+        ? dcrDetail.customerName
+        : 'Unknown Customer';
+    final String purpose =
+        dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : 'Visit';
+    final String productsToDiscuss = (dcrDetail.productsToBeDiscussed ?? [])
+        .map((p) => p.productName)
+        .join(', ');
+    final String samplesToDistribute = dcrDetail.samplesToDistribute.isNotEmpty
+        ? dcrDetail.samplesToDistribute
+        : '';
+    final String remarks =
+        dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : '';
 
     // Helper function to check if a coordinate is valid (not 0.0)
     bool isValidCoordinate(double? coord) {
       return coord != null && coord != 0.0;
     }
-    
+
     // Determine final coordinates - prefer customerLatitude/customerLongitude but treat 0.0 as invalid
     double? finalLat = dcrDetail.customerLatitude;
     double? finalLng = dcrDetail.customerLongitude;
-    
+
     // If customerLatitude/customerLongitude are 0.0 or null, try latitude/longitude
     if (!isValidCoordinate(finalLat)) {
       finalLat = dcrDetail.latitude;
@@ -927,7 +1003,7 @@ class DcrRepositoryImpl implements DcrRepository {
     if (!isValidCoordinate(finalLng)) {
       finalLng = dcrDetail.longitude;
     }
-    
+
     // Final check: if still 0.0, set to null
     if (!isValidCoordinate(finalLat)) {
       finalLat = null;
@@ -935,24 +1011,46 @@ class DcrRepositoryImpl implements DcrRepository {
     if (!isValidCoordinate(finalLng)) {
       finalLng = null;
     }
-    
+
     // Use detailId only if it's greater than 0, otherwise set to null
-    final int? validDetailId = (dcrDetail.id != null && dcrDetail.id! > 0) ? dcrDetail.id : null;
-    
+    final int? validDetailId =
+        (dcrDetail.id != null && dcrDetail.id! > 0) ? dcrDetail.id : null;
+
+    // Map Service Engineer / Service Report fields from API detail
+    final List<Map<String, dynamic>>? mappedInstruments =
+        dcrDetail.mappedInstruments;
+    final String? complaint = dcrDetail.complaint;
+    final String? actionTaken = dcrDetail.actionTaken;
+    final String? result = dcrDetail.result;
+    final int? complaintStatus = dcrDetail.complaintStatus;
+    DateTime? complaintDate;
+    if (dcrDetail.complaintDate != null &&
+        dcrDetail.complaintDate!.isNotEmpty) {
+      try {
+        complaintDate = DateTime.parse(dcrDetail.complaintDate!);
+      } catch (_) {
+        // If parsing fails, leave complaintDate as null
+      }
+    }
+    final String? complaintRemarks = dcrDetail.complaintRemarks;
+
     return DcrEntry(
       id: response.id.toString(), // This is the DCR parent ID
       date: finalDcrDate, // Use date combined with visitTime
       cluster: cluster,
       customer: customer,
       purposeOfVisit: purpose,
-      callDurationMinutes: dcrDetail.visitDuration.round(), // Convert double to int
+      callDurationMinutes:
+          dcrDetail.visitDuration.round(), // Convert double to int
       productsDiscussed: productsToDiscuss,
       samplesDistributed: samplesToDistribute,
       keyDiscussionPoints: remarks,
       status: status,
       employeeId: response.employeeId.toString(),
-      employeeName: response.employeeName.isNotEmpty ? response.employeeName : 'Unknown',
-      linkedTourPlanId: response.tourPlanId > 0 ? response.tourPlanId.toString() : null,
+      employeeName:
+          response.employeeName.isNotEmpty ? response.employeeName : 'Unknown',
+      linkedTourPlanId:
+          response.tourPlanId > 0 ? response.tourPlanId.toString() : null,
       geoProximity: GeoProximity.away,
       customerLatitude: finalLat,
       customerLongitude: finalLng,
@@ -963,8 +1061,14 @@ class DcrRepositoryImpl implements DcrRepository {
       customerId: dcrDetail.customerId,
       detailId: validDetailId,
       clusterId: dcrDetail.clusterId,
-      // Note: Service Report fields are not stored in DcrEntry
-      // They are extracted and displayed via UnifiedDcrItem in the list screen
+      // Service Engineer / Service Report fields
+      mappedInstruments: mappedInstruments,
+      complaint: complaint,
+      actionTaken: actionTaken,
+      result: result,
+      complaintStatus: complaintStatus,
+      complaintDate: complaintDate,
+      complaintRemarks: complaintRemarks,
     );
   }
 
@@ -974,22 +1078,24 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first for bulk approval
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           final request = DcrBulkApproveRequest(
             id: user.userId ?? user.id,
             comments: comment,
             userId: user.userId ?? user.id,
             action: 5, // Approve action
-            tourPlanDCRDetails: ids.map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0)).toList(),
+            tourPlanDCRDetails: ids
+                .map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0))
+                .toList(),
           );
-          
+
           final response = await dcrApi.bulkApproveDcr(request);
-          
+
           if (response.status) {
             _bulkUpdate(ids, DcrStatus.approved);
             return;
@@ -1001,7 +1107,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API bulk approve failed, falling back to local update
     }
-    
+
     // Fallback to local update
     _bulkUpdate(ids, DcrStatus.approved);
   }
@@ -1012,22 +1118,25 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first for bulk send back
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           final request = DcrBulkSendBackRequest(
             id: user.userId ?? user.id,
             comments: comment,
             userId: user.userId ?? user.id,
-            action: 4, // Manager review send back action (Action: 4 for DCR manager review screen)
-            tourPlanDCRDetails: ids.map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0)).toList(),
+            action:
+                4, // Manager review send back action (Action: 4 for DCR manager review screen)
+            tourPlanDCRDetails: ids
+                .map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0))
+                .toList(),
           );
-          
+
           final response = await dcrApi.bulkSendBackDcr(request);
-          
+
           if (response.status) {
             _bulkUpdate(ids, DcrStatus.sentBack);
             return;
@@ -1039,7 +1148,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API bulk send back failed, falling back to local update
     }
-    
+
     // Fallback to local update
     _bulkUpdate(ids, DcrStatus.sentBack);
   }
@@ -1052,22 +1161,25 @@ class DcrRepositoryImpl implements DcrRepository {
       // Try to use API first for bulk reject
       if (getIt.isRegistered<DcrApi>()) {
         final dcrApi = getIt<DcrApi>();
-        
+
         // Get user data from shared preferences
         final sharedPrefHelper = getIt<SharedPreferenceHelper>();
         final user = await sharedPrefHelper.getUser();
-        
+
         if (user != null) {
           final request = DcrBulkSendBackRequest(
             id: user.userId ?? user.id,
             comments: comment,
             userId: user.userId ?? user.id,
-            action: 4, // Reject action (matches _mapStatusToServer where rejected = 4)
-            tourPlanDCRDetails: ids.map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0)).toList(),
+            action:
+                4, // Reject action (matches _mapStatusToServer where rejected = 4)
+            tourPlanDCRDetails: ids
+                .map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0))
+                .toList(),
           );
-          
+
           final response = await dcrApi.bulkSendBackDcr(request);
-          
+
           if (response.status) {
             _bulkUpdate(ids, DcrStatus.rejected);
             return;
@@ -1079,7 +1191,7 @@ class DcrRepositoryImpl implements DcrRepository {
     } catch (e) {
       // API bulk reject failed, falling back to local update
     }
-    
+
     // Fallback to local update
     _bulkUpdate(ids, DcrStatus.rejected);
   }
@@ -1158,7 +1270,8 @@ class DcrRepositoryImpl implements DcrRepository {
   }
 
   @override
-  Future<DcrMapDetailsResponse> getDcrMapDetails(DcrMapDetailsRequest request) async {
+  Future<DcrMapDetailsResponse> getDcrMapDetails(
+      DcrMapDetailsRequest request) async {
     try {
       // Use API to get DCR map details
       if (getIt.isRegistered<DcrApi>()) {
@@ -1172,5 +1285,3 @@ class DcrRepositoryImpl implements DcrRepository {
     }
   }
 }
-
-

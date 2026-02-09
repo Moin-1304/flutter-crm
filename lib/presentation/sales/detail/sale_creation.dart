@@ -8,10 +8,19 @@ import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, TaxComponentResponse, ChargesType, ItemDetailResponse;
+    show
+        CommonDropdownItem,
+        TaxComponentResponse,
+        ChargesType,
+        ItemDetailResponse;
 import 'package:boilerplate/domain/entity/workflow/workflow_api_models.dart'
-    show WorkflowGetAllActionsRequest, WorkflowGetAllActionsResponse, ProcessActionDetail,
-    WorkflowGetUserPagePrivilegesRequest, WorkflowGetUserPagePrivilegesResponse, ButtonPrivilege;
+    show
+        WorkflowGetAllActionsRequest,
+        WorkflowGetAllActionsResponse,
+        ProcessActionDetail,
+        WorkflowGetUserPagePrivilegesRequest,
+        WorkflowGetUserPagePrivilegesResponse,
+        ButtonPrivilege;
 import 'package:boilerplate/domain/repository/workflow/workflow_repository.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
@@ -47,7 +56,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   List<String> _salesReps = []; // Will be populated from API
 
   List<String> _distributors = []; // Will be populated from API
-  List<CommonDropdownItem> _distributorItems = []; // Store full distributor items for ID mapping
+  List<CommonDropdownItem> _distributorItems =
+      []; // Store full distributor items for ID mapping
 
   // Products are fetched from API via _searchItems, no mock data needed
 
@@ -61,57 +71,71 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   String? _selectedCustomerCode;
   final TextEditingController CustomerAddressController =
       TextEditingController();
-  final TextEditingController _customerSearchController = TextEditingController();
+  final TextEditingController _customerSearchController =
+      TextEditingController();
   String? _selectedSalesRep;
-  List<CommonDropdownItem> _salesRepItems = []; // Store sales rep items with IDs
+  List<CommonDropdownItem> _salesRepItems =
+      []; // Store sales rep items with IDs
   String? _selectedDistributor;
   final TextEditingController _notesController = TextEditingController();
-  
+
   // New fields
   final TextEditingController _customerPOController = TextEditingController();
   String? _selectedUserGroup;
   final TextEditingController _quotationNoController = TextEditingController();
   bool _isBonusSO = false;
   final TextEditingController _exchangeRateController = TextEditingController();
-  final TextEditingController _deliveryAddressController = TextEditingController();
-  
+  final TextEditingController _deliveryAddressController =
+      TextEditingController();
+
   // Tax and charges
   final TextEditingController _subTotalController = TextEditingController();
-  final TextEditingController _priceAdjustmentController = TextEditingController();
-  
+  final TextEditingController _priceAdjustmentController =
+      TextEditingController();
+
   double get _subTotal => double.tryParse(_subTotalController.text) ?? 0.0;
-  
+
   // Multiple tax/discount/other charge rows
   final List<_TaxChargeRow> _taxRows = [];
   final List<_TaxChargeRow> _discountRows = [];
   final List<_TaxChargeRow> _otherChargeRows = [];
-  
-  double get _priceAdjustment => double.tryParse(_priceAdjustmentController.text) ?? 0.0;
-  
+
+  double get _priceAdjustment =>
+      double.tryParse(_priceAdjustmentController.text) ?? 0.0;
+
   // Tax Component Formulas (loaded from API)
   List<TaxComponentResponse> _taxComponentFormulas = [];
   bool _isLoadingTaxFormulas = false;
-  
+
   // Workflow Actions (loaded from API)
   WorkflowGetAllActionsResponse? _workflowResponse;
   List<ProcessActionDetail> _workflowActions = [];
-  bool _isLoadingWorkflowActions = true; // Start as true to show loader until API completes
+  bool _isLoadingWorkflowActions =
+      true; // Start as true to show loader until API completes
   bool _isFirstButtonEnabled = false; // Based on HasEdit of first button
-  
+
   // User Page Privileges (loaded from API)
   WorkflowGetUserPagePrivilegesResponse? _userPrivilegesResponse;
   Map<String, ButtonPrivilege> _buttonPrivileges = {};
-  bool _isLoadingPrivileges = true; // Start as true to show loader until API completes
+  bool _isLoadingPrivileges =
+      true; // Start as true to show loader until API completes
   bool _hasButtonSaveRight = false; // ButtonSave HasRight
   bool _hasPrintRight = false; // Print button HasRight
-  bool _isDraftSaveEnabled = false; // Draft Save enabled based on ButtonSave or IsSalesRepEdit
-  bool _firstPrivilegeLoadCompleted = false; // Track if first load has completed
-  bool _hasBeenSubmitted = false; // Track if order has been submitted (for WorkflowFlag logic)
-  
+  bool _isDraftSaveEnabled =
+      false; // Draft Save enabled based on ButtonSave or IsSalesRepEdit
+  bool _firstPrivilegeLoadCompleted =
+      false; // Track if first load has completed
+  bool _hasBeenSubmitted =
+      false; // Track if order has been submitted (for WorkflowFlag logic)
+
   final List<String> _typeOptions = ['Normal', 'Bonus', 'Domestic'];
   final List<String> _currencyOptions = ['LKR', 'USD'];
-  List<String> _taxTypeOptions = ['Select']; // Will be loaded from API, starts with "Select"
-  List<String> _discountTypeOptions = ['Select']; // Will be loaded from API, starts with "Select"
+  List<String> _taxTypeOptions = [
+    'Select'
+  ]; // Will be loaded from API, starts with "Select"
+  List<String> _discountTypeOptions = [
+    'Select'
+  ]; // Will be loaded from API, starts with "Select"
   final List<String> _userGroupOptions = ['Diagnostic', 'Pharmacy', 'Hospital'];
 
 // Items
@@ -123,17 +147,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   // Tax section
   bool _isTaxSectionExpanded = true; // Default to expanded
-  
+
   // Order Information section
   bool _isOrderInfoExpanded = true; // Default to expanded
 
   // Scroll controller to preserve scroll position
   final ScrollController _scrollController = ScrollController();
-  
+
   // Flag to prevent automatic focus restoration after dropdown selection
   bool _preventingFocusRestoration = false;
 
-  bool get _isEditMode => widget.contractId != null || widget.orderId != null || widget.orderData != null;
+  bool get _isEditMode =>
+      widget.contractId != null ||
+      widget.orderId != null ||
+      widget.orderData != null;
 
   @override
   void initState() {
@@ -141,7 +168,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Initialize with default values first to prevent null errors
     _contractDate = DateTime.now();
     _deliveryDate = DateTime.now().add(const Duration(days: 7));
-    
+
     // Load tax and discount options for Tax section dropdowns
     _loadTaxOptionsForTaxSection();
     _loadDiscountOptionsForTaxSection();
@@ -151,7 +178,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     _loadWorkflowActions();
     // Load user page privileges
     _loadUserPagePrivileges();
-    
+
     if (_isEditMode) {
       // Always fetch from API if orderId is provided to get complete data with items
       if (widget.orderId != null) {
@@ -168,7 +195,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         });
       } else {
         // Legacy edit mode with contractId
-      _loadEditModeData(widget.contractId!);
+        _loadEditModeData(widget.contractId!);
       }
     } else {
       _loadNewModeData();
@@ -203,7 +230,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               : 1);
 
       if (bizUnit == 0) {
-        throw Exception('BizUnit is 0. Please ensure user details are loaded correctly.');
+        throw Exception(
+            'BizUnit is 0. Please ensure user details are loaded correctly.');
       }
 
       // Get userId
@@ -211,18 +239,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Get customer ID - check orderData first (edit mode), then selected customer code
       int? customerId;
-      
+
       // In edit mode, check if we have orderData with customerId
       if (widget.orderData?.customerId != null) {
         customerId = widget.orderData!.customerId;
       } else if (_loadedOrderData?.customerId != null) {
         customerId = _loadedOrderData!.customerId;
-      } else if (_selectedCustomerCode != null && _selectedCustomerCode!.isNotEmpty) {
+      } else if (_selectedCustomerCode != null &&
+          _selectedCustomerCode!.isNotEmpty) {
         // Try to parse selected customer code (should be customer ID as string)
         customerId = int.tryParse(_selectedCustomerCode!);
       }
-      
-      print('🔵 [LoadCustomers] CustomerId: $customerId, UserId: $userId, BizUnit: $bizUnit');
+
+      print(
+          '🔵 [LoadCustomers] CustomerId: $customerId, UserId: $userId, BizUnit: $bizUnit');
 
       final commonRepository = getIt<CommonRepository>();
       // Load ALL customers without search text filter - fetch once only
@@ -274,7 +304,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Get userId from user object
       final int userId = user.userId;
-      
+
       if (userId == 0) {
         print('Error: UserId is 0');
         return;
@@ -287,7 +317,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return;
       }
 
-      print('🔵 Loading Sales Rep for UserId: $userId, CustomerId: $customerId');
+      print(
+          '🔵 Loading Sales Rep for UserId: $userId, CustomerId: $customerId');
 
       final commonRepository = getIt<CommonRepository>();
       final salesReps = await commonRepository.getSalesRepList(
@@ -299,14 +330,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         setState(() {
           // Store sales rep items with IDs
           _salesRepItems = salesReps;
-          
+
           // Convert CommonDropdownItem to String list (using text field)
           _salesReps = salesReps.map((item) => item.text).toList();
-          
+
           // Auto-select the first Sales Rep if available
           if (_salesReps.isNotEmpty) {
             // If current selection is not in the new list, or no selection exists, select the first one
-            if (_selectedSalesRep == null || !_salesReps.contains(_selectedSalesRep)) {
+            if (_selectedSalesRep == null ||
+                !_salesReps.contains(_selectedSalesRep)) {
               _selectedSalesRep = _salesReps.first;
               print('✅ Auto-selected Sales Rep: ${_selectedSalesRep}');
             }
@@ -328,7 +360,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
   }
 
-  Future<void> _loadDistributorAndSetSelection(String customerCode, int distributorId) async {
+  Future<void> _loadDistributorAndSetSelection(
+      String customerCode, int distributorId) async {
     try {
       // Get user info for bizUnit
       final sharedPrefHelper = getIt<SharedPreferenceHelper>();
@@ -364,7 +397,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return;
       }
 
-      print('🔵 Loading Distributors for BizUnit: $bizUnit, CustomerId: $customerId, DistributorId: $distributorId');
+      print(
+          '🔵 Loading Distributors for BizUnit: $bizUnit, CustomerId: $customerId, DistributorId: $distributorId');
 
       final commonRepository = getIt<CommonRepository>();
       final distributors = await commonRepository.getDistributorList(
@@ -378,7 +412,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           _distributorItems = distributors;
           // Convert CommonDropdownItem to String list (using text field)
           _distributors = distributors.map((item) => item.text).toList();
-          
+
           // Find distributor by ID and set selection
           CommonDropdownItem? distributorItem;
           try {
@@ -387,12 +421,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             );
           } catch (e) {
             // Distributor not found by ID, use first one if available
-            distributorItem = distributors.isNotEmpty ? distributors.first : null;
+            distributorItem =
+                distributors.isNotEmpty ? distributors.first : null;
           }
-          
+
           if (distributorItem != null && distributorItem.text.isNotEmpty) {
             _selectedDistributor = distributorItem.text;
-            print('✅ Set Distributor by ID: ${distributorItem.id} -> ${distributorItem.text}');
+            print(
+                '✅ Set Distributor by ID: ${distributorItem.id} -> ${distributorItem.text}');
           } else if (_distributors.isNotEmpty) {
             _selectedDistributor = _distributors.first;
             print('✅ Auto-selected first Distributor: ${_selectedDistributor}');
@@ -450,7 +486,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return;
       }
 
-      print('🔵 Loading Distributors for BizUnit: $bizUnit, CustomerId: $customerId');
+      print(
+          '🔵 Loading Distributors for BizUnit: $bizUnit, CustomerId: $customerId');
 
       final commonRepository = getIt<CommonRepository>();
       final distributors = await commonRepository.getDistributorList(
@@ -464,11 +501,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           _distributorItems = distributors;
           // Convert CommonDropdownItem to String list (using text field)
           _distributors = distributors.map((item) => item.text).toList();
-          
+
           // Auto-select the first Distributor if available
           if (_distributors.isNotEmpty) {
             // If current selection is not in the new list, or no selection exists, select the first one
-            if (_selectedDistributor == null || !_distributors.contains(_selectedDistributor)) {
+            if (_selectedDistributor == null ||
+                !_distributors.contains(_selectedDistributor)) {
               _selectedDistributor = _distributors.first;
               print('✅ Auto-selected Distributor: ${_selectedDistributor}');
             }
@@ -497,7 +535,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     try {
       SalesOrderApiItem? orderData;
-      
+
       // Always fetch from API if orderId is provided to get complete data with items and tax details
       if (widget.orderId != null) {
         final orderId = int.tryParse(widget.orderId!);
@@ -562,7 +600,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     // Parse required date (reqdDate) - calculate from items if not available
     if (_items.isNotEmpty) {
-      _reqdDate = _items.map((item) => item.requiredDate).reduce((a, b) => a.isBefore(b) ? a : b);
+      _reqdDate = _items
+          .map((item) => item.requiredDate)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
     } else {
       _reqdDate = null;
     }
@@ -575,13 +615,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // This ensures we can find the customer by ID when building save request
     _selectedCustomerCode = orderData.customerId?.toString();
     CustomerAddressController.text = orderData.cusAddress ?? '';
-    _customerSearchController.text = orderData.customerName ?? orderData.customer ?? '';
+    _customerSearchController.text =
+        orderData.customerName ?? orderData.customer ?? '';
     _selectedSalesRep = orderData.salesRepName ?? orderData.salesRep;
     _customerPOController.text = orderData.customerRef ?? '';
     _selectedUserGroup = orderData.divisionGroupName;
     _quotationNoController.text = orderData.refNo ?? '';
     _isBonusSO = orderData.isBonusSO ?? false;
-    _exchangeRateController.text = orderData.exchangeRate?.toStringAsFixed(5) ?? '1.00000';
+    _exchangeRateController.text =
+        orderData.exchangeRate?.toStringAsFixed(5) ?? '1.00000';
     _deliveryAddressController.text = orderData.deliveryAddress ?? '';
 
     // Check if order has been submitted
@@ -589,15 +631,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     if (orderData.statusText != null && orderData.statusText!.isNotEmpty) {
       final statusLower = orderData.statusText!.toLowerCase();
       _hasBeenSubmitted = statusLower.contains('submitted') ||
-                         statusLower.contains('pending') ||
-                         statusLower.contains('approved');
+          statusLower.contains('pending') ||
+          statusLower.contains('approved');
     } else {
       // If statusText is not available, check workflowStatus or soStatus
       // Non-zero workflowStatus or soStatus typically indicates submission
-      _hasBeenSubmitted = (orderData.workflowStatus != null && orderData.workflowStatus! > 0) ||
-                         (orderData.soStatus != null && orderData.soStatus! > 0);
+      _hasBeenSubmitted =
+          (orderData.workflowStatus != null && orderData.workflowStatus! > 0) ||
+              (orderData.soStatus != null && orderData.soStatus! > 0);
     }
-    
+
     // Load distributor list and set selected distributor by ID
     if (orderData.distributerForId != null && orderData.customerId != null) {
       // Load distributors first, then match by ID
@@ -605,20 +648,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         orderData.customerId.toString(),
         orderData.distributerForId!,
       );
-        // Reload workflow actions and privileges after distributor is set to use correct bizUnit
+      // Reload workflow actions and privileges after distributor is set to use correct bizUnit
       await _loadWorkflowActions();
       await _loadUserPagePrivileges();
     } else if (orderData.customerId != null) {
       // Just load distributors without setting selection
       await _loadDistributors(orderData.customerId.toString());
-        // Reload workflow actions and privileges after distributor is loaded
+      // Reload workflow actions and privileges after distributor is loaded
       await _loadWorkflowActions();
       await _loadUserPagePrivileges();
     } else {
       // Reload privileges even if no distributor
       await _loadUserPagePrivileges();
     }
-    
+
     // Load customers to populate customer field correctly
     // This is important so the customer name is displayed instead of ID
     if (orderData.customerId != null) {
@@ -626,13 +669,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // After customers are loaded, update the customer search controller with the name
       if (mounted && Customers.isNotEmpty && _selectedCustomerCode != null) {
         try {
-          final customer = Customers.firstWhere((c) => c.code == _selectedCustomerCode);
+          final customer =
+              Customers.firstWhere((c) => c.code == _selectedCustomerCode);
           _customerSearchController.text = customer.name;
-          print('✅ Updated customer search controller with name: ${customer.name}');
+          print(
+              '✅ Updated customer search controller with name: ${customer.name}');
         } catch (e) {
-          print('⚠️ Customer not found in list for code: $_selectedCustomerCode');
+          print(
+              '⚠️ Customer not found in list for code: $_selectedCustomerCode');
           // If customer not found, try to use customerName from API
-          if (orderData.customerName != null && orderData.customerName!.isNotEmpty) {
+          if (orderData.customerName != null &&
+              orderData.customerName!.isNotEmpty) {
             _customerSearchController.text = orderData.customerName!;
             print('✅ Using customerName from API: ${orderData.customerName}');
           }
@@ -643,17 +690,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Parse items
     _items.clear();
     print('🔵 Parsing salesContractItems...');
-    print('   salesContractItems type: ${orderData.salesContractItems.runtimeType}');
-    print('   salesContractItems is null: ${orderData.salesContractItems == null}');
-    
-    if (orderData.salesContractItems != null && orderData.salesContractItems is List) {
+    print(
+        '   salesContractItems type: ${orderData.salesContractItems.runtimeType}');
+    print(
+        '   salesContractItems is null: ${orderData.salesContractItems == null}');
+
+    if (orderData.salesContractItems != null &&
+        orderData.salesContractItems is List) {
       final itemsList = orderData.salesContractItems as List;
       print('   Found ${itemsList.length} items in list');
-      
+
       for (int i = 0; i < itemsList.length; i++) {
         final itemData = itemsList[i];
         print('   Processing item $i: ${itemData.runtimeType}');
-        
+
         if (itemData is Map<String, dynamic>) {
           print('     Item data keys: ${itemData.keys.toList()}');
           if (itemData.isNotEmpty) {
@@ -671,7 +721,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             print('     ⚠️ Item $i is empty map, skipping');
           }
         } else {
-          print('     ⚠️ Item $i is not a Map: ${itemData.runtimeType}, skipping');
+          print(
+              '     ⚠️ Item $i is not a Map: ${itemData.runtimeType}, skipping');
         }
       }
     } else {
@@ -680,9 +731,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         print('     Type: ${orderData.salesContractItems.runtimeType}');
       }
     }
-    
+
     print('   Total parsed items: ${_items.length}');
-    
+
     // If no items found, create a default empty item (will be populated from API when user searches)
     if (_items.isEmpty) {
       print('   ⚠️ No items found, creating default empty item');
@@ -710,32 +761,39 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
 
     // Parse tax and charges from taxAndOtherChargesDetail using typeText
-    if (orderData.taxAndOtherChargesDetail != null && orderData.taxAndOtherChargesDetail is List) {
+    if (orderData.taxAndOtherChargesDetail != null &&
+        orderData.taxAndOtherChargesDetail is List) {
       final charges = orderData.taxAndOtherChargesDetail as List;
       for (var charge in charges) {
         if (charge is Map<String, dynamic>) {
           final typeText = charge['typeText']?.toString() ?? '';
           final label = charge['label']?.toString() ?? '';
           final value = (charge['value'] ?? 0).toDouble();
-          
+
           // Use typeText for exact matching (more reliable than label)
           // Skip SubTotal from charges if totalAmount is already set
           if (typeText == 'SubTotal' || typeText.toLowerCase() == 'subtotal') {
             // Only set from charges if totalAmount is not available
             if (orderData.totalAmount == null || orderData.totalAmount == 0) {
-            _subTotalController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
+              _subTotalController.text =
+                  value == 0.0 ? '' : value.toStringAsFixed(2);
             }
-          } else if (typeText == 'Tax' || typeText.toLowerCase() == 'tax' || label.toLowerCase() == 'tax') {
+          } else if (typeText == 'Tax' ||
+              typeText.toLowerCase() == 'tax' ||
+              label.toLowerCase() == 'tax') {
             // Add tax row
             final taxRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'tax',
             );
-            taxRow.valueController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
+            taxRow.valueController.text =
+                value == 0.0 ? '' : value.toStringAsFixed(2);
             // Use typeText first (e.g., "VAT 18%"), then subTypeText, otherwise try to extract from label
             final chargeTypeText = charge['typeText']?.toString();
             final subTypeText = charge['subTypeText']?.toString();
-            if (chargeTypeText != null && chargeTypeText.isNotEmpty && chargeTypeText.toLowerCase() != 'tax') {
+            if (chargeTypeText != null &&
+                chargeTypeText.isNotEmpty &&
+                chargeTypeText.toLowerCase() != 'tax') {
               taxRow.selectedType = chargeTypeText;
             } else if (subTypeText != null && subTypeText.isNotEmpty) {
               taxRow.selectedType = subTypeText;
@@ -748,51 +806,65 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               }
             }
             _taxRows.add(taxRow);
-          } else if (typeText == 'Discount' || typeText.toLowerCase() == 'discount') {
+          } else if (typeText == 'Discount' ||
+              typeText.toLowerCase() == 'discount') {
             // Add discount row
             final discountRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'discount',
             );
-            discountRow.valueController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
-            
+            discountRow.valueController.text =
+                value == 0.0 ? '' : value.toStringAsFixed(2);
+
             // Check if this is a custom discount
-            final isCustom = charge['isCustom'] == true || charge['isCustom'] == 1 || charge['isCustomSelected'] == true || charge['isCustomSelected'] == 1;
+            final isCustom = charge['isCustom'] == true ||
+                charge['isCustom'] == 1 ||
+                charge['isCustomSelected'] == true ||
+                charge['isCustomSelected'] == 1;
             final customPercentage = charge['customPercentage'];
-            
+
             if (isCustom) {
               // Set selectedType to "Custom" if isCustom is true
               discountRow.selectedType = 'Custom';
-              print('🔵 Discount isCustom=true, setting selectedType to "Custom"');
-              
+              print(
+                  '🔵 Discount isCustom=true, setting selectedType to "Custom"');
+
               // If customPercentage has a value, enable checkbox and set percentage
               if (customPercentage != null) {
-                final percentageValue = (customPercentage is num) ? customPercentage.toDouble() : double.tryParse(customPercentage.toString()) ?? 0.0;
+                final percentageValue = (customPercentage is num)
+                    ? customPercentage.toDouble()
+                    : double.tryParse(customPercentage.toString()) ?? 0.0;
                 if (percentageValue > 0) {
                   discountRow.isPercentageEnabled = true;
-                  discountRow.percentageController.text = percentageValue.toStringAsFixed(2);
-                  print('🔵 Discount customPercentage=$percentageValue, enabling checkbox and setting percentage');
+                  discountRow.percentageController.text =
+                      percentageValue.toStringAsFixed(2);
+                  print(
+                      '🔵 Discount customPercentage=$percentageValue, enabling checkbox and setting percentage');
                 }
               }
             } else {
               // Use subTypeText if available (for non-custom discounts)
-            final subTypeText = charge['subTypeText']?.toString();
-            if (subTypeText != null && subTypeText.isNotEmpty) {
-              discountRow.selectedType = subTypeText;
+              final subTypeText = charge['subTypeText']?.toString();
+              if (subTypeText != null && subTypeText.isNotEmpty) {
+                discountRow.selectedType = subTypeText;
+              }
             }
-            }
-            
+
             _discountRows.add(discountRow);
-          } else if (typeText == 'OtherCharge' || typeText.toLowerCase() == 'othercharge') {
+          } else if (typeText == 'OtherCharge' ||
+              typeText.toLowerCase() == 'othercharge') {
             // Add other charge row
             final otherChargeRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'otherCharge',
             );
-            otherChargeRow.valueController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
+            otherChargeRow.valueController.text =
+                value == 0.0 ? '' : value.toStringAsFixed(2);
             _otherChargeRows.add(otherChargeRow);
-          } else if (typeText == 'PriceAdjustment' || typeText.toLowerCase() == 'priceadjustment') {
-            _priceAdjustmentController.text = value == 0.0 ? '' : value.toStringAsFixed(2);
+          } else if (typeText == 'PriceAdjustment' ||
+              typeText.toLowerCase() == 'priceadjustment') {
+            _priceAdjustmentController.text =
+                value == 0.0 ? '' : value.toStringAsFixed(2);
           }
           // Note: GrandTotal is calculated, not stored in a controller
         }
@@ -800,11 +872,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     } else {
       // Fallback to direct fields - calculate from items if available
       if (_items.isNotEmpty) {
-        final calculatedSubTotal = _items.fold(0.0, (sum, item) => sum + item.amount);
-        _subTotalController.text = calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
+        final calculatedSubTotal =
+            _items.fold(0.0, (sum, item) => sum + item.amount);
+        _subTotalController.text = calculatedSubTotal == 0.0
+            ? ''
+            : calculatedSubTotal.toStringAsFixed(2);
       } else {
         final subTotalValue = orderData.totalAmount ?? orderData.amount ?? 0.0;
-        _subTotalController.text = subTotalValue == 0.0 ? '' : subTotalValue.toStringAsFixed(2);
+        _subTotalController.text =
+            subTotalValue == 0.0 ? '' : subTotalValue.toStringAsFixed(2);
       }
       // Note: Tax, discount, and other charges should be loaded from taxAndOtherChargesDetail
       // If not available, we can create default rows
@@ -829,10 +905,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           rowType: 'otherCharge',
         );
-        otherChargeRow.valueController.text = orderData.totalShipCharge.toString();
+        otherChargeRow.valueController.text =
+            orderData.totalShipCharge.toString();
         _otherChargeRows.add(otherChargeRow);
       }
-      _priceAdjustmentController.text = (orderData.totalAdjust ?? 0.0).toString();
+      _priceAdjustmentController.text =
+          (orderData.totalAdjust ?? 0.0).toString();
     }
 
     _updateTotals();
@@ -843,24 +921,25 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   _LineItem _parseItemFromData(Map<String, dynamic> itemData) {
     print('🔵 _parseItemFromData called with keys: ${itemData.keys.toList()}');
-    
+
     // Validate itemData is not null or empty
     if (itemData.isEmpty) {
       print('❌ Item data is empty');
       throw Exception('Item data is empty');
     }
-    
+
     // Use item description from data
-    final itemDescription = itemData['itemText']?.toString() ?? 
-                          itemData['itemName']?.toString() ?? 
-                          itemData['itemDescription']?.toString() ?? 
-                          itemData['description']?.toString() ?? 
-                          '';
-    
+    final itemDescription = itemData['itemText']?.toString() ??
+        itemData['itemName']?.toString() ??
+        itemData['itemDescription']?.toString() ??
+        itemData['description']?.toString() ??
+        '';
+
     // Safely parse rate - handle null and type conversion
     double rate = 0.0;
     try {
-      final rateValue = itemData['rate'] ?? itemData['unitPrice'] ?? itemData['price'] ?? 0.0;
+      final rateValue =
+          itemData['rate'] ?? itemData['unitPrice'] ?? itemData['price'] ?? 0.0;
       if (rateValue is num) {
         rate = rateValue.toDouble();
       } else if (rateValue is String) {
@@ -869,11 +948,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     } catch (e) {
       rate = 0.0;
     }
-    
+
     // Safely parse MRP
     double? mrp;
     try {
-      final mrpValue = itemData['mrp'] ?? itemData['maxRetailPrice'] ?? itemData['mrpValue'];
+      final mrpValue =
+          itemData['mrp'] ?? itemData['maxRetailPrice'] ?? itemData['mrpValue'];
       if (mrpValue != null) {
         if (mrpValue is num) {
           final mrpDouble = mrpValue.toDouble();
@@ -886,11 +966,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     } catch (e) {
       mrp = null;
     }
-    
+
     // Safely parse discount
     double discount = 0.0;
     try {
-      final discountValue = itemData['discount'] ?? itemData['discountAmount'] ?? 0.0;
+      final discountValue =
+          itemData['discount'] ?? itemData['discountAmount'] ?? 0.0;
       if (discountValue is num) {
         discount = discountValue.toDouble();
       } else if (discountValue is String) {
@@ -899,35 +980,42 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     } catch (e) {
       discount = 0.0;
     }
-    
+
     // Get UOM - prioritize uomText (actual text) over uom (numeric ID)
-    final uom = itemData['uomText']?.toString() ?? 
-                (itemData['uom'] != null ? itemData['uom'].toString() : null);
-    
+    final uom = itemData['uomText']?.toString() ??
+        (itemData['uom'] != null ? itemData['uom'].toString() : null);
+
     // Create default product from item data (no mock data, always use API data)
     // Ensure all required fields have safe defaults to prevent constructor errors
     // Get item ID - use 'item' field (product/item ID) first, then fallback to 'id' (contract item ID)
-    final itemIdValue = itemData['item'] ?? 
-                        itemData['itemId'] ?? 
-                        itemData['id'] ?? 
-                        itemData['Id'] ?? 
-                        itemData['ItemId'];
+    final itemIdValue = itemData['item'] ??
+        itemData['itemId'] ??
+        itemData['id'] ??
+        itemData['Id'] ??
+        itemData['ItemId'];
     final itemIdStr = (itemIdValue?.toString() ?? '0').trim();
-    
-    final itemName = itemDescription.isNotEmpty ? itemDescription.trim() : 'Item';
-    
-    final manufacturerName = (itemData['manufacturerName']?.toString() ?? 
-                            itemData['ManufacturerName']?.toString() ??
-                            'N/A').trim();
-    
+
+    final itemName =
+        itemDescription.isNotEmpty ? itemDescription.trim() : 'Item';
+
+    final manufacturerName = (itemData['manufacturerName']?.toString() ??
+            itemData['ManufacturerName']?.toString() ??
+            'N/A')
+        .trim();
+
     final safeRate = rate > 0 ? rate : 0.0;
     final safeMrp = mrp;
-    final safeUom = (uom != null && uom.trim().isNotEmpty) ? uom.trim() : 'Unit';
-    
+    final safeUom =
+        (uom != null && uom.trim().isNotEmpty) ? uom.trim() : 'Unit';
+
     // Safely parse availableQty - handle both int and string types
     int safeAvailableQty = 0;
     try {
-      final stockValue = itemData['stock'] ?? itemData['availableQty'] ?? itemData['Stock'] ?? itemData['AvailableQty'] ?? 0;
+      final stockValue = itemData['stock'] ??
+          itemData['availableQty'] ??
+          itemData['Stock'] ??
+          itemData['AvailableQty'] ??
+          0;
       if (stockValue is int) {
         safeAvailableQty = stockValue;
       } else if (stockValue is String) {
@@ -938,24 +1026,28 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     } catch (e) {
       safeAvailableQty = 0;
     }
-    
+
     // Ensure all required fields are non-null and valid before creating Product
     // This prevents the "No constructor 'Product.' with matching arguments" error
     final finalItemId = itemIdStr.isNotEmpty ? itemIdStr : '0';
     final finalItemName = itemName.isNotEmpty ? itemName : 'Item';
-    final finalManufacturer = manufacturerName.isNotEmpty ? manufacturerName : 'N/A';
+    final finalManufacturer =
+        manufacturerName.isNotEmpty ? manufacturerName : 'N/A';
     final finalUom = safeUom.isNotEmpty ? safeUom : 'Unit';
-    
+
     // Debug logging before Product creation
     print('     🔵 Creating Product with:');
     print('        id: "$finalItemId" (type: ${finalItemId.runtimeType})');
-    print('        name: "$finalItemName" (type: ${finalItemName.runtimeType})');
-    print('        manufacturer: "$finalManufacturer" (type: ${finalManufacturer.runtimeType})');
+    print(
+        '        name: "$finalItemName" (type: ${finalItemName.runtimeType})');
+    print(
+        '        manufacturer: "$finalManufacturer" (type: ${finalManufacturer.runtimeType})');
     print('        rate: $safeRate (type: ${safeRate.runtimeType})');
     print('        mrp: $safeMrp (type: ${safeMrp.runtimeType})');
     print('        uom: "$finalUom" (type: ${finalUom.runtimeType})');
-    print('        availableQty: $safeAvailableQty (type: ${safeAvailableQty.runtimeType})');
-    
+    print(
+        '        availableQty: $safeAvailableQty (type: ${safeAvailableQty.runtimeType})');
+
     // Double-check all values are valid and non-null
     if (finalItemId.isEmpty) {
       throw Exception('Invalid Product data: id is empty');
@@ -969,7 +1061,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     if (finalUom.isEmpty) {
       throw Exception('Invalid Product data: uom is empty');
     }
-    
+
     // Create Product with all validated fields - ensure all parameters are explicitly provided
     Product defaultProduct;
     try {
@@ -988,15 +1080,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       print('     Stack trace: $stackTrace');
       rethrow;
     }
-    
+
     // Verify the product was created successfully
-    if (defaultProduct.id.isEmpty || defaultProduct.name.isEmpty || defaultProduct.manufacturer.isEmpty || defaultProduct.uom.isEmpty) {
-      throw Exception('Product created with invalid data: id="${defaultProduct.id}", name="${defaultProduct.name}", manufacturer="${defaultProduct.manufacturer}", uom="${defaultProduct.uom}"');
+    if (defaultProduct.id.isEmpty ||
+        defaultProduct.name.isEmpty ||
+        defaultProduct.manufacturer.isEmpty ||
+        defaultProduct.uom.isEmpty) {
+      throw Exception(
+          'Product created with invalid data: id="${defaultProduct.id}", name="${defaultProduct.name}", manufacturer="${defaultProduct.manufacturer}", uom="${defaultProduct.uom}"');
     }
 
     // Parse required date
     DateTime reqDate = DateTime.now();
-    final reqdDateStr = itemData['reqdDate'] ?? itemData['requiredDate'] ?? itemData['deliveryDate'];
+    final reqdDateStr = itemData['reqdDate'] ??
+        itemData['requiredDate'] ??
+        itemData['deliveryDate'];
     if (reqdDateStr != null) {
       try {
         if (reqdDateStr is String) {
@@ -1007,13 +1105,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       }
     }
 
-    final remarks = itemData['remarks']?.toString() ?? itemData['Remarks']?.toString();
+    final remarks =
+        itemData['remarks']?.toString() ?? itemData['Remarks']?.toString();
     final lineItem = _LineItem.fromProduct(
       defaultProduct,
       reqDate: reqDate,
       qty: (itemData['quantity'] ?? itemData['qty'] ?? 0).toInt(),
-      bonusQty: (itemData['bonusQty'] ?? itemData['bonusQuantity'] ?? 0).toInt(),
-      addlBonusQty: (itemData['addlBonus'] ?? itemData['additionalBonusQuantity'] ?? 0).toInt(),
+      bonusQty:
+          (itemData['bonusQty'] ?? itemData['bonusQuantity'] ?? 0).toInt(),
+      addlBonusQty:
+          (itemData['addlBonus'] ?? itemData['additionalBonusQuantity'] ?? 0)
+              .toInt(),
       itemDescription: itemDescription,
       rate: rate, // Pass rate even if 0, so it can be loaded from API later
       mrp: mrp, // Pass MRP even if 0, so it can be loaded from API later
@@ -1021,13 +1123,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       uom: uom,
       remarks: remarks,
     );
-    
+
     // Set selectedUOM from itemData if available (before loading options)
     if (uom != null && uom.isNotEmpty) {
       lineItem.selectedUOM = uom;
       print('✅ Set UOM from itemData: $uom');
     }
-    
+
     // Load UOM options if item ID is available
     final itemId = int.tryParse(defaultProduct.id) ?? 0;
     if (itemId > 0) {
@@ -1038,29 +1140,35 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       lineItem.selectedUOM = uom;
       print('✅ Set UOM directly (no itemId): $uom');
     }
-    
+
     // Load Tax options if item ID is available
     if (itemId > 0) {
       // Load Tax options asynchronously
       _loadTaxForItem(lineItem, itemId);
     }
-    
+
     return lineItem;
   }
-  
-  Future<void> _loadUOMForItem(_LineItem item, int itemId, [String? existingUOM, VoidCallback? onChanged]) async {
+
+  Future<void> _loadUOMForItem(_LineItem item, int itemId,
+      [String? existingUOM, VoidCallback? onChanged]) async {
     try {
-      print('🔵 Loading UOM for ItemId: $itemId, existingUOM: $existingUOM, current selectedUOM: ${item.selectedUOM}');
+      print(
+          '🔵 Loading UOM for ItemId: $itemId, existingUOM: $existingUOM, current selectedUOM: ${item.selectedUOM}');
       final commonRepository = getIt<CommonRepository>();
       final uomList = await commonRepository.getUOMList(itemId: itemId);
       item.uomItems = uomList; // Store items with IDs
       item.uomOptions = uomList.map((uom) => uom.text).toList();
       // If existingUOM is provided and exists in options, use it; otherwise preserve current or auto-select first
       if (item.uomOptions.isNotEmpty) {
-        if (existingUOM != null && existingUOM.isNotEmpty && item.uomOptions.contains(existingUOM)) {
+        if (existingUOM != null &&
+            existingUOM.isNotEmpty &&
+            item.uomOptions.contains(existingUOM)) {
           item.selectedUOM = existingUOM;
           print('✅ Using existing UOM: ${item.selectedUOM}');
-        } else if (item.selectedUOM != null && item.selectedUOM!.isNotEmpty && item.uomOptions.contains(item.selectedUOM)) {
+        } else if (item.selectedUOM != null &&
+            item.selectedUOM!.isNotEmpty &&
+            item.uomOptions.contains(item.selectedUOM)) {
           // Preserve current selectedUOM if it exists in options
           print('✅ Preserving current UOM: ${item.selectedUOM}');
         } else if (item.selectedUOM != null && item.selectedUOM!.isNotEmpty) {
@@ -1071,7 +1179,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             orElse: () => item.uomOptions.first,
           );
           item.selectedUOM = matchedUOM;
-          print('✅ Matched UOM (case-insensitive): ${item.selectedUOM} (was: $currentUOM)');
+          print(
+              '✅ Matched UOM (case-insensitive): ${item.selectedUOM} (was: $currentUOM)');
         } else {
           // Only auto-select first if no UOM is currently set
           item.selectedUOM = item.uomOptions.first;
@@ -1090,20 +1199,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       }
     } catch (e) {
       // Check if it's a connection error (expected and handled gracefully)
-      final isConnectionError = e.toString().contains('Connection refused') || 
-                                e.toString().contains('connection error') ||
-                                e.toString().contains('SocketException');
-      
+      final isConnectionError = e.toString().contains('Connection refused') ||
+          e.toString().contains('connection error') ||
+          e.toString().contains('SocketException');
+
       if (!isConnectionError) {
         // Only log non-connection errors (connection errors are already logged in API/repository layers)
         print('⚠️ Error loading UOM for item $itemId: $e');
       }
-      
+
       item.uomOptions = [];
       // Preserve existing UOM even on error
       if (existingUOM != null && existingUOM.isNotEmpty) {
         item.selectedUOM = existingUOM;
-        print('✅ Preserved existing UOM due to API unavailability: ${item.selectedUOM}');
+        print(
+            '✅ Preserved existing UOM due to API unavailability: ${item.selectedUOM}');
       }
       if (onChanged != null) {
         onChanged();
@@ -1112,13 +1222,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       }
     }
   }
-  
-  Future<void> _loadTaxForItem(_LineItem item, int itemId, [VoidCallback? onChanged]) async {
+
+  Future<void> _loadTaxForItem(_LineItem item, int itemId,
+      [VoidCallback? onChanged]) async {
     try {
       print('🔵 Loading Tax for ItemId: $itemId');
       final commonRepository = getIt<CommonRepository>();
       final taxList = await commonRepository.getItemTaxList(itemId: itemId);
-      item.taxOptions = taxList.map((tax) => tax.text).where((t) => t.isNotEmpty).toList();
+      item.taxOptions =
+          taxList.map((tax) => tax.text).where((t) => t.isNotEmpty).toList();
       // Auto-select first tax if available and not already set
       if (item.taxOptions.isNotEmpty && item.selectedTax == null) {
         item.selectedTax = item.taxOptions.first;
@@ -1142,13 +1254,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   /// Load item details (MRP, Rate, etc.) from GetItemDetail API
-  Future<void> _loadItemDetail(_LineItem item, int itemId, [VoidCallback? onChanged]) async {
+  Future<void> _loadItemDetail(_LineItem item, int itemId,
+      [VoidCallback? onChanged]) async {
     try {
       // Get customer ID and date
       final customerId = _selectedCustomerCode != null
           ? int.tryParse(_selectedCustomerCode!)
           : null;
-      
+
       if (customerId == null) {
         print('⚠️ Cannot load item detail: Customer not selected');
         return;
@@ -1156,9 +1269,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Format date as yyyy-MM-dd
       final dateStr = DateFormat('yyyy-MM-dd').format(_contractDate);
-      
-      print('🔵 Loading Item Detail for ItemId: $itemId, Date: $dateStr, CustomerId: $customerId');
-      
+
+      print(
+          '🔵 Loading Item Detail for ItemId: $itemId, Date: $dateStr, CustomerId: $customerId');
+
       final commonRepository = getIt<CommonRepository>();
       final itemDetail = await commonRepository.getItemDetail(
         itemId: itemId,
@@ -1183,7 +1297,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         item.rateController.text = itemDetail.rate!.toStringAsFixed(2);
         print('✅ Updated Rate: ${item.rateController.text}');
       }
-      
+
       if (itemDetail.mrp != null && itemDetail.mrp! > 0) {
         item.mrpController.text = itemDetail.mrp!.toStringAsFixed(2);
         print('✅ Updated MRP: ${item.mrpController.text}');
@@ -1223,9 +1337,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final taxList = await commonRepository.getTaxListForTaxSection();
       if (mounted) {
         setState(() {
-          final apiOptions = taxList.map((tax) => tax.text).where((t) => t.isNotEmpty).toList();
+          final apiOptions = taxList
+              .map((tax) => tax.text)
+              .where((t) => t.isNotEmpty)
+              .toList();
           // Always keep "Select" as first option, then API options
-          _taxTypeOptions = apiOptions.isEmpty ? ['VAT 18%', 'GST 5%', 'No Tax'] : apiOptions;
+          _taxTypeOptions =
+              apiOptions.isEmpty ? ['VAT 18%', 'GST 5%', 'No Tax'] : apiOptions;
         });
         print('✅ Loaded ${_taxTypeOptions.length} Tax options for Tax Section');
       }
@@ -1244,15 +1362,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     try {
       print('🔵 Loading Discount Options for Tax Section');
       final commonRepository = getIt<CommonRepository>();
-      final discountList = await commonRepository.getDiscountListForTaxSection();
+      final discountList =
+          await commonRepository.getDiscountListForTaxSection();
       if (mounted) {
         setState(() {
-          final apiOptions = discountList.map((discount) => discount.text).where((t) => t.isNotEmpty).toList();
+          final apiOptions = discountList
+              .map((discount) => discount.text)
+              .where((t) => t.isNotEmpty)
+              .toList();
           print('🔵 Loaded Discount options from API: $apiOptions');
           // Always keep API options (or defaults if empty), "Select" is added in dropdownOptions
-          _discountTypeOptions = apiOptions.isEmpty ? ['Percentage', 'Fixed Amount'] : apiOptions;
+          _discountTypeOptions =
+              apiOptions.isEmpty ? ['Percentage', 'Fixed Amount'] : apiOptions;
         });
-        print('✅ Loaded ${_discountTypeOptions.length} Discount options for Tax Section');
+        print(
+            '✅ Loaded ${_discountTypeOptions.length} Discount options for Tax Section');
       }
     } catch (e) {
       print('Error loading Discount options for Tax Section: $e');
@@ -1269,22 +1393,22 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Only skip if we're already loading (prevent duplicate calls)
     // But allow initial load even if flag is true from initialization
     if (_isLoadingWorkflowActions && _workflowActions.isNotEmpty) return;
-    
+
     try {
       setState(() {
         _isLoadingWorkflowActions = true;
       });
-      
+
       // Get userId and bizUnit from user data
       final sharedPrefHelper = getIt<SharedPreferenceHelper>();
       final user = await sharedPrefHelper.getUser();
       final userId = user?.id ?? 43; // Default fallback
-      
+
       // Get bizUnit from UserDetailStore or user prefs
       final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
           ? getIt<UserDetailStore>()
           : null;
-      
+
       int? bizUnitFromStore = userStore?.userDetail?.sbuId;
       int? bizUnitFromPrefs = user?.sbuId;
       int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
@@ -1292,37 +1416,49 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
               ? bizUnitFromPrefs
               : 1);
-      
+
       // For edit mode, use selected distributor ID as bizUnit
-      if (_isEditMode && _distributorItems.isNotEmpty && _selectedDistributor != null) {
+      if (_isEditMode &&
+          _distributorItems.isNotEmpty &&
+          _selectedDistributor != null) {
         // Find distributor ID from selected distributor name
         try {
           final distributorItem = _distributorItems.firstWhere(
             (item) => item.text == _selectedDistributor,
           );
           // Use distributor ID (id field) as bizUnit, fallback to value if id is 0
-          bizUnit = (distributorItem.id > 0) ? distributorItem.id : (distributorItem.value > 0 ? distributorItem.value : bizUnit);
-          print('✅ Using Distributor ID as bizUnit: $bizUnit (Distributor: ${distributorItem.text})');
+          bizUnit = (distributorItem.id > 0)
+              ? distributorItem.id
+              : (distributorItem.value > 0 ? distributorItem.value : bizUnit);
+          print(
+              '✅ Using Distributor ID as bizUnit: $bizUnit (Distributor: ${distributorItem.text})');
         } catch (e) {
           // If distributor not found, use default bizUnit
-          print('⚠️ Distributor not found in list, using default bizUnit: $bizUnit');
+          print(
+              '⚠️ Distributor not found in list, using default bizUnit: $bizUnit');
         }
       }
-      
+
       final request = WorkflowGetAllActionsRequest(
         refId: null,
-        applicationId: _isEditMode ? (widget.orderId != null ? int.tryParse(widget.orderId!) : widget.orderData?.id) : null,
+        applicationId: _isEditMode
+            ? (widget.orderId != null
+                ? int.tryParse(widget.orderId!)
+                : widget.orderData?.id)
+            : null,
         menuId: 1110,
         userId: userId,
         module: 5,
         bizUnit: bizUnit,
-        url: _isEditMode ? '/sales/salescontract/edit' : '/sales/salescontract/create',
+        url: _isEditMode
+            ? '/sales/salescontract/edit'
+            : '/sales/salescontract/create',
       );
-      
+
       print('🔵 Loading Workflow Actions');
       final workflowRepository = getIt<WorkflowRepository>();
       final response = await workflowRepository.getAllActions(request);
-      
+
       if (mounted) {
         setState(() {
           _workflowResponse = response;
@@ -1340,7 +1476,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         });
         print('✅ Loaded ${_workflowActions.length} Workflow Actions');
         if (_workflowActions.isNotEmpty) {
-          print('✅ First button enabled: $_isFirstButtonEnabled (HasEdit: ${_workflowActions.first.hasEdit})');
+          print(
+              '✅ First button enabled: $_isFirstButtonEnabled (HasEdit: ${_workflowActions.first.hasEdit})');
         }
       }
     } catch (e) {
@@ -1357,22 +1494,22 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   Future<void> _loadUserPagePrivileges() async {
     // Allow reloads - don't block even if already loading
     // The setState will handle any race conditions
-    
+
     try {
       setState(() {
         _isLoadingPrivileges = true;
       });
-      
+
       // Get userId and bizUnit from user data
       final sharedPrefHelper = getIt<SharedPreferenceHelper>();
       final user = await sharedPrefHelper.getUser();
       final userId = user?.id ?? 43; // Default fallback
-      
+
       // Get bizUnit from UserDetailStore or user prefs
       final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
           ? getIt<UserDetailStore>()
           : null;
-      
+
       int? bizUnitFromStore = userStore?.userDetail?.sbuId;
       int? bizUnitFromPrefs = user?.sbuId;
       int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
@@ -1380,23 +1517,29 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
               ? bizUnitFromPrefs
               : 1);
-      
+
       // For edit mode, use selected distributor ID as bizUnit
-      if (_isEditMode && _distributorItems.isNotEmpty && _selectedDistributor != null) {
+      if (_isEditMode &&
+          _distributorItems.isNotEmpty &&
+          _selectedDistributor != null) {
         // Find distributor ID from selected distributor name
         try {
           final distributorItem = _distributorItems.firstWhere(
             (item) => item.text == _selectedDistributor,
           );
           // Use distributor ID (id field) as bizUnit, fallback to value if id is 0
-          bizUnit = (distributorItem.id > 0) ? distributorItem.id : (distributorItem.value > 0 ? distributorItem.value : bizUnit);
-          print('✅ Using Distributor ID as bizUnit for privileges: $bizUnit (Distributor: ${distributorItem.text})');
+          bizUnit = (distributorItem.id > 0)
+              ? distributorItem.id
+              : (distributorItem.value > 0 ? distributorItem.value : bizUnit);
+          print(
+              '✅ Using Distributor ID as bizUnit for privileges: $bizUnit (Distributor: ${distributorItem.text})');
         } catch (e) {
           // If distributor not found, use default bizUnit
-          print('⚠️ Distributor not found in list for privileges, using default bizUnit: $bizUnit');
+          print(
+              '⚠️ Distributor not found in list for privileges, using default bizUnit: $bizUnit');
         }
       }
-      
+
       final request = WorkflowGetUserPagePrivilegesRequest(
         groupName: null,
         pageName: null,
@@ -1404,7 +1547,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         roleId: null,
         groupId: null,
         pageId: null,
-        pageUrl: _isEditMode ? '/sales/salescontract/edit' : '/sales/salescontract/create',
+        pageUrl: _isEditMode
+            ? '/sales/salescontract/edit'
+            : '/sales/salescontract/create',
         menuId: 1110,
         module: 5,
         hasRight: false,
@@ -1414,35 +1559,38 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         subTabName: null,
         bizunit: bizUnit,
       );
-      
+
       print('🔵 Loading User Page Privileges');
       final workflowRepository = getIt<WorkflowRepository>();
       final response = await workflowRepository.getUserPagePrivileges(request);
-      
+
       if (mounted) {
         setState(() {
           _userPrivilegesResponse = response;
           _buttonPrivileges = response.buttonPrivileges;
-          
+
           // Extract ButtonSave right
-          final buttonSavePrivilege = _buttonPrivileges['ButtonSave'] ?? _buttonPrivileges['buttonSave'];
+          final buttonSavePrivilege = _buttonPrivileges['ButtonSave'] ??
+              _buttonPrivileges['buttonSave'];
           _hasButtonSaveRight = buttonSavePrivilege?.hasRight ?? false;
-          
+
           // Extract Print right
-          final printPrivilege = _buttonPrivileges['Print'] ?? _buttonPrivileges['print'];
+          final printPrivilege =
+              _buttonPrivileges['Print'] ?? _buttonPrivileges['print'];
           _hasPrintRight = printPrivilege?.hasRight ?? false;
-          
+
           // Determine if Draft Save is enabled
           // Enable if ButtonSave has right = true OR (editing and IsSalesRepEdit = 1)
           _updateDraftSaveEnabled();
-          
+
           _isLoadingPrivileges = false;
           _firstPrivilegeLoadCompleted = true;
         });
         print('✅ Loaded User Page Privileges');
         print('   ButtonSave HasRight: $_hasButtonSaveRight');
         print('   Print HasRight: $_hasPrintRight');
-        print('   Draft Save Enabled: $_isDraftSaveEnabled (ButtonSave: $_hasButtonSaveRight, IsSalesRepEdit: ${_loadedOrderData?.isSalesRepEdit})');
+        print(
+            '   Draft Save Enabled: $_isDraftSaveEnabled (ButtonSave: $_hasButtonSaveRight, IsSalesRepEdit: ${_loadedOrderData?.isSalesRepEdit})');
       }
     } catch (e) {
       print('Error loading User Page Privileges: $e');
@@ -1452,7 +1600,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           _hasButtonSaveRight = false;
           _hasPrintRight = false;
           _isDraftSaveEnabled = false;
-          _firstPrivilegeLoadCompleted = true; // Mark as completed even on error
+          _firstPrivilegeLoadCompleted =
+              true; // Mark as completed even on error
         });
       }
     }
@@ -1464,43 +1613,50 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // 2. (Editing and IsSalesRepEdit = true) OR
     // 3. (Editing and order is not cancelled/closed/short closed) OR
     // 4. Any workflow action has hasEdit = true
-    final isSalesRepEdit = _loadedOrderData?.isSalesRepEdit == true || _loadedOrderData?.isSalesRepEdit == 1;
-    final isOrderEditable = _loadedOrderData != null && 
-        (_loadedOrderData!.isCancelled == 0 || _loadedOrderData!.isCancelled == null) &&
-        (_loadedOrderData!.isClosed == 0 || _loadedOrderData!.isClosed == null) &&
-        (_loadedOrderData!.isShortClosed == 0 || _loadedOrderData!.isShortClosed == null);
-    final hasAnyEditableAction = _workflowActions.any((action) => action.hasEdit == true);
-    
-    _isDraftSaveEnabled = _hasButtonSaveRight || 
-                         (_isEditMode && isSalesRepEdit) || 
-                         (_isEditMode && isOrderEditable) ||
-                         hasAnyEditableAction ||
-                         !_isEditMode; // Always enable in create mode
-    
-    print('📝 Draft Save Enabled: $_isDraftSaveEnabled (ButtonSave: $_hasButtonSaveRight, IsSalesRepEdit: $isSalesRepEdit, EditMode: $_isEditMode, IsOrderEditable: $isOrderEditable, HasAnyEditableAction: $hasAnyEditableAction)');
+    final isSalesRepEdit = _loadedOrderData?.isSalesRepEdit == true ||
+        _loadedOrderData?.isSalesRepEdit == 1;
+    final isOrderEditable = _loadedOrderData != null &&
+        (_loadedOrderData!.isCancelled == 0 ||
+            _loadedOrderData!.isCancelled == null) &&
+        (_loadedOrderData!.isClosed == 0 ||
+            _loadedOrderData!.isClosed == null) &&
+        (_loadedOrderData!.isShortClosed == 0 ||
+            _loadedOrderData!.isShortClosed == null);
+    final hasAnyEditableAction =
+        _workflowActions.any((action) => action.hasEdit == true);
+
+    _isDraftSaveEnabled = _hasButtonSaveRight ||
+        (_isEditMode && isSalesRepEdit) ||
+        (_isEditMode && isOrderEditable) ||
+        hasAnyEditableAction ||
+        !_isEditMode; // Always enable in create mode
+
+    print(
+        '📝 Draft Save Enabled: $_isDraftSaveEnabled (ButtonSave: $_hasButtonSaveRight, IsSalesRepEdit: $isSalesRepEdit, EditMode: $_isEditMode, IsOrderEditable: $isOrderEditable, HasAnyEditableAction: $hasAnyEditableAction)');
   }
 
   Future<void> _loadTaxComponentFormulas({required int id, int? userId}) async {
     if (_isLoadingTaxFormulas) return;
-    
+
     try {
       setState(() {
         _isLoadingTaxFormulas = true;
       });
-      
+
       print('🔵 Loading Tax Component Formulas for Id: $id');
       final commonRepository = getIt<CommonRepository>();
       final formulas = await commonRepository.getTaxComponentFormulas(
         id: id,
         userId: userId,
       );
-      
+
       if (mounted) {
         setState(() {
           _taxComponentFormulas = formulas;
           _isLoadingTaxFormulas = false;
         });
-        print('✅ Loaded ${_taxComponentFormulas.length} Tax Component Formulas');
+        print(
+            '✅ Loaded ${_taxComponentFormulas.length} Tax Component Formulas');
         // Recalculate totals with new formulas
         _updateTotals();
       }
@@ -1517,7 +1673,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   /// Evaluate a formula string using current values
   /// Supports variables like: SubTotal, Tax, Discount, OtherCharge, PriceAdjustment, GrandTotal
-  double _evaluateFormula(String? formula, {
+  double _evaluateFormula(
+    String? formula, {
     required double subTotal,
     required double tax,
     required double discount,
@@ -1527,7 +1684,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     if (formula == null || formula.isEmpty) {
       return 0.0;
     }
-    
+
     try {
       // Replace variables with actual values
       String expression = formula
@@ -1536,13 +1693,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           .replaceAll('Discount', discount.toString())
           .replaceAll('OtherCharge', otherCharge.toString())
           .replaceAll('PriceAdjustment', priceAdjustment.toString())
-          .replaceAll('GrandTotal', (subTotal + tax - discount + otherCharge + priceAdjustment).toString());
-      
+          .replaceAll(
+              'GrandTotal',
+              (subTotal + tax - discount + otherCharge + priceAdjustment)
+                  .toString());
+
       // Simple evaluation (for basic arithmetic)
       // Note: For complex formulas, consider using a proper expression evaluator
       // This is a simplified version that handles basic operations
       expression = expression.replaceAll(' ', '');
-      
+
       // Handle percentage calculations (e.g., "SubTotal * 0.18" for 18% tax)
       // Evaluate using a simple parser or use a library like math_expressions
       return _simpleEvaluate(expression);
@@ -1558,18 +1718,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     try {
       // Remove spaces
       expression = expression.replaceAll(' ', '');
-      
+
       // Handle parentheses first
       while (expression.contains('(')) {
         final start = expression.lastIndexOf('(');
         final end = expression.indexOf(')', start);
         if (end == -1) break;
-        
+
         final subExpr = expression.substring(start + 1, end);
         final result = _simpleEvaluate(subExpr);
-        expression = expression.substring(0, start) + result.toString() + expression.substring(end + 1);
+        expression = expression.substring(0, start) +
+            result.toString() +
+            expression.substring(end + 1);
       }
-      
+
       // Evaluate multiplication and division
       while (expression.contains('*') || expression.contains('/')) {
         final multIndex = expression.indexOf('*');
@@ -1577,24 +1739,24 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         final opIndex = (multIndex != -1 && divIndex != -1)
             ? (multIndex < divIndex ? multIndex : divIndex)
             : (multIndex != -1 ? multIndex : divIndex);
-        
+
         if (opIndex == -1) break;
-        
+
         final left = _extractNumber(expression, opIndex, -1);
         final right = _extractNumber(expression, opIndex, 1);
         final op = expression[opIndex];
         final result = op == '*' ? left * right : left / right;
-        
+
         expression = expression.substring(0, opIndex - left.toString().length) +
             result.toString() +
             expression.substring(opIndex + right.toString().length + 1);
       }
-      
+
       // Evaluate addition and subtraction
       double result = 0.0;
       String currentNumber = '';
       String lastOp = '+';
-      
+
       for (int i = 0; i < expression.length; i++) {
         final char = expression[i];
         if (char == '+' || char == '-') {
@@ -1608,12 +1770,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           currentNumber += char;
         }
       }
-      
+
       if (currentNumber.isNotEmpty) {
         final num = double.tryParse(currentNumber) ?? 0.0;
         result = lastOp == '+' ? result + num : result - num;
       }
-      
+
       return result;
     } catch (e) {
       print('Error in simple evaluate: $e');
@@ -1625,11 +1787,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   double _extractNumber(String expression, int opIndex, int direction) {
     int start = opIndex;
     int end = opIndex;
-    
+
     if (direction < 0) {
       // Extract left number
       start = opIndex - 1;
-      while (start >= 0 && (expression[start].contains(RegExp(r'[0-9.]')) || expression[start] == '-')) {
+      while (start >= 0 &&
+          (expression[start].contains(RegExp(r'[0-9.]')) ||
+              expression[start] == '-')) {
         start--;
       }
       start++;
@@ -1637,16 +1801,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // Extract right number
       end = opIndex + 1;
       if (end < expression.length && expression[end] == '-') end++;
-      while (end < expression.length && expression[end].contains(RegExp(r'[0-9.]'))) {
+      while (end < expression.length &&
+          expression[end].contains(RegExp(r'[0-9.]'))) {
         end++;
       }
     }
-    
+
     return double.tryParse(expression.substring(start, end)) ?? 0.0;
   }
 
   /// Calculate value based on formula and charge type
-  double _calculateChargeValue(TaxComponentResponse component, {
+  double _calculateChargeValue(
+    TaxComponentResponse component, {
     required double subTotal,
     required double tax,
     required double discount,
@@ -1654,10 +1820,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     required double priceAdjustment,
   }) {
     final chargesType = ChargesType.fromInt(component.chargesType);
-    
+
     // If formula is provided, use it
     if (component.formula != null && component.formula!.isNotEmpty) {
-      return _evaluateFormula(component.formula, 
+      return _evaluateFormula(
+        component.formula,
         subTotal: subTotal,
         tax: tax,
         discount: discount,
@@ -1665,7 +1832,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         priceAdjustment: priceAdjustment,
       );
     }
-    
+
     // Fallback to default calculation based on charge type
     switch (chargesType) {
       case ChargesType.subTotal:
@@ -1696,18 +1863,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     final currentDiscount = _totalDiscountAmount;
     final currentOtherCharge = _totalOtherChargeAmount;
     final priceAdjustment = _priceAdjustment;
-    
+
     // Calculate each charge type using formulas
     for (final component in _taxComponentFormulas) {
       final chargesType = ChargesType.fromInt(component.chargesType);
-      final calculatedValue = _calculateChargeValue(component,
+      final calculatedValue = _calculateChargeValue(
+        component,
         subTotal: subTotal,
         tax: currentTax,
         discount: currentDiscount,
         otherCharge: currentOtherCharge,
         priceAdjustment: priceAdjustment,
       );
-      
+
       // Update the appropriate row or controller based on charge type
       switch (chargesType) {
         case ChargesType.tax:
@@ -1765,70 +1933,83 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   void _updateTotals() {
     // Auto-calculate SubTotal as sum of TotalAmount of all Order Items
     // SubTotal = Sum of (Quantity * Rate) for all items
-    final calculatedSubTotal = _items.fold(0.0, (sum, item) => sum + item.totalAmount);
+    final calculatedSubTotal =
+        _items.fold(0.0, (sum, item) => sum + item.totalAmount);
     // Always update SubTotal from items (no manual override)
-    _subTotalController.text = calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
-    print('🔵 Updated SubTotal: ${calculatedSubTotal.toStringAsFixed(2)} (Sum of ${_items.length} items)');
-    
+    _subTotalController.text =
+        calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
+    print(
+        '🔵 Updated SubTotal: ${calculatedSubTotal.toStringAsFixed(2)} (Sum of ${_items.length} items)');
+
     // Update Reqd Date from items (earliest required date)
     if (_items.isNotEmpty) {
-      _reqdDate = _items.map((item) => item.requiredDate).reduce((a, b) => a.isBefore(b) ? a : b);
+      _reqdDate = _items
+          .map((item) => item.requiredDate)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
     } else {
       _reqdDate = null;
     }
-    
+
     // Calculate tax, discount, and other charges using formulas if available
     if (_taxComponentFormulas.isNotEmpty) {
       _calculateChargesUsingFormulas();
     }
-    
+
     setState(() {});
   }
 
   void _updateTotalsWithoutSetState() {
     // Auto-calculate SubTotal as sum of TotalAmount of all Order Items
     // SubTotal = Sum of (Quantity * Rate) for all items
-    final calculatedSubTotal = _items.fold(0.0, (sum, item) => sum + item.totalAmount);
+    final calculatedSubTotal =
+        _items.fold(0.0, (sum, item) => sum + item.totalAmount);
     // Always update SubTotal from items (no manual override)
-    _subTotalController.text = calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
-    print('🔵 Updated SubTotal: ${calculatedSubTotal.toStringAsFixed(2)} (Sum of ${_items.length} items)');
-    
+    _subTotalController.text =
+        calculatedSubTotal == 0.0 ? '' : calculatedSubTotal.toStringAsFixed(2);
+    print(
+        '🔵 Updated SubTotal: ${calculatedSubTotal.toStringAsFixed(2)} (Sum of ${_items.length} items)');
+
     // Update Reqd Date from items (earliest required date)
     if (_items.isNotEmpty) {
-      _reqdDate = _items.map((item) => item.requiredDate).reduce((a, b) => a.isBefore(b) ? a : b);
+      _reqdDate = _items
+          .map((item) => item.requiredDate)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
     } else {
       _reqdDate = null;
     }
-    
+
     // Calculate tax, discount, and other charges using formulas if available
     if (_taxComponentFormulas.isNotEmpty) {
       _calculateChargesUsingFormulas();
     }
     // Note: This version does NOT call setState() to allow caller to control when rebuild happens
   }
-  
+
   double get _totalTaxAmount {
     return _taxRows.fold(0.0, (sum, row) => sum + row.value);
   }
-  
+
   double get _totalDiscountAmount {
     return _discountRows.fold(0.0, (sum, row) => sum + row.value);
   }
-  
+
   double get _totalOtherChargeAmount {
     return _otherChargeRows.fold(0.0, (sum, row) => sum + row.value);
   }
-  
+
   double _calculateGrandTotal() {
     // Use formula-based calculation if available
     if (_taxComponentFormulas.isNotEmpty) {
       final grandTotalFormula = _taxComponentFormulas.firstWhere(
         (f) => ChargesType.fromInt(f.chargesType) == ChargesType.grandTotal,
-        orElse: () => TaxComponentResponse(id: 0, chargesType: 6), // Default GrandTotal
+        orElse: () =>
+            TaxComponentResponse(id: 0, chargesType: 6), // Default GrandTotal
       );
-      
-      if (grandTotalFormula.formula != null && grandTotalFormula.formula!.isNotEmpty) {
-        return _evaluateFormula(grandTotalFormula.formula,
+
+      if (grandTotalFormula.formula != null &&
+          grandTotalFormula.formula!.isNotEmpty) {
+        return _evaluateFormula(
+          grandTotalFormula.formula,
           subTotal: _subTotal,
           tax: _totalTaxAmount,
           discount: _totalDiscountAmount,
@@ -1837,9 +2018,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         );
       }
     }
-    
+
     // Fallback to default calculation
-    return _subTotal + _totalTaxAmount - _totalDiscountAmount + _totalOtherChargeAmount + _priceAdjustment;
+    return _subTotal +
+        _totalTaxAmount -
+        _totalDiscountAmount +
+        _totalOtherChargeAmount +
+        _priceAdjustment;
   }
 
   void _loadEditModeData(String id) {
@@ -1864,7 +2049,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     _selectedSalesRep = null;
     // Load customers once when creating new order
     _loadCustomers();
-    _items.clear(); // Start with empty items - user will add items via API search
+    _items
+        .clear(); // Start with empty items - user will add items via API search
     _notesController.clear();
     _customerPOController.clear();
     _quotationNoController.clear();
@@ -1882,7 +2068,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   Customer? get _selectedCustomer {
     if (_selectedCustomerCode == null || Customers.isEmpty) return null;
     try {
-    return Customers.firstWhere((c) => c.code == _selectedCustomerCode);
+      return Customers.firstWhere((c) => c.code == _selectedCustomerCode);
     } catch (e) {
       return null;
     }
@@ -1968,22 +2154,24 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 fontWeight: FontWeight.w900,
                 fontSize: isTablet ? 20 : 18,
                 letterSpacing: -0.5,
-                  ),
-                ),
+              ),
+            ),
             iconTheme: const IconThemeData(color: Colors.white),
             foregroundColor: Colors.white,
-            actions: _isEditMode ? [
-              IconButton(
-                icon: const Icon(Icons.more_vert, color: Colors.white),
-                onPressed: () {
-                  setState(() {
-                    _isActionsMenuOpen = !_isActionsMenuOpen;
-                  });
-                },
-                tooltip: 'More options',
-              ),
-            ] : [],
-            ),
+            actions: _isEditMode
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.more_vert, color: Colors.white),
+                      onPressed: () {
+                        setState(() {
+                          _isActionsMenuOpen = !_isActionsMenuOpen;
+                        });
+                      },
+                      tooltip: 'More options',
+                    ),
+                  ]
+                : [],
+          ),
           body: Stack(
             children: [
               SafeArea(
@@ -1994,61 +2182,69 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           // Scrollable content
                           Expanded(
                             child: Theme(
-                          data: Theme.of(context).copyWith(
-                            inputDecorationTheme: Theme.of(context).inputDecorationTheme.copyWith(
-                              filled: true,
-                              fillColor: Colors.grey.withOpacity(0.05),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              data: Theme.of(context).copyWith(
+                                inputDecorationTheme: Theme.of(context)
+                                    .inputDecorationTheme
+                                    .copyWith(
+                                      filled: true,
+                                      fillColor: Colors.grey.withOpacity(0.05),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(
+                                            color: Colors.grey.shade300),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(
+                                            color: Colors.grey.shade300),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: const BorderSide(
+                                            color: Color(0xFF4db1b3), width: 2),
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: isTablet ? 16 : 14,
+                                        vertical: isTablet ? 16 : 14,
+                                      ),
+                                    ),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFF4db1b3), width: 2),
-              ),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: isTablet ? 16 : 14,
-                                vertical: isTablet ? 16 : 14,
+                              child: SingleChildScrollView(
+                                controller: _scrollController,
+                                padding: EdgeInsets.fromLTRB(
+                                  isTablet ? 16 : 12,
+                                  12,
+                                  isTablet ? 16 : 12,
+                                  16,
+                                ),
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 800),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        _buildHeaderCard(isTablet: isTablet),
+                                        const SizedBox(height: 14),
+                                        _buildItemsCard(isTablet: isTablet),
+                                        const SizedBox(height: 14),
+                                        _buildTaxSection(isTablet: isTablet),
+                                        const SizedBox(height: 14),
+                                        _buildAttachmentsSection(
+                                            isTablet: isTablet),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-              child: SingleChildScrollView(
-                            controller: _scrollController,
-                            padding: EdgeInsets.fromLTRB(
-                              isTablet ? 16 : 12,
-                              12,
-                              isTablet ? 16 : 12,
-                              16,
-                            ),
-                            child: Center(
-                child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 800),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHeaderCard(isTablet: isTablet),
-                                    const SizedBox(height: 14),
-                      _buildItemsCard(isTablet: isTablet),
-                                    const SizedBox(height: 14),
-                                    _buildTaxSection(isTablet: isTablet),
-                                    const SizedBox(height: 14),
-                                    _buildAttachmentsSection(isTablet: isTablet),
-                    ],
-                  ),
-                ),
-              ),
-                          ),
-                        ),
-                      ),
-                      // Fixed bottom bar with buttons
-                      _buildBottomActionBar(isTablet: isTablet),
+                          // Fixed bottom bar with buttons
+                          _buildBottomActionBar(isTablet: isTablet),
                         ],
                       ),
-                    ),
+              ),
               // Actions menu overlay
               if (_isEditMode) _buildActionsMenuOverlay(isTablet: isTablet),
             ],
@@ -2087,7 +2283,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -2116,59 +2313,63 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               const SizedBox(height: 20),
               // Form layout with two rows as per image
               LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth > 800;
-                return isWide
-                ? Column(
-                    children: [
-                      // Top Row: Customer, SO Number, Date
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: _buildTopRowField1(isTablet)),
-                      const SizedBox(width: 16),
-                          Expanded(child: _buildTopRowField2(isTablet)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildTopRowField3(isTablet)),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      // Bottom Row: Customer Address, Delivery Date, Sales Rep, Distributor For
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: _buildBottomRowField1(isTablet)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildBottomRowField2(isTablet)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildBottomRowField3(isTablet)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildBottomRowField4(isTablet)),
-                        ],
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      // Top Row fields
-                      _buildTopRowField1(isTablet),
-                      const SizedBox(height: 20),
-                      _buildTopRowField2(isTablet),
-                      const SizedBox(height: 20),
-                      _buildTopRowField3(isTablet),
-                      const SizedBox(height: 20),
-                      // Bottom Row fields
-                      _buildBottomRowField1(isTablet),
-                      const SizedBox(height: 20),
-                      _buildBottomRowField2(isTablet),
-                      const SizedBox(height: 20),
-                      _buildBottomRowField3(isTablet),
-                      const SizedBox(height: 20),
-                      _buildBottomRowField4(isTablet),
-                    ],
-                  );
-              },
-            ),
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth > 800;
+                  return isWide
+                      ? Column(
+                          children: [
+                            // Top Row: Customer, SO Number, Date
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: _buildTopRowField1(isTablet)),
+                                const SizedBox(width: 16),
+                                Expanded(child: _buildTopRowField2(isTablet)),
+                                const SizedBox(width: 16),
+                                Expanded(child: _buildTopRowField3(isTablet)),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            // Bottom Row: Customer Address, Delivery Date, Sales Rep, Distributor For
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                    child: _buildBottomRowField1(isTablet)),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                    child: _buildBottomRowField2(isTablet)),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                    child: _buildBottomRowField3(isTablet)),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                    child: _buildBottomRowField4(isTablet)),
+                              ],
+                            ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            // Top Row fields
+                            _buildTopRowField1(isTablet),
+                            const SizedBox(height: 20),
+                            _buildTopRowField2(isTablet),
+                            const SizedBox(height: 20),
+                            _buildTopRowField3(isTablet),
+                            const SizedBox(height: 20),
+                            // Bottom Row fields
+                            _buildBottomRowField1(isTablet),
+                            const SizedBox(height: 20),
+                            _buildBottomRowField2(isTablet),
+                            const SizedBox(height: 20),
+                            _buildBottomRowField3(isTablet),
+                            const SizedBox(height: 20),
+                            _buildBottomRowField4(isTablet),
+                          ],
+                        );
+                },
+              ),
             ],
           ],
         ),
@@ -2185,7 +2386,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         selectedCustomerCode: _selectedCustomerCode,
         allCustomers: Customers, // Pass all loaded customers
         onCustomerSelected: (customer) {
-                          setState(() {
+          setState(() {
             _selectedCustomerCode = customer.code;
             CustomerAddressController.text = customer.address;
           });
@@ -2214,7 +2415,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         ),
         enabled: false,
         hintText: '[NEW]',
-                  ),
+      ),
     );
   }
 
@@ -2240,11 +2441,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return _LabeledField(
-              label: 'Customer Address',
+      label: 'Customer Address',
       child: TextField(
-              controller: CustomerAddressController,
+        controller: CustomerAddressController,
         readOnly: true,
         maxLines: 3,
         style: GoogleFonts.inter(
@@ -2280,8 +2481,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           context: context,
           initialDate: _deliveryDate,
           onPicked: (d) => setState(() => _deliveryDate = d),
-                        ),
-                      ),
+        ),
+      ),
     );
   }
 
@@ -2298,17 +2499,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   // Bottom Row Field 3: Sales Rep
   Widget _buildBottomRowField3(bool isTablet) {
     return _LabeledField(
-                        label: 'Sales Rep',
+      label: 'Sales Rep',
       child: _DropdownField<String>(
         label: '',
-                        value: _selectedSalesRep,
+        value: _selectedSalesRep,
         hint: '',
-                        items: [
-                          for (final s in _salesReps)
-                            DropdownMenuItem(value: s, child: Text(s)),
-                        ],
+        items: [
+          for (final s in _salesReps)
+            DropdownMenuItem(value: s, child: Text(s)),
+        ],
         onChanged: (v) => setState(() => _selectedSalesRep = v),
-                      ),
+      ),
     );
   }
 
@@ -2318,12 +2519,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       label: 'Distributer For',
       child: _DropdownField<String>(
         label: '',
-                        value: _selectedDistributor,
-                        hint: '',
-                        items: [
-                          for (final d in _distributors)
-                            DropdownMenuItem(value: d, child: Text(d)),
-                        ],
+        value: _selectedDistributor,
+        hint: '',
+        items: [
+          for (final d in _distributors)
+            DropdownMenuItem(value: d, child: Text(d)),
+        ],
         onChanged: (v) {
           setState(() => _selectedDistributor = v);
           // Reload workflow actions and privileges when distributor changes in edit mode
@@ -2350,7 +2551,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Section Title with Add Item Button (only shown when customer is selected)
+            // Section Title with Add Item Button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -2362,42 +2563,41 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     color: Colors.grey.shade900,
                   ),
                 ),
-                // Only show Add Item button when customer is selected
-                if (_selectedCustomerCode != null && _selectedCustomerCode!.isNotEmpty)
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        for (final it in _items) {
-                          it.expanded = false;
-                        }
-                        // Create empty item - user will search and select from API
-                        final emptyProduct = Product(
-                          id: '0',
-                          name: 'Item',
-                          manufacturer: 'N/A',
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      for (final it in _items) {
+                        it.expanded = false;
+                      }
+                      // Create empty item - user will search and select from API
+                      final emptyProduct = Product(
+                        id: '0',
+                        name: 'Item',
+                        manufacturer: 'N/A',
+                        rate: 0.0,
+                        uom: 'Unit',
+                        availableQty: 0,
+                      );
+                      _items.add(
+                        _LineItem.fromProduct(
+                          emptyProduct,
+                          itemDescription: '',
                           rate: 0.0,
-                          uom: 'Unit',
-                          availableQty: 0,
-                        );
-                        _items.add(
-                            _LineItem.fromProduct(
-                              emptyProduct,
-                              itemDescription: '',
-                              rate: 0.0,
-                            ));
-                        _updateTotals();
-                      });
-                    },
-                    icon: Icon(Icons.add, size: 18, color: tealGreen),
-                    label: Text(
-                      'Add Item',
-                      style: GoogleFonts.inter(
-                        color: tealGreen,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+                        ),
+                      );
+                      _updateTotals();
+                    });
+                  },
+                  icon: Icon(Icons.add, size: 18, color: tealGreen),
+                  label: Text(
+                    'Add Item',
+                    style: GoogleFonts.inter(
+                      color: tealGreen,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
                   ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -2418,80 +2618,87 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               )
             else
               Column(
-          children: [
-            for (int i = 0; i < _items.length; i++) ...[
-              _ItemCard(
-                index: i,
-                totalCount: _items.length,
-                item: _items[i],
-                isEditMode: _isEditMode,
-                onRemove: () {
-                  setState(() {
-                    _items.removeAt(i);
-                  });
-                },
-                onChanged: () {
-                  setState(() {
-                    _updateTotals();
-                  });
-                },
-                onToggle: () {
-                  setState(() {
-                    final wasExpanded = _items[i].expanded;
-                    for (final it in _items) {
-                      it.expanded = false;
-                    }
-                    _items[i].expanded = !wasExpanded;
-                  });
-                },
-                formatCurrency: _formatCurrency,
-                loadUOMForItem: _loadUOMForItem,
-                loadTaxForItem: _loadTaxForItem,
-                loadItemDetail: _loadItemDetail,
-                formatDate: _formatDate,
-                getDistributorId: () {
-                  // Get distributor ID - use selected distributor or fallback to bizUnit
-                  int distributorId;
-                  
-                  // Get bizUnit from user store as fallback
-                  int bizUnit = 1;
-                  try {
-                    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-                        ? getIt<UserDetailStore>()
-                        : null;
-                    
-                    int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-                    bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
-                        ? bizUnitFromStore
-                        : 1;
-                  } catch (e) {
-                    print('⚠️ Error getting bizUnit, using default: $e');
-                  }
-                  
-                  // Default to bizUnit
-                  distributorId = bizUnit;
-                  
-                  // If distributor is selected, use its ID
-                  if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
-                    try {
-                      final distributorItem = _distributorItems.firstWhere(
-                        (item) => item.text == _selectedDistributor,
-                      );
-                      distributorId = distributorItem.id;
-                      print('✅ Using selected Distributor ID: $distributorId (Distributor: ${distributorItem.text})');
-                    } catch (e) {
-                      // Distributor not found, use bizUnit as fallback
-                      print('⚠️ Selected distributor not found in list, using bizUnit: $bizUnit');
-                    }
-                  } else {
-                    print('⚠️ No distributor selected, using bizUnit: $bizUnit');
-                  }
-                  
-                  return distributorId;
-                },
-              ),
-              if (i != _items.length - 1) const SizedBox(height: 12),
-            ],
+                children: [
+                  for (int i = 0; i < _items.length; i++) ...[
+                    _ItemCard(
+                      index: i,
+                      totalCount: _items.length,
+                      item: _items[i],
+                      isEditMode: _isEditMode,
+                      onRemove: () {
+                        setState(() {
+                          _items.removeAt(i);
+                        });
+                      },
+                      onChanged: () {
+                        setState(() {
+                          _updateTotals();
+                        });
+                      },
+                      onToggle: () {
+                        setState(() {
+                          final wasExpanded = _items[i].expanded;
+                          for (final it in _items) {
+                            it.expanded = false;
+                          }
+                          _items[i].expanded = !wasExpanded;
+                        });
+                      },
+                      formatCurrency: _formatCurrency,
+                      loadUOMForItem: _loadUOMForItem,
+                      loadTaxForItem: _loadTaxForItem,
+                      loadItemDetail: _loadItemDetail,
+                      formatDate: _formatDate,
+                      getDistributorId: () {
+                        // Get distributor ID - use selected distributor or fallback to bizUnit
+                        int distributorId;
+
+                        // Get bizUnit from user store as fallback
+                        int bizUnit = 1;
+                        try {
+                          final UserDetailStore? userStore =
+                              getIt.isRegistered<UserDetailStore>()
+                                  ? getIt<UserDetailStore>()
+                                  : null;
+
+                          int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+                          bizUnit =
+                              (bizUnitFromStore != null && bizUnitFromStore > 0)
+                                  ? bizUnitFromStore
+                                  : 1;
+                        } catch (e) {
+                          print('⚠️ Error getting bizUnit, using default: $e');
+                        }
+
+                        // Default to bizUnit
+                        distributorId = bizUnit;
+
+                        // If distributor is selected, use its ID
+                        if (_selectedDistributor != null &&
+                            _distributorItems.isNotEmpty) {
+                          try {
+                            final distributorItem =
+                                _distributorItems.firstWhere(
+                              (item) => item.text == _selectedDistributor,
+                            );
+                            distributorId = distributorItem.id;
+                            print(
+                                '✅ Using selected Distributor ID: $distributorId (Distributor: ${distributorItem.text})');
+                          } catch (e) {
+                            // Distributor not found, use bizUnit as fallback
+                            print(
+                                '⚠️ Selected distributor not found in list, using bizUnit: $bizUnit');
+                          }
+                        } else {
+                          print(
+                              '⚠️ No distributor selected, using bizUnit: $bizUnit');
+                        }
+
+                        return distributorId;
+                      },
+                    ),
+                    if (i != _items.length - 1) const SizedBox(height: 12),
+                  ],
                 ],
               ),
           ],
@@ -2525,7 +2732,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -2559,19 +2767,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.grey.shade200, width: 1),
                 ),
-                  child: Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
-                    children: [
+                  children: [
                     const SizedBox(height: 8),
-                      // Sub Total Row
-                      _buildTaxTableRowWithController(
-                        label: 'Sub Total',
-                        controller: _subTotalController,
-                        isTablet: isTablet,
-                      ),
+                    // Sub Total Row
+                    _buildTaxTableRowWithController(
+                      label: 'Sub Total',
+                      controller: _subTotalController,
+                      isTablet: isTablet,
+                    ),
                     Divider(height: 1, color: Colors.grey.shade200, indent: 48),
-                      // Tax Rows (shown in create mode OR edit mode with Draft status)
-                      if (!_isEditMode || (_isEditMode && _loadedOrderData?.status == 0)) ...[
+                    // Tax Rows (shown in create mode OR edit mode with Draft status)
+                    if (!_isEditMode ||
+                        (_isEditMode && _loadedOrderData?.status == 0)) ...[
                       for (int i = 0; i < _taxRows.length; i++) ...[
                         _buildTaxTableRowWithModel(
                           row: _taxRows[i],
@@ -2580,102 +2789,126 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           hasDeleteButton: true,
                           isTablet: isTablet,
                         ),
-                          Divider(height: 1, color: Colors.grey.shade200, indent: 48),
+                        Divider(
+                            height: 1, color: Colors.grey.shade200, indent: 48),
                       ],
-                        // Add Tax Button Row (only in create mode or edit mode with Draft status)
-                        const SizedBox(height: 4),
+                      // Add Tax Button Row (only in create mode or edit mode with Draft status)
+                      const SizedBox(height: 4),
                       _buildAddButtonRow(
                         label: 'Tax',
                         onAdd: () {
                           setState(() {
                             _taxRows.add(_TaxChargeRow(
-                              id: DateTime.now().millisecondsSinceEpoch.toString(),
+                              id: DateTime.now()
+                                  .millisecondsSinceEpoch
+                                  .toString(),
                               rowType: 'tax',
                             ));
                           });
                         },
                         isTablet: isTablet,
                       ),
-                        const SizedBox(height: 4),
-                      ],
-                      // Discount Rows
-                      if (_discountRows.isNotEmpty || !_isEditMode) ...[
-                        Divider(height: 1, color: Colors.grey.shade200, indent: 48, thickness: 1.5),
-                        const SizedBox(height: 4),
-                      ],
-                      for (int i = 0; i < _discountRows.length; i++) ...[
-                        _buildTaxTableRowWithModel(
-                          row: _discountRows[i],
-                          index: i,
-                          rowType: 'discount',
-                          hasDeleteButton: true,
-                          isTablet: isTablet,
-                        ),
-                        Divider(height: 1, color: Colors.grey.shade200, indent: 48),
-                      ],
-                      // Add Discount Button Row (available in both create and edit mode)
                       const SizedBox(height: 4),
-                      _buildAddButtonRow(
-                        label: 'Discount',
-                        onAdd: () {
-                          setState(() {
-                            _discountRows.add(_TaxChargeRow(
-                              id: DateTime.now().millisecondsSinceEpoch.toString(),
-                              rowType: 'discount',
-                            ));
-                          });
-                        },
+                    ],
+                    // Discount Rows
+                    if (_discountRows.isNotEmpty || !_isEditMode) ...[
+                      Divider(
+                          height: 1,
+                          color: Colors.grey.shade200,
+                          indent: 48,
+                          thickness: 1.5),
+                      const SizedBox(height: 4),
+                    ],
+                    for (int i = 0; i < _discountRows.length; i++) ...[
+                      _buildTaxTableRowWithModel(
+                        row: _discountRows[i],
+                        index: i,
+                        rowType: 'discount',
+                        hasDeleteButton: true,
                         isTablet: isTablet,
                       ),
+                      Divider(
+                          height: 1, color: Colors.grey.shade200, indent: 48),
+                    ],
+                    // Add Discount Button Row (available in both create and edit mode)
+                    const SizedBox(height: 4),
+                    _buildAddButtonRow(
+                      label: 'Discount',
+                      onAdd: () {
+                        setState(() {
+                          _discountRows.add(_TaxChargeRow(
+                            id: DateTime.now()
+                                .millisecondsSinceEpoch
+                                .toString(),
+                            rowType: 'discount',
+                          ));
+                        });
+                      },
+                      isTablet: isTablet,
+                    ),
+                    const SizedBox(height: 4),
+                    // Other Charge Rows
+                    if (_otherChargeRows.isNotEmpty || !_isEditMode) ...[
+                      Divider(
+                          height: 1,
+                          color: Colors.grey.shade200,
+                          indent: 48,
+                          thickness: 1.5),
                       const SizedBox(height: 4),
-                      // Other Charge Rows
-                      if (_otherChargeRows.isNotEmpty || !_isEditMode) ...[
-                        Divider(height: 1, color: Colors.grey.shade200, indent: 48, thickness: 1.5),
-                        const SizedBox(height: 4),
-                      ],
-                      for (int i = 0; i < _otherChargeRows.length; i++) ...[
-                        _buildTaxTableRowWithModel(
-                          row: _otherChargeRows[i],
-                          index: i,
-                          rowType: 'otherCharge',
-                          hasDeleteButton: true,
-                          isTablet: isTablet,
-                        ),
-                        Divider(height: 1, color: Colors.grey.shade200, indent: 48),
-                      ],
-                      // Add Other Charge Button Row (available in both create and edit mode)
-                      const SizedBox(height: 4),
-                      _buildAddButtonRow(
-                        label: 'Other Charge',
-                        onAdd: () {
-                          setState(() {
-                            _otherChargeRows.add(_TaxChargeRow(
-                              id: DateTime.now().millisecondsSinceEpoch.toString(),
-                              rowType: 'otherCharge',
-                            ));
-                          });
-                        },
+                    ],
+                    for (int i = 0; i < _otherChargeRows.length; i++) ...[
+                      _buildTaxTableRowWithModel(
+                        row: _otherChargeRows[i],
+                        index: i,
+                        rowType: 'otherCharge',
+                        hasDeleteButton: true,
                         isTablet: isTablet,
                       ),
-                      const SizedBox(height: 4),
-                      // Price Adjustment Row
-                      Divider(height: 1, color: Colors.grey.shade200, indent: 48, thickness: 1.5),
-                      const SizedBox(height: 4),
-                      _buildTaxTableRowWithController(
-                        label: 'Price Adjustment',
-                        controller: _priceAdjustmentController,
-                        isTablet: isTablet,
-                        enabled: true, // Enable Price Adjustment field
-                      ),
-                      const SizedBox(height: 4),
-                    Divider(height: 2, color: Colors.grey.shade300, thickness: 2),
+                      Divider(
+                          height: 1, color: Colors.grey.shade200, indent: 48),
+                    ],
+                    // Add Other Charge Button Row (available in both create and edit mode)
+                    const SizedBox(height: 4),
+                    _buildAddButtonRow(
+                      label: 'Other Charge',
+                      onAdd: () {
+                        setState(() {
+                          _otherChargeRows.add(_TaxChargeRow(
+                            id: DateTime.now()
+                                .millisecondsSinceEpoch
+                                .toString(),
+                            rowType: 'otherCharge',
+                          ));
+                        });
+                      },
+                      isTablet: isTablet,
+                    ),
+                    const SizedBox(height: 4),
+                    // Price Adjustment Row
+                    Divider(
+                        height: 1,
+                        color: Colors.grey.shade200,
+                        indent: 48,
+                        thickness: 1.5),
+                    const SizedBox(height: 4),
+                    _buildTaxTableRowWithController(
+                      label: 'Price Adjustment',
+                      controller: _priceAdjustmentController,
+                      isTablet: isTablet,
+                      enabled: true, // Enable Price Adjustment field
+                    ),
+                    const SizedBox(height: 4),
+                    Divider(
+                        height: 2, color: Colors.grey.shade300, thickness: 2),
                     const SizedBox(height: 8),
-                      // Grand Total Row
+                    // Grand Total Row
                     Builder(
                       builder: (context) {
                         const Color tealGreen = Color(0xFF4db1b3);
                         return Container(
-                          padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12, vertical: isTablet ? 16 : 14),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 16 : 12,
+                              vertical: isTablet ? 16 : 14),
                           decoration: BoxDecoration(
                             color: Colors.grey.shade50,
                             borderRadius: const BorderRadius.only(
@@ -2713,9 +2946,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                     letterSpacing: 0.1,
                                   ),
                                 ),
-                      ),
-                    ],
-                  ),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     ),
@@ -2729,7 +2962,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       ),
     );
   }
-  
+
   Widget _buildAddButtonRow({
     required String label,
     required VoidCallback onAdd,
@@ -2740,50 +2973,52 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       onTap: onAdd,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12, vertical: isTablet ? 14 : 12),
+        padding: EdgeInsets.symmetric(
+            horizontal: isTablet ? 16 : 12, vertical: isTablet ? 14 : 12),
         decoration: BoxDecoration(
           color: Colors.grey.shade50,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey.shade200, width: 1),
         ),
-      child: Row(
-        children: [
+        child: Row(
+          children: [
             Container(
               width: isTablet ? 32 : 28,
               height: isTablet ? 32 : 28,
-                decoration: BoxDecoration(
-                  color: tealGreen,
-                  shape: BoxShape.circle,
+              decoration: BoxDecoration(
+                color: tealGreen,
+                shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
                     color: tealGreen.withOpacity(0.3),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
-                ),
+                  ),
                 ],
               ),
-              child: Icon(Icons.add, color: Colors.white, size: isTablet ? 20 : 18),
+              child: Icon(Icons.add,
+                  color: Colors.white, size: isTablet ? 20 : 18),
             ),
             SizedBox(width: isTablet ? 12 : 8),
-          Expanded(
-            flex: 2,
-            child: Text(
+            Expanded(
+              flex: 2,
+              child: Text(
                 'Add $label',
-              style: GoogleFonts.inter(
+                style: GoogleFonts.inter(
                   fontSize: isTablet ? 15 : 14,
                   fontWeight: FontWeight.w600,
                   color: tealGreen,
+                ),
               ),
             ),
-          ),
-          Expanded(flex: 2, child: const SizedBox.shrink()),
-          Expanded(flex: 1, child: const SizedBox.shrink()),
-        ],
+            Expanded(flex: 2, child: const SizedBox.shrink()),
+            Expanded(flex: 1, child: const SizedBox.shrink()),
+          ],
         ),
       ),
     );
   }
-  
+
   Widget _buildTaxTableRowWithModel({
     required _TaxChargeRow row,
     required int index,
@@ -2794,15 +3029,22 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     const Color tealGreen = Color(0xFF4db1b3);
     final hasDropdown = rowType == 'tax' || rowType == 'discount';
     // Get dropdown options, always include "Select" as first option
-    final List<String> dropdownOptions = ['Select', ...(rowType == 'tax' ? _taxTypeOptions : _discountTypeOptions).where((option) => option != 'Select').toList()];
-    
+    final List<String> dropdownOptions = [
+      'Select',
+      ...(rowType == 'tax' ? _taxTypeOptions : _discountTypeOptions)
+          .where((option) => option != 'Select')
+          .toList()
+    ];
+
     // Debug: Log the condition check
     if (rowType == 'discount') {
-      print('🔵 _buildTaxTableRowWithModel - Discount row: selectedType="${row.selectedType}", isCustom: ${row.selectedType != null && row.selectedType!.trim().toLowerCase() == 'custom'}');
+      print(
+          '🔵 _buildTaxTableRowWithModel - Discount row: selectedType="${row.selectedType}", isCustom: ${row.selectedType != null && row.selectedType!.trim().toLowerCase() == 'custom'}');
     }
-    
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12, vertical: isTablet ? 14 : 12),
+      padding: EdgeInsets.symmetric(
+          horizontal: isTablet ? 16 : 12, vertical: isTablet ? 14 : 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -2831,7 +3073,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                   color: Colors.red,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.remove, color: Colors.white, size: 16),
+                                child: const Icon(Icons.remove,
+                                    color: Colors.white, size: 16),
                               ),
                               onPressed: () {
                                 setState(() {
@@ -2854,7 +3097,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        rowType == 'tax' ? 'Tax' : (rowType == 'discount' ? 'Discount' : 'Other Charge'),
+                        rowType == 'tax'
+                            ? 'Tax'
+                            : (rowType == 'discount'
+                                ? 'Discount'
+                                : 'Other Charge'),
                         style: GoogleFonts.inter(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -2864,7 +3111,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     ),
                   ],
                 ),
-            const SizedBox(height: 8),
+                const SizedBox(height: 8),
                 if (hasDropdown)
                   Padding(
                     padding: const EdgeInsets.only(left: 44),
@@ -2878,99 +3125,114 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         side: const BorderSide(color: Color(0xFFD1D5DB)),
                       ),
                       onSelected: (value) {
-                            // Preserve scroll position synchronously before any async operations
-                            final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-                            // Set flag to prevent automatic focus restoration
-                            _preventingFocusRestoration = true;
-                            // Prevent focus from moving to any field - use primaryFocus to clear focus
-                            final currentFocus = FocusScope.of(context);
-                            final primaryFocus = FocusManager.instance.primaryFocus;
-                            if (primaryFocus != null) {
-                              primaryFocus.unfocus();
-                            }
-                            currentFocus.unfocus();
-                            // Also prevent any automatic focus restoration
-                            WidgetsBinding.instance.focusManager.primaryFocus?.unfocus();
-                            // Update the row data first without setState
-                            row.selectedType = (value == 'Select') ? null : value;
-                            print('🔵 Discount dropdown selected (Mobile): "$value", final selectedType: "${row.selectedType}"');
-                            // Reset checkbox and percentage if not Custom (case-insensitive check)
-                            if (row.selectedType == null || (row.selectedType!.trim().toLowerCase() != 'custom' || rowType != 'discount')) {
-                              row.isPercentageEnabled = false;
-                              row.percentageController.clear();
-                            }
-                            // Update totals without setState first
-                            _updateTotalsWithoutSetState();
-                            // Use a more reliable approach: preserve scroll position and restore after rebuild
-                            if (mounted) {
-                              setState(() {});
-                              // Restore scroll position immediately and repeatedly to ensure it sticks
-                              if (_scrollController.hasClients && scrollOffset > 0) {
-                                // Immediate restoration
+                        // Preserve scroll position synchronously before any async operations
+                        final scrollOffset = _scrollController.hasClients
+                            ? _scrollController.offset
+                            : 0.0;
+                        // Set flag to prevent automatic focus restoration
+                        _preventingFocusRestoration = true;
+                        // Prevent focus from moving to any field - use primaryFocus to clear focus
+                        final currentFocus = FocusScope.of(context);
+                        final primaryFocus = FocusManager.instance.primaryFocus;
+                        if (primaryFocus != null) {
+                          primaryFocus.unfocus();
+                        }
+                        currentFocus.unfocus();
+                        // Also prevent any automatic focus restoration
+                        WidgetsBinding.instance.focusManager.primaryFocus
+                            ?.unfocus();
+                        // Update the row data first without setState
+                        row.selectedType = (value == 'Select') ? null : value;
+                        print(
+                            '🔵 Discount dropdown selected (Mobile): "$value", final selectedType: "${row.selectedType}"');
+                        // Reset checkbox and percentage if not Custom (case-insensitive check)
+                        if (row.selectedType == null ||
+                            (row.selectedType!.trim().toLowerCase() !=
+                                    'custom' ||
+                                rowType != 'discount')) {
+                          row.isPercentageEnabled = false;
+                          row.percentageController.clear();
+                        }
+                        // Update totals without setState first
+                        _updateTotalsWithoutSetState();
+                        // Use a more reliable approach: preserve scroll position and restore after rebuild
+                        if (mounted) {
+                          setState(() {});
+                          // Restore scroll position immediately and repeatedly to ensure it sticks
+                          if (_scrollController.hasClients &&
+                              scrollOffset > 0) {
+                            // Immediate restoration
+                            _scrollController.jumpTo(scrollOffset);
+                            // Multiple restoration attempts to handle any delayed rebuilds
+                            Future.microtask(() {
+                              if (_scrollController.hasClients && mounted) {
                                 _scrollController.jumpTo(scrollOffset);
-                                // Multiple restoration attempts to handle any delayed rebuilds
-                                Future.microtask(() {
-                                  if (_scrollController.hasClients && mounted) {
-                                    _scrollController.jumpTo(scrollOffset);
-                                    // Ensure focus stays cleared
-                                    FocusManager.instance.primaryFocus?.unfocus();
-                                  }
-                                });
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  if (_scrollController.hasClients && mounted) {
-                                    _scrollController.jumpTo(scrollOffset);
-                                    // Ensure focus stays cleared
-                                    FocusManager.instance.primaryFocus?.unfocus();
-                                  }
-                                });
-                                SchedulerBinding.instance.addPostFrameCallback((_) {
-                                  if (_scrollController.hasClients && mounted) {
-                                    _scrollController.jumpTo(scrollOffset);
-                                    // Ensure focus stays cleared
-                                    FocusManager.instance.primaryFocus?.unfocus();
-                                  }
-                                });
-                                // Additional delayed attempts with focus prevention
-                                Future.delayed(const Duration(milliseconds: 10), () {
-                                  if (_scrollController.hasClients && mounted) {
-                                    _scrollController.jumpTo(scrollOffset);
-                                    FocusManager.instance.primaryFocus?.unfocus();
-                                  }
-                                });
-                                Future.delayed(const Duration(milliseconds: 50), () {
-                                  if (_scrollController.hasClients && mounted) {
-                                    _scrollController.jumpTo(scrollOffset);
-                                    FocusManager.instance.primaryFocus?.unfocus();
-                                  }
-                                });
-                                // Reset flag after a longer delay to allow all focus attempts to be prevented
-                                Future.delayed(const Duration(milliseconds: 200), () {
-                                  if (mounted) {
-                                    _preventingFocusRestoration = false;
-                                  }
-                                });
-                              } else {
-                                // Reset flag even if no scroll restoration needed
-                                Future.delayed(const Duration(milliseconds: 200), () {
-                                  if (mounted) {
-                                    _preventingFocusRestoration = false;
-                                  }
-                                });
+                                // Ensure focus stays cleared
+                                FocusManager.instance.primaryFocus?.unfocus();
                               }
-                            }
-                          },
+                            });
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (_scrollController.hasClients && mounted) {
+                                _scrollController.jumpTo(scrollOffset);
+                                // Ensure focus stays cleared
+                                FocusManager.instance.primaryFocus?.unfocus();
+                              }
+                            });
+                            SchedulerBinding.instance.addPostFrameCallback((_) {
+                              if (_scrollController.hasClients && mounted) {
+                                _scrollController.jumpTo(scrollOffset);
+                                // Ensure focus stays cleared
+                                FocusManager.instance.primaryFocus?.unfocus();
+                              }
+                            });
+                            // Additional delayed attempts with focus prevention
+                            Future.delayed(const Duration(milliseconds: 10),
+                                () {
+                              if (_scrollController.hasClients && mounted) {
+                                _scrollController.jumpTo(scrollOffset);
+                                FocusManager.instance.primaryFocus?.unfocus();
+                              }
+                            });
+                            Future.delayed(const Duration(milliseconds: 50),
+                                () {
+                              if (_scrollController.hasClients && mounted) {
+                                _scrollController.jumpTo(scrollOffset);
+                                FocusManager.instance.primaryFocus?.unfocus();
+                              }
+                            });
+                            // Reset flag after a longer delay to allow all focus attempts to be prevented
+                            Future.delayed(const Duration(milliseconds: 200),
+                                () {
+                              if (mounted) {
+                                _preventingFocusRestoration = false;
+                              }
+                            });
+                          } else {
+                            // Reset flag even if no scroll restoration needed
+                            Future.delayed(const Duration(milliseconds: 200),
+                                () {
+                              if (mounted) {
+                                _preventingFocusRestoration = false;
+                              }
+                            });
+                          }
+                        }
+                      },
                       child: InputDecorator(
                         decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFD1D5DB)),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFD1D5DB)),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -2982,15 +3244,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                             color: tealGreen,
                           ),
                         ),
-                              child: Text(
-                                row.selectedType ?? 'Select',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: row.selectedType != null
-                                      ? Colors.grey.shade900
-                                      : Colors.grey.shade500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                        child: Text(
+                          row.selectedType ?? 'Select',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: row.selectedType != null
+                                ? Colors.grey.shade900
+                                : Colors.grey.shade500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       itemBuilder: (context) => dropdownOptions.map((option) {
@@ -2998,23 +3260,27 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           value: option,
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(minWidth: 120),
-                          child: Text(
-                            option,
+                            child: Text(
+                              option,
                               style: GoogleFonts.inter(
                                 fontSize: 12,
-                                color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
+                                color: option == 'Select'
+                                    ? Colors.grey.shade500
+                                    : Colors.grey.shade900,
                               ),
                             ),
                           ),
                         );
-                              }).toList(),
+                      }).toList(),
                     ),
                   ),
                 // Show checkbox, %, and percentage input when Custom is selected for discount (Mobile)
-                if (rowType == 'discount' && row.selectedType != null && row.selectedType!.trim().toLowerCase() == 'custom') ...[
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.only(left: 44),
+                if (rowType == 'discount' &&
+                    row.selectedType != null &&
+                    row.selectedType!.trim().toLowerCase() == 'custom') ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 44),
                     child: Row(
                       children: [
                         Checkbox(
@@ -3028,7 +3294,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                               _updateTotals();
                             });
                           },
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
                           visualDensity: VisualDensity.compact,
                         ),
                         const SizedBox(width: 8),
@@ -3037,59 +3304,77 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: row.isPercentageEnabled ? tealGreen : Colors.grey.shade600,
+                            color: row.isPercentageEnabled
+                                ? tealGreen
+                                : Colors.grey.shade600,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                  child: TextField(
+                          child: TextField(
                             controller: row.percentageController,
                             enabled: row.isPercentageEnabled,
-                    textAlign: TextAlign.end,
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    style: GoogleFonts.inter(
+                            textAlign: TextAlign.end,
+                            keyboardType:
+                                TextInputType.numberWithOptions(decimal: true),
+                            style: GoogleFonts.inter(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
-                              color: row.isPercentageEnabled ? const Color(0xFF111827) : Colors.grey.shade400,
-                    ),
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(
+                              color: row.isPercentageEnabled
+                                  ? const Color(0xFF111827)
+                                  : Colors.grey.shade400,
+                            ),
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
+                                borderSide:
+                                    const BorderSide(color: Color(0xFFD1D5DB)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
                                 borderSide: BorderSide(
-                                  color: row.isPercentageEnabled ? const Color(0xFFD1D5DB) : Colors.grey.shade300,
+                                  color: row.isPercentageEnabled
+                                      ? const Color(0xFFD1D5DB)
+                                      : Colors.grey.shade300,
                                 ),
                               ),
                               disabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
+                                borderSide:
+                                    BorderSide(color: Colors.grey.shade300),
+                              ),
+                              focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: tealGreen, width: 2),
-                      ),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                borderSide:
+                                    BorderSide(color: tealGreen, width: 2),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 14),
                               isDense: true,
                               filled: true,
-                              fillColor: row.isPercentageEnabled ? Colors.white : Colors.grey.shade50,
-                      hintText: '0',
-                      hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
-                    ),
-                    onChanged: (text) {
+                              fillColor: row.isPercentageEnabled
+                                  ? Colors.white
+                                  : Colors.grey.shade50,
+                              hintText: '0',
+                              hintStyle: GoogleFonts.inter(
+                                  color: Colors.grey.shade400),
+                            ),
+                            onChanged: (text) {
                               // Auto-calculate discount value when percentage is entered
-                              if (rowType == 'discount' && 
-                                  row.selectedType != null && 
-                                  row.selectedType!.trim().toLowerCase() == 'custom' &&
+                              if (rowType == 'discount' &&
+                                  row.selectedType != null &&
+                                  row.selectedType!.trim().toLowerCase() ==
+                                      'custom' &&
                                   row.isPercentageEnabled) {
                                 final percentage = double.tryParse(text) ?? 0.0;
                                 final subTotal = _subTotal;
                                 if (percentage > 0 && subTotal > 0) {
-                                  final calculatedDiscount = (subTotal * percentage) / 100;
-                                  row.valueController.text = calculatedDiscount.toStringAsFixed(2);
-                                  print('🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
+                                  final calculatedDiscount =
+                                      (subTotal * percentage) / 100;
+                                  row.valueController.text =
+                                      calculatedDiscount.toStringAsFixed(2);
+                                  print(
+                                      '🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
                                 } else if (percentage == 0 || subTotal == 0) {
                                   row.valueController.text = '0.00';
                                 }
@@ -3109,13 +3394,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   padding: const EdgeInsets.only(left: 44),
                   child: TextField(
                     controller: row.valueController,
-                    enabled: rowType != 'tax' && (rowType == 'otherCharge' || !_isEditMode), // Enable Other Charge in edit mode, disable Tax in all modes
+                    enabled: rowType != 'tax' &&
+                        (rowType == 'otherCharge' ||
+                            !_isEditMode), // Enable Other Charge in edit mode, disable Tax in all modes
                     textAlign: TextAlign.end,
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        TextInputType.numberWithOptions(decimal: true),
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade400 : const Color(0xFF111827),
+                      color: (rowType == 'tax' ||
+                              (_isEditMode && rowType != 'otherCharge'))
+                          ? Colors.grey.shade400
+                          : const Color(0xFF111827),
                     ),
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
@@ -3132,14 +3423,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: tealGreen, width: 2),
+                        borderSide: BorderSide(color: tealGreen, width: 2),
                       ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: isTablet ? 16 : 14,
                         vertical: isTablet ? 16 : 14,
                       ),
                       filled: true,
-                      fillColor: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade50 : Colors.white,
+                      fillColor: (rowType == 'tax' ||
+                              (_isEditMode && rowType != 'otherCharge'))
+                          ? Colors.grey.shade50
+                          : Colors.white,
                       hintText: '0',
                       hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
                     ),
@@ -3169,7 +3463,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                             color: Colors.red,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.remove, color: Colors.white, size: 18),
+                          child: const Icon(Icons.remove,
+                              color: Colors.white, size: 18),
                         ),
                         onPressed: () {
                           setState(() {
@@ -3194,7 +3489,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               SizedBox(
                 width: isTablet ? 90 : 75,
                 child: Text(
-                  rowType == 'tax' ? 'Tax' : (rowType == 'discount' ? 'Discount' : 'Other Charge'),
+                  rowType == 'tax'
+                      ? 'Tax'
+                      : (rowType == 'discount' ? 'Discount' : 'Other Charge'),
                   style: GoogleFonts.inter(
                     fontSize: isTablet ? 14 : 13,
                     fontWeight: FontWeight.w500,
@@ -3211,98 +3508,127 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     // Dropdown column (flexible width to prevent overflow)
                     Flexible(
                       flex: 2,
-                          child: hasDropdown
+                      child: hasDropdown
                           ? PopupMenuButton<String>(
                               initialValue: row.selectedType,
                               // Open upward to avoid overlapping with bottom buttons
                               position: PopupMenuPosition.over,
                               offset: const Offset(0, -4),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    side: const BorderSide(color: Color(0xFFD1D5DB)),
-                                  ),
-                                  onSelected: (value) {
-                                    // Preserve scroll position synchronously before any async operations
-                                    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-                                    // Set flag to prevent automatic focus restoration
-                                    _preventingFocusRestoration = true;
-                                    // Prevent focus from moving to any field - use primaryFocus to clear focus
-                                    final currentFocus = FocusScope.of(context);
-                                    final primaryFocus = FocusManager.instance.primaryFocus;
-                                    if (primaryFocus != null) {
-                                      primaryFocus.unfocus();
-                                    }
-                                    currentFocus.unfocus();
-                                    // Also prevent any automatic focus restoration
-                                    WidgetsBinding.instance.focusManager.primaryFocus?.unfocus();
-                                    // Update the row data first without setState
-                                    row.selectedType = (value == 'Select') ? null : value;
-                                    print('🔵 Discount dropdown selected: "$value", final selectedType: "${row.selectedType}"');
-                                    // Reset checkbox and percentage if not Custom (case-insensitive check)
-                                    if (row.selectedType == null || (row.selectedType!.trim().toLowerCase() != 'custom' || rowType != 'discount')) {
-                                      row.isPercentageEnabled = false;
-                                      row.percentageController.clear();
-                                    }
-                                    // Update totals without setState first
-                                    _updateTotalsWithoutSetState();
-                                    // Use a more reliable approach: preserve scroll position and restore after rebuild
-                                    if (mounted) {
-                                      setState(() {});
-                                      // Restore scroll position immediately and repeatedly to ensure it sticks
-                                      if (_scrollController.hasClients && scrollOffset > 0) {
-                                        // Immediate restoration
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side:
+                                    const BorderSide(color: Color(0xFFD1D5DB)),
+                              ),
+                              onSelected: (value) {
+                                // Preserve scroll position synchronously before any async operations
+                                final scrollOffset =
+                                    _scrollController.hasClients
+                                        ? _scrollController.offset
+                                        : 0.0;
+                                // Set flag to prevent automatic focus restoration
+                                _preventingFocusRestoration = true;
+                                // Prevent focus from moving to any field - use primaryFocus to clear focus
+                                final currentFocus = FocusScope.of(context);
+                                final primaryFocus =
+                                    FocusManager.instance.primaryFocus;
+                                if (primaryFocus != null) {
+                                  primaryFocus.unfocus();
+                                }
+                                currentFocus.unfocus();
+                                // Also prevent any automatic focus restoration
+                                WidgetsBinding
+                                    .instance.focusManager.primaryFocus
+                                    ?.unfocus();
+                                // Update the row data first without setState
+                                row.selectedType =
+                                    (value == 'Select') ? null : value;
+                                print(
+                                    '🔵 Discount dropdown selected: "$value", final selectedType: "${row.selectedType}"');
+                                // Reset checkbox and percentage if not Custom (case-insensitive check)
+                                if (row.selectedType == null ||
+                                    (row.selectedType!.trim().toLowerCase() !=
+                                            'custom' ||
+                                        rowType != 'discount')) {
+                                  row.isPercentageEnabled = false;
+                                  row.percentageController.clear();
+                                }
+                                // Update totals without setState first
+                                _updateTotalsWithoutSetState();
+                                // Use a more reliable approach: preserve scroll position and restore after rebuild
+                                if (mounted) {
+                                  setState(() {});
+                                  // Restore scroll position immediately and repeatedly to ensure it sticks
+                                  if (_scrollController.hasClients &&
+                                      scrollOffset > 0) {
+                                    // Immediate restoration
+                                    _scrollController.jumpTo(scrollOffset);
+                                    // Multiple restoration attempts to handle any delayed rebuilds
+                                    Future.microtask(() {
+                                      if (_scrollController.hasClients &&
+                                          mounted) {
                                         _scrollController.jumpTo(scrollOffset);
-                                        // Multiple restoration attempts to handle any delayed rebuilds
-                                        Future.microtask(() {
-                                          if (_scrollController.hasClients && mounted) {
-                                            _scrollController.jumpTo(scrollOffset);
-                                            // Ensure focus stays cleared
-                                            FocusManager.instance.primaryFocus?.unfocus();
-                                          }
-                                        });
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          if (_scrollController.hasClients && mounted) {
-                                            _scrollController.jumpTo(scrollOffset);
-                                            // Ensure focus stays cleared
-                                            FocusManager.instance.primaryFocus?.unfocus();
-                                          }
-                                        });
-                                        SchedulerBinding.instance.addPostFrameCallback((_) {
-                                          if (_scrollController.hasClients && mounted) {
-                                            _scrollController.jumpTo(scrollOffset);
-                                            // Ensure focus stays cleared
-                                            FocusManager.instance.primaryFocus?.unfocus();
-                                          }
-                                        });
-                                        // Additional delayed attempts with focus prevention
-                                        Future.delayed(const Duration(milliseconds: 10), () {
-                                          if (_scrollController.hasClients && mounted) {
-                                            _scrollController.jumpTo(scrollOffset);
-                                            FocusManager.instance.primaryFocus?.unfocus();
-                                          }
-                                        });
-                                        Future.delayed(const Duration(milliseconds: 50), () {
-                                          if (_scrollController.hasClients && mounted) {
-                                            _scrollController.jumpTo(scrollOffset);
-                                            FocusManager.instance.primaryFocus?.unfocus();
-                                          }
-                                        });
-                                        // Reset flag after a longer delay to allow all focus attempts to be prevented
-                                        Future.delayed(const Duration(milliseconds: 200), () {
-                                          if (mounted) {
-                                            _preventingFocusRestoration = false;
-                                          }
-                                        });
-                                      } else {
-                                        // Reset flag even if no scroll restoration needed
-                                        Future.delayed(const Duration(milliseconds: 200), () {
-                                          if (mounted) {
-                                            _preventingFocusRestoration = false;
-                                          }
-                                        });
+                                        // Ensure focus stays cleared
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
                                       }
-                                    }
-                                  },
+                                    });
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (_scrollController.hasClients &&
+                                          mounted) {
+                                        _scrollController.jumpTo(scrollOffset);
+                                        // Ensure focus stays cleared
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
+                                      }
+                                    });
+                                    SchedulerBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (_scrollController.hasClients &&
+                                          mounted) {
+                                        _scrollController.jumpTo(scrollOffset);
+                                        // Ensure focus stays cleared
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
+                                      }
+                                    });
+                                    // Additional delayed attempts with focus prevention
+                                    Future.delayed(
+                                        const Duration(milliseconds: 10), () {
+                                      if (_scrollController.hasClients &&
+                                          mounted) {
+                                        _scrollController.jumpTo(scrollOffset);
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
+                                      }
+                                    });
+                                    Future.delayed(
+                                        const Duration(milliseconds: 50), () {
+                                      if (_scrollController.hasClients &&
+                                          mounted) {
+                                        _scrollController.jumpTo(scrollOffset);
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
+                                      }
+                                    });
+                                    // Reset flag after a longer delay to allow all focus attempts to be prevented
+                                    Future.delayed(
+                                        const Duration(milliseconds: 200), () {
+                                      if (mounted) {
+                                        _preventingFocusRestoration = false;
+                                      }
+                                    });
+                                  } else {
+                                    // Reset flag even if no scroll restoration needed
+                                    Future.delayed(
+                                        const Duration(milliseconds: 200), () {
+                                      if (mounted) {
+                                        _preventingFocusRestoration = false;
+                                      }
+                                    });
+                                  }
+                                }
+                              },
                               child: InputDecorator(
                                 decoration: InputDecoration(
                                   contentPadding: EdgeInsets.symmetric(
@@ -3313,15 +3639,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                   fillColor: Colors.white,
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(10),
-                                    borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFFD1D5DB)),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(10),
-                                    borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFFD1D5DB)),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(color: tealGreen, width: 2),
+                                    borderSide:
+                                        BorderSide(color: tealGreen, width: 2),
                                   ),
                                   suffixIcon: const Icon(
                                     Icons.keyboard_arrow_down_rounded,
@@ -3340,7 +3669,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              itemBuilder: (context) => dropdownOptions.map((option) {
+                              itemBuilder: (context) =>
+                                  dropdownOptions.map((option) {
                                 return PopupMenuItem<String>(
                                   value: option,
                                   child: SizedBox(
@@ -3349,7 +3679,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                       option,
                                       style: GoogleFonts.inter(
                                         fontSize: 13,
-                                        color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
+                                        color: option == 'Select'
+                                            ? Colors.grey.shade500
+                                            : Colors.grey.shade900,
                                       ),
                                     ),
                                   ),
@@ -3362,18 +3694,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     // Custom discount fields (checkbox, %, percentage input) - only for discount with Custom selected
                     Builder(
                       builder: (context) {
-                        final showCustomFields = rowType == 'discount' && 
-                            row.selectedType != null && 
+                        final showCustomFields = rowType == 'discount' &&
+                            row.selectedType != null &&
                             row.selectedType!.trim().toLowerCase() == 'custom';
-                        
+
                         if (showCustomFields) {
-                          print('🔵 ✅ Building Custom discount UI - selectedType: "${row.selectedType}", isPercentageEnabled: ${row.isPercentageEnabled}');
+                          print(
+                              '🔵 ✅ Building Custom discount UI - selectedType: "${row.selectedType}", isPercentageEnabled: ${row.isPercentageEnabled}');
                         }
-                        
+
                         if (!showCustomFields) {
                           return const SizedBox.shrink();
                         }
-                        
+
                         return Flexible(
                           flex: 2,
                           child: Row(
@@ -3387,7 +3720,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                     value: row.isPercentageEnabled,
                                     onChanged: (value) {
                                       setState(() {
-                                        row.isPercentageEnabled = value ?? false;
+                                        row.isPercentageEnabled =
+                                            value ?? false;
                                         if (!row.isPercentageEnabled) {
                                           // Clear percentage when unchecked
                                           row.percentageController.clear();
@@ -3395,7 +3729,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                         _updateTotals();
                                       });
                                     },
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                     visualDensity: VisualDensity.compact,
                                   ),
                                   const SizedBox(width: 4),
@@ -3404,7 +3739,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                     style: GoogleFonts.inter(
                                       fontSize: isTablet ? 14 : 13,
                                       fontWeight: FontWeight.w600,
-                                      color: row.isPercentageEnabled ? tealGreen : Colors.grey.shade600,
+                                      color: row.isPercentageEnabled
+                                          ? tealGreen
+                                          : Colors.grey.shade600,
                                     ),
                                   ),
                                 ],
@@ -3416,30 +3753,38 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                   controller: row.percentageController,
                                   enabled: row.isPercentageEnabled,
                                   textAlign: TextAlign.end,
-                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  keyboardType: TextInputType.numberWithOptions(
+                                      decimal: true),
                                   style: GoogleFonts.inter(
                                     fontSize: isTablet ? 14 : 13,
                                     fontWeight: FontWeight.w500,
-                                    color: row.isPercentageEnabled ? const Color(0xFF111827) : Colors.grey.shade400,
+                                    color: row.isPercentageEnabled
+                                        ? const Color(0xFF111827)
+                                        : Colors.grey.shade400,
                                   ),
                                   decoration: InputDecoration(
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
-                                      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFD1D5DB)),
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
                                       borderSide: BorderSide(
-                                        color: row.isPercentageEnabled ? const Color(0xFFD1D5DB) : Colors.grey.shade300,
+                                        color: row.isPercentageEnabled
+                                            ? const Color(0xFFD1D5DB)
+                                            : Colors.grey.shade300,
                                       ),
                                     ),
                                     disabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
-                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                      borderSide: BorderSide(
+                                          color: Colors.grey.shade300),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
-                                      borderSide: BorderSide(color: tealGreen, width: 2),
+                                      borderSide: BorderSide(
+                                          color: tealGreen, width: 2),
                                     ),
                                     contentPadding: EdgeInsets.symmetric(
                                       horizontal: isTablet ? 12 : 10,
@@ -3447,23 +3792,35 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                     ),
                                     isDense: true,
                                     filled: true,
-                                    fillColor: row.isPercentageEnabled ? Colors.white : Colors.grey.shade50,
+                                    fillColor: row.isPercentageEnabled
+                                        ? Colors.white
+                                        : Colors.grey.shade50,
                                     hintText: '0',
-                                    hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                                    hintStyle: GoogleFonts.inter(
+                                        color: Colors.grey.shade400),
                                   ),
                                   onChanged: (text) {
                                     // Auto-calculate discount value when percentage is entered
-                                    if (rowType == 'discount' && 
-                                        row.selectedType != null && 
-                                        row.selectedType!.trim().toLowerCase() == 'custom' &&
+                                    if (rowType == 'discount' &&
+                                        row.selectedType != null &&
+                                        row.selectedType!
+                                                .trim()
+                                                .toLowerCase() ==
+                                            'custom' &&
                                         row.isPercentageEnabled) {
-                                      final percentage = double.tryParse(text) ?? 0.0;
+                                      final percentage =
+                                          double.tryParse(text) ?? 0.0;
                                       final subTotal = _subTotal;
                                       if (percentage > 0 && subTotal > 0) {
-                                        final calculatedDiscount = (subTotal * percentage) / 100;
-                                        row.valueController.text = calculatedDiscount.toStringAsFixed(2);
-                                        print('🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
-                                      } else if (percentage == 0 || subTotal == 0) {
+                                        final calculatedDiscount =
+                                            (subTotal * percentage) / 100;
+                                        row.valueController.text =
+                                            calculatedDiscount
+                                                .toStringAsFixed(2);
+                                        print(
+                                            '🔵 Auto-calculated discount: ${calculatedDiscount.toStringAsFixed(2)} from ${percentage}% of ${subTotal}');
+                                      } else if (percentage == 0 ||
+                                          subTotal == 0) {
                                         row.valueController.text = '0.00';
                                       }
                                     }
@@ -3487,13 +3844,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 flex: 2,
                 child: TextField(
                   controller: row.valueController,
-                  enabled: rowType != 'tax' && (rowType == 'otherCharge' || !_isEditMode), // Enable Other Charge in edit mode, disable Tax in all modes
+                  enabled: rowType != 'tax' &&
+                      (rowType == 'otherCharge' ||
+                          !_isEditMode), // Enable Other Charge in edit mode, disable Tax in all modes
                   textAlign: TextAlign.end,
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                   style: GoogleFonts.inter(
                     fontSize: isTablet ? 14 : 13,
                     fontWeight: FontWeight.w500,
-                    color: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade900 : const Color(0xFF111827),
+                    color: (rowType == 'tax' ||
+                            (_isEditMode && rowType != 'otherCharge'))
+                        ? Colors.grey.shade900
+                        : const Color(0xFF111827),
                   ),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -3511,8 +3873,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                        color: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade300 : tealGreen,
-                        width: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? 1 : 2,
+                        color: (rowType == 'tax' ||
+                                (_isEditMode && rowType != 'otherCharge'))
+                            ? Colors.grey.shade300
+                            : tealGreen,
+                        width: (rowType == 'tax' ||
+                                (_isEditMode && rowType != 'otherCharge'))
+                            ? 1
+                            : 2,
                       ),
                     ),
                     contentPadding: EdgeInsets.symmetric(
@@ -3521,7 +3889,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     ),
                     isDense: true,
                     filled: true,
-                    fillColor: (rowType == 'tax' || (_isEditMode && rowType != 'otherCharge')) ? Colors.grey.shade50 : Colors.white,
+                    fillColor: (rowType == 'tax' ||
+                            (_isEditMode && rowType != 'otherCharge'))
+                        ? Colors.grey.shade50
+                        : Colors.white,
                     hintText: '0.00',
                     hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
                   ),
@@ -3543,11 +3914,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     required String label,
     required TextEditingController controller,
     required bool isTablet,
-    bool enabled = false, // Default to disabled, but can be enabled for Price Adjustment
+    bool enabled =
+        false, // Default to disabled, but can be enabled for Price Adjustment
   }) {
     const Color tealGreen = Color(0xFF4db1b3);
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12, vertical: isTablet ? 14 : 12),
+      padding: EdgeInsets.symmetric(
+          horizontal: isTablet ? 16 : 12, vertical: isTablet ? 14 : 12),
       child: Row(
         children: [
           SizedBox(width: isTablet ? 40 : 36),
@@ -3636,148 +4009,154 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }) {
     const Color tealGreen = Color(0xFF4db1b3);
     return Row(
-        children: [
-          // Actions Column
-            SizedBox(
-            width: 40,
-            child: hasActionButton
-                ? IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: tealGreen,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.add, color: Colors.white, size: 18),
+      children: [
+        // Actions Column
+        SizedBox(
+          width: 40,
+          child: hasActionButton
+              ? IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: tealGreen,
+                      shape: BoxShape.circle,
                     ),
-                onPressed: () {
-                      // Action button functionality can be added here
-                    },
-                  )
-                : const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 8),
-          // Label Column
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 14 : 13,
-                fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-                color: Colors.grey.shade900,
-              ),
+                    child: const Icon(Icons.add, color: Colors.white, size: 18),
+                  ),
+                  onPressed: () {
+                    // Action button functionality can be added here
+                  },
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 8),
+        // Label Column
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: isTablet ? 14 : 13,
+              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+              color: Colors.grey.shade900,
             ),
           ),
-          // Configuration Column (Dropdown)
-          Expanded(
-            flex: 2,
-            child: hasDropdown
-                ? PopupMenuButton<String>(
-                    initialValue: dropdownValue,
-                    offset: const Offset(0, 4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    ),
-                    onSelected: onDropdownChanged,
-                    child: InputDecorator(
-                      decoration: InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 14 : 12,
-                          vertical: isTablet ? 14 : 12,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: tealGreen, width: 2),
-                        ),
-                        suffixIcon: const Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 20,
-                          color: tealGreen,
-                        ),
-                      ),
-                            child: Text(
-                              dropdownValue ?? 'Select',
-                              style: GoogleFonts.inter(
-                                fontSize: isTablet ? 13 : 12,
-                                color: dropdownValue != null
-                                    ? Colors.grey.shade900
-                                    : Colors.grey.shade500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    itemBuilder: (context) => (dropdownOptions ?? []).map((option) {
-                      return PopupMenuItem<String>(
-                        value: option,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(minWidth: isTablet ? 150 : 120),
-                        child: Text(
-                          option,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              color: option == 'Select' ? Colors.grey.shade500 : Colors.grey.shade900,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 8),
-          // Value Column
-          Expanded(
-            flex: 1,
-            child: isEditable
-                ? TextField(
-                    controller: TextEditingController(text: value == 0.0 ? '' : value.toStringAsFixed(2)),
-                    textAlign: TextAlign.end,
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 14 : 13,
-                      fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
-                      color: isTotal ? tealGreen : Colors.grey.shade900,
-                    ),
+        ),
+        // Configuration Column (Dropdown)
+        Expanded(
+          flex: 2,
+          child: hasDropdown
+              ? PopupMenuButton<String>(
+                  initialValue: dropdownValue,
+                  offset: const Offset(0, 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: const BorderSide(color: Color(0xFFD1D5DB)),
+                  ),
+                  onSelected: onDropdownChanged,
+                  child: InputDecorator(
                     decoration: InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: isTablet ? 14 : 12,
+                        vertical: isTablet ? 14 : 12,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: tealGreen, width: 2),
+                      ),
+                      suffixIcon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 20,
+                        color: tealGreen,
+                      ),
                     ),
-                    onChanged: (text) {
-                      final newValue = double.tryParse(text) ?? 0.0;
-                      onValueChanged?.call(newValue);
-                    },
-                  )
-                : Text(
-                    value == 0.0 ? '0' : _formatCurrency(value),
-                    textAlign: TextAlign.end,
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 14 : 13,
-                      fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
-                      color: isTotal ? tealGreen : Colors.grey.shade900,
+                    child: Text(
+                      dropdownValue ?? 'Select',
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 13 : 12,
+                        color: dropdownValue != null
+                            ? Colors.grey.shade900
+                            : Colors.grey.shade500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-          ),
-        ],
+                  itemBuilder: (context) =>
+                      (dropdownOptions ?? []).map((option) {
+                    return PopupMenuItem<String>(
+                      value: option,
+                      child: ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minWidth: isTablet ? 150 : 120),
+                        child: Text(
+                          option,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: option == 'Select'
+                                ? Colors.grey.shade500
+                                : Colors.grey.shade900,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 8),
+        // Value Column
+        Expanded(
+          flex: 1,
+          child: isEditable
+              ? TextField(
+                  controller: TextEditingController(
+                      text: value == 0.0 ? '' : value.toStringAsFixed(2)),
+                  textAlign: TextAlign.end,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 14 : 13,
+                    fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
+                    color: isTotal ? tealGreen : Colors.grey.shade900,
+                  ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                  ),
+                  onChanged: (text) {
+                    final newValue = double.tryParse(text) ?? 0.0;
+                    onValueChanged?.call(newValue);
+                  },
+                )
+              : Text(
+                  value == 0.0 ? '0' : _formatCurrency(value),
+                  textAlign: TextAlign.end,
+                  style: GoogleFonts.inter(
+                    fontSize: isTablet ? 14 : 13,
+                    fontWeight: isTotal ? FontWeight.w900 : FontWeight.w600,
+                    color: isTotal ? tealGreen : Colors.grey.shade900,
+                  ),
+                ),
+        ),
+      ],
     );
   }
 
-  Widget _buildTaxRow(String label, double value, {bool isTotal = false, required bool isTablet}) {
+  Widget _buildTaxRow(String label, double value,
+      {bool isTotal = false, required bool isTablet}) {
     const Color tealGreen = Color(0xFF4db1b3);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3859,15 +4238,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   color: tealGreen,
                 ),
               ),
-                    child: Text(
+              child: Text(
                 selectedValue ?? 'Select',
-                      style: GoogleFonts.inter(
-                        fontSize: isTablet ? 14 : 13,
-                        color: selectedValue != null 
-                            ? Colors.grey.shade900 
-                            : Colors.grey.shade500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: isTablet ? 14 : 13,
+                  color: selectedValue != null
+                      ? Colors.grey.shade900
+                      : Colors.grey.shade500,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             itemBuilder: (context) => options.map((option) {
@@ -3875,9 +4254,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 value: option,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minWidth: isTablet ? 150 : 120),
-                child: Text(
-                  option,
-                  style: GoogleFonts.inter(fontSize: 14),
+                  child: Text(
+                    option,
+                    style: GoogleFonts.inter(fontSize: 14),
                   ),
                 ),
               );
@@ -3885,7 +4264,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           ),
         ),
         const SizedBox(width: 16),
-            SizedBox(
+        SizedBox(
           width: 100,
           child: Text(
             _formatCurrency(value),
@@ -3925,11 +4304,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                     onTap: () {
                       setState(() {
                         _isAttachmentsExpanded = !_isAttachmentsExpanded;
-                  });
-                },
+                      });
+                    },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
                       child: Text(
                         'Attachments',
                         style: GoogleFonts.inter(
@@ -3973,9 +4353,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                             color: Colors.grey.shade600,
                             size: 24,
                           ),
-                ),
-              ),
-            ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -4008,7 +4388,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: _attachments.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final file = _attachments[index];
                       return Container(
@@ -4016,7 +4397,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         decoration: BoxDecoration(
                           color: Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200, width: 1),
+                          border:
+                              Border.all(color: Colors.grey.shade200, width: 1),
                         ),
                         child: Row(
                           children: [
@@ -4051,12 +4433,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () {
-                  setState(() {
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.red),
+                              onPressed: () {
+                                setState(() {
                                   _attachments.removeAt(index);
-                  });
-                },
+                                });
+                              },
                             ),
                           ],
                         ),
@@ -4158,78 +4541,89 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 ],
               )
             : Row(
-      children: [
-            // Save Button - Enabled based on Draft Save privilege (ButtonSave HasRight OR IsSalesRepEdit)
-        Expanded(
-          child: OutlinedButton(
-            onPressed: _isDraftSaveEnabled ? _onSaveDraft : null,
-            style: OutlinedButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: isTablet ? 16 : 14,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              side: BorderSide(
-                color: _isDraftSaveEnabled ? tealGreen : Colors.grey.shade300,
-                width: 1.5,
-              ),
-            ),
-            child: Text(
-              'Save',
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 16 : 14,
-                fontWeight: FontWeight.w700,
-                color: _isDraftSaveEnabled ? tealGreen : Colors.grey.shade600,
-              ),
-            ),
-          ),
-        ),
+                children: [
+                  // Save Button - Enabled based on Draft Save privilege (ButtonSave HasRight OR IsSalesRepEdit)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isDraftSaveEnabled ? _onSaveDraft : null,
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(
+                          vertical: isTablet ? 16 : 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(
+                          color: _isDraftSaveEnabled
+                              ? tealGreen
+                              : Colors.grey.shade300,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        'Save',
+                        style: GoogleFonts.inter(
+                          fontSize: isTablet ? 16 : 14,
+                          fontWeight: FontWeight.w700,
+                          color: _isDraftSaveEnabled
+                              ? tealGreen
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ),
                   // Workflow Action Buttons - Display dynamically from API response
                   // Display all buttons, but enable only those with processAction value
                   ...(_workflowActions.map((action) {
                     // Enable button if processAction has value (not null and not empty)
-                    final hasProcessAction = action.processAction != null && action.processAction!.isNotEmpty;
+                    final hasProcessAction = action.processAction != null &&
+                        action.processAction!.isNotEmpty;
                     final isEnabled = hasProcessAction && !_isLoading;
-                    
+
                     // Parse color from API, but use tealGreen for enabled buttons if color is grey/light
                     final parsedColor = _parseColorFromHex(action.color);
                     Color enabledColor;
                     if (isEnabled && parsedColor != null) {
                       // Check if color is too light/grey - if so, use tealGreen instead
                       final brightness = parsedColor.computeLuminance();
-                      if (brightness > 0.7 || action.color?.toLowerCase().contains('d3d3d3') == true) {
+                      if (brightness > 0.7 ||
+                          action.color?.toLowerCase().contains('d3d3d3') ==
+                              true) {
                         // Color is too light or grey, use tealGreen for enabled buttons
                         enabledColor = tealGreen;
                       } else {
                         enabledColor = parsedColor;
                       }
                     } else {
-                      enabledColor = tealGreen; // Default to tealGreen for enabled buttons
+                      enabledColor =
+                          tealGreen; // Default to tealGreen for enabled buttons
                     }
-                    
-                    print('🔘 Workflow Button: ${action.name}, ProcessAction: ${action.processAction?.length ?? 0}, Enabled: $isEnabled, Color: ${action.color} -> ${enabledColor.value.toRadixString(16)}');
-                    
+
+                    print(
+                        '🔘 Workflow Button: ${action.name}, ProcessAction: ${action.processAction?.length ?? 0}, Enabled: $isEnabled, Color: ${action.color} -> ${enabledColor.value.toRadixString(16)}');
+
                     return [
-        const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton(
-                          onPressed: isEnabled 
-                              ? () => _onWorkflowAction(action) 
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isEnabled
+                              ? () => _onWorkflowAction(action)
                               : null,
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: isTablet ? 16 : 14,
-              ),
-                            backgroundColor: isEnabled ? enabledColor : Colors.grey.shade300,
-                            foregroundColor: isEnabled ? Colors.white : Colors.grey.shade600,
-              disabledBackgroundColor: Colors.grey.shade300,
-              disabledForegroundColor: Colors.grey.shade600,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: isEnabled ? 2 : 0,
-            ),
+                          style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              vertical: isTablet ? 16 : 14,
+                            ),
+                            backgroundColor:
+                                isEnabled ? enabledColor : Colors.grey.shade300,
+                            foregroundColor:
+                                isEnabled ? Colors.white : Colors.grey.shade600,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                            disabledForegroundColor: Colors.grey.shade600,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: isEnabled ? 2 : 0,
+                          ),
                           child: _isLoading
                               ? SizedBox(
                                   width: 20,
@@ -4237,23 +4631,25 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                      isEnabled ? Colors.white : Colors.grey.shade600,
+                                      isEnabled
+                                          ? Colors.white
+                                          : Colors.grey.shade600,
                                     ),
                                   ),
                                 )
                               : Text(
                                   action.name,
-              style: GoogleFonts.inter(
-                fontSize: isTablet ? 16 : 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
+                                  style: GoogleFonts.inter(
+                                    fontSize: isTablet ? 16 : 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                        ),
+                      ),
                     ];
                   }).expand((buttons) => buttons)),
-      ],
-        ),
+                ],
+              ),
       ),
     );
   }
@@ -4324,7 +4720,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         // 1. Must have privilege (hasRight = true)
         // 2. transactionCompleted must be 1 (from workflow actions)
         // 3. Must NOT be cancelled or short closed (if editing)
-        
+
         if (!privilege.hasRight) {
           continue; // No privilege, skip
         }
@@ -4334,7 +4730,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         bool transactionCompleted = false;
         if (_workflowActions.isNotEmpty) {
           // Check if any workflow action has transactionCompleted = true
-          transactionCompleted = _workflowActions.any((action) => action.transactionCompleted == true);
+          transactionCompleted = _workflowActions
+              .any((action) => action.transactionCompleted == true);
         }
 
         // Only show if transactionCompleted = 1 (true)
@@ -4346,7 +4743,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         if (_isEditMode && _loadedOrderData != null) {
           final isCancelled = _loadedOrderData!.isCancelled == 1;
           final isShortClosed = _loadedOrderData!.isShortClosed == 1;
-          
+
           if (isCancelled || isShortClosed) {
             continue; // Already cancelled or short closed, skip
           }
@@ -4359,7 +4756,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         // 1. Must have privilege (hasRight = true)
         // 2. transactionCompleted must be 1 (from workflow actions) - show only when TransactionComplete = 1
         // 3. Must NOT be cancelled or short closed (if editing)
-        
+
         if (!privilege.hasRight) {
           continue; // No privilege, skip
         }
@@ -4370,7 +4767,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         bool transactionCompleted = false;
         if (_workflowActions.isNotEmpty) {
           // Check if any workflow action has transactionCompleted = true
-          transactionCompleted = _workflowActions.any((action) => action.transactionCompleted == true);
+          transactionCompleted = _workflowActions
+              .any((action) => action.transactionCompleted == true);
         }
 
         // Only show if transactionCompleted = 1 (true)
@@ -4383,7 +4781,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         if (_isEditMode && _loadedOrderData != null) {
           final isCancelled = _loadedOrderData!.isCancelled == 1;
           final isShortClosed = _loadedOrderData!.isShortClosed == 1;
-          
+
           if (isCancelled || isShortClosed) {
             continue; // Already cancelled or short closed, skip
           }
@@ -4487,7 +4885,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
                       return TweenAnimationBuilder<double>(
                         duration: Duration(milliseconds: 200 + (index * 50)),
-                        tween: Tween(begin: 0.0, end: _isActionsMenuOpen ? 1.0 : 0.0),
+                        tween: Tween(
+                            begin: 0.0, end: _isActionsMenuOpen ? 1.0 : 0.0),
                         curve: Curves.easeOut,
                         builder: (context, value, child) {
                           return Transform.translate(
@@ -4545,15 +4944,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
 
     // Get bizUnit and distributor info
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-        ? getIt<UserDetailStore>()
-        : null;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
 
     int? bizUnitFromStore = userStore?.userDetail?.sbuId;
     int? bizUnitFromPrefs = user.sbuId;
     final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
         ? bizUnitFromStore
-        : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0) ? bizUnitFromPrefs : 1);
+        : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+            ? bizUnitFromPrefs
+            : 1);
 
     // Get distributor ID - use selected distributor or fallback to bizUnit
     // Note: Keep bizunit and sbuId same as listing API (user's default bizUnit)
@@ -4562,7 +4962,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Keep finalBizUnit and finalSbuId same as listing API (always use user's default bizUnit)
     int finalBizUnit = bizUnit; // Same as listing API
     int finalSbuId = bizUnit; // Same as listing API
-    
+
     if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
       try {
         final distributorItem = _distributorItems.firstWhere(
@@ -4571,10 +4971,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         distributorId = distributorItem.id;
         // distributorId is used for DistributerForId only
         // bizunit and sbuId remain as user's default bizUnit to match listing API
-        print('🔵 Selected Distributor ID: $distributorId, but keeping bizUnit: $finalBizUnit for consistency with listing');
+        print(
+            '🔵 Selected Distributor ID: $distributorId, but keeping bizUnit: $finalBizUnit for consistency with listing');
       } catch (e) {
         // Distributor not found, use defaults
-        print('Warning: Selected distributor not found in list, using bizUnit: $e');
+        print(
+            'Warning: Selected distributor not found in list, using bizUnit: $e');
       }
     }
 
@@ -4612,13 +5014,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
 
     // Get exchange rate
-    final double exchangeRate = double.tryParse(_exchangeRateController.text) ?? 1.0;
+    final double exchangeRate =
+        double.tryParse(_exchangeRateController.text) ?? 1.0;
 
     // Format dates - Try ISO 8601 format first, fallback to space format
     // .NET System.Text.Json should parse ISO 8601 format: "2025-12-23T00:00:01.000"
     final DateTime contractDate = _contractDate;
     final DateTime deliveryDate = _deliveryDate;
-    
+
     // Use ISO 8601 format with 'T' separator (standard format that .NET can definitely parse)
     // Format: yyyy-MM-ddTHH:mm:ss.SSS
     String formatDateForApi(DateTime dt) {
@@ -4629,10 +5032,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       if (isoString.contains('.')) {
         final parts = isoString.split('.');
         final dateTimePart = parts[0]; // yyyy-MM-ddTHH:mm:ss
-        final microSeconds = parts[1].replaceAll('Z', ''); // Remove Z if present
+        final microSeconds =
+            parts[1].replaceAll('Z', ''); // Remove Z if present
         // Convert microseconds to milliseconds (first 3 digits)
-        final milliseconds = microSeconds.length >= 3 
-            ? microSeconds.substring(0, 3) 
+        final milliseconds = microSeconds.length >= 3
+            ? microSeconds.substring(0, 3)
             : microSeconds.padRight(3, '0');
         return '$dateTimePart.$milliseconds';
       } else {
@@ -4641,15 +5045,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return '$cleanIso.000';
       }
     }
-    
+
     final String dateStr = formatDateForApi(contractDate);
     final String deliveryDateStr = formatDateForApi(deliveryDate);
-    
+
     // Validate dates are not empty
     if (dateStr.isEmpty || deliveryDateStr.isEmpty) {
-      throw Exception('Date formatting failed: dateStr=$dateStr, deliveryDateStr=$deliveryDateStr');
+      throw Exception(
+          'Date formatting failed: dateStr=$dateStr, deliveryDateStr=$deliveryDateStr');
     }
-    
+
     print('📅 Formatted Date: $dateStr');
     print('📅 Formatted DeliveryDate: $deliveryDateStr');
 
@@ -4661,20 +5066,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       final qty = double.tryParse(item.qtyController.text) ?? 0.0;
       // Get rate from controller, fallback to product rate if controller is empty
-      final rateFromController = item.rateController.text.isNotEmpty 
-          ? double.tryParse(item.rateController.text) 
+      final rateFromController = item.rateController.text.isNotEmpty
+          ? double.tryParse(item.rateController.text)
           : null;
       final unitPrice = rateFromController ?? item.product.rate;
       // Get MRP from controller, fallback to product MRP if controller is empty
-      final mrpFromController = item.mrpController.text.isNotEmpty 
-          ? double.tryParse(item.mrpController.text) 
+      final mrpFromController = item.mrpController.text.isNotEmpty
+          ? double.tryParse(item.mrpController.text)
           : null;
       final mrp = mrpFromController ?? item.product.mrp;
       final discount = double.tryParse(item.discountController.text) ?? 0.0;
       final amount = qty * unitPrice;
       final totalAmount = amount - discount;
-      
-      print('🔵 Building contract item: ItemId=$itemId, Qty=$qty, Rate=$unitPrice (from controller: ${rateFromController ?? "N/A"}, product: ${item.product.rate}), MRP=$mrp (from controller: ${mrpFromController ?? "N/A"}, product: ${item.product.mrp}), Amount=$amount, TotalAmount=$totalAmount');
+
+      print(
+          '🔵 Building contract item: ItemId=$itemId, Qty=$qty, Rate=$unitPrice (from controller: ${rateFromController ?? "N/A"}, product: ${item.product.rate}), MRP=$mrp (from controller: ${mrpFromController ?? "N/A"}, product: ${item.product.mrp}), Amount=$amount, TotalAmount=$totalAmount');
       final bonusQty = double.tryParse(item.bonusQtyController.text) ?? 0.0;
       // Format ReqdDate using the same ISO 8601 format helper
       final reqdDateStr = formatDateForApi(item.requiredDate);
@@ -4689,12 +5095,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           uomId = uomItem.id;
           print('🔵 UOM ID: $uomId for "${item.selectedUOM}"');
         } catch (e) {
-          print('⚠️ UOM not found in list: ${item.selectedUOM}, using default: $uomId');
+          print(
+              '⚠️ UOM not found in list: ${item.selectedUOM}, using default: $uomId');
         }
       }
 
       contractItems.add(SalesContractItem(
-        id: _isEditMode ? _loadedOrderData?.id : null, // Use existing item ID if editing
+        id: _isEditMode
+            ? _loadedOrderData?.id
+            : null, // Use existing item ID if editing
         createdBy: user.userId,
         status: 0,
         sbuId: bizUnit,
@@ -4713,7 +5122,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         tax: null,
         totalAmount: totalAmount,
         reqdDate: reqdDateStr,
-        remarks: item.remarksController.text.isNotEmpty ? item.remarksController.text.trim() : null,
+        remarks: item.remarksController.text.isNotEmpty
+            ? item.remarksController.text.trim()
+            : null,
         addlRemarks: null,
         bonusQuantity: bonusQty,
         uomText: item.selectedUOM ?? item.product.uom,
@@ -4736,7 +5147,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final value = taxRow.value;
       // Include tax row if it has a selectedType (meaning it was intentionally added)
       // or if it has a value > 0
-      if ((taxRow.selectedType != null && taxRow.selectedType!.isNotEmpty) || value > 0) {
+      if ((taxRow.selectedType != null && taxRow.selectedType!.isNotEmpty) ||
+          value > 0) {
         taxCharges.add(TaxAndOtherChargeDetail(
           id: null,
           gridId: 80, // Should be from tax component formulas
@@ -4764,11 +5176,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Add Discount rows
     for (final discountRow in _discountRows) {
       final value = discountRow.value;
-      final isCustom = discountRow.selectedType != null && discountRow.selectedType!.trim().toLowerCase() == 'custom';
-      final customPercentage = isCustom && discountRow.isPercentageEnabled 
-          ? discountRow.percentageValue 
+      final isCustom = discountRow.selectedType != null &&
+          discountRow.selectedType!.trim().toLowerCase() == 'custom';
+      final customPercentage = isCustom && discountRow.isPercentageEnabled
+          ? discountRow.percentageValue
           : null;
-      
+
       taxCharges.add(TaxAndOtherChargeDetail(
         id: null,
         gridId: 81,
@@ -4863,7 +5276,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     ));
 
     // Calculate totals
-    final totalQty = contractItems.fold(0.0, (sum, item) => sum + item.quantity);
+    final totalQty =
+        contractItems.fold(0.0, (sum, item) => sum + item.quantity);
     final totalConvAmount = _subTotal;
     final totalTax = _totalTaxAmount;
     final totalDiscount = _totalDiscountAmount;
@@ -4872,12 +5286,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     final netAmount = grandTotal;
 
     // Get workflow info from _workflowResponse if available
-    final processActionId = _workflowActions.isNotEmpty ? _workflowActions.first.processActionId : null;
+    final processActionId = _workflowActions.isNotEmpty
+        ? _workflowActions.first.processActionId
+        : null;
     final processId = _workflowResponse?.id;
 
     // Get dynamic userId from user
     final dynamicUserId = user.userId;
-    
+
     // Console logging for dynamic values
     print('═══════════════════════════════════════════════════════════');
     print('📤 Sales Order Save - Dynamic Values');
@@ -4886,7 +5302,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     print('Created By: ${user.userId}');
     print('Customer ID: $customerId');
     print('Customer Name: ${_selectedCustomer?.name}');
-    print('Customer (field): ${_selectedCustomer?.name} (sending name instead of ID)');
+    print(
+        'Customer (field): ${_selectedCustomer?.name} (sending name instead of ID)');
     print('Sales Rep ID: $salesRepId');
     print('BizUnit: $finalBizUnit (same as listing API)');
     print('SbuId: $finalSbuId (same as listing API)');
@@ -4920,7 +5337,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       exchangeRate: exchangeRate,
       deliveryDate: deliveryDateStr,
       totalAmount: _subTotal,
-      refNo: _quotationNoController.text.isEmpty ? null : _quotationNoController.text,
+      refNo: _quotationNoController.text.isEmpty
+          ? null
+          : _quotationNoController.text,
       salesRep: salesRepId,
       salesRepName: _selectedSalesRep,
       salesContractItems: contractItems,
@@ -4937,9 +5356,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       isShortClosed: 0,
       isCancelled: 0,
       isClosed: 0,
-      isCancel: _loadedOrderData?.isCancel is bool 
-          ? _loadedOrderData!.isCancel 
-          : (_loadedOrderData?.isCancel as bool? ?? null), // Keep as bool (conversion to int happens in toJson)
+      isCancel: _loadedOrderData?.isCancel is bool
+          ? _loadedOrderData!.isCancel
+          : (_loadedOrderData?.isCancel as bool? ??
+              null), // Keep as bool (conversion to int happens in toJson)
       totalQuantity: totalQty,
       totalConvAmount: totalConvAmount,
       totalDiscount: totalDiscount,
@@ -4953,26 +5373,84 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       vatRegistered: true, // Should be from customer data
       taxInclusive: false, // Should be from config
       distributerForId: distributorId, // Important: Pass selected DistributerId
-      isFullyUsed: _loadedOrderData?.isFullyUsed ?? 0, // Use from loaded data or default to 0
-      hasEdit: _loadedOrderData?.hasEdit ?? false, // Use from loaded data or default to false
-      actualCreatedBy: dynamicUserId, // Actual logged-in user ID (required for save to work)
+      isFullyUsed: _loadedOrderData?.isFullyUsed ??
+          0, // Use from loaded data or default to 0
+      hasEdit: _loadedOrderData?.hasEdit ??
+          false, // Use from loaded data or default to false
+      actualCreatedBy:
+          dynamicUserId, // Actual logged-in user ID (required for save to work)
     );
   }
 
   void _onSave() {
-// TODO: Replace with actual save logic
+    // Local/dev save handler – still enforce item validation
+    if (!_validateItemsForSaveOrSubmit()) {
+      return;
+    }
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Saved')));
+        .showSnackBar(const SnackBar(content: Text('Saved (local only)')));
+  }
+
+  /// Validate that at least one order item exists AND
+  /// every added item has all required fields filled.
+  ///
+  /// Required fields per item:
+  /// - Item selected
+  /// - Quantity > 0
+  /// - Rate > 0
+  /// - UOM selected
+  bool _validateItemsForSaveOrSubmit() {
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add at least one order item before saving.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    for (int i = 0; i < _items.length; i++) {
+      final item = _items[i];
+
+      final bool hasProduct = item.product.id != '0' &&
+          item.itemDescriptionController.text.trim().isNotEmpty;
+      final double qty = double.tryParse(item.qtyController.text.trim()) ?? 0.0;
+      final double rate =
+          double.tryParse(item.rateController.text.trim()) ?? 0.0;
+      final bool hasUom =
+          item.selectedUOM != null && item.selectedUOM!.trim().isNotEmpty;
+
+      if (!hasProduct || qty <= 0 || rate <= 0 || !hasUom) {
+        final int itemNumber = i + 1;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Please fill all required fields (Item, Qty, Rate, UOM) for order item #$itemNumber.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> _onSaveDraft() async {
+    // Prevent saving draft if items are missing or incomplete
+    if (!_validateItemsForSaveOrSubmit()) {
+      return;
+    }
     // Determine WorkflowFlag:
     // - WorkflowFlag = 0 if draft saving before submit (not yet submitted)
     // - WorkflowFlag = 1 if draft saving after submit (already submitted)
     final int workflowFlag = _hasBeenSubmitted ? 1 : 0;
-    
-    print('💾 Saving as Draft with WorkflowFlag: $workflowFlag (HasBeenSubmitted: $_hasBeenSubmitted)');
-    
+
+    print(
+        '💾 Saving as Draft with WorkflowFlag: $workflowFlag (HasBeenSubmitted: $_hasBeenSubmitted)');
+
     try {
       // Show loading indicator
       setState(() {
@@ -4997,7 +5475,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         if (response.data is Map && response.data['id'] != null) {
           final savedOrderId = response.data['id'];
           print('✅ Order saved with ID: $savedOrderId');
-          
+
           if (!_isEditMode) {
             // For new orders, navigate back to listing screen with success result
             ScaffoldMessenger.of(context).showSnackBar(
@@ -5045,14 +5523,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   Future<void> _onSubmitForApproval() async {
+    // Prevent submit if items are missing or incomplete
+    if (!_validateItemsForSaveOrSubmit()) {
+      return;
+    }
     // Always pass WorkflowFlag = 1 for submit
     final int workflowFlag = 1;
-    
+
     print('📤 Submitting for Approval with WorkflowFlag: $workflowFlag');
-    
+
     try {
       // Show loading indicator
-    setState(() {
+      setState(() {
         _isLoading = true;
       });
 
@@ -5068,9 +5550,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       setState(() {
         _isLoading = false;
         // Mark as submitted on success
-      _hasBeenSubmitted = true;
-    });
-    
+        _hasBeenSubmitted = true;
+      });
+
       if (response.success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -5113,7 +5595,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   /// Show error dialog with title and message
   void _showErrorDialog(String title, String message) {
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -5183,7 +5665,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // Show loading indicator
       if (!mounted) return;
       setState(() => _isActionsMenuOpen = false);
-      
+
       setState(() {
         _isLoading = true;
       });
@@ -5292,7 +5774,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Show loading indicator
     if (!mounted) return;
     setState(() => _isActionsMenuOpen = false);
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -5304,7 +5786,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     try {
       // Get ProcessId from workflow response
       final processId = _workflowResponse?.id ?? _loadedOrderData?.processId;
-      
+
       if (processId == null || processId == 0) {
         throw Exception('Process ID not available. Cannot cancel order.');
       }
@@ -5383,11 +5865,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   }
 
   Future<void> _onWorkflowAction(ProcessActionDetail action) async {
+    // Prevent executing workflow actions (Submit / Approve / etc.)
+    // when items are missing or incomplete.
+    if (!_validateItemsForSaveOrSubmit()) {
+      return;
+    }
+
     // Use actionValue as workflowFlag, default to 1 if not available
     final int workflowFlag = action.actionValue;
-    
-    print('📤 Executing workflow action: ${action.name} with WorkflowFlag: $workflowFlag');
-    
+
+    print(
+        '📤 Executing workflow action: ${action.name} with WorkflowFlag: $workflowFlag');
+
     try {
       // Show loading indicator
       setState(() {
@@ -5396,7 +5885,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Build save request with the workflow action's actionValue as workflowFlag
       final request = await _buildSaveRequest(workflowFlag);
-      
+
       // Update processActionId from the action
       // Note: We need to create a new request with the updated processActionId
       final updatedRequest = SalesOrderSaveRequest(
@@ -5471,8 +5960,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         tenderNo: request.tenderNo,
         reqNo: request.reqNo,
         soStatus: request.soStatus,
-      isCancel: request.isCancel,
-      isFullyUsed: request.isFullyUsed ?? 0, // Default to 0 if null
+        isCancel: request.isCancel,
+        isFullyUsed: request.isFullyUsed ?? 0, // Default to 0 if null
         doCounts: request.doCounts,
         doCount: request.doCount,
         isShortClosed: request.isShortClosed,
@@ -5557,7 +6046,8 @@ class _ItemCard extends StatelessWidget {
   final VoidCallback onChanged;
   final VoidCallback onToggle; // explicit toggle button + header tap
   final String Function(double) formatCurrency;
-  final Future<void> Function(_LineItem, int, [String?, VoidCallback?]) loadUOMForItem;
+  final Future<void> Function(_LineItem, int, [String?, VoidCallback?])
+      loadUOMForItem;
   final Future<void> Function(_LineItem, int, [VoidCallback?]) loadTaxForItem;
   final Future<void> Function(_LineItem, int, [VoidCallback?]) loadItemDetail;
   final String Function(DateTime) formatDate;
@@ -5618,227 +6108,245 @@ class _ItemCard extends StatelessWidget {
                     color: Colors.red,
                   ),
                   tooltip: 'Remove',
-              ),
+                ),
               IconButton(
                 onPressed: onToggle,
                 tooltip: item.expanded ? 'Collapse' : 'Expand',
                 icon: Icon(
                   item.expanded ? Icons.expand_less : Icons.expand_more,
                   color: const Color(0xFF6B7280),
-                  ),
                 ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
 
           if (item.expanded) ...[
-
             // Item Description (full width)
             _SearchableItemField(
-                          label: 'Item Description*',
-                          controller: item.itemDescriptionController,
-                          selectedProduct: item.product,
-                          onProductSelected: (product) {
-                            print('🔵 [onProductSelected] Product selected: ${product.name}, Rate: ${product.rate}, MRP: ${product.mrp}');
-                            
-                            // Set product which will populate Rate and MRP
-                            item.setProduct(product);
-                            
-                            // Ensure quantity defaults to 1 if empty for amount calculation
-                            if (item.qtyController.text.isEmpty || item.qtyController.text == '0') {
-                              item.qtyController.text = '1';
-                              print('🔵 [onProductSelected] Set default quantity to 1');
-                            }
-                            
-                            // Load item details (MRP, Rate, etc.) from GetItemDetail API
-                            final itemId = int.tryParse(product.id) ?? 0;
-                            if (itemId > 0) {
-                              // Load item detail first to get accurate MRP and Rate
-                              loadItemDetail(item, itemId, onChanged);
-                              // Then load UOM and Tax
-                              loadUOMForItem(item, itemId, null, onChanged);
-                              loadTaxForItem(item, itemId, onChanged);
-                            }
-                            
-                            // Verify Rate and MRP are set
-                            print('🔵 [onProductSelected] After setProduct - RateController: "${item.rateController.text}", MRPController: "${item.mrpController.text}"');
-                            print('🔵 [onProductSelected] Calculated Amount: ${item.amount}, Total Amount: ${item.totalAmount}');
-                            
-                            // Trigger recalculation of totals after setting product
-                            // This will rebuild the UI with updated Rate, MRP, Amount, and Total Amount
-                            onChanged();
-                          },
-                          getDistributorId: getDistributorId,
-                        ),
+              label: 'Item Description*',
+              controller: item.itemDescriptionController,
+              selectedProduct: item.product,
+              onProductSelected: (product) {
+                print(
+                    '🔵 [onProductSelected] Product selected: ${product.name}, Rate: ${product.rate}, MRP: ${product.mrp}');
+
+                // Set product which will populate Rate and MRP
+                item.setProduct(product);
+
+                // Ensure quantity defaults to 1 if empty for amount calculation
+                if (item.qtyController.text.isEmpty ||
+                    item.qtyController.text == '0') {
+                  item.qtyController.text = '1';
+                  print('🔵 [onProductSelected] Set default quantity to 1');
+                }
+
+                // Load item details (MRP, Rate, etc.) from GetItemDetail API
+                final itemId = int.tryParse(product.id) ?? 0;
+                if (itemId > 0) {
+                  // Load item detail first to get accurate MRP and Rate
+                  loadItemDetail(item, itemId, onChanged);
+                  // Then load UOM and Tax
+                  loadUOMForItem(item, itemId, null, onChanged);
+                  loadTaxForItem(item, itemId, onChanged);
+                }
+
+                // Verify Rate and MRP are set
+                print(
+                    '🔵 [onProductSelected] After setProduct - RateController: "${item.rateController.text}", MRPController: "${item.mrpController.text}"');
+                print(
+                    '🔵 [onProductSelected] Calculated Amount: ${item.amount}, Total Amount: ${item.totalAmount}');
+
+                // Trigger recalculation of totals after setting product
+                // This will rebuild the UI with updated Rate, MRP, Amount, and Total Amount
+                onChanged();
+              },
+              getDistributorId: getDistributorId,
+            ),
             const SizedBox(height: 16),
-            
+
             // Row: Quantity & UOM
-                    Row(
-                      children: [
-                      Expanded(
-                        child: _NumberField(
-                          label: 'Quantity*',
-                          controller: item.qtyController,
-                          min: 0,
-                          onChanged: (v) => onChanged(),
-                          ),
-                        ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SearchableUOMField(
-                          label: 'UOM',
-                          selectedUOM: item.selectedUOM,
-                          uomOptions: item.uomOptions,
-                          isLoading: false,
-                          onUOMSelected: (uom) {
-                            item.selectedUOM = uom;
-                              onChanged();
-                          },
-                          onLoadUOM: (itemId) async {
-                            if (itemId > 0) {
-                              try {
-                                final commonRepository = getIt<CommonRepository>();
-                                final uomList = await commonRepository.getUOMList(itemId: itemId);
-                                final newUomOptions = uomList.map((item) => item.text).toList();
-                                item.uomOptions = newUomOptions;
-                                // Preserve existing UOM if it exists in options, otherwise auto-select first only if no UOM is set
-                                if (item.uomOptions.isNotEmpty) {
-                                  if (item.selectedUOM != null && item.uomOptions.contains(item.selectedUOM)) {
-                                    // Keep existing UOM if it's in the options
-                                    print('✅ Preserving existing UOM: ${item.selectedUOM}');
-                                  } else if (item.selectedUOM == null || item.selectedUOM!.isEmpty) {
-                                    // Only auto-select first if no UOM is currently set
-                                  item.selectedUOM = item.uomOptions.first;
-                                    print('✅ Auto-selected first UOM: ${item.selectedUOM}');
-                                } else {
-                                    // If existing UOM is not in options, try to find a match (case-insensitive)
-                                    final existingUOM = item.selectedUOM!;
-                                    final matchedUOM = item.uomOptions.firstWhere(
-                                      (uom) => uom.toLowerCase() == existingUOM.toLowerCase(),
-                                      orElse: () => item.uomOptions.first,
-                                    );
-                                    item.selectedUOM = matchedUOM;
-                                    print('✅ Matched UOM: ${item.selectedUOM} (was: $existingUOM)');
-                                  }
-                                } else {
-                                  // If no options, keep existing UOM or set to null
-                                  if (item.selectedUOM == null || item.selectedUOM!.isEmpty) {
-                                  item.selectedUOM = null;
-                                }
-                                }
-                                onChanged();
-                              } catch (e) {
-                                print('Error loading UOM: $e');
-                              }
+            Row(
+              children: [
+                Expanded(
+                  child: _NumberField(
+                    label: 'Quantity*',
+                    controller: item.qtyController,
+                    min: 0,
+                    onChanged: (v) => onChanged(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SearchableUOMField(
+                    label: 'UOM',
+                    selectedUOM: item.selectedUOM,
+                    uomOptions: item.uomOptions,
+                    isLoading: false,
+                    onUOMSelected: (uom) {
+                      item.selectedUOM = uom;
+                      onChanged();
+                    },
+                    onLoadUOM: (itemId) async {
+                      if (itemId > 0) {
+                        try {
+                          final commonRepository = getIt<CommonRepository>();
+                          final uomList =
+                              await commonRepository.getUOMList(itemId: itemId);
+                          final newUomOptions =
+                              uomList.map((item) => item.text).toList();
+                          item.uomOptions = newUomOptions;
+                          // Preserve existing UOM if it exists in options, otherwise auto-select first only if no UOM is set
+                          if (item.uomOptions.isNotEmpty) {
+                            if (item.selectedUOM != null &&
+                                item.uomOptions.contains(item.selectedUOM)) {
+                              // Keep existing UOM if it's in the options
+                              print(
+                                  '✅ Preserving existing UOM: ${item.selectedUOM}');
+                            } else if (item.selectedUOM == null ||
+                                item.selectedUOM!.isEmpty) {
+                              // Only auto-select first if no UOM is currently set
+                              item.selectedUOM = item.uomOptions.first;
+                              print(
+                                  '✅ Auto-selected first UOM: ${item.selectedUOM}');
+                            } else {
+                              // If existing UOM is not in options, try to find a match (case-insensitive)
+                              final existingUOM = item.selectedUOM!;
+                              final matchedUOM = item.uomOptions.firstWhere(
+                                (uom) =>
+                                    uom.toLowerCase() ==
+                                    existingUOM.toLowerCase(),
+                                orElse: () => item.uomOptions.first,
+                              );
+                              item.selectedUOM = matchedUOM;
+                              print(
+                                  '✅ Matched UOM: ${item.selectedUOM} (was: $existingUOM)');
                             }
-                          },
-                          itemId: int.tryParse(item.product.id) ?? 0,
-                        ),
-                      ),
-                      ],
-                    ),
+                          } else {
+                            // If no options, keep existing UOM or set to null
+                            if (item.selectedUOM == null ||
+                                item.selectedUOM!.isEmpty) {
+                              item.selectedUOM = null;
+                            }
+                          }
+                          onChanged();
+                        } catch (e) {
+                          print('Error loading UOM: $e');
+                        }
+                      }
+                    },
+                    itemId: int.tryParse(item.product.id) ?? 0,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
-            
+
             // Row: Rate & MRP
-                    Row(
-                      children: [
-                        Expanded(
+            Row(
+              children: [
+                Expanded(
                   child: Builder(
                     builder: (context) {
                       // Calculate Rate value from controller or product rate
-                      final rateValue = item.rateController.text.isNotEmpty 
+                      final rateValue = item.rateController.text.isNotEmpty
                           ? double.tryParse(item.rateController.text) ?? 0.0
                           : (item.product.rate > 0 ? item.product.rate : 0.0);
-                      
+
                       return _ReadonlyField(
                         label: 'Rate*',
                         value: rateValue > 0 ? formatCurrency(rateValue) : '',
                       );
                     },
-                      ),
-                    ),
-                        const SizedBox(width: 12),
-                        Expanded(
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Builder(
                     builder: (context) {
                       // Calculate MRP value from controller or product mrp
                       final mrpValue = item.mrpController.text.isNotEmpty
                           ? double.tryParse(item.mrpController.text) ?? 0.0
-                          : (item.product.mrp != null && item.product.mrp! > 0 ? item.product.mrp! : 0.0);
-                      
+                          : (item.product.mrp != null && item.product.mrp! > 0
+                              ? item.product.mrp!
+                              : 0.0);
+
                       return _ReadonlyField(
                         label: 'MRP*',
                         value: mrpValue > 0 ? formatCurrency(mrpValue) : '',
                       );
                     },
-                          ),
-                        ),
-                      ],
-                    ),
-            const SizedBox(height: 16),
-            
-            // Row: Amount & Disc
-            Row(
-                    children: [
-                  Expanded(
-                    child: _ReadonlyField(
-                    label: 'Amount',
-                    value: item.amount == 0.0 ? '' : formatCurrency(item.amount),
-                    ),
                   ),
-                  const SizedBox(width: 12),
-                      Expanded(
-                        child: _ReadonlyField(
-                    label: 'Disc',
-                    value: formatCurrency(item.discount),
-                        ),
-                      ),
-                    ],
+                ),
+              ],
             ),
             const SizedBox(height: 16),
-            
-            // Row: Bonus Qty & Addl. Bonus
-                    Row(
-                      children: [
-                  Expanded(
-                    child: _NumberField(
-                      label: 'Bonus Qty',
-                      controller: item.bonusQtyController,
-                      min: 0,
-                      onChanged: (v) => onChanged(),
-                    ),
+
+            // Row: Amount & Disc
+            Row(
+              children: [
+                Expanded(
+                  child: _ReadonlyField(
+                    label: 'Amount',
+                    value:
+                        item.amount == 0.0 ? '' : formatCurrency(item.amount),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _NumberField(
-                            label: 'Addl. Bonus',
-                      controller: item.addlBonusQtyController,
-                      min: 0,
-                      onChanged: (v) => onChanged(),
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ReadonlyField(
+                    label: 'Disc',
+                    value: formatCurrency(item.discount),
                   ),
-                      ],
-                    ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
-            
+
+            // Row: Bonus Qty & Addl. Bonus
+            Row(
+              children: [
+                Expanded(
+                  child: _NumberField(
+                    label: 'Bonus Qty',
+                    controller: item.bonusQtyController,
+                    min: 0,
+                    onChanged: (v) => onChanged(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _NumberField(
+                    label: 'Addl. Bonus',
+                    controller: item.addlBonusQtyController,
+                    min: 0,
+                    onChanged: (v) => onChanged(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
             // Row: Total Amount & Reqd. date
-                    Row(
-                    children: [
-                      Expanded(
-                        child: _ReadonlyField(
-                          label: 'Total Amount',
-                          value: item.totalAmount == 0.0 ? '' : formatCurrency(item.totalAmount),
-                          ),
-                        ),
-                      const SizedBox(width: 12),
-                        Expanded(
-                          child: _ReadonlyField(
+            Row(
+              children: [
+                Expanded(
+                  child: _ReadonlyField(
+                    label: 'Total Amount',
+                    value: item.totalAmount == 0.0
+                        ? ''
+                        : formatCurrency(item.totalAmount),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ReadonlyField(
                     label: 'Reqd. date',
                     value: formatDate(item.requiredDate),
-                          ),
-                        ),
-                      ],
-                    ),
+                  ),
+                ),
+              ],
+            ),
             // Remarks field (available in both create and edit mode)
             const SizedBox(height: 16),
             _TextField(
@@ -5855,7 +6363,6 @@ class _ItemCard extends StatelessWidget {
   }
 }
 
-
 class _LineItem {
   Product product;
   DateTime requiredDate;
@@ -5867,7 +6374,8 @@ class _LineItem {
   final TextEditingController rateController; // Added for rate input
   final TextEditingController mrpController; // MRP field
   final TextEditingController discountController; // Discount field
-  TextEditingController? _remarksController; // Remarks field - nullable for hot reload compatibility
+  TextEditingController?
+      _remarksController; // Remarks field - nullable for hot reload compatibility
   String? selectedUOM; // UOM dropdown value
   List<String> uomOptions = []; // UOM options from API
   List<CommonDropdownItem> uomItems = []; // UOM items with IDs from API
@@ -5920,10 +6428,14 @@ class _LineItem {
       ),
       qtyController: TextEditingController(text: qty > 0 ? qty.toString() : ''),
       bonusQtyController: TextEditingController(text: bonusQty.toString()),
-      addlBonusQtyController: TextEditingController(text: addlBonusQty.toString()),
-      rateController: TextEditingController(text: rate != null ? rate.toStringAsFixed(2) : ''),
-      mrpController: TextEditingController(text: mrp != null ? mrp.toStringAsFixed(2) : ''),
-      discountController: TextEditingController(text: discount != null ? discount.toStringAsFixed(2) : '0.00'),
+      addlBonusQtyController:
+          TextEditingController(text: addlBonusQty.toString()),
+      rateController: TextEditingController(
+          text: rate != null ? rate.toStringAsFixed(2) : ''),
+      mrpController: TextEditingController(
+          text: mrp != null ? mrp.toStringAsFixed(2) : ''),
+      discountController: TextEditingController(
+          text: discount != null ? discount.toStringAsFixed(2) : '0.00'),
       remarksController: TextEditingController(text: remarks ?? ''),
       selectedUOM: uom,
       selectedTax: null, // Will be auto-selected when item is selected
@@ -5934,7 +6446,7 @@ class _LineItem {
   void setProduct(Product newProduct) {
     product = newProduct;
     itemDescriptionController.text = newProduct.name;
-    
+
     // Automatically set Rate from product.rate
     if (newProduct.rate > 0) {
       rateController.text = newProduct.rate.toStringAsFixed(2);
@@ -5943,7 +6455,7 @@ class _LineItem {
       rateController.clear();
       print('⚠️ [setProduct] Product rate is 0 or empty, cleared Rate field');
     }
-    
+
     // Automatically set MRP from product.mrp if available
     if (newProduct.mrp != null && newProduct.mrp! > 0) {
       mrpController.text = newProduct.mrp!.toStringAsFixed(2);
@@ -5952,11 +6464,11 @@ class _LineItem {
       mrpController.clear();
       print('⚠️ [setProduct] Product MRP is null or 0, cleared MRP field');
     }
-    
+
     // Recalculate Amount and Total Amount
     // Amount = Rate * Quantity (will be calculated via getter)
     // Total Amount = Quantity * Rate (will be calculated via getter, updates automatically when quantity changes)
-    
+
     selectedUOM = null; // Will be auto-selected when UOM loads
   }
 
@@ -5997,7 +6509,7 @@ class _TaxChargeRow {
   String? selectedType;
   final TextEditingController valueController;
   final String rowType; // 'tax', 'discount', 'otherCharge'
-  
+
   // For Custom discount: checkbox state and percentage input
   bool isPercentageEnabled = false;
   final TextEditingController percentageController;
@@ -6007,12 +6519,13 @@ class _TaxChargeRow {
     this.selectedType,
     required this.rowType,
     this.isPercentageEnabled = false,
-  }) : valueController = TextEditingController(text: ''),
-       percentageController = TextEditingController(text: '');
+  })  : valueController = TextEditingController(text: ''),
+        percentageController = TextEditingController(text: '');
 
   double get value => double.tryParse(valueController.text) ?? 0.0;
-  
-  double get percentageValue => double.tryParse(percentageController.text) ?? 0.0;
+
+  double get percentageValue =>
+      double.tryParse(percentageController.text) ?? 0.0;
 
   void dispose() {
     valueController.dispose();
@@ -6086,7 +6599,7 @@ class _DateField extends StatelessWidget {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6100,13 +6613,15 @@ class _DateField extends StatelessWidget {
                 horizontal: isTablet ? 16 : 14,
                 vertical: isTablet ? 16 : 14,
               ),
-              suffixIcon: const Icon(Icons.event, size: 20, color: Color(0xFF4db1b3)),
+              suffixIcon:
+                  const Icon(Icons.event, size: 20, color: Color(0xFF4db1b3)),
               filled: true,
               fillColor: Colors.white,
               border: border,
               enabledBorder: border,
               focusedBorder: border.copyWith(
-                borderSide: const BorderSide(color: Color(0xFF4db1b3), width: 2),
+                borderSide:
+                    const BorderSide(color: Color(0xFF4db1b3), width: 2),
               ),
             ),
             child: Text(
@@ -6115,7 +6630,7 @@ class _DateField extends StatelessWidget {
                 fontSize: isTablet ? 15 : 14,
                 fontWeight: FontWeight.w500,
                 color: const Color(0xFF111827),
-                ),
+              ),
             ),
           ),
         ),
@@ -6136,7 +6651,7 @@ class _ReadonlyDateField extends StatelessWidget {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return InputDecorator(
       decoration: InputDecoration(
         contentPadding: EdgeInsets.symmetric(
@@ -6271,7 +6786,8 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 360, minWidth: 240),
+                  constraints:
+                      const BoxConstraints(maxHeight: 360, minWidth: 240),
                   child: SizedBox(
                     width: _fieldSize()?.width,
                     child: StatefulBuilder(
@@ -6280,7 +6796,8 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                           setSheetState(() {
                             final query = q.toLowerCase();
                             filtered = _options
-                                .where((e) => e.value.toLowerCase().contains(query))
+                                .where((e) =>
+                                    e.value.toLowerCase().contains(query))
                                 .toList(growable: false);
                           });
                         }
@@ -6296,8 +6813,10 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                                 style: GoogleFonts.inter(fontSize: 14),
                                 decoration: InputDecoration(
                                   hintText: 'Search...',
-                                  hintStyle: GoogleFonts.inter(color: Colors.grey.shade500),
-                                  prefixIcon: const Icon(Icons.search, color: Color(0xFF4db1b3)),
+                                  hintStyle: GoogleFonts.inter(
+                                      color: Colors.grey.shade500),
+                                  prefixIcon: const Icon(Icons.search,
+                                      color: Color(0xFF4db1b3)),
                                 ),
                                 onChanged: applyFilter,
                               ),
@@ -6305,7 +6824,8 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                             const Divider(height: 1, color: Color(0xFFF3F4F6)),
                             Flexible(
                               child: ListView.separated(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
                                 shrinkWrap: true,
                                 itemCount: filtered.length,
                                 separatorBuilder: (_, __) => const Divider(
@@ -6314,12 +6834,14 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                                 ),
                                 itemBuilder: (context, index) {
                                   final entry = filtered[index];
-                                  final bool isSelected = widget.value == entry.key;
+                                  final bool isSelected =
+                                      widget.value == entry.key;
                                   return ListTile(
                                     dense: true,
                                     title: Text(entry.value),
                                     trailing: isSelected
-                                        ? const Icon(Icons.check_circle, color: Color(0xFF2563EB))
+                                        ? const Icon(Icons.check_circle,
+                                            color: Color(0xFF2563EB))
                                         : null,
                                     onTap: () {
                                       widget.onChanged?.call(entry.key);
@@ -6344,7 +6866,8 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
   }
 
   Size? _fieldSize() {
-    final renderBox = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+        _fieldKey.currentContext?.findRenderObject() as RenderBox?;
     return renderBox?.size;
   }
 
@@ -6362,8 +6885,9 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    final filledBackground = !widget.enabled ? const Color(0xFFF3F4F6) : Colors.white;
-    
+    final filledBackground =
+        !widget.enabled ? const Color(0xFFF3F4F6) : Colors.white;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6386,7 +6910,7 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                 border: border,
                 enabledBorder: border,
                 focusedBorder: border.copyWith(
-                  borderSide: widget.enabled 
+                  borderSide: widget.enabled
                       ? const BorderSide(color: Color(0xFF4db1b3), width: 2)
                       : border.borderSide,
                 ),
@@ -6397,7 +6921,9 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                 ),
                 suffixIcon: Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  color: widget.enabled ? const Color(0xFF4db1b3) : Colors.grey.shade400,
+                  color: widget.enabled
+                      ? const Color(0xFF4db1b3)
+                      : Colors.grey.shade400,
                 ),
               ),
               child: Text(
@@ -6499,7 +7025,7 @@ class _TextField extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
     );
     final filledBackground = !enabled ? const Color(0xFFF3F4F6) : Colors.white;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6527,7 +7053,7 @@ class _TextField extends StatelessWidget {
             border: border,
             enabledBorder: border,
             focusedBorder: border.copyWith(
-              borderSide: enabled 
+              borderSide: enabled
                   ? const BorderSide(color: Color(0xFF4db1b3), width: 2)
                   : border.borderSide,
             ),
@@ -6560,7 +7086,7 @@ class _NumberField extends StatelessWidget {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6616,7 +7142,7 @@ class _ReadonlyField extends StatelessWidget {
       borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
       borderRadius: BorderRadius.circular(10),
     );
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6624,7 +7150,8 @@ class _ReadonlyField extends StatelessWidget {
         if (label.isNotEmpty) const SizedBox(height: 8),
         InputDecorator(
           decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: border,
             enabledBorder: border,
             filled: true,
@@ -6693,7 +7220,7 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
   void _onTextChanged() {
     final query = widget.controller.text.trim();
     print('🔍 [SearchableItemField] Text changed: "$query"');
-    
+
     final hasText = widget.controller.text.isNotEmpty;
     // Update _hasText state to show/hide clear icon
     if (_hasText != hasText) {
@@ -6701,10 +7228,10 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
         _hasText = hasText;
       });
     }
-    
+
     // Cancel previous timer
     _debounceTimer?.cancel();
-    
+
     if (query.isEmpty) {
       _filteredProducts = [];
       _removeOverlay();
@@ -6734,28 +7261,30 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
       print('🔍 [SearchableItemField] Getting CommonRepository');
       final commonRepository = getIt<CommonRepository>();
       print('🔍 [SearchableItemField] CommonRepository obtained');
-      
+
       // Get distributor ID from parent widget callback
       final distributorId = widget.getDistributorId();
-      
+
       // Call API with search text and correct distributor ID
-      print('🔍 [SearchableItemField] CALLING API with SearchText: "$searchText", CommandType: 105, DistributerId: $distributorId');
+      print(
+          '🔍 [SearchableItemField] CALLING API with SearchText: "$searchText", CommandType: 105, DistributerId: $distributorId');
       final items = await commonRepository.getItemList(
         distributerId: distributorId,
         searchText: searchText,
       );
 
       print('🔍 [SearchableItemField] API returned ${items.length} items');
-      
+
       // Log rate values from API response
       if (items.isNotEmpty) {
         print('🔍 [SearchableItemField] Sample item rates from API:');
         for (var i = 0; i < (items.length > 3 ? 3 : items.length); i++) {
           final item = items[i];
-          print('   Item ${i + 1}: ${item.text} - Rate: ${item.rate}, ID: ${item.id}');
+          print(
+              '   Item ${i + 1}: ${item.text} - Rate: ${item.rate}, ID: ${item.id}');
         }
       }
-      
+
       if (mounted) {
         setState(() {
           _filteredProducts = items.map((item) {
@@ -6770,14 +7299,16 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
             );
             // Log if rate is 0 or missing
             if (item.rate == 0 || item.rate == null) {
-              print('⚠️ [SearchableItemField] Item "${item.text}" (ID: ${item.id}) has rate = ${item.rate}');
+              print(
+                  '⚠️ [SearchableItemField] Item "${item.text}" (ID: ${item.id}) has rate = ${item.rate}');
             }
             return product;
           }).toList();
           _isLoading = false;
           _isInitialLoad = false;
-          print('🔍 [SearchableItemField] Loaded ${_filteredProducts.length} products');
-          
+          print(
+              '🔍 [SearchableItemField] Loaded ${_filteredProducts.length} products');
+
           if (_filteredProducts.isNotEmpty) {
             _showOverlay();
           } else {
@@ -6803,9 +7334,11 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
     if (_overlayEntry != null) return;
 
     // Get the width of the TextField to match overlay width
-    final RenderBox? renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     final double? fieldWidth = renderBox?.size.width;
-    final double overlayWidth = fieldWidth ?? 300.0; // Fallback width if not available
+    final double overlayWidth =
+        fieldWidth ?? 300.0; // Fallback width if not available
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
@@ -6843,103 +7376,109 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                           padding: EdgeInsets.all(16.0),
                           child: Center(child: Text('Loading items...')),
                         )
-                  : _filteredProducts.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('No items found'),
-                              if (_filteredProducts.isEmpty && !_isLoading)
-                                const SizedBox(height: 8),
-                              if (_filteredProducts.isEmpty && !_isLoading)
-                                Text(
-                                  'No items found',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const ClampingScrollPhysics(),
-                          padding: EdgeInsets.zero,
-                          itemCount: _filteredProducts.length,
-                          separatorBuilder: (_, __) => Divider(
-                            height: 1,
-                            color: Colors.grey.shade200,
-                            thickness: 1,
-                          ),
-                          itemBuilder: (context, index) {
-                            final product = _filteredProducts[index];
-                            return InkWell(
-                              onTap: () {
-                                widget.controller.text = product.name;
-                                // Update _hasText state
-                                setState(() {
-                                  _hasText = true;
-                                });
-                                widget.onProductSelected(product);
-                                _removeOverlay();
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                  vertical: 12.0,
-                                ),
-                                color: Colors.transparent,
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                product.name,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w500,
-                                              color: const Color(0xFF111827),
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (product.manufacturer != 'N/A') ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                      product.manufacturer,
+                      : _filteredProducts.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 12.0),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('No items found'),
+                                  if (_filteredProducts.isEmpty && !_isLoading)
+                                    const SizedBox(height: 8),
+                                  if (_filteredProducts.isEmpty && !_isLoading)
+                                    Text(
+                                      'No items found',
                                       style: GoogleFonts.inter(
                                         fontSize: 12,
                                         color: Colors.grey.shade600,
-                                                fontWeight: FontWeight.w400,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ],
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
-                                    if (product.rate > 0)
-                                      Text(
-                                        product.rate.toStringAsFixed(2),
-                                style: GoogleFonts.inter(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF111827),
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                                ],
                               ),
-                            );
-                          },
-                        ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              physics: const ClampingScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              itemCount: _filteredProducts.length,
+                              separatorBuilder: (_, __) => Divider(
+                                height: 1,
+                                color: Colors.grey.shade200,
+                                thickness: 1,
+                              ),
+                              itemBuilder: (context, index) {
+                                final product = _filteredProducts[index];
+                                return InkWell(
+                                  onTap: () {
+                                    widget.controller.text = product.name;
+                                    // Update _hasText state
+                                    setState(() {
+                                      _hasText = true;
+                                    });
+                                    widget.onProductSelected(product);
+                                    _removeOverlay();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16.0,
+                                      vertical: 12.0,
+                                    ),
+                                    color: Colors.transparent,
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                product.name,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                  color:
+                                                      const Color(0xFF111827),
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              if (product.manufacturer !=
+                                                  'N/A') ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  product.manufacturer,
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade600,
+                                                    fontWeight: FontWeight.w400,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        if (product.rate > 0)
+                                          Text(
+                                            product.rate.toStringAsFixed(2),
+                                            style: GoogleFonts.inter(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF111827),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
             ),
           ),
         ),
@@ -6971,7 +7510,7 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
               fontWeight: FontWeight.w500,
               color: const Color(0xFF111827),
             ),
-          decoration: InputDecoration(
+            decoration: InputDecoration(
               hintText: '',
               suffixIcon: _isLoading
                   ? const SizedBox(
@@ -6984,7 +7523,8 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                     )
                   : _hasText
                       ? IconButton(
-                          icon: const Icon(Icons.clear, color: Color(0xFF4db1b3)),
+                          icon:
+                              const Icon(Icons.clear, color: Color(0xFF4db1b3)),
                           onPressed: () {
                             // Clear the text field
                             widget.controller.clear();
@@ -6998,7 +7538,8 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                           },
                         )
                       : IconButton(
-                          icon: const Icon(Icons.search, color: Color(0xFF4db1b3)),
+                          icon: const Icon(Icons.search,
+                              color: Color(0xFF4db1b3)),
                           onPressed: () {
                             // Load all items by searching with empty string
                             _searchItems('');
@@ -7019,7 +7560,8 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
                 borderRadius: BorderRadius.circular(10),
               ),
               focusedBorder: OutlineInputBorder(
-                borderSide: const BorderSide(color: Color(0xFF4db1b3), width: 2),
+                borderSide:
+                    const BorderSide(color: Color(0xFF4db1b3), width: 2),
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
@@ -7048,7 +7590,8 @@ class _SearchableCustomerField extends StatefulWidget {
   final TextEditingController controller;
   final String? selectedCustomerCode;
   final ValueChanged<Customer> onCustomerSelected;
-  final VoidCallback? onCustomerCleared; // Optional callback when field is cleared
+  final VoidCallback?
+      onCustomerCleared; // Optional callback when field is cleared
 
   final List<Customer> allCustomers; // All customers loaded once
 
@@ -7061,7 +7604,8 @@ class _SearchableCustomerField extends StatefulWidget {
   });
 
   @override
-  State<_SearchableCustomerField> createState() => _SearchableCustomerFieldState();
+  State<_SearchableCustomerField> createState() =>
+      _SearchableCustomerFieldState();
 }
 
 class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
@@ -7070,7 +7614,8 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
   OverlayEntry? _overlayEntry;
   List<Customer> _filteredCustomers = [];
   Timer? _debounceTimer;
-  bool _isSettingCustomer = false; // Flag to prevent listener from triggering when setting customer
+  bool _isSettingCustomer =
+      false; // Flag to prevent listener from triggering when setting customer
   bool _hasText = false; // Track if text field has content
 
   @override
@@ -7110,20 +7655,20 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
     if (_isSettingCustomer) {
       return;
     }
-    
+
     final query = widget.controller.text.trim().toLowerCase();
     final hasText = widget.controller.text.isNotEmpty;
-    
+
     // Update _hasText state to show/hide clear icon
     if (_hasText != hasText) {
       setState(() {
         _hasText = hasText;
       });
     }
-    
+
     // Cancel previous timer
     _debounceTimer?.cancel();
-    
+
     // Filter customers locally based on search text
     _debounceTimer = Timer(const Duration(milliseconds: 100), () {
       if (query.isEmpty) {
@@ -7144,7 +7689,7 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
             final name = customer.name.toLowerCase();
             return name.startsWith(query);
           }).toList();
-          
+
           if (_filteredCustomers.isNotEmpty) {
             _showOverlay();
           } else {
@@ -7169,9 +7714,11 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
     _removeOverlay(); // Remove existing overlay if any
 
     // Get the width of the TextField to match overlay width
-    final RenderBox? renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     final double? fieldWidth = renderBox?.size.width;
-    final double overlayWidth = fieldWidth ?? 300.0; // Fallback width if not available
+    final double overlayWidth =
+        fieldWidth ?? 300.0; // Fallback width if not available
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
@@ -7200,95 +7747,99 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
                   ),
                 ],
               ),
-            child: _filteredCustomers.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text('No customers found'),
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        itemCount: _filteredCustomers.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: Colors.grey.shade200,
-                        ),
-                        itemBuilder: (context, index) {
-                          final customer = _filteredCustomers[index];
-                          final isSelected = widget.selectedCustomerCode == customer.code;
-                          return InkWell(
-                            onTap: () {
-                              // Set flag to prevent text change listener from triggering
-                              _isSettingCustomer = true;
-                              // Set the customer name in the controller
-                              widget.controller.text = customer.name;
-                              // Update _hasText state
-                              setState(() {
-                                _hasText = true;
-                              });
-                              // Remove overlay first
-                              _removeOverlay();
-                              // Unfocus the TextField to close keyboard
-                              FocusScope.of(context).unfocus();
-                              // Call the callback to update parent state
-                              widget.onCustomerSelected(customer);
-                              // Reset flag after a short delay
-                              Future.delayed(const Duration(milliseconds: 100), () {
-                                if (mounted) {
-                                  _isSettingCustomer = false;
-                                }
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF4db1b3).withOpacity(0.05)
-                                    : Colors.transparent,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
+              child: _filteredCustomers.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('No customers found'),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: _filteredCustomers.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: Colors.grey.shade200,
+                      ),
+                      itemBuilder: (context, index) {
+                        final customer = _filteredCustomers[index];
+                        final isSelected =
+                            widget.selectedCustomerCode == customer.code;
+                        return InkWell(
+                          onTap: () {
+                            // Set flag to prevent text change listener from triggering
+                            _isSettingCustomer = true;
+                            // Set the customer name in the controller
+                            widget.controller.text = customer.name;
+                            // Update _hasText state
+                            setState(() {
+                              _hasText = true;
+                            });
+                            // Remove overlay first
+                            _removeOverlay();
+                            // Unfocus the TextField to close keyboard
+                            FocusScope.of(context).unfocus();
+                            // Call the callback to update parent state
+                            widget.onCustomerSelected(customer);
+                            // Reset flag after a short delay
+                            Future.delayed(const Duration(milliseconds: 100),
+                                () {
+                              if (mounted) {
+                                _isSettingCustomer = false;
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF4db1b3).withOpacity(0.05)
+                                  : Colors.transparent,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        customer.name,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade900,
+                                        ),
+                                      ),
+                                      if (customer.city != 'N/A' &&
+                                          customer.city.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
                                         Text(
-                                          customer.name,
+                                          customer.city,
                                           style: GoogleFonts.inter(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.grey.shade900,
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
                                           ),
                                         ),
-                                        if (customer.city != 'N/A' && customer.city.isNotEmpty) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            customer.city,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ],
                                       ],
-                                    ),
+                                    ],
                                   ),
-                                  if (isSelected)
-                                    const Icon(
-                                      Icons.check_circle,
-                                      color: Color(0xFF4db1b3),
-                                      size: 20,
-                                    ),
-                                ],
-                              ),
+                                ),
+                                if (isSelected)
+                                  const Icon(
+                                    Icons.check_circle,
+                                    color: Color(0xFF4db1b3),
+                                    size: 20,
+                                  ),
+                              ],
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ),
         ),
@@ -7311,7 +7862,7 @@ class _SearchableCustomerFieldState extends State<_SearchableCustomerField> {
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 800;
-    
+
     return CompositedTransformTarget(
       link: _layerLink,
       child: TextField(
@@ -7488,7 +8039,7 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
 
   Future<void> _loadTax() async {
     if (widget.itemId <= 0) return;
-    
+
     // Check if Tax options are already loaded
     if (widget.taxOptions.isNotEmpty) {
       _hasLoadedTax = true;
@@ -7498,9 +8049,9 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
       });
       return;
     }
-    
+
     if (_hasLoadedTax) return;
-    
+
     _hasLoadedTax = true;
     await widget.onLoadTax(widget.itemId);
     if (mounted) {
@@ -7532,9 +8083,11 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
     _filteredTaxes = widget.taxOptions;
 
     // Get the width of the TextField
-    final RenderBox? renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     final double? fieldWidth = renderBox?.size.width;
-    final double overlayWidth = fieldWidth ?? MediaQuery.of(context).size.width * 0.9;
+    final double overlayWidth =
+        fieldWidth ?? MediaQuery.of(context).size.width * 0.9;
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
@@ -7576,7 +8129,8 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
                         decoration: InputDecoration(
                           hintText: 'Search tax...',
                           prefixIcon: const Icon(Icons.search, size: 20),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -7587,7 +8141,8 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF4db1b3)),
+                            borderSide:
+                                const BorderSide(color: Color(0xFF4db1b3)),
                           ),
                         ),
                       ),
@@ -7624,7 +8179,8 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
                                   },
                                   child: Container(
                                     color: isSelected
-                                        ? const Color(0xFF4db1b3).withOpacity(0.1)
+                                        ? const Color(0xFF4db1b3)
+                                            .withOpacity(0.1)
                                         : Colors.transparent,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -7741,7 +8297,6 @@ class _SearchableTaxFieldState extends State<_SearchableTaxField> {
   }
 }
 
-
 // Helper function to load Tax for an item
 
 // Searchable UOM Field Widget
@@ -7819,7 +8374,7 @@ class _SearchableUOMFieldState extends State<_SearchableUOMField> {
 
   Future<void> _loadUOM() async {
     if (widget.itemId <= 0) return;
-    
+
     // Check if UOM options are already loaded
     if (widget.uomOptions.isNotEmpty) {
       _hasLoadedUOM = true;
@@ -7829,9 +8384,9 @@ class _SearchableUOMFieldState extends State<_SearchableUOMField> {
       });
       return;
     }
-    
+
     if (_hasLoadedUOM) return;
-    
+
     _hasLoadedUOM = true;
     await widget.onLoadUOM(widget.itemId);
     if (mounted) {
@@ -7863,9 +8418,11 @@ class _SearchableUOMFieldState extends State<_SearchableUOMField> {
     _filteredUOMs = widget.uomOptions;
 
     // Get the width of the TextField
-    final RenderBox? renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     final double? fieldWidth = renderBox?.size.width;
-    final double overlayWidth = fieldWidth ?? MediaQuery.of(context).size.width * 0.9;
+    final double overlayWidth =
+        fieldWidth ?? MediaQuery.of(context).size.width * 0.9;
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
@@ -7907,7 +8464,8 @@ class _SearchableUOMFieldState extends State<_SearchableUOMField> {
                         decoration: InputDecoration(
                           hintText: 'Search...',
                           prefixIcon: const Icon(Icons.search, size: 20),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -7918,7 +8476,8 @@ class _SearchableUOMFieldState extends State<_SearchableUOMField> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF4db1b3)),
+                            borderSide:
+                                const BorderSide(color: Color(0xFF4db1b3)),
                           ),
                         ),
                       ),
@@ -7961,7 +8520,8 @@ class _SearchableUOMFieldState extends State<_SearchableUOMField> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: isSelected
-                                      ? const Color(0xFF4db1b3).withOpacity(0.05)
+                                      ? const Color(0xFF4db1b3)
+                                          .withOpacity(0.05)
                                       : Colors.transparent,
                                 ),
                                 child: Row(

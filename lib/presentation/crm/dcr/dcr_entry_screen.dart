@@ -300,14 +300,29 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
     // Initialize TabController with dynamic tab count:
     // If creating a new DCR and the user is a Manager (roleCategory == 1 or 2),
-    // show only the "Create DCR" tab. Otherwise show all three tabs.
+    // show only the "Create DCR" tab.
+    // If the user is a Service Engineer creating a new DCR, show "Create DCR" + "Service Report" tabs.
+    // Otherwise show all three tabs (Create DCR, Service Report [if SE], Customer).
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final int? roleCategory = userStore?.userDetail?.roleCategory;
+    final String? serviceArea = userStore?.userDetail?.serviceArea;
+    _isServiceEngineer =
+        serviceArea != null && serviceArea.trim() == 'Service Engineer';
     final bool isManager = roleCategory == 1 || roleCategory == 2;
     final bool isCreatingNew = widget.dcrId == null && widget.id == null;
-    final int initialTabCount =
-        (isManager && isCreatingNew) ? 1 : (_isServiceEngineer ? 2 : 3);
+
+    int initialTabCount;
+    if (isManager && isCreatingNew) {
+      initialTabCount = 1; // Only Create DCR
+    } else if (_isServiceEngineer && isCreatingNew) {
+      initialTabCount = 2; // Create DCR + Service Report (no Customer tab)
+    } else if (_isServiceEngineer) {
+      initialTabCount = 3; // Service Engineer editing existing: show all three
+    } else {
+      initialTabCount =
+          3; // Non-service engineer: always three tabs when not manager-new
+    }
     _tabController = TabController(length: initialTabCount, vsync: this);
     // When user switches to Service Report tab, load mapped customers for service report
     _tabController.addListener(() {
@@ -1564,6 +1579,68 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               print('No latitude/longitude data found in DCR entry');
             }
 
+            // Pre-fill Service Engineer / Service Report fields if available
+            if (dcrEntry.mappedInstruments != null &&
+                dcrEntry.mappedInstruments!.isNotEmpty) {
+              final Set<String> instrumentNames = <String>{};
+              for (final instrument in dcrEntry.mappedInstruments!) {
+                try {
+                  final dynamic rawName =
+                      instrument['productName'] ?? instrument['ProductName'];
+                  final dynamic rawId =
+                      instrument['productId'] ?? instrument['ProductId'];
+
+                  final String name = rawName?.toString() ?? '';
+                  int id = 0;
+                  if (rawId is int) {
+                    id = rawId;
+                  } else if (rawId is String) {
+                    id = int.tryParse(rawId) ?? 0;
+                  }
+
+                  if (name.isNotEmpty) {
+                    instrumentNames.add(name);
+                    _instrumentNameToId[name] = id;
+                    if (!_instrumentOptions.contains(name)) {
+                      _instrumentOptions =
+                          {..._instrumentOptions, name}.toList();
+                    }
+                  }
+                } catch (_) {
+                  // Ignore malformed instrument entries
+                }
+              }
+              _selectedInstruments = instrumentNames;
+            }
+
+            if (dcrEntry.complaint != null &&
+                dcrEntry.complaint!.trim().isNotEmpty) {
+              _complaintCtrl.text = dcrEntry.complaint!;
+            }
+            if (dcrEntry.actionTaken != null &&
+                dcrEntry.actionTaken!.trim().isNotEmpty) {
+              _actionTakenCtrl.text = dcrEntry.actionTaken!;
+            }
+            if (dcrEntry.result != null && dcrEntry.result!.trim().isNotEmpty) {
+              _resultCtrl.text = dcrEntry.result!;
+            }
+
+            if (dcrEntry.complaintStatus != null) {
+              _complaintStatus =
+                  dcrEntry.complaintStatus == 1 ? 'Resolved' : 'Not Resolved';
+            }
+
+            if (dcrEntry.complaintDate != null) {
+              _complaintDate = dcrEntry.complaintDate;
+              // Use same value for the DateTime field so it appears in Service Report tab
+              _complaintDateTime = dcrEntry.complaintDate;
+            }
+
+            if (dcrEntry.complaintRemarks != null &&
+                dcrEntry.complaintRemarks!.trim().isNotEmpty) {
+              _complaintRemarksCtrl.text = dcrEntry.complaintRemarks!;
+            }
+
             // Ensure current values appear in dropdowns and seed the name-to-ID maps
             if (_cluster != null && _cluster!.trim().isNotEmpty) {
               if (!_clusters.contains(_cluster)) {
@@ -1670,6 +1747,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               duration: const Duration(seconds: 3),
             );
           }
+          // After base DCR details are loaded, try to load linked Service Report (if any)
+          if (_loadedEntry?.detailId != null && _loadedEntry!.detailId! > 0) {
+            await _loadServiceReportForDcrDetail(_loadedEntry!.detailId!);
+          }
         }
       }
     } catch (e) {
@@ -1696,6 +1777,261 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           _isLoadingDcrDetails = false;
         });
       }
+    }
+  }
+
+  /// Load existing Service Report data (if any) for the current DCR detail
+  Future<void> _loadServiceReportForDcrDetail(int detailId) async {
+    try {
+      final dioClient =
+          getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
+      if (dioClient == null) {
+        print(
+            'DcrEntryScreen: [ServiceReport] DioClient not registered, skipping load');
+        return;
+      }
+
+      final String url = Endpoints.serviceReportGetByDcrDetail(detailId);
+      print(
+          'DcrEntryScreen: [ServiceReport] Loading existing service report from $url');
+
+      final response = await dioClient.dio.get(url);
+      if (response.statusCode == null ||
+          response.statusCode! < 200 ||
+          response.statusCode! >= 300) {
+        print(
+            'DcrEntryScreen: [ServiceReport] GetByDcrDetail failed with status: ${response.statusCode}');
+        return;
+      }
+
+      final dynamic data = response.data;
+      if (data == null) {
+        print(
+            'DcrEntryScreen: [ServiceReport] GetByDcrDetail returned null body');
+        return;
+      }
+
+      // Defensive casting for both Map<String, dynamic> and generic Map
+      final Map<String, dynamic> json = data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data as Map);
+
+      print(
+          'DcrEntryScreen: [ServiceReport] Loaded existing service report: $json');
+
+      // Extract basic identifiers
+      final dynamic idRaw = json['id'] ??
+          json['Id'] ??
+          json['serviceReportId'] ??
+          json['ServiceReportId'];
+      final int id = idRaw is int
+          ? idRaw
+          : (idRaw is String ? int.tryParse(idRaw) ?? 0 : 0);
+
+      final String? customerName =
+          (json['customerName'] ?? json['CustomerName'])?.toString();
+      final dynamic customerIdRaw = json['customerId'] ?? json['CustomerId'];
+      final int? customerId = customerIdRaw is int
+          ? customerIdRaw
+          : (customerIdRaw is String ? int.tryParse(customerIdRaw) : null);
+
+      final String? productName =
+          (json['product'] ?? json['Product'])?.toString();
+      final dynamic productIdRaw = json['productId'] ?? json['ProductId'];
+      final int? productId = productIdRaw is int
+          ? productIdRaw
+          : (productIdRaw is String ? int.tryParse(productIdRaw) : null);
+
+      final String? contactPerson =
+          (json['contactPerson'] ?? json['ContactPerson'])?.toString();
+      final String? contactMobile =
+          (json['contactMobile'] ?? json['ContactMobile'])?.toString();
+      final String? serviceDateStr =
+          (json['serviceDate'] ?? json['ServiceDate'])?.toString();
+      final String? serialNumber =
+          (json['serialNumber'] ?? json['SerialNumber'])?.toString();
+
+      final dynamic serviceTypeIdRaw =
+          json['serviceTypeId'] ?? json['ServiceTypeId'];
+      final int? serviceTypeId = serviceTypeIdRaw is int
+          ? serviceTypeIdRaw
+          : (serviceTypeIdRaw is String
+              ? int.tryParse(serviceTypeIdRaw)
+              : null);
+
+      final dynamic electricitySafetyIdRaw =
+          json['electricitySafetyTestId'] ?? json['ElectricitySafetyTestId'];
+      final int? electricitySafetyId = electricitySafetyIdRaw is int
+          ? electricitySafetyIdRaw
+          : (electricitySafetyIdRaw is String
+              ? int.tryParse(electricitySafetyIdRaw)
+              : null);
+
+      final dynamic serviceStatusIdRaw =
+          json['serviceStatusId'] ?? json['ServiceStatusId'];
+      final int? serviceStatusId = serviceStatusIdRaw is int
+          ? serviceStatusIdRaw
+          : (serviceStatusIdRaw is String
+              ? int.tryParse(serviceStatusIdRaw)
+              : null);
+
+      final dynamic feedbackOptionIdRaw =
+          json['feedbackOptionId'] ?? json['FeedbackOptionId'];
+      final int? feedbackOptionId = feedbackOptionIdRaw is int
+          ? feedbackOptionIdRaw
+          : (feedbackOptionIdRaw is String
+              ? int.tryParse(feedbackOptionIdRaw)
+              : null);
+
+      final String? complaintDetails =
+          (json['complaintDetails'] ?? json['ComplaintDetails'])?.toString();
+      final String? actionTaken =
+          (json['actionTaken'] ?? json['ActionTaken'])?.toString();
+      final String? result = (json['result'] ?? json['Result'])?.toString();
+      final String? complaintDateTimeStr =
+          (json['complaintDateTime'] ?? json['ComplaintDateTime'])?.toString();
+
+      final String? workDescription =
+          (json['workDescription'] ?? json['WorkDescription'])?.toString();
+      final String? materialsUsed =
+          (json['materialsUsed'] ?? json['MaterialsUsed'])?.toString();
+      final String? remarks = (json['remarks'] ?? json['Remarks'])?.toString();
+
+      final String? signedBy =
+          (json['signedBy'] ?? json['SignedBy'])?.toString();
+      final String? signatureImageBase64 =
+          (json['signatureImageBase64'] ?? json['SignatureImageBase64'])
+              ?.toString();
+
+      final dynamic serviceRateRaw = json['serviceRate'] ?? json['ServiceRate'];
+      final double? serviceRate = serviceRateRaw is num
+          ? serviceRateRaw.toDouble()
+          : (serviceRateRaw is String && serviceRateRaw.isNotEmpty
+              ? double.tryParse(serviceRateRaw)
+              : null);
+
+      DateTime? parsedServiceDate;
+      if (serviceDateStr != null && serviceDateStr.isNotEmpty) {
+        try {
+          parsedServiceDate = DateTime.parse(serviceDateStr);
+        } catch (_) {}
+      }
+
+      DateTime? parsedComplaintDateTime;
+      if (complaintDateTimeStr != null && complaintDateTimeStr.isNotEmpty) {
+        try {
+          parsedComplaintDateTime = DateTime.parse(complaintDateTimeStr);
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _serviceReportId = id > 0 ? id : _serviceReportId;
+
+        // Customer
+        if (customerName != null && customerName.isNotEmpty) {
+          _serviceReportCustomer = customerName;
+          if (!_customerOptions.contains(customerName)) {
+            _customerOptions = {..._customerOptions, customerName}.toList();
+          }
+          if (customerId != null && customerId > 0) {
+            _customerNameToId[customerName] = customerId;
+          }
+        }
+
+        // Product
+        if (productName != null && productName.isNotEmpty) {
+          _serviceReportProduct = productName;
+          if (!_productOptions.contains(productName)) {
+            _productOptions = {..._productOptions, productName}.toList();
+          }
+          if (productId != null && productId > 0) {
+            _productNameToId[productName] = productId;
+          }
+        }
+
+        // Basic fields
+        _contactPersonCtrl.text = contactPerson ?? _contactPersonCtrl.text;
+        _contactMobileCtrl.text = contactMobile ?? _contactMobileCtrl.text;
+        _serialNumberCtrl.text = serialNumber ?? _serialNumberCtrl.text;
+        _workDescriptionCtrl.text =
+            workDescription ?? _workDescriptionCtrl.text;
+        _materialsUsedCtrl.text = materialsUsed ?? _materialsUsedCtrl.text;
+        _serviceRemarksCtrl.text = remarks ?? _serviceRemarksCtrl.text;
+        _signedByCtrl.text = signedBy ?? _signedByCtrl.text;
+        if (signatureImageBase64 != null &&
+            signatureImageBase64.trim().isNotEmpty) {
+          _signatureImageBase64 = signatureImageBase64;
+        }
+        if (serviceRate != null) {
+          _serviceRateCtrl.text = serviceRate.toStringAsFixed(2);
+        }
+
+        // Dates
+        if (parsedServiceDate != null) {
+          _serviceDate = parsedServiceDate;
+          try {
+            _serviceDateCtrl.text = _formatServiceDate(parsedServiceDate);
+          } catch (_) {}
+        }
+        if (parsedComplaintDateTime != null) {
+          _complaintDateTime = parsedComplaintDateTime;
+        }
+
+        // Complaint fields
+        if (complaintDetails != null && complaintDetails.isNotEmpty) {
+          _complaintCtrl.text = complaintDetails;
+        }
+        if (actionTaken != null && actionTaken.isNotEmpty) {
+          _actionTakenCtrl.text = actionTaken;
+        }
+        if (result != null && result.isNotEmpty) {
+          _resultCtrl.text = result;
+        }
+
+        // Enums: Service Type
+        if (serviceTypeId != null && serviceTypeId > 0) {
+          for (final t in ServiceReportType.values) {
+            if (t.value == serviceTypeId) {
+              _selectedServiceType = t;
+              break;
+            }
+          }
+        }
+
+        // Enums: Electricity Safety
+        if (electricitySafetyId != null && electricitySafetyId > 0) {
+          for (final s in ElectricitySafetyTestStatus.values) {
+            if (s.value == electricitySafetyId) {
+              _selectedElectricitySafetyTest = s;
+              break;
+            }
+          }
+        }
+
+        // Enums: Service Status
+        if (serviceStatusId != null && serviceStatusId > 0) {
+          for (final s in ServiceReportStatus.values) {
+            if (s.value == serviceStatusId) {
+              _selectedServiceReportStatus = s;
+              break;
+            }
+          }
+        }
+
+        // Enums: Feedback
+        if (feedbackOptionId != null && feedbackOptionId > 0) {
+          for (final f in ServiceFeedbackStatus.values) {
+            if (f.value == feedbackOptionId) {
+              _selectedFeedbackOption = f;
+              break;
+            }
+          }
+        }
+      });
+    } catch (e, s) {
+      print(
+          'DcrEntryScreen: [ServiceReport] Error loading existing service report for detailId=$detailId: $e\n$s');
     }
   }
 
@@ -1759,7 +2095,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                   if (_isServiceEngineer) ...[
                     const Tab(text: 'Service Report'),
                   ],
-                  const Tab(text: 'Customer'),
+                  // For Service Engineers creating a NEW DCR, hide the Customer tab.
+                  if (!(_isServiceEngineer &&
+                      widget.dcrId == null &&
+                      widget.id == null)) ...[
+                    const Tab(text: 'Customer'),
+                  ],
                 ],
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
@@ -1795,12 +2136,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                     : TabBarView(
                         controller: _tabController,
                         children: [
+                          // Tab 0: Create DCR
                           _buildCreateDcrTab(context, screenTheme, tealGreen),
+                          // Tab 1: Service Report (only for Service Engineer)
                           if (_isServiceEngineer) ...[
                             _buildServiceReportTab(
-                                context, screenTheme, tealGreen)
+                                context, screenTheme, tealGreen),
                           ],
-                          _buildCustomerTab(context, screenTheme, tealGreen),
+                          // Tab 2: Customer (hidden for Service Engineer when creating new DCR)
+                          if (!(_isServiceEngineer &&
+                              widget.dcrId == null &&
+                              widget.id == null)) ...[
+                            _buildCustomerTab(context, screenTheme, tealGreen),
+                          ],
                         ],
                       ),
               ),
@@ -3248,15 +3596,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       const SizedBox(height: 20),
       // Save Customer button
       FilledButton(
-        onPressed: () {
-          // TODO: Implement save customer functionality
-          ToastMessage.show(
-            context,
-            message: 'Customer creation functionality will be implemented',
-            type: ToastType.info,
-            icon: Icons.info_outline,
-          );
-        },
+        onPressed: _saveNewCustomer,
         style: FilledButton.styleFrom(
           backgroundColor: const Color(0xFF4db1b3),
           foregroundColor: Colors.white,
@@ -3269,6 +3609,149 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         child: const Text('Save Customer'),
       ),
     ];
+  }
+
+  Future<void> _saveNewCustomer() async {
+    // Basic validation for required fields
+    final String name = _customerNameCtrl.text.trim();
+    final String code = _customerCodeCtrl.text.trim();
+    final String mobile = _customerMobileCtrl.text.trim();
+    if (name.isEmpty) {
+      ToastMessage.show(
+        context,
+        message: 'Please enter customer name',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (_selectedCustomerType == null ||
+        !_customerTypeNameToId.containsKey(_selectedCustomerType)) {
+      ToastMessage.show(
+        context,
+        message: 'Please select customer type',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (mobile.isEmpty) {
+      ToastMessage.show(
+        context,
+        message: 'Please enter mobile number',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (_selectedCountry == null ||
+        !_countryNameToId.containsKey(_selectedCountry)) {
+      ToastMessage.show(
+        context,
+        message: 'Please select country',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (_selectedState == null || !_stateNameToId.containsKey(_selectedState)) {
+      ToastMessage.show(
+        context,
+        message: 'Please select state',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (_selectedCity == null || !_cityNameToId.containsKey(_selectedCity)) {
+      ToastMessage.show(
+        context,
+        message: 'Please select city',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+
+    final dioClient =
+        getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
+    if (dioClient == null) {
+      ToastMessage.show(
+        context,
+        message: 'Network client not available',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+
+    final int? customerTypeId = _customerTypeNameToId[_selectedCustomerType!];
+    final int? countryId = _countryNameToId[_selectedCountry!];
+    final int? stateId = _stateNameToId[_selectedState!];
+    final int? cityId = _cityNameToId[_selectedCity!];
+
+    final int currentUserId = getIt.isRegistered<UserDetailStore>()
+        ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
+        : 0;
+
+    final Map<String, dynamic> payload = {
+      'name': name,
+      'code': code,
+      'customerTypeId': customerTypeId ?? 0,
+      'mobile': mobile,
+      'countryId': countryId ?? 0,
+      'stateId': stateId ?? 0,
+      'cityId': cityId ?? 0,
+      'createdBy': currentUserId,
+    };
+
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final response = await dioClient.dio.post(
+        Endpoints.dcrCustomerSaveDummy,
+        data: payload,
+        options: Options(
+          headers: const {'Content-Type': 'application/json'},
+        ),
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close loader
+
+      // Treat any 2xx response as success for now
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        ToastMessage.show(
+          context,
+          message: 'Customer saved successfully',
+          type: ToastType.success,
+          icon: Icons.check_circle_outline,
+        );
+      } else {
+        ToastMessage.show(
+          context,
+          message: 'Failed to save customer (status ${response.statusCode})',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // close loader if open
+        ToastMessage.show(
+          context,
+          message: 'Error saving customer: $e',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+      }
+    }
   }
 
   // Build Location Picker Widget

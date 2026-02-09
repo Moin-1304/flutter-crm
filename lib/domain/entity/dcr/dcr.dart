@@ -32,6 +32,14 @@ class DcrEntry {
     this.clusterId,
     this.coVisit = false,
     this.coVisitorId,
+    // Service Engineer / Service Report fields
+    this.mappedInstruments,
+    this.complaint,
+    this.actionTaken,
+    this.result,
+    this.complaintStatus,
+    this.complaintDate,
+    this.complaintRemarks,
   });
 
   final String id;
@@ -59,6 +67,15 @@ class DcrEntry {
   final int? clusterId; // ClusterId from detail
   final bool coVisit;
   final int? coVisitorId; // Reporting manager ID for co-visit
+  // Service Engineer / Service Report fields coming from DCR Get API
+  final List<Map<String, dynamic>>?
+      mappedInstruments; // {productId, productName, customerId}
+  final String? complaint;
+  final String? actionTaken;
+  final String? result;
+  final int? complaintStatus; // 0 = Not Resolved, 1 = Resolved
+  final DateTime? complaintDate;
+  final String? complaintRemarks;
 
   DcrEntry copyWith({
     String? id,
@@ -86,6 +103,13 @@ class DcrEntry {
     int? clusterId,
     bool? coVisit,
     int? coVisitorId,
+    List<Map<String, dynamic>>? mappedInstruments,
+    String? complaint,
+    String? actionTaken,
+    String? result,
+    int? complaintStatus,
+    DateTime? complaintDate,
+    String? complaintRemarks,
   }) {
     return DcrEntry(
       id: id ?? this.id,
@@ -113,6 +137,13 @@ class DcrEntry {
       clusterId: clusterId ?? this.clusterId,
       coVisit: coVisit ?? this.coVisit,
       coVisitorId: coVisitorId ?? this.coVisitorId,
+      mappedInstruments: mappedInstruments ?? this.mappedInstruments,
+      complaint: complaint ?? this.complaint,
+      actionTaken: actionTaken ?? this.actionTaken,
+      result: result ?? this.result,
+      complaintStatus: complaintStatus ?? this.complaintStatus,
+      complaintDate: complaintDate ?? this.complaintDate,
+      complaintRemarks: complaintRemarks ?? this.complaintRemarks,
     );
   }
 }
@@ -176,11 +207,13 @@ class CreateDcrParams {
   final double? latitude;
   final double? longitude;
   // Service Engineer specific fields
-  final List<Map<String, dynamic>>? mappedInstruments; // Array of {productId, productName, customerId}
+  final List<Map<String, dynamic>>?
+      mappedInstruments; // Array of {productId, productName, customerId}
   final String? complaint;
   final String? actionTaken;
   final String? result;
-  final int? complaintStatus; // Integer: 0 = Not Resolved, 1 = Resolved (or similar)
+  final int?
+      complaintStatus; // Integer: 0 = Not Resolved, 1 = Resolved (or similar)
   final DateTime? complaintDate;
   final String? complaintRemarks;
   final bool coVisit;
@@ -189,5 +222,3 @@ class CreateDcrParams {
   final String? dcrId; // DCR ID for update
   final int? detailId; // Detail ID for update
 }
-
-

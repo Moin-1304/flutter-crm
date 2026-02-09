@@ -268,6 +268,7 @@ class TourPlanDcrDetail {
   final int? complaintStatus;
   final String? complaintDate;
   final String? complaintRemarks;
+  final List<ProductToBeDiscussed>? productsToBeDiscussed;
 
   TourPlanDcrDetail({
     required this.id,
@@ -323,6 +324,7 @@ class TourPlanDcrDetail {
     this.complaintStatus,
     this.complaintDate,
     this.complaintRemarks,
+    this.productsToBeDiscussed,
   });
 
   factory TourPlanDcrDetail.fromJson(Map<String, dynamic> json) {
@@ -389,6 +391,9 @@ class TourPlanDcrDetail {
       ),
       complaintDate: (json['ComplaintDate'] ?? json['complaintDate'])?.toString(),
       complaintRemarks: (json['ComplaintRemarks'] ?? json['complaintRemarks'])?.toString(),
+      productsToBeDiscussed: (json['productsToBeDiscussed'] as List?)
+          ?.map((e) => ProductToBeDiscussed.fromJson(e))
+          .toList(),
     );
   }
 
@@ -442,6 +447,30 @@ class TourPlanDcrDetail {
       return int.tryParse(value);
     }
     return null;
+  }
+}
+
+class ProductToBeDiscussed {
+  final int productId;
+  final String productName;
+
+  ProductToBeDiscussed({
+    required this.productId,
+    required this.productName,
+  });
+
+  factory ProductToBeDiscussed.fromJson(Map<String, dynamic> json) {
+    return ProductToBeDiscussed(
+      productId: json['productId'] ?? 0,
+      productName: json['productName'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'productId': productId,
+      'productName': productName,
+    };
   }
 }
 
@@ -1240,6 +1269,15 @@ class DcrGetResponse {
       isGeneric: json['isGeneric'] ?? 0,
     );
   }
+  Map<String, dynamic> toJson() {
+    return {
+
+      'tourPlanDCRDetails':
+          tourPlanDCRDetails.map((e) => e.toJson()).toList(),
+
+    };
+  }
+
 }
 
 class TourPlanDcrDetailGet {
@@ -1298,6 +1336,7 @@ class TourPlanDcrDetailGet {
   final int? complaintStatus;
   final String? complaintDate;
   final String? complaintRemarks;
+  final List<ProductToBeDiscussed>? productsToBeDiscussed;
 
   TourPlanDcrDetailGet({
     this.id,
@@ -1355,6 +1394,7 @@ class TourPlanDcrDetailGet {
     this.complaintStatus,
     this.complaintDate,
     this.complaintRemarks,
+    this.productsToBeDiscussed,
   });
 
   factory TourPlanDcrDetailGet.fromJson(Map<String, dynamic> json) {
@@ -1434,8 +1474,21 @@ class TourPlanDcrDetailGet {
       ),
       complaintDate: (json['ComplaintDate'] ?? json['complaintDate'])?.toString(),
       complaintRemarks: (json['ComplaintRemarks'] ?? json['complaintRemarks'])?.toString(),
+      productsToBeDiscussed: (json['productsToBeDiscussed'] as List?)
+          ?.map((e) => ProductToBeDiscussed.fromJson(e))
+          .toList(),
     );
   }
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+
+      // Product list
+      'productsToBeDiscussed':
+          productsToBeDiscussed?.map((e) => e.toJson()).toList(),
+    };
+  }
+
 }
 
 

@@ -7,31 +7,66 @@ class SaleOrderCreationScreen extends StatefulWidget {
   const SaleOrderCreationScreen({super.key, this.contractId});
 
   @override
-  State<SaleOrderCreationScreen> createState() => _SaleOrderCreationScreenState();
+  State<SaleOrderCreationScreen> createState() =>
+      _SaleOrderCreationScreenState();
 }
 
 class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
   // Mock master data
   final List<Customer> _customers = const [
-    Customer(code: 'C001', name: 'Dr. Meera Joshi', address: '123 Health St, Wellness City, Mumbai - 400001', city: 'Mumbai'),
-    Customer(code: 'C002', name: 'Sunrise Clinic', address: '21 Park Lane, Pune - 411001', city: 'Pune'),
-    Customer(code: 'C003', name: 'Apollo Pharmacy', address: '402 Marine Drive, Mumbai - 400002', city: 'Mumbai'),
+    Customer(
+        code: 'C001',
+        name: 'Dr. Meera Joshi',
+        address: '123 Health St, Wellness City, Mumbai - 400001',
+        city: 'Mumbai'),
+    Customer(
+        code: 'C002',
+        name: 'Sunrise Clinic',
+        address: '21 Park Lane, Pune - 411001',
+        city: 'Pune'),
+    Customer(
+        code: 'C003',
+        name: 'Apollo Pharmacy',
+        address: '402 Marine Drive, Mumbai - 400002',
+        city: 'Mumbai'),
   ];
 
   final List<String> _salesReps = const ['Mr. John Doe', 'Ms. Jane Smith'];
 
-  final List<String> _distributors = const ['Wellness Distributors', 'Pharma Express'];
+  final List<String> _distributors = const [
+    'Wellness Distributors',
+    'Pharma Express'
+  ];
 
   final List<Product> Products = const [
-    Product(id: 'P001', name: 'Paracetamol 500mg', manufacturer: 'Cipla', rate: 200.00, uom: 'Box', availableQty: 120),
-    Product(id: 'P002', name: 'Aspirin 75mg', manufacturer: 'Sun Pharma', rate: 150.50, uom: 'Strip', availableQty: 85),
-    Product(id: 'P003', name: "Cough Syrup", manufacturer: "Dr. Reddy's", rate: 320.00, uom: 'Bottle', availableQty: 50),
+    Product(
+        id: 'P001',
+        name: 'Paracetamol 500mg',
+        manufacturer: 'Cipla',
+        rate: 200.00,
+        uom: 'Box',
+        availableQty: 120),
+    Product(
+        id: 'P002',
+        name: 'Aspirin 75mg',
+        manufacturer: 'Sun Pharma',
+        rate: 150.50,
+        uom: 'Strip',
+        availableQty: 85),
+    Product(
+        id: 'P003',
+        name: "Cough Syrup",
+        manufacturer: "Dr. Reddy's",
+        rate: 320.00,
+        uom: 'Bottle',
+        availableQty: 50),
   ];
 
   // Form state
   late DateTime _contractDate;
   String? _selectedCustomerCode;
-  final TextEditingController _customerAddressController = TextEditingController();
+  final TextEditingController _customerAddressController =
+      TextEditingController();
   String _selectedSalesRep = 'Mr. John Doe';
   String? _selectedDistributor;
 
@@ -63,7 +98,8 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
     // Header
     _contractDate = DateTime(2025, 9, 18);
     _selectedCustomerCode = 'C001';
-    _customerAddressController.text = '123 Health St, Wellness City, Mumbai - 400001';
+    _customerAddressController.text =
+        '123 Health St, Wellness City, Mumbai - 400001';
     _selectedDistributor = 'Wellness Distributors';
     _selectedSalesRep = _salesReps.first;
 
@@ -172,26 +208,25 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
             titleSpacing: 0,
             title: Row(
               children: [
-                 Text(
+                Text(
                   'Sale Contract',
                   style: TextStyle(
-                    color: Color(0xFF1F2937),
-                    fontWeight: FontWeight.bold,
-                    fontSize: isTablet?20:15
-                  ),
+                      color: Color(0xFF1F2937),
+                      fontWeight: FontWeight.bold,
+                      fontSize: isTablet ? 20 : 15),
                 ),
-                 SizedBox(width: isTablet?8:2),
+                SizedBox(width: isTablet ? 8 : 2),
                 Text(
                   _isEditMode ? (widget.contractId ?? '') : '<NEW>',
-                  style:  TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w600,
-                    fontSize: isTablet?20:12
-                  ),
+                  style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w600,
+                      fontSize: isTablet ? 20 : 12),
                 ),
-                SizedBox(width: isTablet?5:2),
+                SizedBox(width: isTablet ? 5 : 2),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     color: _statusBackgroundColor(),
                     borderRadius: BorderRadius.circular(999),
@@ -215,8 +250,10 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2563EB),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                   child: const Text('Save'),
                 ),
@@ -267,75 +304,77 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
             // Row 1: Date + Customer
             isTablet
                 ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 220,
-                  child: _DateField(
-                    label: 'Date',
-                    value: _contractDate,
-                    onTap: () => _pickDate(
-                      context: context,
-                      initialDate: _contractDate,
-                      onPicked: (d) => _contractDate = d,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _DropdownField<String>(
-                    label: 'Customer',
-                    value: _selectedCustomerCode,
-                    hint: '-- Select Customer --',
-                    items: [
-                      for (final c in _customers)
-                        DropdownMenuItem(
-                          value: c.code,
-                          child: Text(c.name),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 220,
+                        child: _DateField(
+                          label: 'Date',
+                          value: _contractDate,
+                          onTap: () => _pickDate(
+                            context: context,
+                            initialDate: _contractDate,
+                            onPicked: (d) => _contractDate = d,
+                          ),
                         ),
-                    ],
-                    onChanged: (v) {
-                      setState(() {
-                        _selectedCustomerCode = v;
-                        _customerAddressController.text = _selectedCustomer?.address ?? '';
-                      });
-                    },
-                  ),
-                ),
-              ],
-            )
-                : Column(
-              children: [
-                _DateField(
-                  label: 'Date',
-                  value: _contractDate,
-                  onTap: () => _pickDate(
-                    context: context,
-                    initialDate: _contractDate,
-                    onPicked: (d) => _contractDate = d,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _DropdownField<String>(
-                  label: 'Customer',
-                  value: _selectedCustomerCode,
-                  hint: '-- Select Customer --',
-                  items: [
-                    for (final c in _customers)
-                      DropdownMenuItem(
-                        value: c.code,
-                        child: Text(c.name),
                       ),
-                  ],
-                  onChanged: (v) {
-                    setState(() {
-                      _selectedCustomerCode = v;
-                      _customerAddressController.text = _selectedCustomer?.address ?? '';
-                    });
-                  },
-                ),
-              ],
-            ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _DropdownField<String>(
+                          label: 'Customer',
+                          value: _selectedCustomerCode,
+                          hint: '-- Select Customer --',
+                          items: [
+                            for (final c in _customers)
+                              DropdownMenuItem(
+                                value: c.code,
+                                child: Text(c.name),
+                              ),
+                          ],
+                          onChanged: (v) {
+                            setState(() {
+                              _selectedCustomerCode = v;
+                              _customerAddressController.text =
+                                  _selectedCustomer?.address ?? '';
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      _DateField(
+                        label: 'Date',
+                        value: _contractDate,
+                        onTap: () => _pickDate(
+                          context: context,
+                          initialDate: _contractDate,
+                          onPicked: (d) => _contractDate = d,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _DropdownField<String>(
+                        label: 'Customer',
+                        value: _selectedCustomerCode,
+                        hint: '-- Select Customer --',
+                        items: [
+                          for (final c in _customers)
+                            DropdownMenuItem(
+                              value: c.code,
+                              child: Text(c.name),
+                            ),
+                        ],
+                        onChanged: (v) {
+                          setState(() {
+                            _selectedCustomerCode = v;
+                            _customerAddressController.text =
+                                _selectedCustomer?.address ?? '';
+                          });
+                        },
+                      ),
+                    ],
+                  ),
             const SizedBox(height: 12),
 
             // Customer Address
@@ -352,53 +391,61 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
             // Sales Rep + Distributor
             isTablet
                 ? Row(
-              children: [
-                Expanded(
-                  child: _DropdownField<String>(
-                    label: 'Sales Rep',
-                    value: _selectedSalesRep,
-                    items: [
-                      for (final s in _salesReps) DropdownMenuItem(value: s, child: Text(s)),
+                    children: [
+                      Expanded(
+                        child: _DropdownField<String>(
+                          label: 'Sales Rep',
+                          value: _selectedSalesRep,
+                          items: [
+                            for (final s in _salesReps)
+                              DropdownMenuItem(value: s, child: Text(s)),
+                          ],
+                          onChanged: (v) => setState(
+                              () => _selectedSalesRep = v ?? _salesReps.first),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _DropdownField<String>(
+                          label: 'Distributor',
+                          value: _selectedDistributor,
+                          hint: '-- Select Distributor --',
+                          items: [
+                            for (final d in _distributors)
+                              DropdownMenuItem(value: d, child: Text(d)),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedDistributor = v),
+                        ),
+                      ),
                     ],
-                    onChanged: (v) => setState(() => _selectedSalesRep = v ?? _salesReps.first),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _DropdownField<String>(
-                    label: 'Distributor',
-                    value: _selectedDistributor,
-                    hint: '-- Select Distributor --',
-                    items: [
-                      for (final d in _distributors) DropdownMenuItem(value: d, child: Text(d)),
-                    ],
-                    onChanged: (v) => setState(() => _selectedDistributor = v),
-                  ),
-                ),
-              ],
-            )
+                  )
                 : Column(
-              children: [
-                _DropdownField<String>(
-                  label: 'Sales Rep',
-                  value: _selectedSalesRep,
-                  items: [
-                    for (final s in _salesReps) DropdownMenuItem(value: s, child: Text(s)),
-                  ],
-                  onChanged: (v) => setState(() => _selectedSalesRep = v ?? _salesReps.first),
-                ),
-                const SizedBox(height: 12),
-                _DropdownField<String>(
-                  label: 'Distributor',
-                  value: _selectedDistributor,
-                  hint: '-- Select Distributor --',
-                  items: [
-                    for (final d in _distributors) DropdownMenuItem(value: d, child: Text(d)),
-                  ],
-                  onChanged: (v) => setState(() => _selectedDistributor = v),
-                ),
-              ],
-            ),
+                    children: [
+                      _DropdownField<String>(
+                        label: 'Sales Rep',
+                        value: _selectedSalesRep,
+                        items: [
+                          for (final s in _salesReps)
+                            DropdownMenuItem(value: s, child: Text(s)),
+                        ],
+                        onChanged: (v) => setState(
+                            () => _selectedSalesRep = v ?? _salesReps.first),
+                      ),
+                      const SizedBox(height: 12),
+                      _DropdownField<String>(
+                        label: 'Distributor',
+                        value: _selectedDistributor,
+                        hint: '-- Select Distributor --',
+                        items: [
+                          for (final d in _distributors)
+                            DropdownMenuItem(value: d, child: Text(d)),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _selectedDistributor = v),
+                      ),
+                    ],
+                  ),
           ],
         ),
       ),
@@ -442,12 +489,14 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   side: const BorderSide(color: Color(0xFFD1D5DB)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   backgroundColor: const Color(0xFFF3F4F6),
                 ),
                 child: const Text(
-                  '+ Add Another Item',
-                  style: TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w600),
+                  '+ Add Item',
+                  style: TextStyle(
+                      color: Color(0xFF374151), fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -465,13 +514,15 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
             onPressed: _onSaveDraft,
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               backgroundColor: const Color(0xFFC0C1C3),
               side: BorderSide(color: Colors.grey.shade300),
             ),
             child: const Text(
               'Save as Draft',
-              style: TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: Color(0xFF374151), fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -483,7 +534,8 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
               padding: const EdgeInsets.symmetric(vertical: 14),
               backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: const Text(
               'Submit for Approval',
@@ -495,19 +547,38 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
     );
   }
 
+  bool _hasAtLeastOneItem() {
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add at least one order item.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+    return true;
+  }
+
   void _onSave() {
+    if (!_hasAtLeastOneItem()) return;
     // TODO: Replace with actual save logic
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Saved')));
   }
 
   void _onSaveDraft() {
+    if (!_hasAtLeastOneItem()) return;
     // TODO: Replace with actual draft logic
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved as Draft')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Saved as Draft')));
   }
 
   void _onSubmitForApproval() {
+    if (!_hasAtLeastOneItem()) return;
     // TODO: Replace with actual submit logic
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Submitted for Approval')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Submitted for Approval')));
   }
 }
 
@@ -533,7 +604,8 @@ class _ItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool canRemove = totalCount > 1;
-    final TextStyle titleStyle = const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF374151));
+    final TextStyle titleStyle =
+        const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF374151));
 
     return Container(
       decoration: BoxDecoration(
@@ -547,13 +619,15 @@ class _ItemCard extends StatelessWidget {
           // Title Row
           Row(
             children: [
-              Expanded(child: Text('Item Details #${index + 1}', style: titleStyle)),
+              Expanded(
+                  child: Text('Item Details #${index + 1}', style: titleStyle)),
               if (canRemove)
                 TextButton(
                   onPressed: onRemove,
                   child: const Text(
                     'Remove',
-                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w600),
                   ),
                 ),
             ],
@@ -589,7 +663,10 @@ class _ItemCard extends StatelessWidget {
                         // Availability note
                         footer: Text(
                           'Available: ${item.product.availableQty}',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6B7280)),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF6B7280)),
                         ),
                       ),
                     ),
@@ -637,7 +714,10 @@ class _ItemCard extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         'Available: ${item.product.availableQty}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6B7280)),
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6B7280)),
                       ),
                     ),
                   ),
@@ -678,21 +758,21 @@ class _ItemCard extends StatelessWidget {
                     onChanged: (v) => onChanged(),
                   ),
                 ),
-                 SizedBox(width: wide?12:8),
+                SizedBox(width: wide ? 12 : 8),
                 Expanded(
                   child: _ReadonlyField(
                     label: 'Rate',
                     value: item.product.rate.toStringAsFixed(2),
                   ),
                 ),
-                SizedBox(width: wide?12:0),
+                SizedBox(width: wide ? 12 : 0),
                 Expanded(
                   child: _ReadonlyField(
                     label: 'Amount',
                     value: formatCurrency(item.amount),
                   ),
                 ),
-                SizedBox(width: wide?12:8),
+                SizedBox(width: wide ? 12 : 8),
                 Expanded(
                   child: _NumberField(
                     label: 'Bonus Qty',
@@ -701,7 +781,7 @@ class _ItemCard extends StatelessWidget {
                     onChanged: (v) => onChanged(),
                   ),
                 ),
-                SizedBox(width: wide?12:8),
+                SizedBox(width: wide ? 12 : 8),
                 Expanded(
                   child: _NumberField(
                     label: 'Addl. Bonus Qty',
@@ -738,7 +818,6 @@ class _ItemCard extends StatelessWidget {
   }
 }
 
-
 class _LineItem {
   Product product;
   DateTime requiredDate;
@@ -758,19 +837,20 @@ class _LineItem {
   });
 
   factory _LineItem.fromProduct(
-      Product product, {
-        DateTime? reqDate,
-        int qty = 1,
-        int bonusQty = 0,
-        int addlBonusQty = 0,
-        String notes = '',
-      }) {
+    Product product, {
+    DateTime? reqDate,
+    int qty = 1,
+    int bonusQty = 0,
+    int addlBonusQty = 0,
+    String notes = '',
+  }) {
     return _LineItem(
       product: product,
       requiredDate: reqDate ?? DateTime.now(),
       qtyController: TextEditingController(text: qty.toString()),
       bonusQtyController: TextEditingController(text: bonusQty.toString()),
-      addlBonusQtyController: TextEditingController(text: addlBonusQty.toString()),
+      addlBonusQtyController:
+          TextEditingController(text: addlBonusQty.toString()),
       notesController: TextEditingController(text: notes),
     );
   }
@@ -803,7 +883,10 @@ class _FieldLabel extends StatelessWidget {
     final isTablet = MediaQuery.of(context).size.width >= 720;
     return Text(
       text,
-      style:  TextStyle(fontSize: isTablet?13:13, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+      style: TextStyle(
+          fontSize: isTablet ? 13 : 13,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF374151)),
     );
   }
 }
@@ -813,7 +896,8 @@ class _DateField extends StatelessWidget {
   final DateTime value;
   final VoidCallback onTap;
 
-  const _DateField({required this.label, required this.value, required this.onTap});
+  const _DateField(
+      {required this.label, required this.value, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -826,7 +910,8 @@ class _DateField extends StatelessWidget {
           onTap: onTap,
           child: InputDecorator(
             decoration: InputDecoration(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
@@ -885,10 +970,12 @@ class _DropdownField<T> extends StatelessWidget {
           icon: const Icon(Icons.keyboard_arrow_down_rounded),
           decoration: InputDecoration(
             hintText: hint,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: border,
             enabledBorder: border,
-            focusedBorder: border.copyWith(borderSide: const BorderSide(color: Color(0xFF2563EB))),
+            focusedBorder: border.copyWith(
+                borderSide: const BorderSide(color: Color(0xFF2563EB))),
             filled: true,
             fillColor: Colors.white,
           ),
@@ -937,10 +1024,12 @@ class _TextAreaField extends StatelessWidget {
           maxLines: maxLines,
           decoration: InputDecoration(
             hintText: hintText,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: baseBorder,
             enabledBorder: baseBorder,
-            focusedBorder: baseBorder.copyWith(borderSide: const BorderSide(color: Color(0xFF2563EB))),
+            focusedBorder: baseBorder.copyWith(
+                borderSide: const BorderSide(color: Color(0xFF2563EB))),
           ),
         ),
       ],
@@ -977,10 +1066,12 @@ class _TextField extends StatelessWidget {
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hintText,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: border,
             enabledBorder: border,
-            focusedBorder: border.copyWith(borderSide: const BorderSide(color: Color(0xFF2563EB))),
+            focusedBorder: border.copyWith(
+                borderSide: const BorderSide(color: Color(0xFF2563EB))),
           ),
         ),
       ],
@@ -1020,15 +1111,18 @@ class _NumberField extends StatelessWidget {
             final parsed = int.tryParse(v) ?? min;
             if (parsed < min) {
               controller.text = min.toString();
-              controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+              controller.selection = TextSelection.fromPosition(
+                  TextPosition(offset: controller.text.length));
             }
             onChanged?.call(controller.text);
           },
           decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             border: border,
             enabledBorder: border,
-            focusedBorder: border.copyWith(borderSide: const BorderSide(color: Color(0xFF2563EB))),
+            focusedBorder: border.copyWith(
+                borderSide: const BorderSide(color: Color(0xFF2563EB))),
           ),
         ),
       ],
@@ -1055,7 +1149,8 @@ class _ReadonlyField extends StatelessWidget {
         const SizedBox(height: 6),
         InputDecorator(
           decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             border: border,
             enabledBorder: border,
             filled: true,

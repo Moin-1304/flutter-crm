@@ -752,36 +752,37 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   currentPosition: _currentPosition,
                                   geoFenceRadiusMeters: _geoFenceRadiusMeters,
                                   isEditable: _isDcrEditable(item),
-                                  onCreateDeviation:
-                                      item.isDcr && !_isDcrSentBack(item)
-                                          ? () {
-                                              print('Deviation Icon Debug:');
-                                              print(
-                                                  '  - item.isDcr: ${item.isDcr}');
-                                              print(
-                                                  '  - item.tourPlanId: ${item.tourPlanId}');
-                                              print(
-                                                  '  - item.dcrId: ${item.dcrId}');
-                                              print(
-                                                  '  - item.transactionType: ${item.transactionType}');
-                                              print(
-                                                  '  - StatusText: ${item.statusText}');
-                                              print(
-                                                  '  - dcrStatusId: ${item.dcrStatusId}');
-                                              print(
-                                                  '  - Should show deviation: ${item.isDcr && !_isDcrSentBack(item)}');
-                                              Navigator.of(context).push(
-                                                MaterialPageRoute(
-                                                  builder: (_) =>
-                                                      DeviationEntryScreen(
-                                                    dcrId: item.dcrId,
-                                                    tourPlanId: item.tourPlanId,
-                                                    initialDate: item.parsedDate ?? DateTime.now(),
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          : null,
+                                  onCreateDeviation: item.isDcr &&
+                                          !_isDcrSentBack(item)
+                                      ? () {
+                                          print('Deviation Icon Debug:');
+                                          print(
+                                              '  - item.isDcr: ${item.isDcr}');
+                                          print(
+                                              '  - item.tourPlanId: ${item.tourPlanId}');
+                                          print(
+                                              '  - item.dcrId: ${item.dcrId}');
+                                          print(
+                                              '  - item.transactionType: ${item.transactionType}');
+                                          print(
+                                              '  - StatusText: ${item.statusText}');
+                                          print(
+                                              '  - dcrStatusId: ${item.dcrStatusId}');
+                                          print(
+                                              '  - Should show deviation: ${item.isDcr && !_isDcrSentBack(item)}');
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  DeviationEntryScreen(
+                                                dcrId: item.dcrId,
+                                                tourPlanId: item.tourPlanId,
+                                                initialDate: item.parsedDate ??
+                                                    DateTime.now(),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      : null,
                                   onViewDetails: () => _showDcrDetails(item),
                                   onEdit: _isDcrEditable(item)
                                       ? () async {
@@ -966,7 +967,7 @@ class _DcrListScreenState extends State<DcrListScreen>
             builder: (context, _) {
               final validationStore = getIt<UserValidationStore>();
               final canCreateDcr = validationStore.canCreateDcr;
-              
+
               return Row(
                 children: [
                   Expanded(
@@ -2085,7 +2086,7 @@ class _DcrListScreenState extends State<DcrListScreen>
         return false; // Disable edit if validation fails
       }
     }
-    
+
     if (item.isDcr) {
       // Check statusText first
       final statusText = item.statusText.trim().toLowerCase();
@@ -2144,25 +2145,37 @@ class _DcrListScreenState extends State<DcrListScreen>
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final String? serviceArea = userStore?.userDetail?.serviceArea;
-    final bool isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    print('_isCurrentUserServiceEngineer: serviceArea="$serviceArea", result=$isServiceEngineer');
+    final bool isServiceEngineer =
+        serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    print(
+        '_isCurrentUserServiceEngineer: serviceArea="$serviceArea", result=$isServiceEngineer');
     return isServiceEngineer;
   }
 
   /// Check if item has Service Report data
   bool _hasServiceReportData(UnifiedDcrItem item) {
-    final bool hasMappedInstruments = item.mappedInstruments != null && 
-        item.mappedInstruments!.isNotEmpty;
-    final bool hasComplaint = item.complaint != null && item.complaint!.isNotEmpty;
-    final bool hasActionTaken = item.actionTaken != null && item.actionTaken!.isNotEmpty;
+    final bool hasMappedInstruments =
+        item.mappedInstruments != null && item.mappedInstruments!.isNotEmpty;
+    final bool hasComplaint =
+        item.complaint != null && item.complaint!.isNotEmpty;
+    final bool hasActionTaken =
+        item.actionTaken != null && item.actionTaken!.isNotEmpty;
     final bool hasResult = item.result != null && item.result!.isNotEmpty;
-    final bool hasComplaintStatus = item.complaintStatus != null && item.complaintStatus!.isNotEmpty;
-    final bool hasComplaintDate = item.complaintDate != null && item.complaintDate!.isNotEmpty;
-    final bool hasComplaintRemarks = item.complaintRemarks != null && item.complaintRemarks!.isNotEmpty;
-    
-    final bool result = hasMappedInstruments || hasComplaint || hasActionTaken || 
-        hasResult || hasComplaintStatus || hasComplaintDate || hasComplaintRemarks;
-    
+    final bool hasComplaintStatus =
+        item.complaintStatus != null && item.complaintStatus!.isNotEmpty;
+    final bool hasComplaintDate =
+        item.complaintDate != null && item.complaintDate!.isNotEmpty;
+    final bool hasComplaintRemarks =
+        item.complaintRemarks != null && item.complaintRemarks!.isNotEmpty;
+
+    final bool result = hasMappedInstruments ||
+        hasComplaint ||
+        hasActionTaken ||
+        hasResult ||
+        hasComplaintStatus ||
+        hasComplaintDate ||
+        hasComplaintRemarks;
+
     print('_hasServiceReportData:');
     print('  - hasMappedInstruments: $hasMappedInstruments');
     print('  - hasComplaint: $hasComplaint');
@@ -2172,7 +2185,7 @@ class _DcrListScreenState extends State<DcrListScreen>
     print('  - hasComplaintDate: $hasComplaintDate');
     print('  - hasComplaintRemarks: $hasComplaintRemarks');
     print('  - Result: $result');
-    
+
     return result;
   }
 
@@ -2180,27 +2193,36 @@ class _DcrListScreenState extends State<DcrListScreen>
   Future<void> _showDcrDetails(UnifiedDcrItem item) async {
     // For DCR items, fetch full details using Get API to get Service Report fields
     UnifiedDcrItem displayItem = item;
-    
+
     if (item.isDcr && item.dcrId > 0) {
       try {
-        print('Fetching DCR details using Get API - ID: ${item.id}, DCR ID: ${item.dcrId}');
+        print(
+            'Fetching DCR details using Get API - ID: ${item.id}, DCR ID: ${item.dcrId}');
         final DcrRepository? dcrRepo =
             getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
-        
+
         if (dcrRepo != null) {
           final int detailId = item.id;
           final int dcrId = item.dcrId;
-          
-          final dcrEntry = await dcrRepo.getById(detailId.toString(), dcrId: dcrId.toString());
-          
+
+          final dcrEntry = await dcrRepo.getById(detailId.toString(),
+              dcrId: dcrId.toString());
+
           if (dcrEntry != null) {
             // Fetch the full DCR response using the API directly
             final dcrApi = getIt<DcrApi>();
             final dcrGetResponse = await dcrApi.getDcrDetails(detailId, dcrId);
-            
+
             // Convert to UnifiedDcrItem
-            displayItem = UnifiedDcrItem.fromDcrGetResponse(dcrGetResponse);
-            print('Successfully fetched DCR details from Get API');
+            final fromGet = UnifiedDcrItem.fromDcrGetResponse(dcrGetResponse);
+
+            // Preserve the original list status text / id (e.g. "Missed")
+            displayItem = fromGet.copyWith(
+              statusText: item.statusText,
+              dcrStatusId: item.dcrStatusId,
+            );
+            print(
+                'Successfully fetched DCR details from Get API (status preserved as "${displayItem.statusText}")');
           }
         }
       } catch (e) {
@@ -2209,12 +2231,12 @@ class _DcrListScreenState extends State<DcrListScreen>
         print('Falling back to list item data');
       }
     }
-    
+
     // Debug logs for Service Report Details
     print('=== DCR Details View - Debug Info ===');
     print('Item ID: ${displayItem.id}, DCR ID: ${displayItem.dcrId}');
     print('Is DCR: ${displayItem.isDcr}');
-    
+
     // Check if user is Service Engineer
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
@@ -2222,7 +2244,7 @@ class _DcrListScreenState extends State<DcrListScreen>
     final bool isServiceEngineer = _isCurrentUserServiceEngineer();
     print('User Service Area: "$serviceArea"');
     print('Is Service Engineer: $isServiceEngineer');
-    
+
     // Check Service Report fields
     print('Service Report Fields:');
     print('  - mappedInstruments: "${displayItem.mappedInstruments}"');
@@ -2232,21 +2254,22 @@ class _DcrListScreenState extends State<DcrListScreen>
     print('  - complaintStatus: "${displayItem.complaintStatus}"');
     print('  - complaintDate: "${displayItem.complaintDate}"');
     print('  - complaintRemarks: "${displayItem.complaintRemarks}"');
-    
+
     // Check if has Service Report data
     final bool hasServiceReportData = _hasServiceReportData(displayItem);
     print('Has Service Report Data: $hasServiceReportData');
-    
+
     // Check conditions for showing Service Report section
-    final bool shouldShowServiceReport = displayItem.isDcr && isServiceEngineer && hasServiceReportData;
+    final bool shouldShowServiceReport =
+        displayItem.isDcr && isServiceEngineer && hasServiceReportData;
     print('Should Show Service Report Section: $shouldShowServiceReport');
     print('  - item.isDcr: ${displayItem.isDcr}');
     print('  - isServiceEngineer: $isServiceEngineer');
     print('  - hasServiceReportData: $hasServiceReportData');
     print('=====================================');
-    
+
     if (!mounted) return;
-    
+
     final isTablet = MediaQuery.of(context).size.width >= 600;
     showModalBottomSheet(
       context: context,
@@ -2352,10 +2375,13 @@ class _DcrListScreenState extends State<DcrListScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _DetailRow('Transaction Type', displayItem.transactionType),
+                      _DetailRow(
+                          'Transaction Type', displayItem.transactionType),
                       const SizedBox(height: 12),
-                      _DetailRow('Date',
-                          _formatDate(displayItem.parsedDate ?? DateTime.now())),
+                      _DetailRow(
+                          'Date',
+                          _formatDate(
+                              displayItem.parsedDate ?? DateTime.now())),
                       const SizedBox(height: 12),
                       _DetailRow('Employee', displayItem.employeeName),
                       const SizedBox(height: 12),
@@ -2382,16 +2408,16 @@ class _DcrListScreenState extends State<DcrListScreen>
                         ],
                         if (displayItem.productsToDiscuss != null &&
                             displayItem.productsToDiscuss!.isNotEmpty) ...[
-                          _DetailRow(
-                              'Products to Discuss', displayItem.productsToDiscuss!),
+                          _DetailRow('Products to Discuss',
+                              displayItem.productsToDiscuss!),
                           const SizedBox(height: 12),
                         ],
                       ] else ...[
                         const SizedBox(height: 20),
                         Divider(height: 1, color: Colors.grey.shade300),
                         const SizedBox(height: 20),
-                        _DetailRow(
-                            'Expense Type', displayItem.expenseType ?? 'Unknown'),
+                        _DetailRow('Expense Type',
+                            displayItem.expenseType ?? 'Unknown'),
                         const SizedBox(height: 12),
                         _DetailRow(
                             'Amount',
@@ -2402,26 +2428,31 @@ class _DcrListScreenState extends State<DcrListScreen>
                       // Service Report details (Service Engineer only)
                       Builder(
                         builder: (context) {
-                          final bool isServiceEngineer = _isCurrentUserServiceEngineer();
-                          final bool hasServiceReportData = _hasServiceReportData(displayItem);
-                          final bool shouldShow = displayItem.isDcr && isServiceEngineer && hasServiceReportData;
-                          
+                          final bool isServiceEngineer =
+                              _isCurrentUserServiceEngineer();
+                          final bool hasServiceReportData =
+                              _hasServiceReportData(displayItem);
+                          final bool shouldShow = displayItem.isDcr &&
+                              isServiceEngineer &&
+                              hasServiceReportData;
+
                           print('Service Report Section Render Check:');
                           print('  - item.isDcr: ${displayItem.isDcr}');
                           print('  - isServiceEngineer: $isServiceEngineer');
-                          print('  - hasServiceReportData: $hasServiceReportData');
+                          print(
+                              '  - hasServiceReportData: $hasServiceReportData');
                           print('  - shouldShow: $shouldShow');
-                          
+
                           if (!shouldShow) {
                             return const SizedBox.shrink();
                           }
-                          
+
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
+                              const SizedBox(height: 20),
+                              Divider(height: 1, color: Colors.grey.shade300),
+                              const SizedBox(height: 20),
                               Text(
                                 'Service Report Details',
                                 style: GoogleFonts.inter(
@@ -2431,52 +2462,58 @@ class _DcrListScreenState extends State<DcrListScreen>
                                 ),
                               ),
                               const SizedBox(height: 16),
-                          if (displayItem.mappedInstruments != null &&
-                              displayItem.mappedInstruments!.isNotEmpty) ...[
-                            _DetailRow(
-                              'Mapped Instruments',
-                              displayItem.mappedInstruments!
-                                  .map((e) => e['productName'] ?? e['ProductName'] ?? 'Unknown')
-                                  .join(', '),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          if (displayItem.complaint != null &&
-                              displayItem.complaint!.isNotEmpty) ...[
-                            _DetailRow('Complaint', displayItem.complaint!,
-                                isMultiline: true),
-                            const SizedBox(height: 12),
-                          ],
-                          if (displayItem.actionTaken != null &&
-                              displayItem.actionTaken!.isNotEmpty) ...[
-                            _DetailRow('Action Taken', displayItem.actionTaken!,
-                                isMultiline: true),
-                            const SizedBox(height: 12),
-                          ],
-                          if (displayItem.result != null &&
-                              displayItem.result!.isNotEmpty) ...[
-                            _DetailRow('Result', displayItem.result!,
-                                isMultiline: true),
-                            const SizedBox(height: 12),
-                          ],
-                          if (displayItem.complaintStatus != null &&
-                              displayItem.complaintStatus!.isNotEmpty) ...[
-                            _DetailRow('Complaint Status',
-                                displayItem.complaintStatus!),
-                            const SizedBox(height: 12),
-                          ],
-                          if (displayItem.complaintDate != null &&
-                              displayItem.complaintDate!.isNotEmpty) ...[
-                            _DetailRow('Complaint Date', displayItem.complaintDate!),
-                            const SizedBox(height: 12),
-                          ],
-                          if (displayItem.complaintRemarks != null &&
-                              displayItem.complaintRemarks!.isNotEmpty) ...[
-                            _DetailRow('Complaint Remarks',
-                                displayItem.complaintRemarks!,
-                                isMultiline: true),
-                            const SizedBox(height: 12),
-                          ],
+                              if (displayItem.mappedInstruments != null &&
+                                  displayItem
+                                      .mappedInstruments!.isNotEmpty) ...[
+                                _DetailRow(
+                                  'Mapped Instruments',
+                                  displayItem.mappedInstruments!
+                                      .map((e) =>
+                                          e['productName'] ??
+                                          e['ProductName'] ??
+                                          'Unknown')
+                                      .join(', '),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              if (displayItem.complaint != null &&
+                                  displayItem.complaint!.isNotEmpty) ...[
+                                _DetailRow('Complaint', displayItem.complaint!,
+                                    isMultiline: true),
+                                const SizedBox(height: 12),
+                              ],
+                              if (displayItem.actionTaken != null &&
+                                  displayItem.actionTaken!.isNotEmpty) ...[
+                                _DetailRow(
+                                    'Action Taken', displayItem.actionTaken!,
+                                    isMultiline: true),
+                                const SizedBox(height: 12),
+                              ],
+                              if (displayItem.result != null &&
+                                  displayItem.result!.isNotEmpty) ...[
+                                _DetailRow('Result', displayItem.result!,
+                                    isMultiline: true),
+                                const SizedBox(height: 12),
+                              ],
+                              if (displayItem.complaintStatus != null &&
+                                  displayItem.complaintStatus!.isNotEmpty) ...[
+                                _DetailRow('Complaint Status',
+                                    displayItem.complaintStatus!),
+                                const SizedBox(height: 12),
+                              ],
+                              if (displayItem.complaintDate != null &&
+                                  displayItem.complaintDate!.isNotEmpty) ...[
+                                _DetailRow('Complaint Date',
+                                    displayItem.complaintDate!),
+                                const SizedBox(height: 12),
+                              ],
+                              if (displayItem.complaintRemarks != null &&
+                                  displayItem.complaintRemarks!.isNotEmpty) ...[
+                                _DetailRow('Complaint Remarks',
+                                    displayItem.complaintRemarks!,
+                                    isMultiline: true),
+                                const SizedBox(height: 12),
+                              ],
                             ],
                           );
                         },
@@ -2485,7 +2522,8 @@ class _DcrListScreenState extends State<DcrListScreen>
                         const SizedBox(height: 20),
                         Divider(height: 1, color: Colors.grey.shade300),
                         const SizedBox(height: 20),
-                        _DetailRow('Remarks', displayItem.remarks, isMultiline: true),
+                        _DetailRow('Remarks', displayItem.remarks,
+                            isMultiline: true),
                       ],
                     ],
                   ),
@@ -2559,7 +2597,8 @@ class _DcrListScreenState extends State<DcrListScreen>
                                     builder: (_) => DeviationEntryScreen(
                                       dcrId: item.dcrId,
                                       tourPlanId: item.tourPlanId,
-                                      initialDate: item.parsedDate ?? DateTime.now(),
+                                      initialDate:
+                                          item.parsedDate ?? DateTime.now(),
                                     ),
                                   ),
                                 );
@@ -3158,6 +3197,8 @@ _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
       return const _StatusChip.approved('Approved');
     } else if (statusText.contains('rejected')) {
       return const _StatusChip.rejected('Rejected');
+    } else if (statusText.contains('missed')) {
+      return const _StatusChip.missed('Missed');
     } else if (statusText.contains('sent back') ||
         statusText.contains('sentback')) {
       return const _StatusChip.pending('Sent Back');
@@ -3197,6 +3238,8 @@ _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
       return const _StatusChip.approved('Approved');
     } else if (statusText.contains('rejected')) {
       return const _StatusChip.rejected('Rejected');
+    } else if (statusText.contains('missed')) {
+      return const _StatusChip.missed('Missed');
     } else if (statusText.contains('sent back') ||
         statusText.contains('sentback')) {
       return const _StatusChip.pending('Sent Back');
@@ -4393,6 +4436,7 @@ class _StatusChip extends StatelessWidget {
       : this._(text, const Color(0xFF00C4DE));
   const _StatusChip.rejected(String text)
       : this._(text, const Color(0xFFE53935));
+  const _StatusChip.missed(String text) : this._(text, const Color(0xFF9E9E9E));
 
   final String text;
   final Color color;

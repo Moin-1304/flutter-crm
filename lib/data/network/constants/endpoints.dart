@@ -86,23 +86,36 @@ class Endpoints {
   static const String dcrBulkApprove = "$baseUrl/PharmaCRM/DCR/BulkApprove";
   static const String dcrBulkSendBack = "$baseUrl/PharmaCRM/DCR/BulkReject";
   static const String dcrValidateUser = "$baseUrl/PharmaCRM/DCR/ValidateUser";
-  static const String dcrGetMapDetails = "$baseUrl/PharmaCRM/DCR/GetDCRMapDetails";
+  static const String dcrGetMapDetails =
+      "$baseUrl/PharmaCRM/DCR/GetDCRMapDetails";
+
+  // Placeholder endpoint for creating a new customer from DCR Customer tab.
+  // NOTE: The actual URL can be updated later without changing UI logic.
+  static const String dcrCustomerSaveDummy =
+      "$baseUrl/PharmaCRM/DCR/SaveCustomerDummy";
   // Service Report Save endpoint
-  static const String serviceReportSave = "$baseUrl/PharmaCRM/ServiceReport/Save";
-  static const String serviceReportUpdate = "$baseUrl/PharmaCRM/ServiceReport/Update";
+  static const String serviceReportSave =
+      "$baseUrl/PharmaCRM/ServiceReport/Save";
+  static const String serviceReportUpdate =
+      "$baseUrl/PharmaCRM/ServiceReport/Update";
+  // Service Report Get by DCR detail
+  static String serviceReportGetByDcrDetail(int dcrDetailId) =>
+      "$baseUrl/PharmaCRM/ServiceReport/GetByDcrDetailId?DcrDetailId=$dcrDetailId";
 
 // Common endpoints for dropdowns
   static const String commonGetAuto = "$baseUrl/Common/GetAuto";
   static const String commonGetAutoBigInt = "$baseUrl/Common/GetAutoBigInt";
   static const String commonGetCatItemTax = "$baseUrl/Common/GetCatItemTax";
   static const String commonGetItemDetail = "$baseUrl/Common/GetItemDetail";
-  
+
   // Tax Component endpoints
   static const String taxComponentGet = "$baseUrl/TaxComponent/Get";
-  
+
   // Workflow endpoints
-  static const String workflowGetAllActions = "$baseUrl/WorkFlowMaster/GetAllActions";
-  static const String workflowGetUserPagePrivileges = "$baseUrl/WorkFlow/GetUserPagePrivileges";
+  static const String workflowGetAllActions =
+      "$baseUrl/WorkFlowMaster/GetAllActions";
+  static const String workflowGetUserPagePrivileges =
+      "$baseUrl/WorkFlow/GetUserPagePrivileges";
 
   // Deviation endpoints
   static const String deviationList = "$baseUrl/PharmaCRM/Deviation/List";
@@ -194,6 +207,8 @@ class Endpoints {
   static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
   static const String salesOrderSave = "$baseUrl/SaleOrder/Save";
   static const String salesOrderDelete = "$baseUrl/SaleOrder/Delete";
-  static const String salesOrderTransactionCancel = "$baseUrl/SaleOrder/TransactionCancel";
-  static const String salesInvoiceCommonAuto = "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
+  static const String salesOrderTransactionCancel =
+      "$baseUrl/SaleOrder/TransactionCancel";
+  static const String salesInvoiceCommonAuto =
+      "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
 }
