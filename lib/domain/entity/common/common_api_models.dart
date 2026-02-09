@@ -1,6 +1,7 @@
 // Common API Models for dropdown data
 class CommonGetAutoRequest {
   final int commandType;
+  final int? value;
   final int? role;
   final int? id;
   final int? countryId;
@@ -17,6 +18,7 @@ class CommonGetAutoRequest {
 
   CommonGetAutoRequest({
     required this.commandType,
+    this.value,
     this.role,
     this.id,
     this.countryId,
@@ -37,6 +39,7 @@ class CommonGetAutoRequest {
       'CommandType': commandType,
     };
 
+    if (value != null) data['Value'] = value;
     if (role != null) data['Role'] = role;
     if (id != null) data['Id'] = id;
     if (countryId != null) data['CountryId'] = countryId;
@@ -1539,7 +1542,6 @@ class CustomerListRequest {
 
 /// Request model for Reporting Manager List (CommandType: 333, Id: 91)
 class ReportingManagerRequest {
-  
   final int? id;
   ReportingManagerRequest({
     this.id,
@@ -1911,7 +1913,8 @@ class TaxComponentRequest {
 /// Tax Component Response Model
 class TaxComponentResponse {
   final int id;
-  final int chargesType; // 1=SubTotal, 2=Discount, 3=OtherCharge, 4=Tax, 5=PriceAdjustment, 6=GrandTotal, 7=ShippingCharge, 8=DedAdvPaid
+  final int
+      chargesType; // 1=SubTotal, 2=Discount, 3=OtherCharge, 4=Tax, 5=PriceAdjustment, 6=GrandTotal, 7=ShippingCharge, 8=DedAdvPaid
   final String? formula;
   final String? label;
   final int? displayOrder;
@@ -2050,20 +2053,26 @@ class ItemDetailResponse {
       rate: parseDouble(json['Rate'] ?? json['rate']),
       retailRate: parseDouble(json['RetailRate'] ?? json['retailRate']),
       mrp: parseDouble(json['MRP'] ?? json['mrp'] ?? json['MaxRetailPrice']),
-      unitPrice: parseDouble(json['UnitPrice'] ?? json['unitPrice'] ?? json['Price']),
+      unitPrice:
+          parseDouble(json['UnitPrice'] ?? json['unitPrice'] ?? json['Price']),
       uom: parseInt(json['UOM'] ?? json['uom']),
       uomText: json['UOMText']?.toString() ?? json['uomText']?.toString(),
       discount: parseDouble(json['Discount'] ?? json['discount']),
       amount: parseDouble(json['Amount'] ?? json['amount']),
       itemText: json['ItemText']?.toString() ?? json['itemText']?.toString(),
-      manufacturerName: json['ManufacturerName']?.toString() ?? json['manufacturerName']?.toString(),
+      manufacturerName: json['ManufacturerName']?.toString() ??
+          json['manufacturerName']?.toString(),
       divisionGroup: parseInt(json['DivisionGroup'] ?? json['divisionGroup']),
-      divisionGroupText: json['DivisionGroupText']?.toString() ?? json['divisionGroupText']?.toString(),
+      divisionGroupText: json['DivisionGroupText']?.toString() ??
+          json['divisionGroupText']?.toString(),
       quantity: parseDouble(json['Quantity'] ?? json['quantity']),
-      bonusQuantity: parseDouble(json['BonusQuantity'] ?? json['bonusQuantity']),
-      additionalBonusQuantity: parseDouble(json['AdditionalBonusQuantity'] ?? json['additionalBonusQuantity']),
+      bonusQuantity:
+          parseDouble(json['BonusQuantity'] ?? json['bonusQuantity']),
+      additionalBonusQuantity: parseDouble(
+          json['AdditionalBonusQuantity'] ?? json['additionalBonusQuantity']),
       isFOC: parseBool(json['IsFOC'] ?? json['isFOC']),
-      isRateUpdateConfirm: parseBool(json['IsRateUpdateConfirm'] ?? json['isRateUpdateConfirm']),
+      isRateUpdateConfirm:
+          parseBool(json['IsRateUpdateConfirm'] ?? json['isRateUpdateConfirm']),
       reqdDate: json['ReqdDate']?.toString() ?? json['reqdDate']?.toString(),
       otherFields: json,
     );

@@ -280,6 +280,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   // Customer creation fields
   final TextEditingController _customerNameCtrl = TextEditingController();
   final TextEditingController _customerCodeCtrl = TextEditingController();
+  final TextEditingController _uinCtrl = TextEditingController();
   String? _selectedCustomerType;
   List<String> _customerTypeOptions = [];
   final Map<String, int> _customerTypeNameToId = <String, int>{};
@@ -293,6 +294,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   String? _selectedCity;
   List<String> _cityOptions = [];
   final Map<String, int> _cityNameToId = <String, int>{};
+  // Medical Rep dropdowns (Customer tab)
+  String? _selectedSpeciality;
+  List<String> _specialityOptions = [];
+  final Map<String, int> _specialityNameToId = <String, int>{};
+  String? _selectedCategory;
+  List<String> _categoryOptions = [];
+  final Map<String, int> _categoryNameToId = <String, int>{};
+  String? _selectedAreaType;
+  List<String> _areaTypeOptions = [];
+  final Map<String, int> _areaTypeNameToId = <String, int>{};
 
   @override
   void initState() {
@@ -420,6 +431,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           _initLocation(),
           _loadCountries(),
           _loadCustomerTypes(),
+          _loadMedicalRepDropdowns(),
           _loadServiceDropdowns(),
         ]).whenComplete(() {
           // Load customers after clusters are loaded (if cluster is already selected)
@@ -440,6 +452,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         _initLocation(),
         _loadCountries(),
         _loadCustomerTypes(),
+        _loadMedicalRepDropdowns(),
         _loadServiceDropdowns(),
       ]).whenComplete(() {
         // Load customers after clusters are loaded (if cluster is already selected)
@@ -1292,6 +1305,53 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       }
     } catch (e) {
       print('DcrEntryScreen: [CustomerTypes] Error loading customer types: $e');
+    }
+  }
+
+  /// Load Speciality, Category, and Area Type dropdowns for Medical Rep (Customer tab)
+  Future<void> _loadMedicalRepDropdowns() async {
+    if (!getIt.isRegistered<CommonApi>()) return;
+    final commonApi = getIt<CommonApi>();
+    try {
+      final results = await Future.wait<List<CommonDropdownItem>>([
+        commonApi.getSpecialityDropdownList(),
+        commonApi.getCategoryDropDownList(),
+        commonApi.getAreaTypeDropdownList(),
+      ]);
+      if (!mounted) return;
+      final specialityItems = results[0];
+      final categoryItems = results[1];
+      final areaTypeItems = results[2];
+      setState(() {
+        _specialityOptions = specialityItems
+            .map((e) => e.text.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        for (final item in specialityItems) {
+          final String key = item.text.trim();
+          if (key.isNotEmpty) _specialityNameToId[key] = item.id;
+        }
+        _categoryOptions = categoryItems
+            .map((e) => e.text.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        for (final item in categoryItems) {
+          final String key = item.text.trim();
+          if (key.isNotEmpty) _categoryNameToId[key] = item.id;
+        }
+        _areaTypeOptions = areaTypeItems
+            .map((e) => e.text.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        for (final item in areaTypeItems) {
+          final String key = item.text.trim();
+          if (key.isNotEmpty) _areaTypeNameToId[key] = item.id;
+        }
+      });
+      print(
+          'DcrEntryScreen: [MedicalRep] Loaded speciality: ${_specialityOptions.length}, category: ${_categoryOptions.length}, areaType: ${_areaTypeOptions.length}');
+    } catch (e) {
+      print('DcrEntryScreen: [MedicalRep] Error loading dropdowns: $e');
     }
   }
 
@@ -2177,6 +2237,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     _serviceDateCtrl.dispose();
     _customerNameCtrl.dispose();
     _customerCodeCtrl.dispose();
+    _uinCtrl.dispose();
     _customerMobileCtrl.dispose();
     super.dispose();
   }
@@ -3510,6 +3571,65 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
+      // Speciality (Medical Rep)
+      _LabeledField(
+        label: 'Speciality',
+        child: SearchableDropdown(
+          options: _specialityOptions,
+          value: _selectedSpeciality,
+          hintText: '-- Select Speciality --',
+          searchHintText: 'Search speciality...',
+          onChanged: (v) {
+            setState(() {
+              _selectedSpeciality = v;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Category (Medical Rep)
+      _LabeledField(
+        label: 'Category',
+        child: SearchableDropdown(
+          options: _categoryOptions,
+          value: _selectedCategory,
+          hintText: '-- Select Category --',
+          searchHintText: 'Search category...',
+          onChanged: (v) {
+            setState(() {
+              _selectedCategory = v;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // Area Type (Medical Rep)
+      _LabeledField(
+        label: 'Area Type',
+        child: SearchableDropdown(
+          options: _areaTypeOptions,
+          value: _selectedAreaType,
+          hintText: '-- Select Area Type --',
+          searchHintText: 'Search area type...',
+          onChanged: (v) {
+            setState(() {
+              _selectedAreaType = v;
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      // UIN (user-entered)
+      _LabeledField(
+        label: 'UIN',
+        child: TextFormField(
+          controller: _uinCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Enter UIN',
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
       // Mobile *
       _LabeledField(
         label: 'Mobile',
@@ -3612,10 +3732,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   }
 
   Future<void> _saveNewCustomer() async {
-    // Basic validation for required fields
     final String name = _customerNameCtrl.text.trim();
     final String code = _customerCodeCtrl.text.trim();
     final String mobile = _customerMobileCtrl.text.trim();
+    final String uin = _uinCtrl.text.trim();
+
     if (name.isEmpty) {
       ToastMessage.show(
         context,
@@ -3673,6 +3794,49 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       return;
     }
 
+    final int currentUserId = getIt.isRegistered<UserDetailStore>()
+        ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
+        : 0;
+    final int? roleCategory = getIt.isRegistered<UserDetailStore>()
+        ? getIt<UserDetailStore>().userDetail?.roleCategory
+        : null;
+    // Medical Rep: roleCategory == 3 → Doctor/Save. Else → Pharmacy/Save (Sales Rep).
+    final bool isMedicalRep = roleCategory == 3;
+
+    if (isMedicalRep) {
+      // Medical Rep: require Speciality, Category, Area Type
+      if (_selectedSpeciality == null ||
+          !_specialityNameToId.containsKey(_selectedSpeciality)) {
+        ToastMessage.show(
+          context,
+          message: 'Please select speciality',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      if (_selectedCategory == null ||
+          !_categoryNameToId.containsKey(_selectedCategory)) {
+        ToastMessage.show(
+          context,
+          message: 'Please select category',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      if (_selectedAreaType == null ||
+          !_areaTypeNameToId.containsKey(_selectedAreaType)) {
+        ToastMessage.show(
+          context,
+          message: 'Please select area type',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+    }
+
     final dioClient =
         getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
     if (dioClient == null) {
@@ -3690,21 +3854,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final int? stateId = _stateNameToId[_selectedState!];
     final int? cityId = _cityNameToId[_selectedCity!];
 
-    final int currentUserId = getIt.isRegistered<UserDetailStore>()
-        ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
-        : 0;
-
-    final Map<String, dynamic> payload = {
-      'name': name,
-      'code': code,
-      'customerTypeId': customerTypeId ?? 0,
-      'mobile': mobile,
-      'countryId': countryId ?? 0,
-      'stateId': stateId ?? 0,
-      'cityId': cityId ?? 0,
-      'createdBy': currentUserId,
-    };
-
     try {
       showDialog(
         context: context,
@@ -3712,8 +3861,106 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
+      final String url;
+      final Map<String, dynamic> payload;
+
+      if (isMedicalRep) {
+        final int? specialityId = _specialityNameToId[_selectedSpeciality!];
+        final int? categoryId = _categoryNameToId[_selectedCategory!];
+        final int? areaTypeId = _areaTypeNameToId[_selectedAreaType!];
+        url = Endpoints.doctorSave;
+        payload = {
+          'Id': null,
+          'UserId': currentUserId,
+          'CreatedBy': currentUserId,
+          'Status': 0,
+          'SbuId': 1,
+          'Name': name,
+          'Code': code.isNotEmpty ? code : 'DCRCUST',
+          'CountryId': countryId ?? 0,
+          'CustomerId': null,
+          'StateId': stateId ?? 0,
+          'CityId': cityId ?? 0,
+          'TownId': null,
+          'CityText': null,
+          'CountryText': null,
+          'TownText': null,
+          'StateText': null,
+          'Speciality': specialityId ?? 0,
+          'SpecialityText': null,
+          'Category': categoryId ?? 0,
+          'CategoryText': null,
+          'Qualification': null,
+          'QualificationText': null,
+          'Class': null,
+          'AreaType': areaTypeId ?? 0,
+          'AreaTypeText': null,
+          'Address': null,
+          'HospitalName': null,
+          'HospitalAddress': null,
+          'MobileNo': mobile.isNotEmpty ? mobile : null,
+          'DOB': null,
+          'AnniversaryDate': null,
+          'UIN': uin.isNotEmpty ? uin : null,
+          'JobCategoryText': null,
+          'GenderText': null,
+          'Gender': null,
+          'JobCategory': null,
+          'QualificationRequested': null,
+          'QualificationList': null,
+          'CityRequested': null,
+          'CityList': null,
+          'ItemRequested': null,
+          'ItemList': null,
+          'Active': 1,
+          'ActiveText': null,
+          'SubType': 1,
+        };
+      } else {
+        url = Endpoints.pharmacySave;
+        payload = {
+          'Id': null,
+          'SbuId': 1,
+          'UserId': currentUserId,
+          'CreatedBy': currentUserId,
+          'Status': 0,
+          'Name': name,
+          'Code': code.isNotEmpty ? code : 'SALCUST',
+          'Address': null,
+          'CustomerId': null,
+          'CountryId': countryId ?? 0,
+          'StateId': stateId ?? 0,
+          'CityId': cityId ?? 0,
+          'DistrictId': null,
+          'TownId': null,
+          'ZipCode': null,
+          'Type': customerTypeId ?? 0,
+          'Zip': null,
+          'SalesRepId': null,
+          'FieldManagerId': null,
+          'Provinance': null,
+          'Active': 1,
+          'DistributerId': null,
+          'BizUnit': 1,
+          'CountryText': null,
+          'StateText': null,
+          'CityText': null,
+          'TownText': null,
+          'DistrictText': null,
+          'TypeText': null,
+          'SubType': 0,
+          'SalesRepName': null,
+          'FieldManager': null,
+          'ActiveText': null,
+          'DistributerText': null,
+          'VatRegistered': null,
+          'BonusEnabled': null,
+          'DiscountEnabled': null,
+        };
+      }
+
       final response = await dioClient.dio.post(
-        Endpoints.dcrCustomerSaveDummy,
+        url,
         data: payload,
         options: Options(
           headers: const {'Content-Type': 'application/json'},
@@ -3723,7 +3970,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       if (!mounted) return;
       Navigator.of(context).pop(); // close loader
 
-      // Treat any 2xx response as success for now
       if (response.statusCode != null &&
           response.statusCode! >= 200 &&
           response.statusCode! < 300) {

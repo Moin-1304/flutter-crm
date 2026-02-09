@@ -93,6 +93,12 @@ class Endpoints {
   // NOTE: The actual URL can be updated later without changing UI logic.
   static const String dcrCustomerSaveDummy =
       "$baseUrl/PharmaCRM/DCR/SaveCustomerDummy";
+
+  /// Medical Rep: save doctor/customer from DCR Customer tab
+  static const String doctorSave = "$baseUrl/Doctor/Save";
+
+  /// Sales Rep: save pharmacy/customer from DCR Customer tab
+  static const String pharmacySave = "$baseUrl/Pharmacy/Save";
   // Service Report Save endpoint
   static const String serviceReportSave =
       "$baseUrl/PharmaCRM/ServiceReport/Save";

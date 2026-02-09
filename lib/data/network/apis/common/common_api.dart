@@ -3,11 +3,27 @@ import 'package:dio/dio.dart';
 import '../../../../core/data/network/dio/dio_client.dart';
 import '../../constants/endpoints.dart';
 import '../../../../domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, CommonGetAutoRequest, TaxComponentResponse, ItemDetailResponse,
-         PurposeOfVisitRequest, CustomerTypeRequest, TourPlanProductsRequest, DcrProductsRequest,
-         MappedInstrumentsRequest, StoreListRequest, IssueToListRequest, IssueAgainstListRequest,
-         DivisionCategoryRequest, CustomerListRequest, ItemDescriptionRequest, BatchNoRequest,
-         ReportingManagerRequest, TaxComponentRequest, DeviationInstrumentRequest, DeviationSerialNumberRequest;
+    show
+        CommonDropdownItem,
+        CommonGetAutoRequest,
+        TaxComponentResponse,
+        ItemDetailResponse,
+        PurposeOfVisitRequest,
+        CustomerTypeRequest,
+        TourPlanProductsRequest,
+        DcrProductsRequest,
+        MappedInstrumentsRequest,
+        StoreListRequest,
+        IssueToListRequest,
+        IssueAgainstListRequest,
+        DivisionCategoryRequest,
+        CustomerListRequest,
+        ItemDescriptionRequest,
+        BatchNoRequest,
+        ReportingManagerRequest,
+        TaxComponentRequest,
+        DeviationInstrumentRequest,
+        DeviationSerialNumberRequest;
 
 class CommonApi {
   final DioClient _dioClient;
@@ -150,6 +166,24 @@ class CommonApi {
     return getAuto(request);
   }
 
+  /// Get Speciality Dropdown List for Medical Rep (CommandType: 118, Value: 154)
+  Future<List<CommonDropdownItem>> getSpecialityDropdownList() async {
+    final request = CommonGetAutoRequest(commandType: 118, value: 154);
+    return getAuto(request);
+  }
+
+  /// Get Category Dropdown List for Medical Rep (CommandType: 117, Value: 153)
+  Future<List<CommonDropdownItem>> getCategoryDropDownList() async {
+    final request = CommonGetAutoRequest(commandType: 117, value: 153);
+    return getAuto(request);
+  }
+
+  /// Get Area Type Dropdown List for Medical Rep (CommandType: 115, Value: 151)
+  Future<List<CommonDropdownItem>> getAreaTypeDropdownList() async {
+    final request = CommonGetAutoRequest(commandType: 115, value: 151);
+    return getAuto(request);
+  }
+
   /// Get Purpose of Visit List (CommandType: 337)
   /// text should be "ServiceEng PurposeVisit" for Service Engineer or "Salesrep PurposeVisit" for Sales Rep
   Future<List<CommonDropdownItem>> getPurposeOfVisitList(
@@ -251,7 +285,8 @@ class CommonApi {
     try {
       final request = DcrProductsRequest(userId: userId);
       final requestJson = request.toJson();
-      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestJson);
+      final requestJsonString =
+          const JsonEncoder.withIndent('  ').convert(requestJson);
       print('═══════════════════════════════════════════════════════════');
       print('📤 DCR Products (CommandType:335) API Request');
       print('═══════════════════════════════════════════════════════════');
@@ -303,9 +338,11 @@ class CommonApi {
   }
 
   /// Get Instruments List for Deviation (CommandType: 335, IsFromAMCUser: 1)
-  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(int userId) async {
+  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(
+      int userId) async {
     try {
-      print('🔵 [Deviation Instruments] Loading instruments with userId: $userId');
+      print(
+          '🔵 [Deviation Instruments] Loading instruments with userId: $userId');
       final request = DeviationInstrumentRequest(userId: userId);
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
@@ -349,14 +386,14 @@ class CommonApi {
       print('   ToDate: $toDate');
       print('   BizUnit: $bizUnit');
       print('   Module: $module');
-      
+
       final request = DeviationSerialNumberRequest(
         id: instrumentId,
         toDate: toDate,
         bizUnit: bizUnit,
         module: module,
       );
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAutoBigInt,
         data: request.toJson(),
@@ -372,7 +409,8 @@ class CommonApi {
           final items = (response.data as List)
               .map((item) => CommonDropdownItem.fromJson(item))
               .toList();
-          print('✅ [Deviation Serial Numbers] Loaded ${items.length} serial numbers');
+          print(
+              '✅ [Deviation Serial Numbers] Loaded ${items.length} serial numbers');
           return items;
         } else {
           throw Exception('Invalid response format - expected array');
@@ -382,14 +420,16 @@ class CommonApi {
       }
     } catch (e) {
       print('❌ [Deviation Serial Numbers] Error: ${e.toString()}');
-      throw Exception('Failed to get deviation serial numbers: ${e.toString()}');
+      throw Exception(
+          'Failed to get deviation serial numbers: ${e.toString()}');
     }
   }
 
   Future<List<CommonDropdownItem>> getMappedInstrumentsList(
       int userId, int customerId) async {
     try {
-      print('getMappedInstrumentsList: userId: $userId, customerId: $customerId');
+      print(
+          'getMappedInstrumentsList: userId: $userId, customerId: $customerId');
       final request =
           MappedInstrumentsRequest(userId: userId, customerId: customerId);
       final response = await _dioClient.dio.post(
@@ -456,7 +496,7 @@ class CommonApi {
     try {
       final request = IssueToListRequest(userId: userId, bizUnit: bizUnit);
       final requestPayload = request.toJson();
-      
+
       // Print API request details with formatted JSON
       print('═══════════════════════════════════════════════════════════');
       print('📤 Issue To List API Request');
@@ -487,7 +527,7 @@ class CommonApi {
       print('  IncludeCancelled: ${requestPayload['IncludeCancelled']}');
       print('  Sector: ${requestPayload['Sector']}');
       print('═══════════════════════════════════════════════════════════');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: requestPayload,
@@ -648,7 +688,7 @@ class CommonApi {
         module: module,
       );
       final requestJson = request.toJson();
-      
+
       // Console logging for request payload
       print('═══════════════════════════════════════════════════════════');
       print('📤 Customer List API Request (CommandType: 71)');
@@ -680,7 +720,7 @@ class CommonApi {
       print('   TownId: ${requestJson['TownId']}');
       print('   Module: ${requestJson['Module']}');
       print('═══════════════════════════════════════════════════════════');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: requestJson,
@@ -690,7 +730,7 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🟢 [CommonApi] CUSTOMER LIST API RESPONSE');
       print('📊 Status Code: ${response.statusCode}');
       if (response.data != null && response.data is List) {
@@ -767,7 +807,8 @@ class CommonApi {
       };
 
       // Console logging for request details
-      final requestJsonString = const JsonEncoder.withIndent('  ').convert(requestData);
+      final requestJsonString =
+          const JsonEncoder.withIndent('  ').convert(requestData);
       print('═══════════════════════════════════════════════════════════');
       print('📤 GetMappedCustomersByEmployeeId API Request');
       print('═══════════════════════════════════════════════════════════');
@@ -808,7 +849,9 @@ class CommonApi {
           return (response.data as List)
               .map((item) => CommonDropdownItem.fromJson(item))
               .toList();
-        } else if (response.data is Map && response.data.containsKey('data') && response.data['data'] is List) {
+        } else if (response.data is Map &&
+            response.data.containsKey('data') &&
+            response.data['data'] is List) {
           return (response.data['data'] as List)
               .map((item) => CommonDropdownItem.fromJson(item))
               .toList();
@@ -1114,7 +1157,7 @@ class CommonApi {
     required int id,
   }) async {
     try {
-      final request = ReportingManagerRequest(id:id);
+      final request = ReportingManagerRequest(id: id);
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: request.toJson(),
@@ -1154,11 +1197,11 @@ class CommonApi {
         'CommandType': 158,
         'Customer': customerId,
       };
-      
+
       print('🔵 Sales Rep API Request: $requestData');
       print('🔵 Sales Rep API Endpoint: ${Endpoints.commonGetAuto}');
       print('🔵 Sales Rep API - UserId: $userId, Customer: $customerId');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: requestData,
@@ -1171,9 +1214,10 @@ class CommonApi {
 
       print('🔵 Sales Rep API Response Status: ${response.statusCode}');
       print('🔵 Sales Rep API Response Headers: ${response.headers}');
-      print('🔵 Sales Rep API Response Data Type: ${response.data.runtimeType}');
+      print(
+          '🔵 Sales Rep API Response Data Type: ${response.data.runtimeType}');
       print('🔵 Sales Rep API Response Data: ${response.data}');
-      
+
       if (response.data == null) {
         print('⚠️ Sales Rep API Response: null');
         return [];
@@ -1195,19 +1239,25 @@ class CommonApi {
         print('🔵 Map keys: ${(response.data as Map).keys}');
         print('🔵 Map values: ${(response.data as Map).values}');
         // Try to find a list in the map
-        final Map<String, dynamic> dataMap = response.data as Map<String, dynamic>;
+        final Map<String, dynamic> dataMap =
+            response.data as Map<String, dynamic>;
         if (dataMap.containsKey('items') && dataMap['items'] is List) {
           final List<dynamic> items = dataMap['items'] as List<dynamic>;
           print('✅ Found items list in response map: ${items.length} items');
-          return items.map((item) => CommonDropdownItem.fromJson(item)).toList();
+          return items
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
         } else if (dataMap.containsKey('data') && dataMap['data'] is List) {
           final List<dynamic> items = dataMap['data'] as List<dynamic>;
           print('✅ Found data list in response map: ${items.length} items');
-          return items.map((item) => CommonDropdownItem.fromJson(item)).toList();
+          return items
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
         }
         return [];
       } else {
-        print('⚠️ Sales Rep API Response: Unknown type (${response.data.runtimeType})');
+        print(
+            '⚠️ Sales Rep API Response: Unknown type (${response.data.runtimeType})');
         return [];
       }
     } catch (e, stackTrace) {
@@ -1249,10 +1299,10 @@ class CommonApi {
         'commandType': 105,
         'distributerId': distributerId,
       };
-      
+
       print('🔵 Item List API Request: $requestData');
       print('🔵 Item List API Endpoint: ${Endpoints.commonGetAuto}');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: requestData,
@@ -1262,9 +1312,9 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🔵 Item List API Response Status: ${response.statusCode}');
-      
+
       if (response.data == null) {
         print('⚠️ Item List API Response: null');
         return [];
@@ -1281,7 +1331,8 @@ class CommonApi {
         print('⚠️ Item List API Response: Map (not List)');
         return [];
       } else {
-        print('❌ Item List API Response: Unexpected type ${response.data.runtimeType}');
+        print(
+            '❌ Item List API Response: Unexpected type ${response.data.runtimeType}');
         throw Exception('Invalid response format - expected array');
       }
     } catch (e) {
@@ -1303,7 +1354,7 @@ class CommonApi {
       print('   Date: $date');
       print('   CustomerId: $customerId');
       print('   URL: ${Endpoints.commonGetItemDetail}');
-      
+
       final response = await _dioClient.dio.get(
         Endpoints.commonGetItemDetail,
         queryParameters: {
@@ -1346,10 +1397,10 @@ class CommonApi {
         'CommandType': 64,
         'Item': itemId,
       };
-      
+
       print('🔵 UOM List API Request: $requestData');
       print('🔵 UOM List API Endpoint: ${Endpoints.commonGetAuto}');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: requestData,
@@ -1359,9 +1410,9 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🔵 UOM List API Response Status: ${response.statusCode}');
-      
+
       if (response.data == null) {
         print('⚠️ UOM List API Response: null');
         return [];
@@ -1378,18 +1429,20 @@ class CommonApi {
         print('⚠️ UOM List API Response: Map (not List)');
         return [];
       } else {
-        print('❌ UOM List API Response: Unexpected type ${response.data.runtimeType}');
+        print(
+            '❌ UOM List API Response: Unexpected type ${response.data.runtimeType}');
         throw Exception('Invalid response format - expected array');
       }
     } catch (e) {
       // Check if it's a connection error (expected and handled gracefully)
-      final isConnectionError = e.toString().contains('Connection refused') || 
-                                e.toString().contains('connection error') ||
-                                e.toString().contains('SocketException');
-      
+      final isConnectionError = e.toString().contains('Connection refused') ||
+          e.toString().contains('connection error') ||
+          e.toString().contains('SocketException');
+
       if (isConnectionError) {
         // Connection errors are expected and handled with fallbacks - log less verbosely
-        print('⚠️ [CommonApi] UOM List API connection error - using fallback defaults');
+        print(
+            '⚠️ [CommonApi] UOM List API connection error - using fallback defaults');
       } else {
         // Other errors should be logged fully
         print('❌ [CommonApi] UOM List API Exception: ${e.toString()}');
@@ -1409,7 +1462,7 @@ class CommonApi {
       final requestData = {
         'Id': itemId,
       };
-      
+
       // Console logging for request payload
       print('═══════════════════════════════════════════════════════════');
       print('📤 Get Item Tax List API Request');
@@ -1420,7 +1473,7 @@ class CommonApi {
       print('📋 Request Details:');
       print('   Id: ${requestData['Id']} (Item ID)');
       print('═══════════════════════════════════════════════════════════');
-      
+
       final response = await _dioClient.dio.get(
         Endpoints.commonGetCatItemTax,
         queryParameters: requestData,
@@ -1430,9 +1483,9 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🔵 Item Tax API Response Status: ${response.statusCode}');
-      
+
       if (response.data == null) {
         print('⚠️ Item Tax API Response: null');
         return [];
@@ -1449,7 +1502,8 @@ class CommonApi {
         print('⚠️ Item Tax API Response: Map (not List)');
         return [];
       } else {
-        print('❌ Item Tax API Response: Unexpected type ${response.data.runtimeType}');
+        print(
+            '❌ Item Tax API Response: Unexpected type ${response.data.runtimeType}');
         throw Exception('Invalid response format - expected array');
       }
     } catch (e) {
@@ -1468,10 +1522,10 @@ class CommonApi {
         id: 4,
         pageType: 2,
       );
-      
+
       print('🔵 Tax List API Request: ${request.toJson()}');
       print('🔵 Tax List API Endpoint: ${Endpoints.commonGetAuto}');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: request.toJson(),
@@ -1481,9 +1535,9 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🔵 Tax List API Response Status: ${response.statusCode}');
-      
+
       if (response.data == null) {
         print('⚠️ Tax List API Response: null');
         return [];
@@ -1500,7 +1554,8 @@ class CommonApi {
         print('⚠️ Tax List API Response: Map (not List)');
         return [];
       } else {
-        print('❌ Tax List API Response: Unexpected type ${response.data.runtimeType}');
+        print(
+            '❌ Tax List API Response: Unexpected type ${response.data.runtimeType}');
         throw Exception('Invalid response format - expected array');
       }
     } catch (e) {
@@ -1519,10 +1574,10 @@ class CommonApi {
         id: 2,
         pageType: 2,
       );
-      
+
       print('🔵 Discount List API Request: ${request.toJson()}');
       print('🔵 Discount List API Endpoint: ${Endpoints.commonGetAuto}');
-      
+
       final response = await _dioClient.dio.post(
         Endpoints.commonGetAuto,
         data: request.toJson(),
@@ -1532,9 +1587,9 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🔵 Discount List API Response Status: ${response.statusCode}');
-      
+
       if (response.data == null) {
         print('⚠️ Discount List API Response: null');
         return [];
@@ -1551,7 +1606,8 @@ class CommonApi {
         print('⚠️ Discount List API Response: Map (not List)');
         return [];
       } else {
-        print('❌ Discount List API Response: Unexpected type ${response.data.runtimeType}');
+        print(
+            '❌ Discount List API Response: Unexpected type ${response.data.runtimeType}');
         throw Exception('Invalid response format - expected array');
       }
     } catch (e) {
@@ -1592,10 +1648,10 @@ class CommonApi {
         pageId: pageId,
         type: type,
       );
-      
+
       print('🔵 Tax Component API Request: ${request.toJson()}');
       print('🔵 Tax Component API Endpoint: ${Endpoints.taxComponentGet}');
-      
+
       // Using GET request with query parameters
       final response = await _dioClient.dio.get(
         Endpoints.taxComponentGet,
@@ -1606,9 +1662,9 @@ class CommonApi {
           },
         ),
       );
-      
+
       print('🔵 Tax Component API Response Status: ${response.statusCode}');
-      
+
       if (response.data == null) {
         print('⚠️ Tax Component API Response: null');
         return [];
@@ -1624,9 +1680,12 @@ class CommonApi {
       } else if (response.data is Map) {
         // If single object, wrap in list
         print('✅ Tax Component API Response: Single object');
-        return [TaxComponentResponse.fromJson(response.data as Map<String, dynamic>)];
+        return [
+          TaxComponentResponse.fromJson(response.data as Map<String, dynamic>)
+        ];
       } else {
-        print('❌ Tax Component API Response: Unexpected type ${response.data.runtimeType}');
+        print(
+            '❌ Tax Component API Response: Unexpected type ${response.data.runtimeType}');
         throw Exception('Invalid response format - expected array or object');
       }
     } catch (e) {
