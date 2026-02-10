@@ -1,5 +1,3 @@
-
-
 // Models and item state
 class Product {
   final String id;

@@ -180,17 +180,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     _loadUserPagePrivileges();
 
     if (_isEditMode) {
-      // Always fetch from API if orderId is provided to get complete data with items
-      if (widget.orderId != null) {
+      // Always fetch full order from API when we have an ID (orderId or orderData.id)
+      // so we get complete data including fileUploadDetails/attachments
+      final idToFetch = widget.orderId != null
+          ? int.tryParse(widget.orderId!)
+          : widget.orderData?.id;
+      if (idToFetch != null && idToFetch > 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _loadOrderData();
+          _loadOrderData(fetchOrderId: idToFetch);
         });
       } else if (widget.orderData != null) {
-        // If only orderData is provided (no orderId), use it but note it might be incomplete
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _loadedOrderData = widget.orderData;
           _populateFormFromOrderData(widget.orderData!);
-          // Update draft save enabled after order data is populated
           _updateDraftSaveEnabled();
         });
       } else {
@@ -528,21 +530,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
   }
 
-  Future<void> _loadOrderData() async {
+  Future<void> _loadOrderData({int? fetchOrderId}) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
       SalesOrderApiItem? orderData;
+      final orderId = fetchOrderId ??
+          (widget.orderId != null ? int.tryParse(widget.orderId!) : null);
 
-      // Always fetch from API if orderId is provided to get complete data with items and tax details
-      if (widget.orderId != null) {
-        final orderId = int.tryParse(widget.orderId!);
-        if (orderId != null && orderId > 0) {
-          final salesRepository = getIt<SalesRepository>();
-          orderData = await salesRepository.getSalesOrderById(orderId);
-        }
+      // Fetch from API when we have an ID to get complete data (items, tax, fileUploadDetails)
+      if (orderId != null && orderId > 0) {
+        final salesRepository = getIt<SalesRepository>();
+        orderData = await salesRepository.getSalesOrderById(orderId);
       }
 
       if (orderData != null && mounted) {
@@ -1107,10 +1108,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     final remarks =
         itemData['remarks']?.toString() ?? itemData['Remarks']?.toString();
+    final despatchedQty =
+        itemData['despatchedQty'] ?? itemData['DespatchedQty'];
     final lineItem = _LineItem.fromProduct(
       defaultProduct,
       reqDate: reqDate,
-      qty: (itemData['quantity'] ?? itemData['qty'] ?? 0).toInt(),
+      qty:
+          (itemData['quantity'] ?? itemData['Quantity'] ?? itemData['qty'] ?? 0)
+              .toInt(),
       bonusQty:
           (itemData['bonusQty'] ?? itemData['bonusQuantity'] ?? 0).toInt(),
       addlBonusQty:
@@ -1123,6 +1128,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       uom: uom,
       remarks: remarks,
     );
+    if (despatchedQty != null) {
+      final v = despatchedQty is int
+          ? despatchedQty
+          : int.tryParse(despatchedQty.toString());
+      if (v != null && v >= 0) lineItem.despatchedQty = v;
+    }
 
     // Set selectedUOM from itemData if available (before loading options)
     if (uom != null && uom.isNotEmpty) {
@@ -4363,90 +4374,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             // Attachments List - Scrollable (shown when expanded)
             if (_isAttachmentsExpanded) ...[
               const SizedBox(height: 16),
-              if (_attachments.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(40),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade200, width: 1),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'No attachments. Click "Add File" to upload.',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _attachments.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final file = _attachments[index];
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border:
-                              Border.all(color: Colors.grey.shade200, width: 1),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.insert_drive_file,
-                              color: Colors.grey.shade600,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    file.name,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.grey.shade900,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _formatFileSize(file.size),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _attachments.removeAt(index);
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
+              _buildAttachmentsList(isTablet),
             ],
           ],
         ),
@@ -4495,6 +4423,192 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  /// Build attachments list: existing (from loaded order) + new (picked files).
+  Widget _buildAttachmentsList(bool isTablet) {
+    final existingAttachments =
+        _loadedOrderData?.fileUploadDetails ?? <FileUploadDetail>[];
+    final hasExisting = existingAttachments.isNotEmpty;
+    final hasNew = _attachments.isNotEmpty;
+
+    if (!hasExisting && !hasNew) {
+      return Container(
+        padding: const EdgeInsets.all(40),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade200, width: 1),
+        ),
+        child: Center(
+          child: Text(
+            'No attachments. Click "Add File" to upload.',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 400),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          if (hasExisting) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Existing attachments',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
+            ...existingAttachments.map((att) {
+              final name = (att.fileName ?? '').trim().isNotEmpty
+                  ? att.fileName!.trim()
+                  : 'Attachment';
+              final ext =
+                  (att.extension ?? '').toLowerCase().replaceAll('.', '');
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200, width: 1),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.insert_drive_file,
+                      color: Colors.grey.shade600,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade900,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (ext.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                ext.toUpperCase(),
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Saved',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 16),
+          ],
+          if (hasNew) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'New attachments',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
+            ...List.generate(_attachments.length, (index) {
+              final file = _attachments[index];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200, width: 1),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.insert_drive_file,
+                      color: Colors.grey.shade600,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            file.name,
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade900,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatFileSize(file.size),
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () {
+                        setState(() => _attachments.removeAt(index));
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildBottomActionBar({required bool isTablet}) {
@@ -5065,6 +5179,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       if (itemId == 0) continue; // Skip invalid items
 
       final qty = double.tryParse(item.qtyController.text) ?? 0.0;
+      final dispatched = (item.despatchedQty ?? 0).toDouble();
+      // Backend requires: quantity >= despatched quantity
+      final quantity = qty >= dispatched ? qty : dispatched;
       // Get rate from controller, fallback to product rate if controller is empty
       final rateFromController = item.rateController.text.isNotEmpty
           ? double.tryParse(item.rateController.text)
@@ -5076,11 +5193,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           : null;
       final mrp = mrpFromController ?? item.product.mrp;
       final discount = double.tryParse(item.discountController.text) ?? 0.0;
-      final amount = qty * unitPrice;
-      final totalAmount = amount - discount;
 
       print(
-          '🔵 Building contract item: ItemId=$itemId, Qty=$qty, Rate=$unitPrice (from controller: ${rateFromController ?? "N/A"}, product: ${item.product.rate}), MRP=$mrp (from controller: ${mrpFromController ?? "N/A"}, product: ${item.product.mrp}), Amount=$amount, TotalAmount=$totalAmount');
+          '🔵 Building contract item: ItemId=$itemId, Qty=$qty, Dispatched=$dispatched, Quantity sent=$quantity, Rate=$unitPrice');
+      final amountSent = quantity * unitPrice;
+      final totalAmountSent = amountSent - discount;
       final bonusQty = double.tryParse(item.bonusQtyController.text) ?? 0.0;
       // Format ReqdDate using the same ISO 8601 format helper
       final reqdDateStr = formatDateForApi(item.requiredDate);
@@ -5113,14 +5230,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             ? item.itemDescriptionController.text
             : item.product.name,
         item: itemId,
-        quantity: qty,
+        quantity: quantity,
         uom: uomId,
         unitPrice: unitPrice,
         mrp: mrp,
-        amount: amount,
+        amount: amountSent,
         discount: discount,
         tax: null,
-        totalAmount: totalAmount,
+        totalAmount: totalAmountSent,
         reqdDate: reqdDateStr,
         remarks: item.remarksController.text.isNotEmpty
             ? item.remarksController.text.trim()
@@ -5133,6 +5250,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         manufacturerName: item.product.manufacturer,
         isFOC: false,
         isRateUpdateConfirm: false,
+        despatchedQty: item.despatchedQty,
       ));
     }
 
@@ -5343,7 +5461,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       salesRep: salesRepId,
       salesRepName: _selectedSalesRep,
       salesContractItems: contractItems,
-      fileUploadDetails: null,
+      fileUploadDetails:
+          _isEditMode && _loadedOrderData?.fileUploadDetails != null
+              ? _loadedOrderData!.fileUploadDetails
+              : null,
       taxAndOtherChargesDetail: taxCharges,
       pageId: 3, // SalesOrder page ID
       processId: processId,
@@ -5377,6 +5498,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           0, // Use from loaded data or default to 0
       hasEdit: _loadedOrderData?.hasEdit ??
           false, // Use from loaded data or default to false
+      despatchedQty: _isEditMode ? _loadedOrderData?.despatchedQty : null,
+      despatchNo: _isEditMode ? _loadedOrderData?.despatchNo : null,
       actualCreatedBy:
           dynamicUserId, // Actual logged-in user ID (required for save to work)
     );
@@ -5460,9 +5583,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // Build save request
       final request = await _buildSaveRequest(workflowFlag);
 
-      // Call save API
+      // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
-      final response = await salesRepository.saveSalesOrder(request);
+      final response = await salesRepository.saveSalesOrder(
+        request,
+        files: _attachments.isEmpty ? null : _attachments,
+      );
 
       if (!mounted) return;
 
@@ -5541,9 +5667,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // Build save request with WorkflowFlag = 1
       final request = await _buildSaveRequest(workflowFlag);
 
-      // Call save API
+      // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
-      final response = await salesRepository.saveSalesOrder(request);
+      final response = await salesRepository.saveSalesOrder(
+        request,
+        files: _attachments.isEmpty ? null : _attachments,
+      );
 
       if (!mounted) return;
 
@@ -5673,9 +5802,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       // Build save request with WorkflowFlag = 0 for Modify
       final request = await _buildSaveRequest(0);
 
-      // Call save API
+      // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
-      final response = await salesRepository.saveSalesOrder(request);
+      final response = await salesRepository.saveSalesOrder(
+        request,
+        files: _attachments.isEmpty ? null : _attachments,
+      );
 
       if (!mounted) return;
 
@@ -5987,9 +6119,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         bonusEnabled: request.bonusEnabled,
       );
 
-      // Call save API
+      // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
-      final response = await salesRepository.saveSalesOrder(updatedRequest);
+      final response = await salesRepository.saveSalesOrder(
+        updatedRequest,
+        files: _attachments.isEmpty ? null : _attachments,
+      );
 
       if (!mounted) return;
 
@@ -6384,6 +6519,9 @@ class _LineItem {
 
   bool expanded;
 
+  /// Dispatched quantity from API (when editing). Quantity sent on save must be >= this.
+  int? despatchedQty;
+
   // Getter for remarksController that initializes if null (for hot reload compatibility)
   TextEditingController get remarksController {
     _remarksController ??= TextEditingController();
@@ -6404,6 +6542,7 @@ class _LineItem {
     this.selectedUOM,
     this.selectedTax,
     this.expanded = true,
+    this.despatchedQty,
   }) : _remarksController = remarksController ?? TextEditingController();
 
   factory _LineItem.fromProduct(

@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
 import 'package:boilerplate/data/network/apis/sales/sales_api.dart';
@@ -106,7 +107,8 @@ class SalesRepositoryImpl implements SalesRepository {
     try {
       if (getIt.isRegistered<SalesApi>()) {
         final salesApi = getIt<SalesApi>();
-        final response = await salesApi.getTransactionStatusFilters(bizUnit: bizUnit);
+        final response =
+            await salesApi.getTransactionStatusFilters(bizUnit: bizUnit);
         return response;
       }
     } catch (e) {
@@ -154,11 +156,14 @@ class SalesRepositoryImpl implements SalesRepository {
   }
 
   @override
-  Future<SalesOrderSaveResponse> saveSalesOrder(SalesOrderSaveRequest request) async {
+  Future<SalesOrderSaveResponse> saveSalesOrder(
+    SalesOrderSaveRequest request, {
+    List<PlatformFile>? files,
+  }) async {
     try {
       if (getIt.isRegistered<SalesApi>()) {
         final salesApi = getIt<SalesApi>();
-        final response = await salesApi.saveSalesOrder(request);
+        final response = await salesApi.saveSalesOrder(request, files: files);
         return response;
       }
       throw Exception('SalesApi not registered');
@@ -190,7 +195,8 @@ class SalesRepositoryImpl implements SalesRepository {
   }
 
   @override
-  Future<void> transactionCancelSalesOrder(SalesOrderTransactionCancelRequest request) async {
+  Future<void> transactionCancelSalesOrder(
+      SalesOrderTransactionCancelRequest request) async {
     try {
       if (getIt.isRegistered<SalesApi>()) {
         final salesApi = getIt<SalesApi>();
@@ -203,4 +209,3 @@ class SalesRepositoryImpl implements SalesRepository {
     }
   }
 }
-

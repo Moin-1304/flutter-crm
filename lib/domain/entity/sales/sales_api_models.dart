@@ -353,9 +353,14 @@ class SalesOrderApiItem {
       salesRep: json['salesRep']?.toString(),
       salesRepName: json['salesRepName'],
       taxId: json['taxId'],
-      salesContractItems: json['salesContractItems'],
-      fileUploadDetails: json['fileUploadDetails'],
-      taxAndOtherChargesDetail: json['taxAndOtherChargesDetail'],
+      salesContractItems:
+          json['salesContractItems'] ?? json['SalesContractItems'],
+      fileUploadDetails: json['fileUploadDetails'] ??
+          json['FileUploadDetails'] ??
+          json['Attachments'] ??
+          json['attachments'],
+      taxAndOtherChargesDetail:
+          json['taxAndOtherChargesDetail'] ?? json['TaxAndOtherChargesDetail'],
       pageId: json['pageId'],
       refid: json['refid'],
       processId: json['processId'],
@@ -399,9 +404,9 @@ class SalesOrderApiItem {
       decimalFormat: json['decimalFormat'],
       rateFormat: json['rateFormat'],
       hasEdit: json['hasEdit'],
-      despatchedQty: json['despatchedQty'],
-      invoiceNo: json['invoiceNo'],
-      despatchNo: json['despatchNo'],
+      despatchedQty: json['despatchedQty'] ?? json['DespatchedQty'],
+      invoiceNo: json['invoiceNo'] ?? json['InvoiceNo'],
+      despatchNo: json['despatchNo'] ?? json['DespatchNo'],
       isFullyUsedText: json['isFullyUsedText'],
       deliveryAddress: json['deliveryAddress'],
       isCustomerPODuplicateAllowed: json['isCustomerPODuplicateAllowed'],
@@ -437,11 +442,20 @@ class FileUploadDetail {
 
   factory FileUploadDetail.fromJson(Map<String, dynamic> json) {
     return FileUploadDetail(
-      id: json['id'] ?? 0,
-      url: json['url'],
-      fileName: json['fileName'],
-      extension: json['extension'],
+      id: json['id'] ?? json['Id'] ?? 0,
+      url: json['url'] ?? json['Url'] ?? json['filePath'] ?? json['FilePath'],
+      fileName: json['fileName'] ?? json['FileName'],
+      extension: json['extension'] ?? json['Extension'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'Id': id,
+      'Url': url,
+      'FileName': fileName,
+      'Extension': extension,
+    };
   }
 }
 
@@ -558,6 +572,7 @@ class SalesContractItem {
   final String? itemNo;
   final bool isFOC;
   final bool? isRateUpdateConfirm;
+  final int? despatchedQty;
 
   SalesContractItem({
     this.id,
@@ -596,6 +611,7 @@ class SalesContractItem {
     this.itemNo,
     required this.isFOC,
     this.isRateUpdateConfirm,
+    this.despatchedQty,
   });
 
   Map<String, dynamic> toJson() {
@@ -636,6 +652,7 @@ class SalesContractItem {
       'ItemNo': itemNo,
       'IsFOC': isFOC,
       'IsRateUpdateConfirm': isRateUpdateConfirm,
+      'DespatchedQty': despatchedQty,
     };
   }
 }
@@ -938,6 +955,16 @@ class SalesOrderSaveRequest {
     return value ? 1 : 0;
   }
 
+  static dynamic _fileUploadDetailsToJson(dynamic fileUploadDetails) {
+    if (fileUploadDetails == null) return null;
+    if (fileUploadDetails is List) {
+      return fileUploadDetails
+          .map((e) => e is FileUploadDetail ? e.toJson() : e)
+          .toList();
+    }
+    return fileUploadDetails;
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'Id': id,
@@ -977,7 +1004,7 @@ class SalesOrderSaveRequest {
       'TaxId': taxId,
       'SalesContractItems':
           salesContractItems.map((item) => item.toJson()).toList(),
-      'FileUploadDetails': fileUploadDetails,
+      'FileUploadDetails': _fileUploadDetailsToJson(fileUploadDetails),
       'TaxAndOtherChargesDetail':
           taxAndOtherChargesDetail.map((item) => item.toJson()).toList(),
       'PageId': pageId,

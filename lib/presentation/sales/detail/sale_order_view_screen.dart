@@ -1728,12 +1728,13 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   }
 
   bool _isImageExtension(String ext) {
-    final e = ext.toLowerCase();
-    return e == '.png' ||
-        e == '.jpg' ||
-        e == '.jpeg' ||
-        e == '.gif' ||
-        e == '.webp';
+    final e = ext.toLowerCase().replaceFirst(RegExp(r'^\.'), '');
+    return e == 'png' ||
+        e == 'jpg' ||
+        e == 'jpeg' ||
+        e == 'gif' ||
+        e == 'webp' ||
+        e == 'bmp';
   }
 
   String _inferExtension(String fileName, String? url) {
@@ -1752,12 +1753,11 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   }
 
   Future<void> _openAttachment(String url, bool isImage) async {
-    // For now we focus on images: show full-screen preview using cached bytes if available.
+    // Images: always open in full-screen viewer (never redirect to external link).
     if (isImage) {
-      final bytes = _attachmentImageCache[url];
       if (!mounted) return;
-      if (bytes == null) {
-        // If somehow not cached, try to fetch once more, then open.
+      // Ensure we have bytes for the viewer when possible
+      if (!_attachmentImageCache.containsKey(url)) {
         await _fetchAttachmentPreview(url);
       }
       if (!mounted) return;
@@ -1772,7 +1772,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
       return;
     }
 
-    // Non-image fallback: open in browser.
+    // Non-image: open in browser.
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1859,7 +1859,7 @@ class _SaleOrderViewScreenState extends State<SaleOrderViewScreen> {
   }
 }
 
-class _FullScreenImageViewer extends StatelessWidget {
+class _FullScreenImageViewer extends StatefulWidget {
   final Uint8List? imageBytes;
   final String imageUrl;
 
@@ -1867,6 +1867,60 @@ class _FullScreenImageViewer extends StatelessWidget {
     required this.imageBytes,
     required this.imageUrl,
   });
+
+  @override
+  State<_FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+}
+
+class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
+  Uint8List? _bytes;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.imageBytes != null && widget.imageBytes!.isNotEmpty) {
+      _bytes = widget.imageBytes;
+      _loading = false;
+    } else if (widget.imageUrl.isNotEmpty) {
+      _loadFromUrl();
+    } else {
+      _loading = false;
+      _error = 'No image source';
+    }
+  }
+
+  Future<void> _loadFromUrl() async {
+    try {
+      final dio = Dio();
+      configureSSL(dio);
+      final response = await dio.get<List<int>>(
+        widget.imageUrl,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = response.data;
+      if (data != null && data.isNotEmpty && mounted) {
+        setState(() {
+          _bytes = Uint8List.fromList(data);
+          _loading = false;
+          _error = null;
+        });
+      } else if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Empty response';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Failed to load image';
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1878,17 +1932,49 @@ class _FullScreenImageViewer extends StatelessWidget {
         title: const Text('Attachment'),
       ),
       body: Center(
-        child: imageBytes != null
-            ? InteractiveViewer(
-                child: Image.memory(
-                  imageBytes!,
-                  fit: BoxFit.contain,
-                ),
-              )
-            : const Text(
-                'Unable to load image',
-                style: TextStyle(color: Colors.white),
+        child: _buildBody(),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_bytes != null && _bytes!.isNotEmpty) {
+      return InteractiveViewer(
+        child: Image.memory(
+          _bytes!,
+          fit: BoxFit.contain,
+        ),
+      );
+    }
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Colors.white,
               ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Loading image...',
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        _error ?? 'Unable to load image',
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+        textAlign: TextAlign.center,
       ),
     );
   }

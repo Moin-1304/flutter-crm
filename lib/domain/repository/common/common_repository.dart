@@ -130,6 +130,8 @@ abstract class CommonRepository {
     required String date,
     required int customerId,
   });
+
   /// Generic GetAuto call by CommandType
-  Future<List<CommonDropdownItem>> getCommonAuto(int commandType, {int? userId});
+  Future<List<CommonDropdownItem>> getCommonAuto(int commandType,
+      {int? userId});
 }

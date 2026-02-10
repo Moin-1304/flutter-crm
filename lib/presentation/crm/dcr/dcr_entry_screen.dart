@@ -3531,6 +3531,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
   // Build Customer Fields
   List<Widget> _buildCustomerFields(BuildContext context, ThemeData theme) {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final String? roleCategory = userStore?.userDetail?.serviceArea;
+    final bool isMedicalRep = roleCategory == 'Medical Rep';
+
     return [
       // Customer Name
       _LabeledField(
@@ -3571,65 +3576,64 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
-      // Speciality (Medical Rep)
-      _LabeledField(
-        label: 'Speciality',
-        child: SearchableDropdown(
-          options: _specialityOptions,
-          value: _selectedSpeciality,
-          hintText: '-- Select Speciality --',
-          searchHintText: 'Search speciality...',
-          onChanged: (v) {
-            setState(() {
-              _selectedSpeciality = v;
-            });
-          },
-        ),
-      ),
-      const SizedBox(height: 16),
-      // Category (Medical Rep)
-      _LabeledField(
-        label: 'Category',
-        child: SearchableDropdown(
-          options: _categoryOptions,
-          value: _selectedCategory,
-          hintText: '-- Select Category --',
-          searchHintText: 'Search category...',
-          onChanged: (v) {
-            setState(() {
-              _selectedCategory = v;
-            });
-          },
-        ),
-      ),
-      const SizedBox(height: 16),
-      // Area Type (Medical Rep)
-      _LabeledField(
-        label: 'Area Type',
-        child: SearchableDropdown(
-          options: _areaTypeOptions,
-          value: _selectedAreaType,
-          hintText: '-- Select Area Type --',
-          searchHintText: 'Search area type...',
-          onChanged: (v) {
-            setState(() {
-              _selectedAreaType = v;
-            });
-          },
-        ),
-      ),
-      const SizedBox(height: 16),
-      // UIN (user-entered)
-      _LabeledField(
-        label: 'UIN',
-        child: TextFormField(
-          controller: _uinCtrl,
-          decoration: const InputDecoration(
-            hintText: 'Enter UIN',
+      // Speciality, Category, Area Type, UIN — only for Medical Representative (roleCategory == 3)
+      if (isMedicalRep) ...[
+        _LabeledField(
+          label: 'Speciality',
+          child: SearchableDropdown(
+            options: _specialityOptions,
+            value: _selectedSpeciality,
+            hintText: '-- Select Speciality --',
+            searchHintText: 'Search speciality...',
+            onChanged: (v) {
+              setState(() {
+                _selectedSpeciality = v;
+              });
+            },
           ),
         ),
-      ),
-      const SizedBox(height: 16),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Category',
+          child: SearchableDropdown(
+            options: _categoryOptions,
+            value: _selectedCategory,
+            hintText: '-- Select Category --',
+            searchHintText: 'Search category...',
+            onChanged: (v) {
+              setState(() {
+                _selectedCategory = v;
+              });
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Area Type',
+          child: SearchableDropdown(
+            options: _areaTypeOptions,
+            value: _selectedAreaType,
+            hintText: '-- Select Area Type --',
+            searchHintText: 'Search area type...',
+            onChanged: (v) {
+              setState(() {
+                _selectedAreaType = v;
+              });
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'UIN',
+          child: TextFormField(
+            controller: _uinCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Enter UIN',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
       // Mobile *
       _LabeledField(
         label: 'Mobile',
@@ -3800,11 +3804,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final int? roleCategory = getIt.isRegistered<UserDetailStore>()
         ? getIt<UserDetailStore>().userDetail?.roleCategory
         : null;
+    final String? serviceArea = getIt.isRegistered<UserDetailStore>()
+        ? getIt<UserDetailStore>().userDetail?.serviceArea
+        : null;
     // Medical Rep: roleCategory == 3 → Doctor/Save. Else → Pharmacy/Save (Sales Rep).
     final bool isMedicalRep = roleCategory == 3;
+    // Only validate Speciality, Category, Area Type for Medical Rep service area (same as UI visibility).
+    final bool isMedicalRepServiceArea = serviceArea == 'Medical Rep';
 
-    if (isMedicalRep) {
-      // Medical Rep: require Speciality, Category, Area Type
+    if (isMedicalRepServiceArea) {
+      // Medical Rep service area: require Speciality, Category, Area Type (UIN is optional)
       if (_selectedSpeciality == null ||
           !_specialityNameToId.containsKey(_selectedSpeciality)) {
         ToastMessage.show(
@@ -3836,6 +3845,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         return;
       }
     }
+    // Non–Medical Rep service area: no validation for Speciality, Category, Area Type, UIN
 
     final dioClient =
         getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
@@ -3854,6 +3864,44 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final int? stateId = _stateNameToId[_selectedState!];
     final int? cityId = _cityNameToId[_selectedCity!];
 
+    // Ensure we have valid IDs to avoid server 500 (many backends reject 0 or null for required fields)
+    if (countryId == null || countryId <= 0) {
+      ToastMessage.show(
+        context,
+        message: 'Please select a valid country',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (stateId == null || stateId <= 0) {
+      ToastMessage.show(
+        context,
+        message: 'Please select a valid state',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (cityId == null || cityId <= 0) {
+      ToastMessage.show(
+        context,
+        message: 'Please select a valid city',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    if (customerTypeId == null || customerTypeId < 0) {
+      ToastMessage.show(
+        context,
+        message: 'Please select a valid customer type',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+
     try {
       showDialog(
         context: context,
@@ -3864,10 +3912,30 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       final String url;
       final Map<String, dynamic> payload;
 
-      if (isMedicalRep) {
-        final int? specialityId = _specialityNameToId[_selectedSpeciality!];
-        final int? categoryId = _categoryNameToId[_selectedCategory!];
-        final int? areaTypeId = _areaTypeNameToId[_selectedAreaType!];
+      // Use Doctor save only when Medical Rep service area (fields were shown and validated).
+      // Otherwise use Pharmacy save to avoid null on Speciality/Category/Area Type.
+      if (isMedicalRep && isMedicalRepServiceArea) {
+        final int? specialityId =
+            _specialityNameToId[_selectedSpeciality ?? ''];
+        final int? categoryId = _categoryNameToId[_selectedCategory ?? ''];
+        final int? areaTypeId = _areaTypeNameToId[_selectedAreaType ?? ''];
+        // Server often returns 500 when required doctor fields are 0 or missing
+        if (specialityId == null ||
+            specialityId <= 0 ||
+            categoryId == null ||
+            categoryId <= 0 ||
+            areaTypeId == null ||
+            areaTypeId <= 0) {
+          if (!mounted) return;
+          Navigator.of(context).pop();
+          ToastMessage.show(
+            context,
+            message: 'Please select valid Speciality, Category and Area Type',
+            type: ToastType.error,
+            icon: Icons.error_outline,
+          );
+          return;
+        }
         url = Endpoints.doctorSave;
         payload = {
           'Id': null,
@@ -3877,23 +3945,23 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'SbuId': 1,
           'Name': name,
           'Code': code.isNotEmpty ? code : 'DCRCUST',
-          'CountryId': countryId ?? 0,
+          'CountryId': countryId,
           'CustomerId': null,
-          'StateId': stateId ?? 0,
-          'CityId': cityId ?? 0,
+          'StateId': stateId,
+          'CityId': cityId,
           'TownId': null,
           'CityText': null,
           'CountryText': null,
           'TownText': null,
           'StateText': null,
-          'Speciality': specialityId ?? 0,
+          'Speciality': specialityId,
           'SpecialityText': null,
-          'Category': categoryId ?? 0,
+          'Category': categoryId,
           'CategoryText': null,
           'Qualification': null,
           'QualificationText': null,
           'Class': null,
-          'AreaType': areaTypeId ?? 0,
+          'AreaType': areaTypeId,
           'AreaTypeText': null,
           'Address': null,
           'HospitalName': null,
@@ -3917,6 +3985,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'SubType': 1,
         };
       } else {
+        // Pharmacy/Save payload must match API contract exactly (no extra fields).
+        // API doc: https://103.141.54.146:1445/erpapi/api/Pharmacy/Save
         url = Endpoints.pharmacySave;
         payload = {
           'Id': null,
@@ -3928,13 +3998,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'Code': code.isNotEmpty ? code : 'SALCUST',
           'Address': null,
           'CustomerId': null,
-          'CountryId': countryId ?? 0,
-          'StateId': stateId ?? 0,
-          'CityId': cityId ?? 0,
+          'CountryId': countryId,
+          'StateId': stateId,
+          'CityId': cityId,
           'DistrictId': null,
           'TownId': null,
           'ZipCode': null,
-          'Type': customerTypeId ?? 0,
+          'Type': customerTypeId!,
           'Zip': null,
           'SalesRepId': null,
           'FieldManagerId': null,
@@ -3990,9 +4060,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop(); // close loader if open
+        final String message = e.toString().contains('500') ||
+                e.toString().contains('DioException')
+            ? 'Server error while saving customer. Please check that all fields are valid and try again.'
+            : 'Error saving customer: ${e.toString().replaceFirst('Exception: ', '')}';
         ToastMessage.show(
           context,
-          message: 'Error saving customer: $e',
+          message: message,
           type: ToastType.error,
           icon: Icons.error_outline,
         );

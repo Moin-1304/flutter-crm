@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 
 abstract class SalesRepository {
@@ -41,7 +42,10 @@ abstract class SalesRepository {
     required int bizUnit,
   });
 
-  Future<SalesOrderSaveResponse> saveSalesOrder(SalesOrderSaveRequest request);
+  Future<SalesOrderSaveResponse> saveSalesOrder(
+    SalesOrderSaveRequest request, {
+    List<PlatformFile>? files,
+  });
 
   Future<void> deleteSalesOrder({
     required int id,
@@ -49,7 +53,6 @@ abstract class SalesRepository {
     required int userId,
   });
 
-  Future<void> transactionCancelSalesOrder(SalesOrderTransactionCancelRequest request);
+  Future<void> transactionCancelSalesOrder(
+      SalesOrderTransactionCancelRequest request);
 }
-
-

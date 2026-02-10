@@ -1,6 +1,10 @@
 import 'package:boilerplate/data/network/apis/common/common_api.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart'
-    show CommonDropdownItem, TaxComponentResponse, ItemDetailResponse, CommonGetAutoRequest;
+    show
+        CommonDropdownItem,
+        TaxComponentResponse,
+        ItemDetailResponse,
+        CommonGetAutoRequest;
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/di/service_locator.dart';
 
@@ -302,7 +306,8 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
-  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(int userId) async {
+  Future<List<CommonDropdownItem>> getDeviationInstrumentsList(
+      int userId) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
@@ -599,7 +604,7 @@ class CommonRepositoryImpl implements CommonRepository {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
 
-        final response = await commonApi.getReportingManagerList(id:id);
+        final response = await commonApi.getReportingManagerList(id: id);
         return response;
       }
     } catch (e) {
@@ -704,11 +709,13 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
-  Future<List<CommonDropdownItem>> getCommonAuto(int commandType, {int? userId}) async {
+  Future<List<CommonDropdownItem>> getCommonAuto(int commandType,
+      {int? userId}) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
-        final request = CommonGetAutoRequest(commandType: commandType, userId: userId);
+        final request =
+            CommonGetAutoRequest(commandType: commandType, userId: userId);
         return await commonApi.getAuto(request);
       }
     } catch (e) {
@@ -732,10 +739,10 @@ class CommonRepositoryImpl implements CommonRepository {
       }
     } catch (e) {
       // Check if it's a connection error (expected and handled gracefully)
-      final isConnectionError = e.toString().contains('Connection refused') || 
-                                e.toString().contains('connection error') ||
-                                e.toString().contains('SocketException');
-      
+      final isConnectionError = e.toString().contains('Connection refused') ||
+          e.toString().contains('connection error') ||
+          e.toString().contains('SocketException');
+
       if (!isConnectionError) {
         // Only log non-connection errors (connection errors are already logged in API layer)
         print('⚠️ [Repository] UOM List API error: ${e.toString()}');
