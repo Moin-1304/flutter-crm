@@ -1796,6 +1796,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           print('  _date: $_date');
           print('  _time: $_time');
           print('  _position: ${_position?.latitude}, ${_position?.longitude}');
+
+          // When updating DCR and user is Service Engineer: load Service Report by DCR detail Id to autofill (do not call when creating new DCR)
+          if (_isServiceEngineer &&
+              dcrEntry.detailId != null &&
+              dcrEntry.detailId! > 0) {
+            await _loadServiceReportForDcrDetail(dcrEntry.detailId!);
+          }
         } else {
           print('No DCR found with ID: ${widget.id}');
           // Show error message to user
@@ -1807,10 +1814,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               useRootNavigator: true,
               duration: const Duration(seconds: 3),
             );
-          }
-          // After base DCR details are loaded, try to load linked Service Report (if any)
-          if (_loadedEntry?.detailId != null && _loadedEntry!.detailId! > 0) {
-            await _loadServiceReportForDcrDetail(_loadedEntry!.detailId!);
           }
         }
       }
@@ -1852,7 +1855,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         return;
       }
 
-      final String url = Endpoints.serviceReportGetByDcrDetail(detailId);
+      final String url = Endpoints.serviceReportGet(detailId);
       print(
           'DcrEntryScreen: [ServiceReport] Loading existing service report from $url');
 
@@ -1861,21 +1864,37 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           response.statusCode! < 200 ||
           response.statusCode! >= 300) {
         print(
-            'DcrEntryScreen: [ServiceReport] GetByDcrDetail failed with status: ${response.statusCode}');
+            'DcrEntryScreen: [ServiceReport] Get failed with status: ${response.statusCode}');
+        return;
+      }
+
+      // 204 No Content = no service report saved previously for this DCR detail; nothing to autofill
+      if (response.statusCode == 204) {
+        print(
+            'DcrEntryScreen: [ServiceReport] Get returned 204 No Content - no existing service report');
         return;
       }
 
       final dynamic data = response.data;
       if (data == null) {
-        print(
-            'DcrEntryScreen: [ServiceReport] GetByDcrDetail returned null body');
+        print('DcrEntryScreen: [ServiceReport] Get returned null body');
         return;
       }
 
+      // API returns a single object (camelCase keys per client spec)
+      dynamic payload = data;
+      if (data is Map) {
+        final Map<String, dynamic> map = Map<String, dynamic>.from(data);
+        final dynamic dataList = map['Data'] ?? map['data'];
+        if (dataList is List && dataList.isNotEmpty) {
+          payload = dataList.first;
+        }
+      }
+
       // Defensive casting for both Map<String, dynamic> and generic Map
-      final Map<String, dynamic> json = data is Map<String, dynamic>
-          ? data
-          : Map<String, dynamic>.from(data as Map);
+      final Map<String, dynamic> json = payload is Map<String, dynamic>
+          ? payload
+          : Map<String, dynamic>.from(payload as Map);
 
       print(
           'DcrEntryScreen: [ServiceReport] Loaded existing service report: $json');
@@ -1951,6 +1970,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       final String? result = (json['result'] ?? json['Result'])?.toString();
       final String? complaintDateTimeStr =
           (json['complaintDateTime'] ?? json['ComplaintDateTime'])?.toString();
+      final String? startTimeStr =
+          (json['startTime'] ?? json['StartTime'])?.toString();
+      final String? endTimeStr =
+          (json['endTime'] ?? json['EndTime'])?.toString();
 
       final String? workDescription =
           (json['workDescription'] ?? json['WorkDescription'])?.toString();
@@ -1960,9 +1983,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
       final String? signedBy =
           (json['signedBy'] ?? json['SignedBy'])?.toString();
-      final String? signatureImageBase64 =
-          (json['signatureImageBase64'] ?? json['SignatureImageBase64'])
-              ?.toString();
+      // API returns camelCase: signatureImageBase64 or signatureValue
+      final String? signatureImageBase64 = (json['signatureImageBase64'] ??
+              json['SignatureImageBase64'] ??
+              json['signatureValue'] ??
+              json['SignatureValue'])
+          ?.toString();
 
       final dynamic serviceRateRaw = json['serviceRate'] ?? json['ServiceRate'];
       final double? serviceRate = serviceRateRaw is num
@@ -1982,6 +2008,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       if (complaintDateTimeStr != null && complaintDateTimeStr.isNotEmpty) {
         try {
           parsedComplaintDateTime = DateTime.parse(complaintDateTimeStr);
+        } catch (_) {}
+      }
+
+      DateTime? parsedStartTime;
+      if (startTimeStr != null && startTimeStr.isNotEmpty) {
+        try {
+          parsedStartTime = DateTime.parse(startTimeStr);
+        } catch (_) {}
+      }
+      DateTime? parsedEndTime;
+      if (endTimeStr != null && endTimeStr.isNotEmpty) {
+        try {
+          parsedEndTime = DateTime.parse(endTimeStr);
         } catch (_) {}
       }
 
@@ -2037,6 +2076,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         }
         if (parsedComplaintDateTime != null) {
           _complaintDateTime = parsedComplaintDateTime;
+        }
+        if (parsedStartTime != null) {
+          _startTime = parsedStartTime;
+        }
+        if (parsedEndTime != null) {
+          _endTime = parsedEndTime;
         }
 
         // Complaint fields

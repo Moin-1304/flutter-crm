@@ -104,9 +104,11 @@ class Endpoints {
       "$baseUrl/PharmaCRM/ServiceReport/Save";
   static const String serviceReportUpdate =
       "$baseUrl/PharmaCRM/ServiceReport/Update";
-  // Service Report Get by DCR detail
-  static String serviceReportGetByDcrDetail(int dcrDetailId) =>
-      "$baseUrl/PharmaCRM/ServiceReport/GetByDcrDetailId?DcrDetailId=$dcrDetailId";
+
+  /// Service Report Get: pass DCR details Id to autofill service report when updating DCR.
+  /// Only used when editing existing DCR (not when creating new).
+  static String serviceReportGet(int dcrDetailId) =>
+      "$baseUrl/PharmaCRM/ServiceReport/Get?Id=$dcrDetailId";
 
 // Common endpoints for dropdowns
   static const String commonGetAuto = "$baseUrl/Common/GetAuto";
