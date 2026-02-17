@@ -26,6 +26,11 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/rendering.dart';
 
+/// Format DateTime for Service Report API. .NET expects ISO 8601 (with T) for DateTime.
+String _formatServiceReportDateTimeForApi(DateTime d) {
+  return d.toIso8601String();
+}
+
 // Service report enums and helpers
 enum ServiceReportType {
   Installation,
@@ -258,6 +263,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   DateTime? _endTime;
   String? _electricitySafetyTest;
   int? _serviceReportId;
+
+  /// Original CreatedDate from GET; sent back on Update to satisfy server.
+  String? _serviceReportCreatedDate;
   List<String> _electricitySafetyOptions = [];
   final Map<String, int> _electricitySafetyNameToId = <String, int>{};
   DateTime? _complaintDateTime;
@@ -1250,28 +1258,34 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     }
   }
 
+  /// Load Customer Type list for DCR Customer tab (Sales Rep only).
+  /// Uses Common/GetAuto with CommandType: 112, Type: "LI TYPE".
+  /// Not loaded or shown for Medical Rep (no Customer Type concept for them).
   Future<void> _loadCustomerTypes() async {
     try {
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      if (userStore?.userDetail?.serviceArea == 'Medical Rep') {
+        if (mounted) {
+          setState(() {
+            _customerTypeOptions = [];
+            _customerTypeNameToId.clear();
+          });
+        }
+        print(
+            'DcrEntryScreen: [CustomerTypes] Skipping - Medical Rep (Customer Type not applicable)');
+        return;
+      }
       if (getIt.isRegistered<DioClient>()) {
         final dioClient = getIt<DioClient>();
         final requestData = {
-          'SearchText': null,
-          'Id': null,
-          'TransactionId': null,
-          'UserId': null,
-          'CommandType': 102,
-          'CommandText': null,
-          'Value': null,
-          'CountryId': null,
-          'Key': null,
-          'Text': null,
-          'Type': 'CUSTOMER SUBTYPE',
-          'TaxFlag': 0,
-          'IncludeCancelled': false,
+          'CommandType': 112,
+          'Type': 'LI TYPE',
         };
 
         print(
-            'DcrEntryScreen: [CustomerTypes] Requesting CommandType=102 (CUSTOMER SUBTYPE)');
+            'DcrEntryScreen: [CustomerTypes] Requesting CommandType=112 (LI TYPE)');
         final response = await dioClient.dio.post(
           Endpoints.commonGetAuto,
           data: requestData,
@@ -1908,6 +1922,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           ? idRaw
           : (idRaw is String ? int.tryParse(idRaw) ?? 0 : 0);
 
+      // Store CreatedDate as-is from API so we send same format back on Update (.NET expects ISO 8601)
+      String? parsedCreatedDateStr;
+      final String? createdDateStr =
+          (json['createdDate'] ?? json['CreatedDate'])?.toString();
+      if (createdDateStr != null && createdDateStr.isNotEmpty) {
+        parsedCreatedDateStr = createdDateStr;
+      }
+
       final String? customerName =
           (json['customerName'] ?? json['CustomerName'])?.toString();
       final dynamic customerIdRaw = json['customerId'] ?? json['CustomerId'];
@@ -2027,6 +2049,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       if (!mounted) return;
       setState(() {
         _serviceReportId = id > 0 ? id : _serviceReportId;
+        if (parsedCreatedDateStr != null) {
+          _serviceReportCreatedDate = parsedCreatedDateStr;
+        }
 
         // Customer
         if (customerName != null && customerName.isNotEmpty) {
@@ -3402,53 +3427,79 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                           ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
                           : 0;
                   final int dcrDetailId = _loadedEntry?.detailId ?? 0;
+                  final bool isUpdate =
+                      _serviceReportId != null && _serviceReportId! > 0;
+                  final DateTime now = DateTime.now();
+                  final String dateTimeStr =
+                      _formatServiceReportDateTimeForApi(now);
+                  // On update, send original CreatedDate; .NET requires ISO 8601 (with T not space)
+                  String createdDateForPayload = dateTimeStr;
+                  if (isUpdate &&
+                      _serviceReportCreatedDate != null &&
+                      _serviceReportCreatedDate!.isNotEmpty) {
+                    createdDateForPayload = _serviceReportCreatedDate!
+                        .replaceFirst(' ',
+                            'T'); // normalize "yyyy-MM-dd HH:mm" -> ISO 8601
+                  }
+                  // Payload with PascalCase keys to match Service Report Update API doc (Save accepts same)
                   final Map<String, dynamic> payload = {
-                    'id': _serviceReportId ?? 0,
-                    'createdBy': currentUserId,
-                    'status': 1,
-                    'sbuId': 0,
-                    'dcrDetailId': dcrDetailId,
-                    'customerName': _serviceReportCustomer ?? '',
-                    'customerId': customerId,
-                    'contactPerson': _contactPersonCtrl.text.trim(),
-                    'contactMobile': _contactMobileCtrl.text.trim(),
-                    'serviceDate': _serviceDate?.toIso8601String() ??
-                        DateTime.now().toIso8601String(),
-                    'productId': productId,
-                    'product': _serviceReportProduct ?? '',
-                    'serialNumber': _serialNumberCtrl.text.trim(),
-                    'serviceTypeId': _selectedServiceType?.value ?? 0,
-                    'serviceType': _selectedServiceType?.description ?? '',
-                    'startTime': _startTime?.toIso8601String(),
-                    'endTime': _endTime?.toIso8601String(),
-                    'electricitySafetyTest':
-                        _selectedElectricitySafetyTest?.description ?? '',
-                    'electricitySafetyTestId':
+                    'CreatedDate': createdDateForPayload,
+                    'ModifiedBy': isUpdate ? currentUserId : 0,
+                    'ModifiedDate': dateTimeStr,
+                    'Id': _serviceReportId ?? 0,
+                    'CreatedBy': currentUserId,
+                    'Status': isUpdate ? 0 : 1,
+                    'SbuId': 0,
+                    'DcrDetailId': dcrDetailId,
+                    'CustomerName': _serviceReportCustomer ?? '',
+                    'CustomerId': customerId,
+                    'ContactPerson': _contactPersonCtrl.text.trim(),
+                    'ContactMobile': _contactMobileCtrl.text.trim(),
+                    'ServiceDate': _formatServiceReportDateTimeForApi(
+                        _serviceDate ?? DateTime.now()),
+                    'ProductId': productId,
+                    'Product': _serviceReportProduct ?? '',
+                    'SerialNumber': _serialNumberCtrl.text.trim(),
+                    'ServiceTypeId': _selectedServiceType?.value ?? 0,
+                    'ServiceType': _selectedServiceType?.description ?? '',
+                    'StartTime': _startTime != null
+                        ? _formatServiceReportDateTimeForApi(_startTime!)
+                        : null,
+                    'EndTime': _endTime != null
+                        ? _formatServiceReportDateTimeForApi(_endTime!)
+                        : null,
+                    'ElectricitySafetyTest':
+                        _selectedElectricitySafetyTest?.description,
+                    'ElectricitySafetyTestId':
                         _selectedElectricitySafetyTest?.value ?? 0,
-                    'complaintDetails': _complaintCtrl.text.trim(),
-                    'actionTaken': _actionTakenCtrl.text.trim(),
-                    'result': _resultCtrl.text.trim(),
-                    'complaintDateTime': _complaintDateTime?.toIso8601String(),
-                    'serviceStatusId': _selectedServiceReportStatus?.value ?? 0,
-                    'serviceStatus':
+                    'ComplaintDetails': _complaintCtrl.text.trim(),
+                    'ActionTaken': _actionTakenCtrl.text.trim(),
+                    'Result': _resultCtrl.text.trim(),
+                    'ComplaintDateTime': _complaintDateTime != null
+                        ? _formatServiceReportDateTimeForApi(
+                            _complaintDateTime!)
+                        : null,
+                    'ServiceStatusId': _selectedServiceReportStatus?.value ?? 0,
+                    'ServiceStatus':
                         _selectedServiceReportStatus?.description ?? '',
-                    'workDescription': _workDescriptionCtrl.text.trim(),
-                    'materialsUsed': _materialsUsedCtrl.text.trim(),
-                    'remarks': _serviceRemarksCtrl.text.trim(),
-                    'feedbackOption':
+                    'WorkDescription': _workDescriptionCtrl.text.trim(),
+                    'MaterialsUsed': _materialsUsedCtrl.text.trim(),
+                    'Remarks': _serviceRemarksCtrl.text.trim(),
+                    'FeedbackOption':
                         _selectedFeedbackOption?.description ?? '',
-                    'feedbackOptionId': _selectedFeedbackOption?.value ?? 0,
-                    'signedBy': _signedByCtrl.text.trim(),
-                    'signatureValue': null,
-                    'signatureImageBase64': null,
-                    'serviceRate':
-                        double.tryParse(_serviceRateCtrl.text.trim()) ?? 0
+                    'FeedbackOptionId': _selectedFeedbackOption?.value ?? 0,
+                    'SignedBy': _signedByCtrl.text.trim(),
+                    'SignatureValue': _signatureValue,
+                    'SignatureImageBase64': _signatureImageBase64,
+                    'ServiceRate':
+                        double.tryParse(_serviceRateCtrl.text.trim()) ?? 0.0
                   };
+                  // Some .NET APIs reject null; omit keys with null value
+                  payload.removeWhere((_, v) => v == null);
 
-                  final String url =
-                      (_serviceReportId != null && _serviceReportId! > 0)
-                          ? Endpoints.serviceReportUpdate
-                          : Endpoints.serviceReportSave;
+                  final String url = isUpdate
+                      ? Endpoints.serviceReportUpdate
+                      : Endpoints.serviceReportSave;
                   print(
                       '📞 [ServiceReport] Sending to $url payload: ${payload}');
                   final response = await dioClient.dio.post(
@@ -3485,6 +3536,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                   }
                 } catch (e, s) {
                   if (mounted) Navigator.of(context).pop();
+                  if (e is DioException && e.response != null) {
+                    print(
+                        '❌ [ServiceReport] Server ${e.response?.statusCode}: ${e.response?.data}');
+                  }
                   print(
                       '❌ [ServiceReport] Error saving service report: $e\n$s');
                   ToastMessage.show(
@@ -3604,23 +3659,25 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
-      // Customer Type *
-      _LabeledField(
-        label: 'Customer Type',
-        required: true,
-        child: SearchableDropdown(
-          options: _customerTypeOptions,
-          value: _selectedCustomerType,
-          hintText: '-- Select Customer Type --',
-          searchHintText: 'Search customer type...',
-          onChanged: (v) {
-            setState(() {
-              _selectedCustomerType = v;
-            });
-          },
+      // Customer Type * — only for Sales Representatives (not shown for Medical Rep)
+      if (!isMedicalRep) ...[
+        _LabeledField(
+          label: 'Customer Type',
+          required: true,
+          child: SearchableDropdown(
+            options: _customerTypeOptions,
+            value: _selectedCustomerType,
+            hintText: '-- Select Customer Type --',
+            searchHintText: 'Search customer type...',
+            onChanged: (v) {
+              setState(() {
+                _selectedCustomerType = v;
+              });
+            },
+          ),
         ),
-      ),
-      const SizedBox(height: 16),
+        const SizedBox(height: 16),
+      ],
       // Speciality, Category, Area Type, UIN — only for Medical Representative (roleCategory == 3)
       if (isMedicalRep) ...[
         _LabeledField(
@@ -3785,6 +3842,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final String code = _customerCodeCtrl.text.trim();
     final String mobile = _customerMobileCtrl.text.trim();
     final String uin = _uinCtrl.text.trim();
+    final String? serviceArea = getIt.isRegistered<UserDetailStore>()
+        ? getIt<UserDetailStore>().userDetail?.serviceArea
+        : null;
 
     if (name.isEmpty) {
       ToastMessage.show(
@@ -3795,15 +3855,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       );
       return;
     }
-    if (_selectedCustomerType == null ||
-        !_customerTypeNameToId.containsKey(_selectedCustomerType)) {
-      ToastMessage.show(
-        context,
-        message: 'Please select customer type',
-        type: ToastType.error,
-        icon: Icons.error_outline,
-      );
-      return;
+    // Customer Type required only for Sales Rep (Pharmacy save); not for Medical Rep (Doctor save)
+    final bool isMedicalRepServiceArea = serviceArea == 'Medical Rep';
+    if (!isMedicalRepServiceArea) {
+      if (_selectedCustomerType == null ||
+          !_customerTypeNameToId.containsKey(_selectedCustomerType)) {
+        ToastMessage.show(
+          context,
+          message: 'Please select customer type',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
     }
     if (mobile.isEmpty) {
       ToastMessage.show(
@@ -3849,13 +3913,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final int? roleCategory = getIt.isRegistered<UserDetailStore>()
         ? getIt<UserDetailStore>().userDetail?.roleCategory
         : null;
-    final String? serviceArea = getIt.isRegistered<UserDetailStore>()
-        ? getIt<UserDetailStore>().userDetail?.serviceArea
-        : null;
+    // serviceArea and isMedicalRepServiceArea already declared at top of method
     // Medical Rep: roleCategory == 3 → Doctor/Save. Else → Pharmacy/Save (Sales Rep).
     final bool isMedicalRep = roleCategory == 3;
-    // Only validate Speciality, Category, Area Type for Medical Rep service area (same as UI visibility).
-    final bool isMedicalRepServiceArea = serviceArea == 'Medical Rep';
 
     if (isMedicalRepServiceArea) {
       // Medical Rep service area: require Speciality, Category, Area Type (UIN is optional)
@@ -3904,7 +3964,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       return;
     }
 
-    final int? customerTypeId = _customerTypeNameToId[_selectedCustomerType!];
+    final int? customerTypeId = _selectedCustomerType != null &&
+            _customerTypeNameToId.containsKey(_selectedCustomerType!)
+        ? _customerTypeNameToId[_selectedCustomerType!]
+        : null;
     final int? countryId = _countryNameToId[_selectedCountry!];
     final int? stateId = _stateNameToId[_selectedState!];
     final int? cityId = _cityNameToId[_selectedCity!];
@@ -3937,7 +4000,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       );
       return;
     }
-    if (customerTypeId == null || customerTypeId < 0) {
+    // Customer Type required only for Sales Rep (Pharmacy save)
+    if (!isMedicalRepServiceArea &&
+        (customerTypeId == null || customerTypeId < 0)) {
       ToastMessage.show(
         context,
         message: 'Please select a valid customer type',

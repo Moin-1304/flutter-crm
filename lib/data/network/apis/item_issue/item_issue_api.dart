@@ -9,7 +9,8 @@ class ItemIssueApi {
   ItemIssueApi(this._dioClient);
 
   /// Get ItemIssue list with filter criteria
-  Future<ItemIssueListResponse> getItemIssueList(ItemIssueListRequest request) async {
+  Future<ItemIssueListResponse> getItemIssueList(
+      ItemIssueListRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.itemIssueList,
@@ -41,7 +42,7 @@ class ItemIssueApi {
       print('URL: $url');
       print('Issue ID: $id');
       print('═══════════════════════════════════════════════════════════');
-      
+
       final response = await _dioClient.dio.get(
         url,
         options: Options(
@@ -76,21 +77,43 @@ class ItemIssueApi {
     }
   }
 
+  /// Recursively remove null values from map/list so server receives only defined fields.
+  /// Some .NET APIs fail on update when receiving explicit null for optional fields.
+  static Map<String, dynamic> _removeNulls(Map<String, dynamic> map) {
+    final result = <String, dynamic>{};
+    for (final e in map.entries) {
+      if (e.value == null) continue;
+      if (e.value is Map<String, dynamic>) {
+        result[e.key] = _removeNulls(e.value as Map<String, dynamic>);
+      } else if (e.value is List) {
+        result[e.key] = (e.value as List)
+            .map((item) =>
+                item is Map<String, dynamic> ? _removeNulls(item) : item)
+            .toList();
+      } else {
+        result[e.key] = e.value;
+      }
+    }
+    return result;
+  }
+
   /// Save ItemIssue
-  Future<ItemIssueSaveResponse> saveItemIssue(ItemIssueSaveRequest request) async {
+  Future<ItemIssueSaveResponse> saveItemIssue(
+      ItemIssueSaveRequest request) async {
     try {
+      final payload = _removeNulls(request.toJson());
       // Log request for debugging
       print('═══════════════════════════════════════════════════════════');
       print('📤 ItemIssue Save API Request');
       print('═══════════════════════════════════════════════════════════');
       print('URL: ${Endpoints.itemIssueSave}');
       print('Request JSON:');
-      print(request.toJson());
+      print(payload);
       print('═══════════════════════════════════════════════════════════');
 
       final response = await _dioClient.dio.post(
         Endpoints.itemIssueSave,
-        data: request.toJson(),
+        data: payload,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -110,14 +133,14 @@ class ItemIssueApi {
     } on DioException catch (e) {
       // Enhanced error handling for DioException
       String errorMessage = 'Failed to save ItemIssue';
-      
+
       if (e.response != null) {
         // Server responded with error
         print('❌ ItemIssue Save API Error');
         print('Status Code: ${e.response?.statusCode}');
         print('Response Data: ${e.response?.data}');
         print('Response Headers: ${e.response?.headers}');
-        
+
         // Try to extract error message from response headers first (errormessage field)
         final headers = e.response?.headers;
         if (headers != null && headers.map.containsKey('errormessage')) {
@@ -126,25 +149,27 @@ class ItemIssueApi {
             errorMessage = headerError;
           }
         }
-        
+
         // If no header error, try to extract from response body
         if (errorMessage == 'Failed to save ItemIssue') {
           final responseData = e.response?.data;
           if (responseData is Map) {
-            final message = responseData['message'] ?? 
-                           responseData['error'] ?? 
-                           responseData['Message'] ?? 
-                           responseData['Error'] ??
-                           responseData['errormessage'];
+            final message = responseData['message'] ??
+                responseData['error'] ??
+                responseData['Message'] ??
+                responseData['Error'] ??
+                responseData['errormessage'];
             if (message != null) {
               errorMessage = message.toString();
             } else {
-              errorMessage = 'Failed to save ItemIssue: ${responseData.toString()}';
+              errorMessage =
+                  'Failed to save ItemIssue: ${responseData.toString()}';
             }
           } else if (responseData is String) {
             errorMessage = responseData;
           } else {
-            errorMessage = 'Failed to save ItemIssue: Status ${e.response?.statusCode} - ${responseData?.toString() ?? "Unknown error"}';
+            errorMessage =
+                'Failed to save ItemIssue: Status ${e.response?.statusCode} - ${responseData?.toString() ?? "Unknown error"}';
           }
         }
       } else if (e.requestOptions != null) {
@@ -154,7 +179,7 @@ class ItemIssueApi {
         // Request setup error
         errorMessage = 'Failed to save ItemIssue: ${e.message}';
       }
-      
+
       throw Exception(errorMessage);
     } catch (e) {
       print('❌ ItemIssue Save API Exception: $e');
@@ -162,4 +187,3 @@ class ItemIssueApi {
     }
   }
 }
-

@@ -23,6 +23,8 @@ class ItemDetail {
   String? batchNo;
   int? batchId; // Store batch ID when batch is selected
   int? itemId; // Store item ID when loading from API (for edit mode)
+  int?
+      detailId; // Store detail row ID when loading from API (for edit mode - required for update)
   TextEditingController qtyInStockCtrl = TextEditingController();
   TextEditingController qtyIssuedCtrl = TextEditingController();
   TextEditingController uomCtrl = TextEditingController();
@@ -102,6 +104,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
   // Store API issue data for delayed population (after dropdowns load)
   ItemIssueApiItem? _pendingApiIssueData;
+  // True when loaded issue is draft (never submitted) - submit should use NEW payload like fresh form
+  bool _loadedIssueIsDraft = false;
 
   // Check if in edit mode
   bool get _isEditMode =>
@@ -223,6 +227,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
       final apiDataToUse = _pendingApiIssueData ?? widget.apiIssueData;
       if (apiDataToUse != null && mounted) {
+        _loadedIssueIsDraft = _isDraftIssue(apiDataToUse);
+        if (_loadedIssueIsDraft) {
+          print('   📋 Issue is DRAFT - reloading workflow with create URL');
+          await _loadWorkflowData(useCreateUrl: true);
+        }
         print(
             '✅ Found API data - Populating form with API data (ID: ${apiDataToUse.id})...');
         await _populateFormFromApiIssue(apiDataToUse);
@@ -292,12 +301,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         // Show error message to user - use Future.microtask to ensure context is ready
         Future.microtask(() {
           if (mounted && context.mounted) {
-          ToastMessage.show(
-            context,
-            message: 'Failed to load stores. Please try again.',
-            type: ToastType.error,
-          );
-        }
+            ToastMessage.show(
+              context,
+              message: 'Failed to load stores. Please try again.',
+              type: ToastType.error,
+            );
+          }
         });
       }
     }
@@ -363,7 +372,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('═══════════════════════════════════════════════════════════');
       print('Total Items: ${issueToList.length}');
       print('First 5 items (ID and Text):');
-      for (int i = 0; i < (issueToList.length > 5 ? 5 : issueToList.length); i++) {
+      for (int i = 0;
+          i < (issueToList.length > 5 ? 5 : issueToList.length);
+          i++) {
         final item = issueToList[i];
         print('  [$i] ID: ${item.id}, Text: "${item.text}"');
       }
@@ -371,7 +382,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         print('  ... and ${issueToList.length - 5} more items');
       }
       print('All IDs: ${issueToList.map((e) => e.id).toList()}');
-      print('All Texts (first 10): ${issueToList.take(10).map((e) => e.text).toList()}');
+      print(
+          'All Texts (first 10): ${issueToList.take(10).map((e) => e.text).toList()}');
       print('═══════════════════════════════════════════════════════════');
 
       if (mounted) {
@@ -380,12 +392,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           _issueToOptions = issueToList.map((item) => item.text).toList();
           _isLoadingIssueTo = false;
         });
-        
+
         // Verify what's set in state
         print('✅ Issue To List State Updated');
         print('   _issueToList.length: ${_issueToList.length}');
         print('   _issueToOptions.length: ${_issueToOptions.length}');
-        print('   _issueToOptions (first 5): ${_issueToOptions.take(5).toList()}');
+        print(
+            '   _issueToOptions (first 5): ${_issueToOptions.take(5).toList()}');
       }
     } catch (e) {
       if (mounted) {
@@ -400,12 +413,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         // Show error message to user - use Future.microtask to ensure context is ready
         Future.microtask(() {
           if (mounted && context.mounted) {
-          ToastMessage.show(
-            context,
-            message: 'Failed to load issue-to options. Please try again.',
-            type: ToastType.error,
-          );
-        }
+            ToastMessage.show(
+              context,
+              message: 'Failed to load issue-to options. Please try again.',
+              type: ToastType.error,
+            );
+          }
         });
       }
     }
@@ -453,12 +466,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         // Show error message to user - use Future.microtask to ensure context is ready
         Future.microtask(() {
           if (mounted && context.mounted) {
-          ToastMessage.show(
-            context,
-            message: 'Failed to load issue-against options. Please try again.',
-            type: ToastType.error,
-          );
-        }
+            ToastMessage.show(
+              context,
+              message:
+                  'Failed to load issue-against options. Please try again.',
+              type: ToastType.error,
+            );
+          }
         });
       }
     }
@@ -669,6 +683,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (mounted) {
         print('💾 Storing API data in _pendingApiIssueData...');
         _pendingApiIssueData = apiIssue;
+        _loadedIssueIsDraft = _isDraftIssue(apiIssue);
+        if (_loadedIssueIsDraft) {
+          print(
+              '   📋 Issue is DRAFT - first submit will use NEW payload (Id: null, No: "[NEW]", IsEdit: false)');
+          await _loadWorkflowData(useCreateUrl: true);
+        }
         print('   ✅ Stored: Issue ID ${apiIssue.id}, No: ${apiIssue.no}');
         print(
             '   ✅ Stored: Issue To ID ${apiIssue.issueTo}, Issue Against ID ${apiIssue.issueAgainst}');
@@ -927,6 +947,31 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
               if (itemId != null && itemId is int && itemId > 0) {
                 itemDetail.itemId = itemId;
                 print('   Item ID: ${itemDetail.itemId}');
+              }
+
+              // Store detail row ID if available (required for edit/update - server uses it to update existing rows)
+              // Try all possible keys (API may use id, Id, detailId, DetailId)
+              final detailRowId = detailJson['id'] ??
+                  detailJson['Id'] ??
+                  detailJson['detailId'] ??
+                  detailJson['DetailId'];
+              if (detailRowId != null) {
+                final id = detailRowId is int
+                    ? detailRowId
+                    : (detailRowId is num
+                        ? detailRowId.toInt()
+                        : int.tryParse(detailRowId.toString()));
+                if (id != null && id > 0) {
+                  itemDetail.detailId = id;
+                  print('   Detail ID: ${itemDetail.detailId}');
+                }
+              }
+              // Debug: log detail keys on first item so we can see what API returns
+              if (i == 0) {
+                print(
+                    '   [DEBUG] Detail keys from API: ${detailJson.keys.toList()}');
+                print(
+                    '   [DEBUG] id/Id/detailId/DetailId: ${detailJson['id']}/${detailJson['Id']}/${detailJson['detailId']}/${detailJson['DetailId']}');
               }
 
               _itemDetails.add(itemDetail);
@@ -1191,7 +1236,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
             // Main content
             Expanded(
               child: _isLoading
-                  ? Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(tealGreen)),)
+                  ? Center(
+                      child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(tealGreen)),
+                    )
                   : SingleChildScrollView(
                       padding: EdgeInsets.all(isTablet ? 24 : 16),
                       child: Center(
@@ -2795,7 +2843,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                               detail.batchId = null;
                               // Clear qty issued when batch is not found
                               detail.qtyIssuedCtrl.clear();
-                              detail.qtyIssuedError = null; // Clear validation error
+                              detail.qtyIssuedError =
+                                  null; // Clear validation error
                             }
                           }
                           // Auto-fill qty in stock, UOM, and rate if available
@@ -2846,7 +2895,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                               // Clear all fields including qty issued when error occurs
                               detail.qtyInStockCtrl.clear();
                               detail.qtyIssuedCtrl.clear();
-                              detail.qtyIssuedError = null; // Clear validation error
+                              detail.qtyIssuedError =
+                                  null; // Clear validation error
                               detail.uomCtrl.clear();
                               detail.rateCtrl.clear();
                               _calculateAmountForItem(detail);
@@ -2854,8 +2904,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           } else {
                             // Clear auto-filled fields when batch is cleared or invalid
                             detail.qtyInStockCtrl.clear();
-                            detail.qtyIssuedCtrl.clear(); // Also clear qty issued when batch is invalid
-                            detail.qtyIssuedError = null; // Clear validation error
+                            detail.qtyIssuedCtrl
+                                .clear(); // Also clear qty issued when batch is invalid
+                            detail.qtyIssuedError =
+                                null; // Clear validation error
                             detail.uomCtrl.clear();
                             detail.rateCtrl.clear();
                             _calculateAmountForItem(detail);
@@ -2866,7 +2918,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           detail.batchId = null;
                           // Clear qty issued when batch list is not loaded
                           detail.qtyIssuedCtrl.clear();
-                          detail.qtyIssuedError = null; // Clear validation error
+                          detail.qtyIssuedError =
+                              null; // Clear validation error
                         }
                       } else {
                         detail.batchId = null;
@@ -2917,13 +2970,15 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   onChanged: (_) {
                     setState(() {
                       // Validate quantity issued vs quantity in stock
-                      final qtyIssued = int.tryParse(detail.qtyIssuedCtrl.text.trim());
-                      final qtyInStock = int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0;
+                      final qtyIssued =
+                          int.tryParse(detail.qtyIssuedCtrl.text.trim());
+                      final qtyInStock =
+                          int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0;
 
                       if (qtyIssued != null && qtyIssued > 0) {
-                        if (qtyIssued >= qtyInStock) {
+                        if (qtyIssued > qtyInStock) {
                           detail.qtyIssuedError =
-                              'Quantity issued ($qtyIssued) must be less than quantity in stock ($qtyInStock)';
+                              'Quantity issued ($qtyIssued) must not exceed quantity in stock ($qtyInStock)';
                         } else {
                           detail.qtyIssuedError = null;
                         }
@@ -3052,6 +3107,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       batchNo: detail.batchNo ?? '',
       batchId: detail.batchId, // Include batchId if available
       itemId: detail.itemId, // Include itemId if available (from API)
+      detailId: detail.detailId, // Include detailId for edit/update (from API)
       qtyInStock: int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0,
       qtyIssued: int.tryParse(detail.qtyIssuedCtrl.text.trim()) ?? 0,
       uom: detail.uomCtrl.text.trim(),
@@ -3100,7 +3156,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('Stacktrace:');
       print(stack);
       String detailedMessage = 'Failed to submit customer issue';
-      
+
       // Try to extract user-friendly error message from server response
       try {
         if (e is DioException && e.response != null) {
@@ -3116,9 +3172,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
             final responseData = e.response?.data;
             if (responseData is Map) {
               detailedMessage = responseData['errormessage']?.toString() ??
-                              responseData['message']?.toString() ??
-                              responseData['error']?.toString() ??
-                              detailedMessage;
+                  responseData['message']?.toString() ??
+                  responseData['error']?.toString() ??
+                  detailedMessage;
             } else {
               detailedMessage = e.response?.data?.toString() ?? detailedMessage;
             }
@@ -3147,7 +3203,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           detailedMessage = errorString;
         }
       }
-      
+
       if (mounted) {
         ToastMessage.show(
           context,
@@ -3373,7 +3429,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   }
 
   /// Get workflow process ID and action ID
-  Future<void> _loadWorkflowData() async {
+  /// Returns true if the issue is in draft state (saved but never submitted).
+  bool _isDraftIssue(ItemIssueApiItem issue) {
+    final st = issue.statusText?.trim().toLowerCase() ?? '';
+    return st == 'draft' || st.contains('draft') || issue.status == 0;
+  }
+
+  Future<void> _loadWorkflowData({bool useCreateUrl = false}) async {
     if (!mounted) return;
 
     setState(() {
@@ -3398,9 +3460,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           ? userStore.userDetail!.sbuId!
           : (user.sbuId ?? 1);
 
-      // Determine URL based on create or edit mode
-      final url =
-          _isEditMode ? '/Customeritemissue/edit' : '/Customeritemissue/create';
+      // For draft first submit use create URL (same as new form). For real edit use edit URL.
+      final url = useCreateUrl || !_isEditMode
+          ? '/Customeritemissue/create'
+          : '/Customeritemissue/edit';
 
       // MenuId: 1589 for workflow API (as per user requirements)
       final menuId = 1589;
@@ -3543,6 +3606,15 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       throw Exception('From Store ID is 0. Please select a valid From Store.');
     }
 
+    // Draft first-time submit: issue was saved as draft but never submitted.
+    // Send as CREATE (Id: null, No: "[NEW]", IsEdit: false, no detail ids) - same as fresh new form.
+    // Only use EDIT mode (Id, IsEdit: true, detail ids) when issue was already submitted.
+    final bool isDraftFirstSubmit = _isEditMode && _loadedIssueIsDraft;
+    if (isDraftFirstSubmit) {
+      print(
+          '📋 Submitting DRAFT as NEW (first-time submit) - Id: null, No: "[NEW]", IsEdit: false');
+    }
+
     // Build details list
     final List<ItemIssueDetailSaveRequest> details = [];
     for (int i = 0; i < _items.length; i++) {
@@ -3682,8 +3754,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('  - Rate: ${item.rate}');
       print('  - Amount: ${item.amount}');
 
+      // For real edit (already-submitted issue), send detail row id. For draft first submit, send null (create).
+      final int? existingDetailId =
+          (_isEditMode && !isDraftFirstSubmit) ? item.detailId : null;
+
       details.add(ItemIssueDetailSaveRequest(
-        id: null,
+        id: existingDetailId,
         createdBy: null,
         status: 0,
         sbuId: 0,
@@ -3784,7 +3860,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         country: null,
         rowIndex: null,
         isReceiptBatchRequired: null,
-        detailId: null,
+        detailId: existingDetailId,
         actualBatchNo: (item.batchNo.trim().split(' ').isNotEmpty)
             ? item.batchNo.trim().split(' ').last
             : '',
@@ -3806,13 +3882,33 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     final menuId = 1554;
     final moduleId = 6;
 
+    // When editing an already-submitted issue: send Version, Status, WorkflowStatus from loaded issue.
+    // When draft first submit: send as new (no version, status 0, workflowStatus 0).
+    final String? versionForSave = (_isEditMode &&
+            !isDraftFirstSubmit &&
+            _pendingApiIssueData?.version != null)
+        ? _pendingApiIssueData!.version!.toString()
+        : null;
+    final int statusForSave =
+        (_isEditMode && !isDraftFirstSubmit && _pendingApiIssueData != null)
+            ? _pendingApiIssueData!.status
+            : 0;
+    final int workflowStatusForSave =
+        (_isEditMode && !isDraftFirstSubmit && _pendingApiIssueData != null)
+            ? _pendingApiIssueData!.workflowStatus
+            : 0;
+
     final request = ItemIssueSaveRequest(
-      id: _isEditMode ? int.tryParse(widget.issueId ?? '') : null,
+      id: isDraftFirstSubmit
+          ? null
+          : (_isEditMode ? int.tryParse(widget.issueId ?? '') : null),
       createdBy: createdBy,
-      status: 0,
+      status: statusForSave,
       sbuId: 0,
-      no: _isEditMode ? (_stNo ?? '') : '[NEW]',
-      version: null,
+      no: isDraftFirstSubmit
+          ? '[NEW]'
+          : (_isEditMode ? (_stNo ?? '') : '[NEW]'),
+      version: versionForSave,
       date: dateStr,
       fromDate: null,
       toDate: null,
@@ -3831,8 +3927,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       modifiedBy: modifiedBy,
       modifiedDate: null,
       isWorkOrder: null,
-      isEdit: null,
-      confirmStockValueChange: null,
+      isEdit: isDraftFirstSubmit ? false : (_isEditMode ? true : null),
+      confirmStockValueChange:
+          isDraftFirstSubmit ? null : (_isEditMode ? true : null),
       astDocMode: null,
       aptCode: null,
       isMultipleBatch: null,
@@ -3847,7 +3944,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       processId: processId,
       processActionId: processActionId,
       workflowComment: null,
-      workflowStatus: 0,
+      workflowStatus: workflowStatusForSave,
       departmentText: null,
       toStoreText: null,
       companyText: null,
@@ -4032,7 +4129,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       }
     } catch (e) {
       String errorMessage = 'Failed to save customer issue';
-      
+
       // Try to extract user-friendly error message
       if (e is DioException && e.response != null) {
         // Check headers for errormessage first
@@ -4047,9 +4144,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           final responseData = e.response?.data;
           if (responseData is Map) {
             errorMessage = responseData['errormessage']?.toString() ??
-                          responseData['message']?.toString() ??
-                          responseData['error']?.toString() ??
-                          errorMessage;
+                responseData['message']?.toString() ??
+                responseData['error']?.toString() ??
+                errorMessage;
           }
         }
       } else {
@@ -4061,7 +4158,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           errorMessage = errorString;
         }
       }
-      
+
       if (mounted) {
         ToastMessage.show(
           context,
@@ -4196,31 +4293,31 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       isValid = false;
     }
 
-    // Validate that all items have quantity issued > 0 and < quantity in stock
+    // Validate that all items have quantity issued > 0 and <= quantity in stock
     for (int i = 0; i < _itemDetails.length; i++) {
       final detail = _itemDetails[i];
       final qtyIssued = int.tryParse(detail.qtyIssuedCtrl.text.trim());
       final qtyInStock = int.tryParse(detail.qtyInStockCtrl.text.trim()) ?? 0;
-      
+
       if (qtyIssued == null || qtyIssued <= 0) {
         setState(() {
           detail.qtyIssuedError = 'Quantity issued must be greater than 0';
         });
         isValid = false;
-        
+
         // Expand the item section to show the error
         if (_expandedIndex != i) {
           setState(() {
             _expandedIndex = i;
           });
         }
-      } else if (qtyIssued >= qtyInStock) {
+      } else if (qtyIssued > qtyInStock) {
         setState(() {
           detail.qtyIssuedError =
-              'Quantity issued ($qtyIssued) must be less than quantity in stock ($qtyInStock)';
+              'Quantity issued ($qtyIssued) must not exceed quantity in stock ($qtyInStock)';
         });
         isValid = false;
-        
+
         // Expand the item section to show the error
         if (_expandedIndex != i) {
           setState(() {
@@ -4358,7 +4455,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           if (mounted && context.mounted) {
             ToastMessage.show(
               context,
-              message: 'Failed to load division/category options. Please try again.',
+              message:
+                  'Failed to load division/category options. Please try again.',
               type: ToastType.error,
             );
           }
@@ -4609,12 +4707,12 @@ class _AddItemDialogState extends State<_AddItemDialog> {
       });
       isValid = false;
     } else {
-      // Validate that Quantity Issued is less than Quantity In Stock
+      // Validate that Quantity Issued does not exceed Quantity In Stock (equal is allowed)
       final qtyInStock = int.tryParse(_qtyInStockCtrl.text.trim()) ?? 0;
-      if (qtyIssued >= qtyInStock) {
+      if (qtyIssued > qtyInStock) {
         setState(() {
           _qtyIssuedError =
-              'Quantity issued ($qtyIssued) must be less than quantity in stock ($qtyInStock)';
+              'Quantity issued ($qtyIssued) must not exceed quantity in stock ($qtyInStock)';
         });
         isValid = false;
       } else {
@@ -5671,6 +5769,8 @@ class IssueItemDetail {
   final String batchNo;
   final int? batchId; // Optional batch ID
   final int? itemId; // Optional item ID (from API when editing)
+  final int?
+      detailId; // Optional detail row ID (from API when editing - required for update)
   final int qtyInStock;
   final int qtyIssued;
   final String uom;
@@ -5684,6 +5784,7 @@ class IssueItemDetail {
     required this.batchNo,
     this.batchId,
     this.itemId,
+    this.detailId,
     required this.qtyInStock,
     required this.qtyIssued,
     required this.uom,

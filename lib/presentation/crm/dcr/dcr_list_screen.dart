@@ -997,13 +997,13 @@ class _DcrListScreenState extends State<DcrListScreen>
                       color: tealGreen,
                       isMobile: isMobile,
                       onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => const ExpenseEntryScreen()),
-                        );
-                        if (context.mounted) {
-                          await _load();
-                        }
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const ExpenseEntryScreen()),
+                              );
+                              if (context.mounted) {
+                                await _load();
+                              }
                       },
                     ),
                   ),
