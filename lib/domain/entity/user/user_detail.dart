@@ -126,6 +126,8 @@ class UserDetail {
   final int? moduleId;
   final String? moduleText;
   final String? signatureFileName;
+  /// Rep type from API: 1 = Sales Rep, 2 = Medical Rep, 5 = Service Engineer. Used when serviceArea is empty for Customer Type API.
+  final int? repType;
 
   UserDetail({
     this.createdDate,
@@ -255,6 +257,7 @@ class UserDetail {
     this.moduleId,
     this.moduleText,
     this.signatureFileName,
+    this.repType,
   });
 
   factory UserDetail.fromJson(Map<String, dynamic> json) {
@@ -392,6 +395,7 @@ class UserDetail {
       moduleId: json['moduleId'],
       moduleText: json['moduleText'],
       signatureFileName: json['signatureFileName'],
+      repType: json['repType'],
     );
   }
 
@@ -524,6 +528,7 @@ class UserDetail {
       'moduleId': moduleId,
       'moduleText': moduleText,
       'signatureFileName': signatureFileName,
+      'repType': repType,
     };
   }
 }

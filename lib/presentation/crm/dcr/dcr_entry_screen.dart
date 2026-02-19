@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:boilerplate/core/widgets/app_buttons.dart';
 import 'package:boilerplate/core/widgets/app_form_fields.dart';
@@ -11,6 +12,8 @@ import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/data/network/apis/common/common_api.dart';
 import 'package:boilerplate/core/data/network/dio/dio_client.dart';
 import 'package:boilerplate/data/network/constants/endpoints.dart';
+import 'package:boilerplate/data/network/apis/expense/expense_api.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
@@ -26,7 +29,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/rendering.dart';
 
-/// Format DateTime for Service Report API. .NET expects ISO 8601 (with T) for DateTime.
+/// Format DateTime for Service Report Save API. .NET expects ISO 8601 (e.g. 2026-02-18T17:08:18.163) for JSON DateTime.
 String _formatServiceReportDateTimeForApi(DateTime d) {
   return d.toIso8601String();
 }
@@ -137,6 +140,34 @@ extension ServiceFeedbackStatusX on ServiceFeedbackStatus {
     }
   }
 
+  /// Emoji for feedback option (thumbs down, thumbs up, smile, star)
+  String get emoji {
+    switch (this) {
+      case ServiceFeedbackStatus.Bad:
+        return '👎';
+      case ServiceFeedbackStatus.Good:
+        return '👍';
+      case ServiceFeedbackStatus.Fair:
+        return '😊';
+      case ServiceFeedbackStatus.Excellent:
+        return '⭐';
+    }
+  }
+
+  /// Border/accent color for feedback card (red, blue, yellow, green)
+  Color get borderColor {
+    switch (this) {
+      case ServiceFeedbackStatus.Bad:
+        return Colors.red;
+      case ServiceFeedbackStatus.Good:
+        return Colors.blue;
+      case ServiceFeedbackStatus.Fair:
+        return Colors.amber;
+      case ServiceFeedbackStatus.Excellent:
+        return Colors.green;
+    }
+  }
+
   int get value {
     switch (this) {
       case ServiceFeedbackStatus.Bad:
@@ -159,6 +190,8 @@ class DcrEntryScreen extends StatefulWidget {
   final int? initialCustomerId;
   final int? initialClusterId; // AKA cityId in API
   final int? initialTypeOfWorkId;
+  /// When true, form is shown in read-only mode (same layout as edit, no save buttons).
+  final bool viewOnly;
 
   const DcrEntryScreen({
     super.key,
@@ -168,6 +201,7 @@ class DcrEntryScreen extends StatefulWidget {
     this.initialCustomerId,
     this.initialClusterId,
     this.initialTypeOfWorkId,
+    this.viewOnly = false,
   });
 
   @override
@@ -177,6 +211,8 @@ class DcrEntryScreen extends StatefulWidget {
 class _DcrEntryScreenState extends State<DcrEntryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  bool get _isViewOnly => widget.viewOnly;
 
   String? _cluster;
   String? _customer;
@@ -247,9 +283,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   final TextEditingController _contactMobileCtrl = TextEditingController();
   final TextEditingController _serviceDateCtrl = TextEditingController();
   DateTime? _serviceDate;
-  // Signature storage
+  // Signature storage (drawing as base64 for local display; uploaded path for API)
   String? _signatureImageBase64;
   String? _signatureValue;
+  /// Uploaded signature image path from FilesUpload API (sent as SignatureImageUrl in Save).
+  String? _signatureImageUrl;
+  bool _isUploadingSignature = false;
   String? _serviceReportProduct;
   final TextEditingController _serialNumberCtrl = TextEditingController();
   String? _serviceType;
@@ -1703,6 +1742,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             if (dcrEntry.complaintStatus != null) {
               _complaintStatus =
                   dcrEntry.complaintStatus == 1 ? 'Resolved' : 'Not Resolved';
+              // Sync dropdown (Complaint Status uses ServiceReportStatus enum)
+              _selectedServiceReportStatus =
+                  dcrEntry.complaintStatus == 1
+                      ? ServiceReportStatus.Resolved
+                      : ServiceReportStatus.NotResolved;
             }
 
             if (dcrEntry.complaintDate != null) {
@@ -2005,7 +2049,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
       final String? signedBy =
           (json['signedBy'] ?? json['SignedBy'])?.toString();
-      // API returns camelCase: signatureImageBase64 or signatureValue
+      final String? signatureImageUrl =
+          (json['signatureImageUrl'] ?? json['SignatureImageUrl'])?.toString();
+      // Legacy: API may return base64 (camelCase or PascalCase)
       final String? signatureImageBase64 = (json['signatureImageBase64'] ??
               json['SignatureImageBase64'] ??
               json['signatureValue'] ??
@@ -2084,9 +2130,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         _materialsUsedCtrl.text = materialsUsed ?? _materialsUsedCtrl.text;
         _serviceRemarksCtrl.text = remarks ?? _serviceRemarksCtrl.text;
         _signedByCtrl.text = signedBy ?? _signedByCtrl.text;
-        if (signatureImageBase64 != null &&
+        if (signatureImageUrl != null && signatureImageUrl.trim().isNotEmpty) {
+          _signatureImageUrl = signatureImageUrl.trim();
+          _signatureImageBase64 = null;
+          _signatureValue = 'Captured';
+        } else if (signatureImageBase64 != null &&
             signatureImageBase64.trim().isNotEmpty) {
           _signatureImageBase64 = signatureImageBase64;
+          _signatureValue = 'Captured';
         }
         if (serviceRate != null) {
           _serviceRateCtrl.text = serviceRate.toStringAsFixed(2);
@@ -2205,7 +2256,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.dcrId != null ? 'Edit DCR' : 'New DCR',
+          _isViewOnly
+              ? 'DCR View'
+              : (widget.dcrId != null ? 'Edit DCR' : 'New DCR'),
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w900,
@@ -2346,10 +2399,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                 child: Padding(
                   padding: EdgeInsets.all(
                       MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children:
-                        _buildCreateDcrFields(context, screenTheme, tealGreen),
+                  child: IgnorePointer(
+                    ignoring: _isViewOnly,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children:
+                          _buildCreateDcrFields(context, screenTheme, tealGreen),
+                    ),
                   ),
                 ),
               ),
@@ -2388,9 +2444,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                 MediaQuery.of(context).size.width < 600 ? 16.0 : 20.0,
               ),
               child: isExistingDcr
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: _buildServiceReportFields(context, screenTheme),
+                  ? IgnorePointer(
+                      ignoring: _isViewOnly,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: _buildServiceReportFields(context, screenTheme),
+                      ),
                     )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2651,18 +2710,150 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ],
       const SizedBox(height: 16),
-      // 10. Samples Distributed
-      _LabeledField(
-        label: 'Samples Distributed',
-        child: TextFormField(
-          controller: _samplesCtrl,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            hintText: 'Enter samples distributed',
+      // 10. Samples Distributed (hidden for Service Engineers)
+      if (!_isServiceEngineer) ...[
+        _LabeledField(
+          label: 'Samples Distributed',
+          child: TextFormField(
+            controller: _samplesCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Enter samples distributed',
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 16),
+        const SizedBox(height: 16),
+      ],
+      // Service Report Details section (Service Engineers only - new/edit/update/view)
+      if (_isServiceEngineer) ...[
+        const SizedBox(height: 20),
+        // Text(
+        //   'Service Report Details',
+        //   style: GoogleFonts.inter(
+        //     fontSize: 18,
+        //     fontWeight: FontWeight.w600,
+        //     color: Colors.grey.shade800,
+        //   ),
+        // ),
+        // const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Complaint',
+          child: TextFormField(
+            controller: _complaintCtrl,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'Enter complaint details',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Action Taken',
+          child: TextFormField(
+            controller: _actionTakenCtrl,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'Enter action taken',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Result',
+          child: TextFormField(
+            controller: _resultCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Enter result',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Complaint Status',
+          child: DropdownButtonFormField<ServiceReportStatus>(
+            value: _selectedServiceReportStatus,
+            decoration: InputDecoration(
+              hintText: 'Select Status',
+              hintStyle: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w400),
+              filled: true,
+              fillColor: Colors.white,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+            ),
+            items: ServiceReportStatus.values.map((s) {
+              return DropdownMenuItem<ServiceReportStatus>(
+                value: s,
+                child: Text(s.description, style: theme.textTheme.bodyMedium),
+              );
+            }).toList(),
+            onChanged: (ServiceReportStatus? val) {
+              setState(() {
+                _selectedServiceReportStatus = val;
+                _serviceStatus = val?.description;
+              });
+            },
+            isExpanded: true,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Complaint Date / Time',
+          child: TextFormField(
+            readOnly: true,
+            decoration: InputDecoration(
+              hintText: _complaintDateTime != null
+                  ? '${_complaintDateTime!.day.toString().padLeft(2, '0')}-${_getMonthName(_complaintDateTime!.month)}-${_complaintDateTime!.year} ${_complaintDateTime!.hour.toString().padLeft(2, '0')}:${_complaintDateTime!.minute.toString().padLeft(2, '0')}'
+                  : 'dd-MMM-yyyy HH:mm',
+              suffixIcon: const Icon(Icons.calendar_today),
+            ),
+            onTap: () async {
+              final DateTime? pickedDate = await showDatePicker(
+                context: context,
+                initialDate: _complaintDateTime ?? DateTime.now(),
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+              );
+              if (pickedDate != null) {
+                final TimeOfDay? pickedTime = await showTimePicker(
+                  context: context,
+                  initialTime: _complaintDateTime != null
+                      ? TimeOfDay(
+                          hour: _complaintDateTime!.hour,
+                          minute: _complaintDateTime!.minute)
+                      : TimeOfDay.now(),
+                );
+                if (pickedTime != null) {
+                  setState(() {
+                    _complaintDateTime = DateTime(
+                      pickedDate.year,
+                      pickedDate.month,
+                      pickedDate.day,
+                      pickedTime.hour,
+                      pickedTime.minute,
+                    );
+                  });
+                }
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        _LabeledField(
+          label: 'Complaint Remarks',
+          child: TextFormField(
+            controller: _complaintRemarksCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Enter complaint remarks',
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
       // 11. Call Duration (minutes)
       _LabeledField(
         label: 'Call Duration (minutes)',
@@ -2771,54 +2962,55 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       // Location picker
       _buildLocationPicker(context, theme, tealGreen),
       const SizedBox(height: 20),
-      // Action buttons
-      Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: _isSavingDraft ? null : _saveDraft,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: tealGreen,
-                side: BorderSide(color: tealGreen, width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+      // Action buttons (hidden in view-only mode)
+      if (!_isViewOnly)
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _isSavingDraft ? null : _saveDraft,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: tealGreen,
+                  side: BorderSide(color: tealGreen, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: _isSavingDraft
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save Draft'),
               ),
-              child: _isSavingDraft
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save Draft'),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton(
-              onPressed: _isSubmitting ? null : _submit,
-              style: FilledButton.styleFrom(
-                backgroundColor: tealGreen,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                elevation: 2,
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: _isSubmitting ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: tealGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  elevation: 2,
+                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text('Submit'),
               ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : const Text('Submit'),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
     ];
   }
 
@@ -3290,36 +3482,69 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
-      // Feedback Option
-      _LabeledField(
-        label: 'Feedback Option',
-        child: DropdownButtonFormField<ServiceFeedbackStatus>(
-          value: _selectedFeedbackOption,
-          decoration: InputDecoration(
-            hintText: 'Select Feedback',
-            hintStyle: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w400),
-            filled: true,
-            fillColor: Colors.white,
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
-            ),
-          ),
-          items: ServiceFeedbackStatus.values.map((s) {
-            return DropdownMenuItem<ServiceFeedbackStatus>(
-              value: s,
-              child: Text(s.description, style: theme.textTheme.bodyMedium),
-            );
-          }).toList(),
-          onChanged: (ServiceFeedbackStatus? val) {
-            setState(() {
-              _selectedFeedbackOption = val;
-              _feedbackOption = val?.description;
-            });
-          },
-          isExpanded: true,
-        ),
+      // Feedback Option – selectable cards; responsive for mobile & tablet
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final width = MediaQuery.of(context).size.width;
+          final isTablet = width >= 600;
+          final emojiSize = isTablet ? 26.0 : 20.0;
+          final cardPaddingH = isTablet ? 16.0 : 10.0;
+          final cardPaddingV = isTablet ? 12.0 : 8.0;
+          final spacing = isTablet ? 12.0 : 8.0;
+          final borderRadius = isTablet ? 12.0 : 10.0;
+          final labelFontSize = isTablet ? 14.0 : 12.0;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: ServiceFeedbackStatus.values.map((option) {
+              final isSelected = _selectedFeedbackOption == option;
+              final color = option.borderColor;
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedFeedbackOption = option;
+                    _feedbackOption = option.description;
+                  });
+                },
+                borderRadius: BorderRadius.circular(borderRadius),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: cardPaddingH,
+                    vertical: cardPaddingV,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected ? color.withOpacity(0.08) : Colors.white,
+                    borderRadius: BorderRadius.circular(borderRadius),
+                    border: Border.all(
+                      color: color,
+                      width: isSelected ? 2.5 : 1.5,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        option.emoji,
+                        style: TextStyle(fontSize: emojiSize),
+                      ),
+                      SizedBox(height: isTablet ? 4 : 2),
+                      Text(
+                        option.description,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: color,
+                          fontSize: labelFontSize,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          );
+        },
       ),
       const SizedBox(height: 24),
 
@@ -3333,69 +3558,125 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
-      // Signed By
+      // Signed By – text field for signatory name
       _LabeledField(
         label: 'Signed By',
         child: TextFormField(
           controller: _signedByCtrl,
+          textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(
             hintText: 'Enter signatory name',
+            border: OutlineInputBorder(),
           ),
         ),
       ),
       const SizedBox(height: 16),
-      // Signature (placeholder for signature field)
+      // Signature – draw box (tap opens signature pad like elsewhere in app)
       _LabeledField(
         label: 'Signature',
-        child: InkWell(
-          onTap: () async {
-            // Ensure any text fields lose focus so keyboard doesn't interact with background
-            FocusScope.of(context).unfocus();
-            final String? base64 = await _openSignaturePad(context);
-            if (base64 != null && base64.isNotEmpty) {
-              setState(() {
-                _signatureImageBase64 = base64;
-                _signatureValue = 'Captured';
-              });
-            }
-          },
-          child: Container(
-            height: 120,
-            decoration: BoxDecoration(
-              border: Border.all(
-                  color: Colors.grey.shade300, style: BorderStyle.solid),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _signatureImageBase64 == null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.edit, color: Colors.grey.shade400, size: 32),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tap to add signature',
-                          style: TextStyle(color: Colors.grey.shade600),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: _isUploadingSignature
+                  ? null
+                  : () async {
+                      FocusScope.of(context).unfocus();
+                      final String? base64 = await _openSignaturePad(context);
+                      if (base64 == null || base64.isEmpty) return;
+                      setState(() {
+                        _signatureImageBase64 = base64;
+                        _signatureValue = 'Captured';
+                        _isUploadingSignature = true;
+                      });
+                      final String? path = await _uploadSignatureImage(base64);
+                      if (!mounted) return;
+                      setState(() {
+                        _isUploadingSignature = false;
+                        if (path != null) _signatureImageUrl = path;
+                      });
+                    },
+              child: Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border.all(
+                      color: Colors.grey.shade400, style: BorderStyle.solid),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _isUploadingSignature
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(height: 8),
+                            Text('Uploading signature…', style: TextStyle(fontSize: 14)),
+                          ],
                         ),
-                      ],
-                    ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Image.memory(
-                      base64Decode(_signatureImageBase64!),
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-          ),
+                      )
+                    : _signatureImageBase64 != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Image.memory(
+                              base64Decode(_signatureImageBase64!),
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                        : _signatureDisplayUrl() != null
+                            ? Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: _SignatureImageFromUrl(
+                                  key: ValueKey(_signatureImageUrl),
+                                  url: _signatureDisplayUrl()!,
+                                ),
+                              )
+                            : Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.draw,
+                                        color: Colors.grey.shade500, size: 36),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Tap to draw signature',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 14),
+                                    ),
+                                  ],
+                                ),
+                              ),
+              ),
+            ),
+            if (_signatureImageBase64 != null || _signatureImageUrl != null) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _signatureImageBase64 = null;
+                    _signatureValue = null;
+                    _signatureImageUrl = null;
+                  });
+                },
+                icon: const Icon(Icons.clear, size: 18),
+                label: const Text('Clear signature'),
+              ),
+            ],
+          ],
         ),
       ),
       const SizedBox(height: 24),
-      // Save Service Report button
-      FilledButton(
-        onPressed: _isSubmitting
-            ? null
-            : () async {
+      // Save Service Report button (hidden in view-only mode)
+      if (!_isViewOnly)
+        FilledButton(
+          onPressed: _isSubmitting
+              ? null
+              : () async {
                 // Save Service Report
                 setState(() {
                   _isSubmitting = true;
@@ -3432,21 +3713,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                   final DateTime now = DateTime.now();
                   final String dateTimeStr =
                       _formatServiceReportDateTimeForApi(now);
-                  // On update, send original CreatedDate; .NET requires ISO 8601 (with T not space)
+                  // On update, send original CreatedDate in same format (yyyy-MM-dd HH:mm:ss.SSS)
                   String createdDateForPayload = dateTimeStr;
                   if (isUpdate &&
                       _serviceReportCreatedDate != null &&
                       _serviceReportCreatedDate!.isNotEmpty) {
-                    createdDateForPayload = _serviceReportCreatedDate!
-                        .replaceFirst(' ',
-                            'T'); // normalize "yyyy-MM-dd HH:mm" -> ISO 8601
+                    createdDateForPayload = _serviceReportCreatedDate!;
                   }
-                  // Payload with PascalCase keys to match Service Report Update API doc (Save accepts same)
+                  // Payload with PascalCase keys to match Service Report Save API
                   final Map<String, dynamic> payload = {
                     'CreatedDate': createdDateForPayload,
                     'ModifiedBy': isUpdate ? currentUserId : 0,
                     'ModifiedDate': dateTimeStr,
-                    'Id': _serviceReportId ?? 0,
+                    'Id': _serviceReportId,
                     'CreatedBy': currentUserId,
                     'Status': isUpdate ? 0 : 1,
                     'SbuId': 0,
@@ -3489,13 +3768,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                         _selectedFeedbackOption?.description ?? '',
                     'FeedbackOptionId': _selectedFeedbackOption?.value ?? 0,
                     'SignedBy': _signedByCtrl.text.trim(),
-                    'SignatureValue': _signatureValue,
-                    'SignatureImageBase64': _signatureImageBase64,
+                    'SignatureImageUrl': _signatureImageUrl,
                     'ServiceRate':
                         double.tryParse(_serviceRateCtrl.text.trim()) ?? 0.0
                   };
-                  // Some .NET APIs reject null; omit keys with null value
-                  payload.removeWhere((_, v) => v == null);
+                  // Omit null values except Id (API expects Id: null for new report)
+                  payload.removeWhere((k, v) => v == null && k != 'Id');
 
                   final String url = isUpdate
                       ? Endpoints.serviceReportUpdate
@@ -3573,7 +3851,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
             : const Text('Save'),
-      ),
+        ),
     ];
   }
 
@@ -3629,6 +3907,41 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     return result;
   }
 
+  /// Upload signature image (PNG base64) to ServiceReport folder; returns path for SignatureImageUrl.
+  Future<String?> _uploadSignatureImage(String base64Png) async {
+    if (!getIt.isRegistered<ExpenseApi>()) return null;
+    try {
+      final bytes = base64Decode(base64Png);
+      final name =
+          'signature_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = PlatformFile(name: name, size: bytes.length, bytes: bytes);
+      final api = getIt<ExpenseApi>();
+      final res = await api.uploadFile(
+        file,
+        relativePath: 'Uploads/Attachments/ServiceReport',
+      );
+      if (res.success && res.path.isNotEmpty) {
+        return res.path;
+      }
+      return null;
+    } catch (e) {
+      print('❌ [ServiceReport] Signature upload error: $e');
+      return null;
+    }
+  }
+
+  /// Build display URL for signature from saved path.
+  /// Server expects: path=%2FUploads%2FAttachmentsServiceReport%2Fsignature_xxx.png (leading slash, no slash between Attachments and ServiceReport).
+  String? _signatureDisplayUrl() {
+    if (_signatureImageUrl == null || _signatureImageUrl!.isEmpty) return null;
+    String p = _signatureImageUrl!.trim();
+    if (p.startsWith('http')) return p;
+    // Ensure leading slash for path param
+    if (!p.startsWith('/')) p = '/$p';
+    final pathParam = Uri.encodeComponent(p);
+    return '${Endpoints.fileDownloadBaseUrl}/FileDownload/Download?path=$pathParam';
+  }
+
   // Build Customer Fields
   List<Widget> _buildCustomerFields(BuildContext context, ThemeData theme) {
     final UserDetailStore? userStore =
@@ -3637,11 +3950,21 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final bool isMedicalRep = roleCategory == 'Medical Rep';
 
     return [
-      // Customer Name
+      // Customer Name (uppercase for API)
       _LabeledField(
         label: 'Customer',
         child: TextFormField(
           controller: _customerNameCtrl,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [
+            TextInputFormatter.withFunction(
+              (_, value) => TextEditingValue(
+                text: value.text.toUpperCase(),
+                selection: value.selection,
+                composing: value.composing,
+              ),
+            ),
+          ],
           decoration: const InputDecoration(
             hintText: 'Enter customer name',
           ),
@@ -3820,25 +4143,26 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 20),
-      // Save Customer button
-      FilledButton(
-        onPressed: _saveNewCustomer,
-        style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFF4db1b3),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+      // Save Customer button (hidden in view-only mode)
+      if (!_isViewOnly)
+        FilledButton(
+          onPressed: _saveNewCustomer,
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF4db1b3),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            elevation: 2,
           ),
-          elevation: 2,
+          child: const Text('Save Customer'),
         ),
-        child: const Text('Save Customer'),
-      ),
     ];
   }
 
   Future<void> _saveNewCustomer() async {
-    final String name = _customerNameCtrl.text.trim();
+    final String name = _customerNameCtrl.text.trim().toUpperCase();
     final String code = _customerCodeCtrl.text.trim();
     final String mobile = _customerMobileCtrl.text.trim();
     final String uin = _uinCtrl.text.trim();
@@ -3907,12 +4231,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       return;
     }
 
-    final int currentUserId = getIt.isRegistered<UserDetailStore>()
-        ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
-        : 0;
-    final int? roleCategory = getIt.isRegistered<UserDetailStore>()
-        ? getIt<UserDetailStore>().userDetail?.roleCategory
+    final UserDetailStore? userDetailStore = getIt.isRegistered<UserDetailStore>()
+        ? getIt<UserDetailStore>()
         : null;
+    final int currentUserId =
+        userDetailStore?.userDetail?.id ?? 0;
+    final int? roleCategory = userDetailStore?.userDetail?.roleCategory;
+    final int? employeeId = userDetailStore?.userDetail?.employeeId;
+    final int userSbuId = userDetailStore?.userDetail?.sbuId ?? 1;
     // serviceArea and isMedicalRepServiceArea already declared at top of method
     // Medical Rep: roleCategory == 3 → Doctor/Save. Else → Pharmacy/Save (Sales Rep).
     final bool isMedicalRep = roleCategory == 3;
@@ -4047,12 +4373,13 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           return;
         }
         url = Endpoints.doctorSave;
+        // API doc: SubType = 1 for Doctor. Use user's sbuId and empty string for optional text fields.
         payload = {
           'Id': null,
           'UserId': currentUserId,
           'CreatedBy': currentUserId,
           'Status': 0,
-          'SbuId': 1,
+          'SbuId': userSbuId,
           'Name': name,
           'Code': code.isNotEmpty ? code : 'DCRCUST',
           'CountryId': countryId,
@@ -4060,28 +4387,28 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'StateId': stateId,
           'CityId': cityId,
           'TownId': null,
-          'CityText': null,
-          'CountryText': null,
-          'TownText': null,
-          'StateText': null,
+          'CityText': '',
+          'CountryText': '',
+          'TownText': '',
+          'StateText': '',
           'Speciality': specialityId,
-          'SpecialityText': null,
+          'SpecialityText': '',
           'Category': categoryId,
-          'CategoryText': null,
+          'CategoryText': '',
           'Qualification': null,
-          'QualificationText': null,
+          'QualificationText': '',
           'Class': null,
           'AreaType': areaTypeId,
-          'AreaTypeText': null,
-          'Address': null,
-          'HospitalName': null,
-          'HospitalAddress': null,
-          'MobileNo': mobile.isNotEmpty ? mobile : null,
+          'AreaTypeText': '',
+          'Address': '',
+          'HospitalName': '',
+          'HospitalAddress': '',
+          'MobileNo': mobile.isNotEmpty ? mobile : '',
           'DOB': null,
           'AnniversaryDate': null,
-          'UIN': uin.isNotEmpty ? uin : null,
-          'JobCategoryText': null,
-          'GenderText': null,
+          'UIN': uin.isNotEmpty ? uin : '',
+          'JobCategoryText': '',
+          'GenderText': '',
           'Gender': null,
           'JobCategory': null,
           'QualificationRequested': null,
@@ -4091,16 +4418,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'ItemRequested': null,
           'ItemList': null,
           'Active': 1,
-          'ActiveText': null,
+          'ActiveText': '',
           'SubType': 1,
         };
       } else {
-        // Pharmacy/Save payload must match API contract exactly (no extra fields).
-        // API doc: https://103.141.54.146:1445/erpapi/api/Pharmacy/Save
+        // Pharmacy/Save: minimal payload per API doc; omit nulls. Omit *Text fields so server gets only core fields.
         url = Endpoints.pharmacySave;
-        payload = {
+        final int? salesRepId =
+            (employeeId != null && employeeId > 0) ? employeeId : null;
+        final Map<String, dynamic> pharmacyRaw = {
           'Id': null,
-          'SbuId': 1,
+          'SbuId': userSbuId,
           'UserId': currentUserId,
           'CreatedBy': currentUserId,
           'Status': 0,
@@ -4116,27 +4444,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'ZipCode': null,
           'Type': customerTypeId!,
           'Zip': null,
-          'SalesRepId': null,
+          'SalesRepId': salesRepId,
           'FieldManagerId': null,
           'Provinance': null,
           'Active': 1,
           'DistributerId': null,
-          'BizUnit': 1,
-          'CountryText': null,
-          'StateText': null,
-          'CityText': null,
-          'TownText': null,
-          'DistrictText': null,
-          'TypeText': null,
+          'BizUnit': userSbuId,
           'SubType': 0,
-          'SalesRepName': null,
-          'FieldManager': null,
-          'ActiveText': null,
-          'DistributerText': null,
-          'VatRegistered': null,
-          'BonusEnabled': null,
-          'DiscountEnabled': null,
         };
+        payload = Map.fromEntries(
+          pharmacyRaw.entries.where((e) => e.value != null),
+        );
       }
 
       final response = await dioClient.dio.post(
@@ -4170,10 +4488,26 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop(); // close loader if open
-        final String message = e.toString().contains('500') ||
-                e.toString().contains('DioException')
-            ? 'Server error while saving customer. Please check that all fields are valid and try again.'
-            : 'Error saving customer: ${e.toString().replaceFirst('Exception: ', '')}';
+        String message = 'Error saving customer.';
+        if (e is DioException && e.response != null) {
+          final dynamic data = e.response!.data;
+          final int? statusCode = e.response!.statusCode;
+          // Always log full response so we can see what the server actually returned
+          print('Pharmacy/Doctor Save $statusCode - Full response: $data');
+          final String? serverMessage = _extractServerErrorMessage(data);
+          if (serverMessage != null && serverMessage.isNotEmpty) {
+            message = serverMessage.length > 250
+                ? '${serverMessage.substring(0, 250)}...'
+                : serverMessage;
+          } else {
+            message =
+                'Server error ($statusCode). Customer save failed. Check with admin or try different Code/Type.';
+          }
+        } else if (e.toString().contains('500') || e.toString().contains('DioException')) {
+          message = 'Server error while saving customer. Please check that all fields are valid and try again.';
+        } else {
+          message = 'Error saving customer: ${e.toString().replaceFirst('Exception: ', '')}';
+        }
         ToastMessage.show(
           context,
           message: message,
@@ -4182,6 +4516,29 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         );
       }
     }
+  }
+
+  /// Extract error message from server response (Map, String, or List).
+  String? _extractServerErrorMessage(dynamic data) {
+    if (data == null) return null;
+    if (data is String) return data.trim().isEmpty ? null : (data.length > 300 ? '${data.substring(0, 300)}...' : data);
+    if (data is Map) {
+      // .NET often uses ExceptionMessage, message, error, or nested innerException
+      final msg = data['ExceptionMessage'] ?? data['exceptionMessage'] ??
+          data['message'] ?? data['Message'] ??
+          data['error'] ?? data['Error'] ??
+          data['MessageDetail'] ?? data['messageDetail'];
+      if (msg != null && msg.toString().trim().isNotEmpty) return msg.toString().trim();
+      final inner = data['innerException'] ?? data['InnerException'];
+      if (inner is Map) return _extractServerErrorMessage(inner);
+      if (inner is String && inner.trim().isNotEmpty) return inner.trim();
+    }
+    if (data is List && data.isNotEmpty) {
+      final first = data.first;
+      if (first is String) return first;
+      if (first is Map) return _extractServerErrorMessage(first);
+    }
+    return null;
   }
 
   // Build Location Picker Widget
@@ -4812,13 +5169,13 @@ extension on _DcrEntryScreenState {
         result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
             ? _resultCtrl.text.trim()
             : null,
-        complaintStatus: _isServiceEngineer && _complaintStatus != null
-            ? (_complaintStatus == 'Resolved'
+        complaintStatus: _isServiceEngineer && _selectedServiceReportStatus != null
+            ? (_selectedServiceReportStatus == ServiceReportStatus.Resolved
                 ? 1
-                : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
+                : 0) // API: 1 = Resolved, 0 = Not Resolved
             : null,
-        complaintDate: _isServiceEngineer && _complaintDate != null
-            ? _complaintDate
+        complaintDate: _isServiceEngineer
+            ? (_complaintDateTime ?? _complaintDate)
             : null,
         complaintRemarks:
             _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
@@ -4890,13 +5247,13 @@ extension on _DcrEntryScreenState {
           result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
               ? _resultCtrl.text.trim()
               : null,
-          complaintStatus: _isServiceEngineer && _complaintStatus != null
-              ? (_complaintStatus == 'Resolved'
+          complaintStatus: _isServiceEngineer && _selectedServiceReportStatus != null
+              ? (_selectedServiceReportStatus == ServiceReportStatus.Resolved
                   ? 1
-                  : 0) // Convert string to int: 1 = Resolved, 0 = Not Resolved
+                  : 0) // API: 1 = Resolved, 0 = Not Resolved
               : null,
-          complaintDate: _isServiceEngineer && _complaintDate != null
-              ? _complaintDate
+          complaintDate: _isServiceEngineer
+              ? (_complaintDateTime ?? _complaintDate)
               : null,
           complaintRemarks:
               _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
@@ -5497,6 +5854,69 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
   }
 }
 
+/// Loads signature image via Dio (uses app SSL bypass) and displays as Image.memory.
+class _SignatureImageFromUrl extends StatefulWidget {
+  const _SignatureImageFromUrl({super.key, required this.url});
+
+  final String url;
+
+  @override
+  State<_SignatureImageFromUrl> createState() => _SignatureImageFromUrlState();
+}
+
+class _SignatureImageFromUrlState extends State<_SignatureImageFromUrl> {
+  Uint8List? _bytes;
+  bool _error = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!getIt.isRegistered<DioClient>()) {
+      if (mounted) setState(() => _error = true);
+      return;
+    }
+    try {
+      final dio = getIt<DioClient>().dio;
+      final res = await dio.get<List<int>>(
+        widget.url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      if (!mounted) return;
+      if (res.data != null && res.data!.isNotEmpty) {
+        setState(() {
+          _bytes = Uint8List.fromList(res.data!);
+          _error = false;
+        });
+      } else {
+        setState(() => _error = true);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_bytes != null) {
+      return Image.memory(_bytes!, fit: BoxFit.contain);
+    }
+    if (_error) {
+      return const Center(child: Icon(Icons.broken_image_outlined));
+    }
+    return const Center(
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+}
+
 // Signature Pad Dialog
 class _SignaturePadDialog extends StatefulWidget {
   @override
@@ -5543,9 +5963,24 @@ class _SignaturePadDialogState extends State<_SignaturePadDialog> {
               Text('Add Signature',
                   style: Theme.of(context).textTheme.titleMedium),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(icon: const Icon(Icons.clear), onPressed: _clear),
-                  IconButton(icon: const Icon(Icons.check), onPressed: _save),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: _clear,
+                    tooltip: 'Clear drawing',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.check),
+                    onPressed: _save,
+                    tooltip: 'Save signature',
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.close, size: 20),
+                    label: const Text('Close'),
+                    onPressed: () => Navigator.of(context).pop(null),
+                  ),
                 ],
               )
             ],

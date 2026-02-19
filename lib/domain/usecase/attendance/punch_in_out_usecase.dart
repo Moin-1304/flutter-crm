@@ -7,7 +7,8 @@ class PunchInOutUseCase {
 
   PunchInOutUseCase(this._punchInOutRepository);
 
-  /// Save punch in/out record
+  /// Save punch in/out record.
+  /// CheckInStatus: 0 = Check In (KilometerIn), 1 = Check Out (KilometerOut).
   Future<UseCaseResult<PunchInOutResponse>> savePunchInOut({
     required int userId,
     required int employeeId,
@@ -16,6 +17,8 @@ class PunchInOutUseCase {
     required int status,
     required int bizUnit,
     required bool isPunchIn, // true for punch in, false for punch out
+    double? kilometerIn,  // Vehicle mileage at punch in (required when isPunchIn is true)
+    double? kilometerOut, // Vehicle mileage at punch out (required when isPunchIn is false)
   }) async {
     try {
       final request = PunchInOutSaveRequest(
@@ -25,8 +28,10 @@ class PunchInOutUseCase {
         sbuId: sbuId,
         employeeId: employeeId,
         userId: userId,
-        checkInStatus: isPunchIn ? 1 : 0, // 1 for punch in, 0 for punch out
+        checkInStatus: isPunchIn ? 1 : 0, // 0 = Check In, 1 = Check Out
         bizUnit: bizUnit,
+        kilometerIn: isPunchIn ? kilometerIn : null,
+        kilometerOut: isPunchIn ? null : kilometerOut,
       );
 
       final response = await _punchInOutRepository.savePunchInOut(request);

@@ -1373,11 +1373,31 @@ class CommonApi {
       print('   Status Code: ${response.statusCode}');
       print('   Response Data: ${response.data}');
 
-      if (response.data != null) {
-        return ItemDetailResponse.fromJson(response.data);
-      } else {
+      if (response.data == null) {
         throw Exception('No item detail data received');
       }
+
+      // Handle different response shapes: raw map, list of one, or wrapped in data/result
+      dynamic data = response.data;
+      if (data is List && data.isNotEmpty) {
+        data = data.first;
+        print('   GetItemDetail: Using first element from list (${data.runtimeType})');
+      }
+      if (data is Map) {
+        final map = data as Map<String, dynamic>;
+        if (map.containsKey('data') && map['data'] != null) {
+          data = map['data'];
+          print('   GetItemDetail: Using wrapped "data"');
+        } else if (map.containsKey('result') && map['result'] != null) {
+          final result = map['result'];
+          data = result is List && result.isNotEmpty ? result.first : result;
+          print('   GetItemDetail: Using wrapped "result"');
+        }
+      }
+      if (data is! Map<String, dynamic>) {
+        throw Exception('Item detail response is not a map: ${data.runtimeType}');
+      }
+      return ItemDetailResponse.fromJson(data);
     } catch (e) {
       print('❌ GetItemDetail API Error: $e');
       throw Exception('Failed to get item detail: ${e.toString()}');

@@ -768,9 +768,27 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
     return 'Not Available';
   }
 
+  /// Parses description that may contain "Instrument: ... Serial Number: ..." suffix for display in details.
+  static ({String reason, String? instrumentName, String? serialNumber}) _parseDescription(String description) {
+    final d = (description).trim();
+    if (d.isEmpty) return (reason: '', instrumentName: null, serialNumber: null);
+    const instrumentPrefix = '\n\nInstrument: ';
+    const serialPrefix = '\nSerial Number: ';
+    final instrumentIdx = d.indexOf(instrumentPrefix);
+    if (instrumentIdx < 0) return (reason: d, instrumentName: null, serialNumber: null);
+    final reason = d.substring(0, instrumentIdx).trim();
+    final afterInstrument = d.substring(instrumentIdx + instrumentPrefix.length);
+    final serialIdx = afterInstrument.indexOf(serialPrefix);
+    if (serialIdx < 0) return (reason: reason, instrumentName: afterInstrument.trim(), serialNumber: null);
+    final instrumentName = afterInstrument.substring(0, serialIdx).trim();
+    final serialNumber = afterInstrument.substring(serialIdx + serialPrefix.length).trim();
+    return (reason: reason, instrumentName: instrumentName.isEmpty ? null : instrumentName, serialNumber: serialNumber.isEmpty ? null : serialNumber);
+  }
+
   /// Show deviation details modal (same as deviation list screen)
   void _showDeviationDetails(DeviationApiItem data) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
+    final parsedDesc = _parseDescription(data.description);
     final String typeLabel = data.deviationType.isNotEmpty ? data.deviationType : 'Deviation';
     
     // Use deviationStatus1 if available (actual status text), otherwise fall back to deviationStatus
@@ -936,7 +954,15 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                       const SizedBox(height: 20),
                       _DetailRow('Impact', _EnhancedDeviationCard._valueOrPlaceholder(data.impact, placeholder: 'Not Provided')),
                       const SizedBox(height: 12),
-                      _DetailRow('Description', _EnhancedDeviationCard._valueOrPlaceholder(data.description, placeholder: 'No description provided'), isMultiline: true),
+                      _DetailRow('Description', _EnhancedDeviationCard._valueOrPlaceholder(parsedDesc.reason, placeholder: 'No description provided'), isMultiline: true),
+                      if (parsedDesc.instrumentName != null && parsedDesc.instrumentName!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _DetailRow('Instrument', parsedDesc.instrumentName!),
+                      ],
+                      if (parsedDesc.serialNumber != null && parsedDesc.serialNumber!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _DetailRow('Serial Number', parsedDesc.serialNumber!),
+                      ],
                     ],
                   ),
                 ),

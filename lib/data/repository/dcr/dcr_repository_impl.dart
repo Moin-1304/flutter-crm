@@ -923,23 +923,44 @@ class DcrRepositoryImpl implements DcrRepository {
       throw Exception('No DCR details found in response');
     }
 
-    // Convert API status to DcrStatus enum
+    // Convert API status to DcrStatus enum (use statusText or fallback to dcrStatusId)
     DcrStatus status;
-    switch (response.statusText.toLowerCase()) {
-      case 'approved':
-        status = DcrStatus.approved;
-        break;
-      case 'submitted':
-        status = DcrStatus.submitted;
-        break;
-      case 'rejected':
-        status = DcrStatus.rejected;
-        break;
-      case 'sent back':
-        status = DcrStatus.sentBack;
-        break;
-      default:
-        status = DcrStatus.draft;
+    final String statusText = response.statusText.trim().toLowerCase();
+    if (statusText.isNotEmpty) {
+      switch (statusText) {
+        case 'approved':
+          status = DcrStatus.approved;
+          break;
+        case 'submitted':
+          status = DcrStatus.submitted;
+          break;
+        case 'rejected':
+          status = DcrStatus.rejected;
+          break;
+        case 'sent back':
+          status = DcrStatus.sentBack;
+          break;
+        default:
+          status = DcrStatus.draft;
+      }
+    } else {
+      // Fallback: dcrStatusId 1 = draft/sent back, 2 = submitted, 3 = approved, etc.
+      switch (response.dcrStatusId) {
+        case 2:
+          status = DcrStatus.submitted;
+          break;
+        case 3:
+          status = DcrStatus.approved;
+          break;
+        case 4:
+          status = DcrStatus.rejected;
+          break;
+        case 5:
+          status = DcrStatus.sentBack;
+          break;
+        default:
+          status = DcrStatus.draft;
+      }
     }
 
     // Parse date from API response
@@ -978,9 +999,16 @@ class DcrRepositoryImpl implements DcrRepository {
         : 'Unknown Customer';
     final String purpose =
         dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : 'Visit';
-    final String productsToDiscuss = (dcrDetail.productsToBeDiscussed ?? [])
-        .map((p) => p.productName)
-        .join(', ');
+    // Prefer productsToBeDiscussed array; fallback to productsToDiscuss string (API often returns string only)
+    final String productsToDiscuss =
+        (dcrDetail.productsToBeDiscussed != null &&
+                dcrDetail.productsToBeDiscussed!.isNotEmpty)
+            ? dcrDetail.productsToBeDiscussed!
+                .map((p) => p.productName)
+                .join(', ')
+            : (dcrDetail.productsToDiscuss.trim().isNotEmpty
+                ? dcrDetail.productsToDiscuss.trim()
+                : '');
     final String samplesToDistribute = dcrDetail.samplesToDistribute.isNotEmpty
         ? dcrDetail.samplesToDistribute
         : '';

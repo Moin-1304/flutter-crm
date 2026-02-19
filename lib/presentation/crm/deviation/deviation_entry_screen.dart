@@ -130,6 +130,24 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
     return true;
   }
 
+  /// Parses saved description that may contain "Instrument: ... Serial Number: ..." suffix.
+  /// Returns reason-only text and optional instrument name and serial number for edit form.
+  static ({String reason, String? instrumentName, String? serialNumber}) _parseDescriptionForEdit(String description) {
+    final d = description.trim();
+    if (d.isEmpty) return (reason: '', instrumentName: null, serialNumber: null);
+    const instrumentPrefix = '\n\nInstrument: ';
+    const serialPrefix = '\nSerial Number: ';
+    final instrumentIdx = d.indexOf(instrumentPrefix);
+    if (instrumentIdx < 0) return (reason: d, instrumentName: null, serialNumber: null);
+    final reason = d.substring(0, instrumentIdx).trim();
+    final afterInstrument = d.substring(instrumentIdx + instrumentPrefix.length);
+    final serialIdx = afterInstrument.indexOf(serialPrefix);
+    if (serialIdx < 0) return (reason: reason, instrumentName: afterInstrument.trim(), serialNumber: null);
+    final instrumentName = afterInstrument.substring(0, serialIdx).trim();
+    final serialNumber = afterInstrument.substring(serialIdx + serialPrefix.length).trim();
+    return (reason: reason, instrumentName: instrumentName.isEmpty ? null : instrumentName, serialNumber: serialNumber.isEmpty ? null : serialNumber);
+  }
+
   Future<void> _initializeData() async {
     setState(() => _isLoading = true);
     
@@ -309,17 +327,20 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
           if (mounted) {
             // Store tour plan detail ID for later use
             _storedTourPlanDetailId = deviation.tourPlanDetailId;
-            
+
+            // Parse description so reason text and Instrument/Serial Number go into correct fields
+            final parsed = _parseDescriptionForEdit(deviation.description ?? '');
+
             setState(() {
               // Set deviation type
               _deviationType = deviation.deviationType;
-              
-              // Set reason/description
-              _reasonController.text = deviation.description ?? '';
-              
+
+              // Set reason/description (reason only; Instrument/Serial are in their dropdowns)
+              _reasonController.text = parsed.reason;
+
               // Set impact
               _impactController.text = deviation.impact ?? '';
-              
+
               // Set employee name from deviation data, or fallback to current user's name
               if (deviation.employeeName != null && deviation.employeeName!.isNotEmpty) {
                 _employeeNameController.text = deviation.employeeName!;
@@ -328,7 +349,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                 final String employeeName = userStore?.userDetail?.employeeName ?? '';
                 _employeeNameController.text = employeeName;
               }
-              
+
               // Set date - convert from yyyy-MM-dd to dd-MMM-yyyy format
               if (deviation.dateOfDeviation.isNotEmpty) {
                 try {
@@ -339,7 +360,7 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                   _dateController.text = deviation.dateOfDeviation;
                 }
               }
-              
+
               // Set cluster and customer for UnPlanned Visit
               if (deviation.deviationType?.toLowerCase() == 'unplanned visit') {
                 // Set cluster if clusterName is available
@@ -350,7 +371,35 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                   }
                 }
               }
+
+              // Set Instrument and Serial Number for Service Engineer (UnPlanned Visit) from parsed description
+              if (_isServiceEngineer && parsed.instrumentName != null && parsed.instrumentName!.isNotEmpty) {
+                if (_instrumentNameToId.containsKey(parsed.instrumentName)) {
+                  _selectedInstrument = parsed.instrumentName;
+                } else {
+                  _selectedInstrument = parsed.instrumentName;
+                  if (!_instrumentOptions.contains(parsed.instrumentName)) {
+                    _instrumentOptions.add(parsed.instrumentName!);
+                  }
+                }
+                if (parsed.serialNumber != null && parsed.serialNumber!.isNotEmpty) {
+                  _selectedSerialNumber = parsed.serialNumber;
+                  if (!_serialNumberOptions.contains(parsed.serialNumber)) {
+                    _serialNumberOptions.add(parsed.serialNumber!);
+                  }
+                }
+              }
             });
+
+            // Load serial numbers for selected instrument so dropdown shows and keeps selection
+            if (_isServiceEngineer && _selectedInstrument != null && _instrumentNameToId.containsKey(_selectedInstrument)) {
+              final instrumentId = _instrumentNameToId[_selectedInstrument!]!;
+              await _loadSerialNumbersForInstrument(instrumentId);
+              if (mounted && parsed.serialNumber != null && !_serialNumberOptions.contains(parsed.serialNumber)) {
+                _serialNumberOptions.add(parsed.serialNumber!);
+              }
+              if (mounted) setState(() {});
+            }
             
             // Load customers if cluster is set for UnPlanned Visit
             if (deviation.deviationType?.toLowerCase() == 'unplanned visit' && 

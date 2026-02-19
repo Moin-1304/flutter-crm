@@ -353,7 +353,7 @@ class TourPlanDcrDetail {
       longitude: (json['customerLongitude'] ?? json['longitude'] ?? 0).toDouble(),
       bizunit: json['bizunit'] ?? 0,
       samplesToDistribute: json['samplesToDistribute'] ?? '',
-      productsToDiscuss: json['productsToDiscuss'] ?? '',
+      productsToDiscuss: (json['productsToDiscuss'] ?? json['ProductsToDiscuss'] ?? '').toString().trim(),
       createdBy: json['createdBy'] ?? 0,
       status: json['status'] ?? 0,
       sbuId: json['sbuId'] ?? 0,
@@ -1250,7 +1250,10 @@ class DcrGetResponse {
       active: json['active'] ?? false,
       userId: json['userId'] ?? 0,
       tourPlanDCRDetails: (json['tourPlanDCRDetails'] as List<dynamic>?)
-          ?.map((item) => TourPlanDcrDetailGet.fromJson(item))
+          ?.map((item) => TourPlanDcrDetailGet.fromJson(
+              item is Map<String, dynamic>
+                  ? item
+                  : Map<String, dynamic>.from(item as Map)))
           .toList() ?? [],
       employeeName: json['employeeName'] ?? '',
       designation: json['designation'] ?? '',
@@ -1434,7 +1437,7 @@ class TourPlanDcrDetailGet {
       longitude: (json['customerLongitude'] ?? json['longitude'] ?? 0).toDouble(),
       bizunit: json['bizunit'] ?? 0,
       samplesToDistribute: json['samplesToDistribute'] ?? '',
-      productsToDiscuss: json['productsToDiscuss'] ?? '',
+      productsToDiscuss: (json['productsToDiscuss'] ?? json['ProductsToDiscuss'] ?? '').toString().trim(),
       createdBy: json['createdBy'] ?? 0,
       status: json['status'] ?? 0,
       sbuId: json['sbuId'] ?? 0,
@@ -1475,14 +1478,16 @@ class TourPlanDcrDetailGet {
       complaintDate: (json['ComplaintDate'] ?? json['complaintDate'])?.toString(),
       complaintRemarks: (json['ComplaintRemarks'] ?? json['complaintRemarks'])?.toString(),
       productsToBeDiscussed: (json['productsToBeDiscussed'] as List?)
-          ?.map((e) => ProductToBeDiscussed.fromJson(e))
+          ?.map((e) => ProductToBeDiscussed.fromJson(
+              e is Map<String, dynamic>
+                  ? e
+                  : Map<String, dynamic>.from(e as Map)))
           .toList(),
     );
   }
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-
       // Product list
       'productsToBeDiscussed':
           productsToBeDiscussed?.map((e) => e.toJson()).toList(),

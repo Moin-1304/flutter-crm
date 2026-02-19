@@ -12,6 +12,7 @@ import 'package:boilerplate/domain/entity/dcr/dcr_api_models.dart';
 import 'package:boilerplate/domain/entity/dcr/unified_dcr_item.dart';
 import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
 import 'package:boilerplate/domain/entity/expense/expense.dart';
+import 'package:boilerplate/data/network/apis/expense/expense_api_models.dart';
 import 'package:geolocator/geolocator.dart';
 import '../deviation/deviation_entry_screen.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
@@ -21,6 +22,7 @@ import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -966,7 +968,9 @@ class _DcrListScreenState extends State<DcrListScreen>
             listenable: getIt<UserValidationStore>(),
             builder: (context, _) {
               final validationStore = getIt<UserValidationStore>();
-              final canCreateDcr = validationStore.canCreateDcr;
+              // Service Engineers: always allow New DCR; others: use validate-user API
+              final canCreateDcr =
+                  _isCurrentUserServiceEngineer() || validationStore.canCreateDcr;
 
               return Row(
                 children: [
@@ -1645,6 +1649,23 @@ class _DcrListScreenState extends State<DcrListScreen>
     return '${months[d.month - 1]} ${d.year}'; // Month and year only
   }
 
+  /// Format complaint date string (e.g. ISO 2026-02-03T04:44:36.77) for display.
+  static String _formatComplaintDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '—';
+    try {
+      final d = DateTime.parse(raw);
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      final day = d.day.toString().padLeft(2, '0');
+      final month = months[d.month - 1];
+      final year = d.year;
+      final hour = d.hour.toString().padLeft(2, '0');
+      final minute = d.minute.toString().padLeft(2, '0');
+      return '$day $month $year, $hour:$minute';
+    } catch (_) {
+      return raw;
+    }
+  }
+
   static bool _isToday(DateTime d) {
     final DateTime now = DateTime.now();
     return now.year == d.year && now.month == d.month; // Check month only
@@ -2079,29 +2100,34 @@ class _DcrListScreenState extends State<DcrListScreen>
   /// Helper method to check if a DCR item is editable
   /// DCR is editable if status is Draft or Sent Back
   bool _isDcrEditable(UnifiedDcrItem item) {
-    // First check if user validation allows updates
-    if (getIt.isRegistered<UserValidationStore>()) {
-      final validationStore = getIt<UserValidationStore>();
-      if (!validationStore.canUpdateDcr) {
-        return false; // Disable edit if validation fails
-      }
-    }
-
     if (item.isDcr) {
-      // Check statusText first
       final statusText = item.statusText.trim().toLowerCase();
-      if (statusText.contains('draft') ||
+      final bool isDraftOrSentBackByText = statusText.contains('draft') ||
           statusText.contains('sent back') ||
-          statusText.contains('sentback')) {
-        return true;
-      }
-
-      // Check dcrStatusId as fallback
-      // Draft: 0 or 1, Pending: 7, Sent Back: 6
-      return item.dcrStatusId == 0 ||
+          statusText.contains('sentback');
+      final bool isDraftOrSentBackById = item.dcrStatusId == 0 ||
           item.dcrStatusId == 1 ||
           item.dcrStatusId == 6 ||
           item.dcrStatusId == 7;
+
+      // Service Engineers can always edit draft/sent-back DCRs (bypass validate-user for update)
+      if (_isCurrentUserServiceEngineer() &&
+          (isDraftOrSentBackByText || isDraftOrSentBackById)) {
+        return true;
+      }
+
+      // For others, check if user validation allows updates
+      if (getIt.isRegistered<UserValidationStore>()) {
+        final validationStore = getIt<UserValidationStore>();
+        if (!validationStore.canUpdateDcr) {
+          return false;
+        }
+      }
+
+      if (isDraftOrSentBackByText || isDraftOrSentBackById) {
+        return true;
+      }
+      return false;
     }
     // For non-DCR items (expenses), editable only in draft or sent back states
     final statusText = item.statusText.trim().toLowerCase();
@@ -2424,24 +2450,118 @@ class _DcrListScreenState extends State<DcrListScreen>
                             displayItem.expenseAmount != null
                                 ? 'LKR ${displayItem.expenseAmount!.toStringAsFixed(2)}'
                                 : 'Unknown'),
+                        // Attachments: always show section and button for expense details
+                        const SizedBox(height: 20),
+                        Divider(height: 1, color: Colors.grey.shade300),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Attachments',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey[900],
+                            fontSize: isTablet ? 15 : 14,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FutureBuilder<ExpenseDetailResponse?>(
+                          future: getIt.isRegistered<ExpenseRepository>()
+                              ? getIt<ExpenseRepository>().getExpenseFromApi(item.id)
+                              : Future.value(null),
+                          builder: (context, snapshot) {
+                            final attachments = snapshot.data?.attachments ?? [];
+                            final isLoading = snapshot.connectionState == ConnectionState.waiting;
+                            if (isLoading) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: _DcrListScreenState.tealGreen,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'Loading attachments...',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                            if (attachments.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: Text(
+                                  'No attachments',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              );
+                            }
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: attachments.map((att) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: InkWell(
+                                    onTap: () =>
+                                        AttachmentViewerScreen.openAttachment(
+                                            context, att),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8, horizontal: 4),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.attach_file,
+                                            size: 18,
+                                            color: _DcrListScreenState.tealGreen,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              att.fileName,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 13,
+                                                color: _DcrListScreenState.tealGreen,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          Icon(
+                                            Icons.open_in_new,
+                                            size: 16,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          },
+                        ),
                       ],
-                      // Service Report details (Service Engineer only)
+                      // Service Report details (show when DCR has this data - for SE and for manager review)
                       Builder(
                         builder: (context) {
-                          final bool isServiceEngineer =
-                              _isCurrentUserServiceEngineer();
                           final bool hasServiceReportData =
                               _hasServiceReportData(displayItem);
                           final bool shouldShow = displayItem.isDcr &&
-                              isServiceEngineer &&
                               hasServiceReportData;
-
-                          print('Service Report Section Render Check:');
-                          print('  - item.isDcr: ${displayItem.isDcr}');
-                          print('  - isServiceEngineer: $isServiceEngineer');
-                          print(
-                              '  - hasServiceReportData: $hasServiceReportData');
-                          print('  - shouldShow: $shouldShow');
 
                           if (!shouldShow) {
                             return const SizedBox.shrink();
@@ -2453,15 +2573,15 @@ class _DcrListScreenState extends State<DcrListScreen>
                               const SizedBox(height: 20),
                               Divider(height: 1, color: Colors.grey.shade300),
                               const SizedBox(height: 20),
-                              Text(
-                                'Service Report Details',
-                                style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.grey[900],
-                                  fontSize: isTablet ? 16 : 14,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
+                              // Text(
+                              //   'Service Report Details',
+                              //   style: GoogleFonts.inter(
+                              //     fontWeight: FontWeight.w700,
+                              //     color: Colors.cyan,
+                              //     fontSize: isTablet ? 16 : 14,
+                              //   ),
+                              // ),
+                              // const SizedBox(height: 16),
                               if (displayItem.mappedInstruments != null &&
                                   displayItem
                                       .mappedInstruments!.isNotEmpty) ...[
@@ -2504,7 +2624,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                               if (displayItem.complaintDate != null &&
                                   displayItem.complaintDate!.isNotEmpty) ...[
                                 _DetailRow('Complaint Date',
-                                    displayItem.complaintDate!),
+                                    _formatComplaintDate(displayItem.complaintDate)),
                                 const SizedBox(height: 12),
                               ],
                               if (displayItem.complaintRemarks != null &&
@@ -2579,6 +2699,41 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   horizontal: 18, vertical: 12),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      // View only for submitted DCRs (drafts can be updated via Edit)
+                      if (item.isDcr &&
+                          _isCurrentUserServiceEngineer() &&
+                          !_isDcrEditable(item)) ...[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => DcrEntryScreen(
+                                    id: item.id.toString(),
+                                    dcrId: item.dcrId.toString(),
+                                    viewOnly: true,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.visibility_outlined,
+                                size: 18, color: Color(0xFF4db1b3)),
+                            label: const Text('View'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF4db1b3),
+                              minimumSize: const Size.fromHeight(44),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 18, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              side: const BorderSide(
+                                  color: Color(0xFF4db1b3), width: 1.5),
                             ),
                           ),
                         ),

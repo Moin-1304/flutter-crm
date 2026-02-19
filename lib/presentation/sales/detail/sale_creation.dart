@@ -663,6 +663,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       await _loadUserPagePrivileges();
     }
 
+    // Load Sales Rep list for edit mode so dropdown has options (customer already set above)
+    if (orderData.customerId != null) {
+      await _loadSalesReps(orderData.customerId.toString());
+    }
+
     // Load customers to populate customer field correctly
     // This is important so the customer name is displayed instead of ID
     if (orderData.customerId != null) {
@@ -1108,8 +1113,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     final remarks =
         itemData['remarks']?.toString() ?? itemData['Remarks']?.toString();
-    final despatchedQty =
-        itemData['despatchedQty'] ?? itemData['DespatchedQty'];
+    // Parse dispatched quantity (backend requires quantity >= despatched). Try all common API key variants.
+    final despatchedQty = itemData['despatchedQty'] ??
+        itemData['DespatchedQty'] ??
+        itemData['quantityDespatched'] ??
+        itemData['QuantityDespatched'] ??
+        itemData['dispatchedQuantity'] ??
+        itemData['DispatchedQuantity'] ??
+        itemData['Dispatched'];
     final lineItem = _LineItem.fromProduct(
       defaultProduct,
       reqDate: reqDate,
@@ -1129,10 +1140,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       remarks: remarks,
     );
     if (despatchedQty != null) {
-      final v = despatchedQty is int
+      final num? v = despatchedQty is int
           ? despatchedQty
-          : int.tryParse(despatchedQty.toString());
-      if (v != null && v >= 0) lineItem.despatchedQty = v;
+          : despatchedQty is double
+              ? despatchedQty.round()
+              : int.tryParse(despatchedQty.toString());
+      if (v != null && v >= 0) lineItem.despatchedQty = v.toInt();
+    }
+
+    // Contract line detail Id (each row has its own Id; do not use order Id for line items)
+    final detailIdRaw = itemData['id'] ?? itemData['Id'] ?? itemData['detailId'] ?? itemData['DetailId'];
+    if (detailIdRaw != null) {
+      final num? did = detailIdRaw is int ? detailIdRaw : detailIdRaw is double ? detailIdRaw.round() : int.tryParse(detailIdRaw.toString());
+      if (did != null && did > 0) lineItem.detailId = did.toInt();
     }
 
     // Set selectedUOM from itemData if available (before loading options)
@@ -5178,10 +5198,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final itemId = int.tryParse(item.product.id) ?? 0;
       if (itemId == 0) continue; // Skip invalid items
 
-      final qty = double.tryParse(item.qtyController.text) ?? 0.0;
+      final qty = double.tryParse(item.qtyController.text.trim()) ?? 0.0;
       final dispatched = (item.despatchedQty ?? 0).toDouble();
-      // Backend requires: quantity >= despatched quantity
-      final quantity = qty >= dispatched ? qty : dispatched;
+      // Backend requires: quantity >= despatched quantity. Enforce minimum so save never fails.
+      final quantity = (qty >= dispatched ? qty : dispatched).clamp(dispatched, double.infinity);
       // Get rate from controller, fallback to product rate if controller is empty
       final rateFromController = item.rateController.text.isNotEmpty
           ? double.tryParse(item.rateController.text)
@@ -5217,10 +5237,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         }
       }
 
+      // Backend requires non-null Id for existing lines when editing. Use line detailId if API returned it, else order id to avoid 500.
+      final int? lineId = _isEditMode ? (item.detailId ?? _loadedOrderData?.id) : null;
       contractItems.add(SalesContractItem(
-        id: _isEditMode
-            ? _loadedOrderData?.id
-            : null, // Use existing item ID if editing
+        id: lineId,
         createdBy: user.userId,
         status: 0,
         sbuId: bizUnit,
@@ -5250,7 +5270,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         manufacturerName: item.product.manufacturer,
         isFOC: false,
         isRateUpdateConfirm: false,
-        despatchedQty: item.despatchedQty,
+        despatchedQty: item.despatchedQty ?? 0, // Send 0 when null so backend validation (quantity >= despatched) gets a value
       ));
     }
 
@@ -5634,9 +5654,22 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         _isLoading = false;
       });
 
+      final errorString = e.toString();
+      final bool is500 = errorString.contains('500') ||
+          errorString.toLowerCase().contains('internal server error');
+      if (is500) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error while saving'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
       // Extract error message
       String errorMessage = 'Failed to save draft';
-      final errorString = e.toString();
       if (errorString.startsWith('Exception: ')) {
         errorMessage = errorString.replaceFirst('Exception: ', '');
       } else {
@@ -5707,9 +5740,22 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         _isLoading = false;
       });
 
+      final errorString = e.toString();
+      final bool is500 = errorString.contains('500') ||
+          errorString.toLowerCase().contains('internal server error');
+      if (is500) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error while saving'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
       // Extract error message
       String errorMessage = 'Failed to submit order';
-      final errorString = e.toString();
       if (errorString.startsWith('Exception: ')) {
         errorMessage = errorString.replaceFirst('Exception: ', '');
       } else {
@@ -6519,6 +6565,9 @@ class _LineItem {
 
   bool expanded;
 
+  /// Contract line detail Id from API (when editing). Sent as SalesContractItem.Id so backend can match and validate dispatched qty.
+  int? detailId;
+
   /// Dispatched quantity from API (when editing). Quantity sent on save must be >= this.
   int? despatchedQty;
 
@@ -6542,6 +6591,7 @@ class _LineItem {
     this.selectedUOM,
     this.selectedTax,
     this.expanded = true,
+    this.detailId,
     this.despatchedQty,
   }) : _remarksController = remarksController ?? TextEditingController();
 
@@ -6929,6 +6979,7 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                       const BoxConstraints(maxHeight: 360, minWidth: 240),
                   child: SizedBox(
                     width: _fieldSize()?.width,
+                    height: 360,
                     child: StatefulBuilder(
                       builder: (context, setSheetState) {
                         void applyFilter(String q) {
@@ -6942,7 +6993,8 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                         }
 
                         return Column(
-                          mainAxisSize: MainAxisSize.min,
+                          mainAxisSize: MainAxisSize.max,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Padding(
                               padding: const EdgeInsets.all(12.0),
@@ -6961,11 +7013,11 @@ class _DropdownFieldState<T> extends State<_DropdownField<T>> {
                               ),
                             ),
                             const Divider(height: 1, color: Color(0xFFF3F4F6)),
-                            Flexible(
+                            Expanded(
                               child: ListView.separated(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 4),
-                                shrinkWrap: true,
+                                shrinkWrap: false,
                                 itemCount: filtered.length,
                                 separatorBuilder: (_, __) => const Divider(
                                   height: 1,

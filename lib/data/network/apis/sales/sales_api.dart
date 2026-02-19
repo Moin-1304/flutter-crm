@@ -688,6 +688,9 @@ class SalesApi {
         errorMessage =
             'Request timeout. The server is taking too long to respond.';
       }
+      if (e.response!.statusCode == 500) {
+        errorMessage = '$errorMessage status code: ${e.response?.statusCode}';
+      }
 
       print('   Final Error Message: $errorMessage');
       throw Exception(errorMessage);

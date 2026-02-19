@@ -68,14 +68,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   bool _isLoadingCustomerType = false;
   bool _isLoadingCustomers = false;
 
-  // Employee dropdown for managers/field managers
+  // Employee: for all users shows their name (read-only). For managers this is manager name.
+  String? _selectedEmployee;
+  // Reporting Staff: dropdown for managers only; selected staff drives clusters/customers etc.
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = <String, int>{};
-  String? _selectedEmployee;
+  String? _selectedReportingStaff; // Selected reporting staff display name (managers only)
+  int? _selectedEmployeeId; // For managers = selected reporting staff ID; for non-managers = current user's employeeId
   String? _employeeError;
   bool _isLoadingEmployees = false;
   bool _isManagerOrFieldManager = false;
-  int? _selectedEmployeeId; // Store the selected employee ID
 
   // Dynamic calls list
   final List<_CallData> _calls = <_CallData>[
@@ -136,7 +138,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       // For new tour plan, initialize with basic data
       // Load data only when allowed:
       // - Non-managers: load immediately
-      // - Managers (role 1/2): wait until an employee is selected
+      // - Managers (role 1/2): wait until Reporting Staff is selected
       final shouldLoadNow =
           !_isManagerOrFieldManager || (_selectedEmployeeId != null);
       if (shouldLoadNow) {
@@ -145,7 +147,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         });
       } else {
         print(
-            'NewTourPlanScreen: Skipping initial data load until employee is selected (role 1/2)');
+            'NewTourPlanScreen: Skipping initial data load until Reporting Staff is selected (role 1/2)');
       }
     }
     _clearCallErrors();
@@ -188,7 +190,24 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               'NewTourPlanScreen: [Employee] Set current employee: $_selectedEmployee (ID: $_selectedEmployeeId)');
         }
       } else {
-        // For managers/field managers (RoleCategory 1 or 2), load reporting staff list
+        // For managers/field managers: Employee field shows manager's name (read-only)
+        final int? managerEmployeeId = userStore?.userDetail?.employeeId;
+        final String? managerName = userStore?.userDetail?.employeeName;
+        final String? managerCode = userStore?.userDetail?.code;
+        if (managerEmployeeId != null && managerName != null) {
+          final String displayName =
+              managerCode != null && managerCode.isNotEmpty
+                  ? '$managerCode - $managerName'
+                  : managerName;
+          if (mounted) {
+            setState(() {
+              _selectedEmployee = displayName;
+              _selectedEmployeeId = null; // Set when they select Reporting Staff
+            });
+          }
+          print(
+              'NewTourPlanScreen: [Employee] Set manager name in Employee field: $_selectedEmployee');
+        }
         _loadReportingStaffList();
       }
     } else {
@@ -311,10 +330,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   /// Load basic data (clusters, customers, type of work, products, customer type) for new tour plans
   Future<void> _loadInitialData() async {
-    // For managers/field managers, do not load until an employee is selected
+    // For managers/field managers, do not load until a reporting staff is selected
     if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
       print(
-          'NewTourPlanScreen: [InitialData] Manager role without selected employee - skipping');
+          'NewTourPlanScreen: [InitialData] Manager role without selected reporting staff - skipping');
       return;
     }
     // Load all data in parallel for faster loading
@@ -593,41 +612,41 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       dateToSelect = tourPlan.planDate;
     }
 
-    // 1. Set Employee ID for Managers (CRITICAL for dependent dropdowns)
+    // 1. Set Reporting Staff for Managers (Employee field already shows manager name)
     if (_isManagerOrFieldManager) {
       if (tourPlan.employeeId > 0) {
         if (mounted) {
           setState(() {
             _selectedEmployeeId = tourPlan.employeeId;
-            _selectedEmployee = tourPlan.employeeName ?? 'Unknown Employee';
+            _selectedReportingStaff =
+                tourPlan.employeeName ?? 'Unknown Employee';
           });
         }
         print(
-            'NewTourPlanScreen: [Edit] Set initial employee to $_selectedEmployee (ID: $_selectedEmployeeId)');
+            'NewTourPlanScreen: [Edit] Set reporting staff to $_selectedReportingStaff (ID: $_selectedEmployeeId)');
 
-        // Wait for employee options to load
+        // Wait for reporting staff options to load
         int retry = 0;
         while (_isLoadingEmployees && retry < 20) {
           await Future.delayed(const Duration(milliseconds: 200));
           retry++;
         }
 
-        // Find correctly formatted name from options
+        // Match formatted name from options if available
         String? correctlyFormattedName;
         _employeeNameToId.forEach((name, id) {
           if (id == tourPlan.employeeId) {
             correctlyFormattedName = name;
           }
         });
-
         if (correctlyFormattedName != null) {
           if (mounted) {
             setState(() {
-              _selectedEmployee = correctlyFormattedName;
+              _selectedReportingStaff = correctlyFormattedName;
             });
           }
           print(
-              'NewTourPlanScreen: [Edit] Refined employee name to: $_selectedEmployee');
+              'NewTourPlanScreen: [Edit] Refined reporting staff name to: $_selectedReportingStaff');
         }
       }
     }
@@ -1030,76 +1049,77 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // Employee dropdown (for managers/field managers) or read-only display (for others)
+                            // Employee: read-only, shows current user's name (for both manager and non-manager)
                             _Labeled(
                               label: 'Employee',
-                              required: _isManagerOrFieldManager,
-                              errorText: _employeeError,
-                              child: _isManagerOrFieldManager
-                                  ? _isLoadingEmployees
-                                      ? AppTextField(
-                                          hint: 'Loading employees...',
-                                          readOnly: true,
-                                          controller: TextEditingController(),
-                                        )
-                                      : _SingleSelectDropdown(
-                                          options: _employeeOptions,
-                                          value: _selectedEmployee,
-                                          hintText: 'Select Employee',
-                                          onChanged: (v) {
-                                            setState(() {
-                                              _selectedEmployee = v;
-                                              _selectedEmployeeId = v != null
-                                                  ? _employeeNameToId[v]
-                                                  : null;
-                                              _employeeError = null;
-                                              // Clear clusters and customers when employee changes
-                                              _selectedClusters.clear();
-                                              _customerOptions.clear();
-                                              _customerNameToId.clear();
-                                              _customerIdToName.clear();
-                                              _customerNameToClusterName
-                                                  .clear();
-                                              _autoSelectedClusters.clear();
-                                              // Clear other dependent dropdowns
-                                              _purposeOptions.clear();
-                                              _typeOfWorkNameToId.clear();
-                                              _typeOfWorkIdToName.clear();
-                                              _productOptions.clear();
-                                              _productNameToId.clear();
-                                              _customerTypeOptions.clear();
-                                              _customerTypeNameToId.clear();
-                                              _selectedCustomerType = null;
-                                              for (final call in _calls) {
-                                                call.customers = {};
-                                              }
-                                              _updateAutoSelectedClusters();
-                                            });
-                                            // Reload clusters and customers for selected employee
-                                            if (_selectedEmployeeId != null) {
-                                              _loadClusterList(force: true);
-                                              // Reload other dependent sources with selected employee
-                                              _loadTypeOfWorkList();
-                                              _loadProductsList();
-                                              _loadCustomerTypeList();
-                                              // Customers load only after cluster + customer type chosen
-                                              if (_selectedClusters
-                                                      .isNotEmpty &&
-                                                  _selectedCustomerType !=
-                                                      null) {
-                                                _loadMappedCustomers();
-                                              }
-                                            }
-                                          },
-                                        )
-                                  : AppTextField(
-                                      hint: 'Employee',
-                                      readOnly: true,
-                                      controller: TextEditingController(
-                                          text: _selectedEmployee ?? ''),
-                                    ),
+                              required: true,
+                              child: AppTextField(
+                                hint: 'Employee',
+                                readOnly: true,
+                                controller: TextEditingController(
+                                    text: _selectedEmployee ?? ''),
+                              ),
                             ),
                             const SizedBox(height: 12),
+                            // Reporting Staff: dropdown for managers only; other fields load based on selection
+                            if (_isManagerOrFieldManager) ...[
+                              _Labeled(
+                                label: 'Reporting Staff',
+                                required: true,
+                                errorText: _employeeError,
+                                child: _isLoadingEmployees
+                                    ? AppTextField(
+                                        hint: 'Loading reporting staff...',
+                                        readOnly: true,
+                                        controller: TextEditingController(),
+                                      )
+                                    : _SingleSelectDropdown(
+                                        options: _employeeOptions,
+                                        value: _selectedReportingStaff,
+                                        hintText: 'Select Reporting Staff',
+                                        onChanged: (v) {
+                                          setState(() {
+                                            _selectedReportingStaff = v;
+                                            _selectedEmployeeId = v != null
+                                                ? _employeeNameToId[v]
+                                                : null;
+                                            _employeeError = null;
+                                            // Clear clusters and customers when reporting staff changes
+                                            _selectedClusters.clear();
+                                            _customerOptions.clear();
+                                            _customerNameToId.clear();
+                                            _customerIdToName.clear();
+                                            _customerNameToClusterName
+                                                .clear();
+                                            _autoSelectedClusters.clear();
+                                            _purposeOptions.clear();
+                                            _typeOfWorkNameToId.clear();
+                                            _typeOfWorkIdToName.clear();
+                                            _productOptions.clear();
+                                            _productNameToId.clear();
+                                            _customerTypeOptions.clear();
+                                            _customerTypeNameToId.clear();
+                                            _selectedCustomerType = null;
+                                            for (final call in _calls) {
+                                              call.customers = {};
+                                            }
+                                            _updateAutoSelectedClusters();
+                                          });
+                                          if (_selectedEmployeeId != null) {
+                                            _loadClusterList(force: true);
+                                            _loadTypeOfWorkList();
+                                            _loadProductsList();
+                                            _loadCustomerTypeList();
+                                            if (_selectedClusters.isNotEmpty &&
+                                                _selectedCustomerType != null) {
+                                              _loadMappedCustomers();
+                                            }
+                                          }
+                                        },
+                                      ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             _Labeled(
                               label: 'Tour Plan Date',
                               required: true,
@@ -1515,14 +1535,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       final int userId = userStore.userDetail?.id ?? 0;
       final int sbuId = userStore.userDetail?.sbuId ?? 0;
 
-      // For managers/field managers, use selectedEmployeeId; otherwise use current user's employeeId
+      // For managers use selected reporting staff; otherwise use current user
       final int employeeId =
           (_isManagerOrFieldManager && _selectedEmployeeId != null)
               ? _selectedEmployeeId!
               : (userStore.userDetail?.employeeId ?? 0);
       final String employee =
-          (_isManagerOrFieldManager && _selectedEmployee != null)
-              ? _selectedEmployee!
+          (_isManagerOrFieldManager && _selectedReportingStaff != null)
+              ? _selectedReportingStaff!
               : (userStore.userDetail?.employeeName ?? "");
 
       print(
@@ -2083,13 +2103,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       (_) => _CallValidationState(),
     );
 
-    // Validate employee selection for managers/field managers
+    // Validate reporting staff selection for managers/field managers
     if (_isManagerOrFieldManager) {
-      if (_selectedEmployee == null ||
-          _selectedEmployee!.isEmpty ||
+      if (_selectedReportingStaff == null ||
+          _selectedReportingStaff!.isEmpty ||
           _selectedEmployeeId == null) {
-        employeeError = 'Please select an employee';
-        firstMessage ??= 'Select an employee';
+        employeeError = 'Please select Reporting Staff';
+        firstMessage ??= 'Select Reporting Staff';
         isValid = false;
       }
     }
@@ -2206,10 +2226,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     if (_isLoadingClusters) return;
     if (_clusters.isNotEmpty && !force) return;
 
-    // Manager/Field Manager must select employee first
+    // Manager/Field Manager must select Reporting Staff first
     if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
       print(
-          'NewTourPlanScreen: [Clusters] Manager role without selected employee - skipping cluster load');
+          'NewTourPlanScreen: [Clusters] Manager role without selected reporting staff - skipping cluster load');
       return;
     }
 
@@ -2321,10 +2341,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           _isLoadingPurpose = true;
         });
       }
-      // Manager/Field Manager must select employee first
+      // Manager/Field Manager must select Reporting Staff first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
-            'NewTourPlanScreen: [PurposeOfVisit] Manager role without selected employee - skipping');
+            'NewTourPlanScreen: [PurposeOfVisit] Manager role without selected reporting staff - skipping');
         if (mounted) {
           setState(() {
             _isLoadingPurpose = false;
@@ -2471,10 +2491,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           _isLoadingProducts = true;
         });
       }
-      // Manager/Field Manager must select employee first
+      // Manager/Field Manager must select Reporting Staff first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
-            'NewTourPlanScreen: [Products] Manager role without selected employee - skipping');
+            'NewTourPlanScreen: [Products] Manager role without selected reporting staff - skipping');
         if (mounted) {
           setState(() {
             _isLoadingProducts = false;
@@ -2579,6 +2599,25 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     }
   }
 
+  /// Returns the type string for the Customer Type list API. Uses serviceArea when non-empty; otherwise derives from repType (1=Sales Rep, 2=Medical Rep, 5=Service Engineer) so empty serviceArea does not yield wrong API response.
+  static String _customerTypeApiTypeParam({
+    String? serviceArea,
+    int? repType,
+  }) {
+    final trimmed = (serviceArea ?? '').trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    switch (repType) {
+      case 1:
+        return 'Sales Rep';
+      case 2:
+        return 'Medical Rep';
+      case 5:
+        return 'Service Engineer';
+      default:
+        return 'Sales Rep';
+    }
+  }
+
   Future<void> _loadCustomerTypeList() async {
     try {
       if (mounted) {
@@ -2586,10 +2625,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           _isLoadingCustomerType = true;
         });
       }
-      // Manager/Field Manager must select employee first
+      // Manager/Field Manager must select Reporting Staff first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
-            'NewTourPlanScreen: [CustomerType] Manager role without selected employee - skipping');
+            'NewTourPlanScreen: [CustomerType] Manager role without selected reporting staff - skipping');
         if (mounted) {
           setState(() {
             _isLoadingCustomerType = false;
@@ -2617,6 +2656,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               'NewTourPlanScreen: [CustomerType] Using selected employeeId as userId: $userId');
         }
         String? serviceArea = userStore?.userDetail?.serviceArea;
+        final int? repType = userStore?.userDetail?.repType;
         if (userId == null || userId <= 0) {
           print(
               'NewTourPlanScreen: [CustomerType] userId is still null/0, skipping');
@@ -2628,10 +2668,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           return;
         }
 
-        // Use serviceArea directly as the Type parameter (pass empty string if null)
-        final String typeParam = serviceArea ?? '';
+        // Type for Customer Type API: use serviceArea when non-empty; otherwise derive from repType (1=Sales Rep, 2=Medical Rep, 5=Service Engineer) so empty serviceArea does not give wrong response
+        final String typeParam = _customerTypeApiTypeParam(
+            serviceArea: serviceArea, repType: repType);
         print(
-            'NewTourPlanScreen: [CustomerType] Loading customer types with userId: $userId, type: "$typeParam"');
+            'NewTourPlanScreen: [CustomerType] Loading customer types with userId: $userId, type: "$typeParam" (serviceArea: "$serviceArea", repType: $repType)');
         final List<CommonDropdownItem> items = await repo
             .getCustomerTypeList(userId, type: typeParam)
             .timeout(const Duration(seconds: 15));
@@ -2643,32 +2684,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               _customerTypeOptions.clear();
               _customerTypeNameToId.clear();
               
-              // Filter customer types based on user role
-              // For sales reps (not manager/field manager), only show "Pharmacy"
-              final bool isSalesRep = !_isManagerOrFieldManager;
-              
               for (final item in items) {
                 final String typeName =
                     (item.text.isNotEmpty ? item.text : item.name).trim();
                 if (typeName.isNotEmpty) {
-                  // For sales reps, only add "Pharmacy" customer type
-                  if (isSalesRep) {
-                    if (typeName.toLowerCase() == 'pharmacy') {
-                      _customerTypeOptions.add(typeName);
-                      _customerTypeNameToId[typeName] = item.id;
-                      print(
-                          'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id} (Sales Rep - Pharmacy only)');
-                    } else {
-                      print(
-                          'NewTourPlanScreen: [CustomerType] Skipped: "$typeName" (Sales Rep - only Pharmacy allowed)');
-                    }
-                  } else {
-                    // For managers/field managers, show all customer types
                     _customerTypeOptions.add(typeName);
                     _customerTypeNameToId[typeName] = item.id;
                     print(
                         'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
-                  }
                 }
               }
             });

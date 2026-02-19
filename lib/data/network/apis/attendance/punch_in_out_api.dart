@@ -46,6 +46,8 @@ class PunchInOutApi {
               sbuName: '',
               lastLoggedOutTime: null,
               logDetails: const [],
+              kilometerIn: request.kilometerIn,
+              kilometerOut: request.kilometerOut,
             );
           }
           if (t.startsWith('{') || t.startsWith('[')) {
@@ -68,6 +70,8 @@ class PunchInOutApi {
             sbuName: '',
             lastLoggedOutTime: null,
             logDetails: const [],
+            kilometerIn: request.kilometerIn,
+            kilometerOut: request.kilometerOut,
           );
         }
         throw Exception('Unexpected response type: ${raw.runtimeType}');

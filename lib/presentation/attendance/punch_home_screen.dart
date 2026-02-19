@@ -103,10 +103,16 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
   static const double _officeRadiusMeters = 300;
 
   GoogleMapController? _mapController;
+  /// Defer building GoogleMap until after first frame to avoid ANR.
+  bool _buildMap = false;
 
   @override
   void initState() {
     super.initState();
+    // Defer map build so the first frame paints quickly and ANR is avoided (platform view creation blocks main thread)
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _buildMap = true);
+    });
     // Always update the static instance to ensure it's current
     PunchHomeScreen._currentInstance = this;
     print('✅ [PunchHomeScreen] Instance set in initState');
@@ -504,42 +510,52 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                           valueColor: AlwaysStoppedAnimation<Color>(tealGreen),
                         ),
                       )
-                    : GoogleMap(
-                        onMapCreated: (GoogleMapController controller) {
-                          _mapController = controller;
-                        },
-                        initialCameraPosition: CameraPosition(
-                          target:
-                              LatLng(_position!.latitude, _position!.longitude),
-                          zoom: 14.4746,
-                        ),
-                        markers: {
-                          Marker(
-                            markerId: const MarkerId('current_location'),
-                            position: LatLng(
-                                _position!.latitude, _position!.longitude),
-                            icon: BitmapDescriptor.defaultMarker,
-                            infoWindow: const InfoWindow(
-                              title: 'Your Location',
-                              snippet: 'Current position',
+                    : (!_buildMap
+                        ? Container(
+                            color: Colors.grey.shade200,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(tealGreen),
+                              ),
                             ),
-                          ),
-                          Marker(
-                            markerId: const MarkerId('office_location'),
-                            position: const LatLng(_officeLat, _officeLng),
-                            icon: BitmapDescriptor.defaultMarkerWithHue(
-                                BitmapDescriptor.hueBlue),
-                            infoWindow: const InfoWindow(
-                              title: 'Office',
-                              snippet: 'Central Building Office',
+                          )
+                        : GoogleMap(
+                            onMapCreated: (GoogleMapController controller) {
+                              _mapController = controller;
+                            },
+                            initialCameraPosition: CameraPosition(
+                              target: LatLng(_position!.latitude,
+                                  _position!.longitude),
+                              zoom: 14.4746,
                             ),
-                          ),
-                        },
-                        myLocationEnabled: true,
-                        myLocationButtonEnabled: true,
-                        zoomControlsEnabled: false,
-                        mapToolbarEnabled: false,
-                      ),
+                            markers: {
+                              Marker(
+                                markerId: const MarkerId('current_location'),
+                                position: LatLng(_position!.latitude,
+                                    _position!.longitude),
+                                icon: BitmapDescriptor.defaultMarker,
+                                infoWindow: const InfoWindow(
+                                  title: 'Your Location',
+                                  snippet: 'Current position',
+                                ),
+                              ),
+                              Marker(
+                                markerId: const MarkerId('office_location'),
+                                position: const LatLng(_officeLat, _officeLng),
+                                icon: BitmapDescriptor.defaultMarkerWithHue(
+                                    BitmapDescriptor.hueBlue),
+                                infoWindow: const InfoWindow(
+                                  title: 'Office',
+                                  snippet: 'Central Building Office',
+                                ),
+                              ),
+                            },
+                            myLocationEnabled: true,
+                            myLocationButtonEnabled: true,
+                            zoomControlsEnabled: false,
+                            mapToolbarEnabled: false,
+                          )),
               ),
               if (kIsWeb)
                 Positioned.fill(
@@ -731,14 +747,32 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey[900],
-                            letterSpacing: 0.1,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey[900],
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                            if (entry.kilometer != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                entry.type == _LogType.inn
+                                    ? 'Km In: ${entry.kilometer!.toStringAsFixed(1)}'
+                                    : 'Km Out: ${entry.kilometer!.toStringAsFixed(1)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                       Container(
@@ -1220,6 +1254,165 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 
 
 
+  /// Shows a dialog to enter vehicle mileage (Kilometer In or Kilometer Out).
+  /// Returns the entered value, or null if user cancelled.
+  Future<double?> _showKilometerDialog(BuildContext context, {required bool isPunchIn}) async {
+    final controller = TextEditingController();
+    final key = GlobalKey<FormState>();
+    final Color accentColor = isPunchIn ? const Color(0xFF2ECC71) : const Color(0xFFE74C3C);
+    return showDialog<double?>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (ctx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: 8,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 340),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Form(
+              key: key,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header with icon
+                  Container(
+                    padding: const EdgeInsets.only(top: 28, bottom: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: accentColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            Icons.speed_rounded,
+                            size: 28,
+                            color: accentColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    isPunchIn ? 'Kilometer In' : 'Kilometer Out',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[900],
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    isPunchIn
+                        ? 'Enter your vehicle\'s starting mileage'
+                        : 'Enter your vehicle\'s closing mileage',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[900],
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. 1250.5',
+                      hintStyle: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w500),
+                      prefixText: 'km  ',
+                      prefixStyle: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: tealGreen,
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: tealGreen, width: 2),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE74C3C)),
+                      ),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Please enter mileage';
+                      final n = double.tryParse(v.trim());
+                      if (n == null || n < 0) return 'Enter a valid number (≥ 0)';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(ctx).pop<double?>(null),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.grey[700],
+                            side: BorderSide(color: Colors.grey[400]!),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            if (key.currentState?.validate() ?? false) {
+                              final n = double.tryParse(controller.text.trim());
+                              Navigator.of(ctx).pop<double?>(n);
+                            }
+                          },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: tealGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _togglePunch() async {
     if (_isLoading) return;
     
@@ -1250,21 +1443,35 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 
       final isPunchIn = !_punchedIn;
       
+      // Show dialog to enter vehicle mileage (Kilometer In for punch in, Kilometer Out for punch out)
+      final double? kilometerValue = await _showKilometerDialog(context, isPunchIn: isPunchIn);
+      if (kilometerValue == null && !mounted) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      // User cancelled dialog (null and no validation error)
+      if (kilometerValue == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      
       // Get sbuId from userDetail (preferred) or fallback to user.sbuId or default to 1
       // Priority: primarySBUId > userDetail.sbuId > user.sbuId > 1
       final int sbuIdValue = userDetail.primarySBUId ?? 
                             (userDetail.sbuId > 0 ? userDetail.sbuId : 
                             (user.sbuId > 0 ? user.sbuId : 1));
       
-      // Call API to save punch in/out
+      // Call API to save punch in/out with vehicle mileage
       final result = await _punchInOutUseCase.savePunchInOut(
         userId: user.userId,
         employeeId: userDetail.employeeId, // Get from user detail store
         sbuId: sbuIdValue, // Use correct sbuId from userDetail
         createdBy: user.createdBy,
         status: 1, // Active status
-        bizUnit: 1, // Default business unit
+        bizUnit: userDetail.sbuId > 0 ? userDetail.sbuId : 1,
         isPunchIn: isPunchIn,
+        kilometerIn: isPunchIn ? kilometerValue : null,
+        kilometerOut: isPunchIn ? null : kilometerValue,
       );
 
       if (result.isSuccess) {
@@ -1273,10 +1480,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
           final DateTime now = DateTime.now();
           if (_punchedIn) {
             _punchedInSince = now;
-            _todayLog.insert(0, _LogEntry(_LogType.inn, now));
+            _todayLog.insert(0, _LogEntry(_LogType.inn, now, kilometer: kilometerValue));
             _showToast('Punch In successful!');
           } else {
-            _todayLog.insert(0, _LogEntry(_LogType.out, now));
+            _todayLog.insert(0, _LogEntry(_LogType.out, now, kilometer: kilometerValue));
             _showToast('Punch Out successful!');
           }
           _isLoading = false;
@@ -1620,9 +1827,9 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
             final bool isOutByActivity = act.contains('punch out');
 
             if (isInByActivity || log.checkInStatus == 1) {
-              _todayLog.add(_LogEntry(_LogType.inn, log.checkDateTime));
+              _todayLog.add(_LogEntry(_LogType.inn, log.checkDateTime, kilometer: log.kilometerIn));
             } else if (isOutByActivity || log.checkOutStatus == 1) {
-              _todayLog.add(_LogEntry(_LogType.out, log.checkDateTime));
+              _todayLog.add(_LogEntry(_LogType.out, log.checkDateTime, kilometer: log.kilometerOut));
             }
           }
           // Sort by time (most recent first)
@@ -1639,10 +1846,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
               _punchedIn = false;
               _punchedInSince = null;
             } else {
-              // Fallback to our derived list
-              if (_todayLog.isNotEmpty) {
-                _punchedIn = _todayLog.first.type == _LogType.inn;
-                _punchedInSince = _punchedIn ? _todayLog.first.time : null;
+              // Fallback: CheckInStatus 0 = Check In, 1 = Check Out
+              if (latest.checkInStatus == 0) {
+                _punchedIn = true;
+                _punchedInSince = latest.checkDateTime;
               } else {
                 _punchedIn = false;
                 _punchedInSince = null;
@@ -1756,7 +1963,8 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 enum _LogType { inn, out }
 
 class _LogEntry {
-  _LogEntry(this.type, this.time);
+  _LogEntry(this.type, this.time, {this.kilometer});
   final _LogType type;
   final DateTime time;
+  final double? kilometer;
 }

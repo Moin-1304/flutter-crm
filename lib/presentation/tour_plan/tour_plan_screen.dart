@@ -475,8 +475,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                         builder: (context, _) {
                                           final validationStore =
                                               getIt<UserValidationStore>();
+                                          // Service Engineers: always allow; others: use validate-user API
                                           final isEnabled =
-                                              validationStore.canCreateTourPlan;
+                                              _isCurrentUserServiceEngineer() ||
+                                                  validationStore.canCreateTourPlan;
                                           return FilledButton.icon(
                                             onPressed: isEnabled
                                                 ? () async {
@@ -2664,10 +2666,18 @@ class _TourPlanScreenState extends State<TourPlanScreen>
         actualStatus == 5;
   }
 
+  /// Check if current user is a Service Engineer (validate-user not applied for them)
+  bool _isCurrentUserServiceEngineer() {
+    final String? serviceArea =
+        _userDetailStore.userDetail?.serviceArea?.trim();
+    return serviceArea == 'Service Engineer';
+  }
+
   /// Check if tour plan can be edited (Draft, Pending, or Sent Back status)
   bool _canEditTourPlan(TourPlanItem item) {
-    // First check if user validation allows updates
-    if (getIt.isRegistered<UserValidationStore>()) {
+    // Service Engineers: skip validate-user; others: require canUpdateTourPlan
+    if (!_isCurrentUserServiceEngineer() &&
+        getIt.isRegistered<UserValidationStore>()) {
       final validationStore = getIt<UserValidationStore>();
       if (!validationStore.canUpdateTourPlan) {
         return false; // Disable edit if validation fails
@@ -3335,8 +3345,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 builder: (context, _) {
                                   final validationStore =
                                       getIt<UserValidationStore>();
+                                  // Service Engineers: always allow; others: use validate-user API
                                   final isEnabled =
-                                      validationStore.canUpdateTourPlan;
+                                      _isCurrentUserServiceEngineer() ||
+                                          validationStore.canUpdateTourPlan;
                                   return FilledButton.icon(
                                     onPressed: isEnabled
                                         ? () {
