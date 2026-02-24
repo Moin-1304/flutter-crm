@@ -1230,20 +1230,21 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     }
     
     final customerCode = item.customerId != null ? ' - P${item.customerId.toString().padLeft(5, '0')}' : '';
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.sizeOf(context).width,
-          maxHeight: MediaQuery.sizeOf(context).height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
+    final double mobileMaxContentHeight = screenHeight * 0.6;
+
+    Widget buildPanelContent(BuildContext ctx) {
+      final isTabletPanel = isTablet;
+      return Container(
+        width: isTabletPanel ? 600 : screenWidth,
+        height: isTabletPanel ? panelHeight : null,
+        constraints: isTabletPanel ? null : BoxConstraints(maxHeight: panelHeight),
+        margin: isTabletPanel
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.sizeOf(context).width - 600) / 2,
-                vertical: MediaQuery.sizeOf(context).height * 0.075,
+                horizontal: (screenWidth - 600) / 2,
+                vertical: screenHeight * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -1261,7 +1262,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
           top: false,
           bottom: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTabletPanel ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header (mint like deviation screen)
               Container(
@@ -1298,7 +1299,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                   style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w700,
                                     color: Colors.grey[900],
-                                    fontSize: isTablet ? 16 : 14,
+                                    fontSize: isTabletPanel ? 16 : 14,
                                   ),
                                 ),
                               ),
@@ -1307,8 +1308,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                               if (statusText.isNotEmpty)
                                 Container(
                                   padding: EdgeInsets.symmetric(
-                                    horizontal: isTablet ? 9 : 8,
-                                    vertical: isTablet ? 4 : 3,
+                                    horizontal: isTabletPanel ? 9 : 8,
+                                    vertical: isTabletPanel ? 4 : 3,
                                   ),
                                   decoration: BoxDecoration(
                                     color: statusBgColor,
@@ -1322,19 +1323,19 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
-                                        width: isTablet ? 5 : 4,
-                                        height: isTablet ? 5 : 4,
+                                        width: isTabletPanel ? 5 : 4,
+                                        height: isTabletPanel ? 5 : 4,
                                         decoration: BoxDecoration(
                                           color: statusColor,
                                           shape: BoxShape.circle,
                                         ),
                                       ),
-                                      SizedBox(width: isTablet ? 5 : 4),
+                                      SizedBox(width: isTabletPanel ? 5 : 4),
                                       Text(
                                         statusText,
                                         style: GoogleFonts.inter(
                                           color: statusColor,
-                                          fontSize: isTablet ? 11 : 10,
+                                          fontSize: isTabletPanel ? 11 : 10,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -1355,13 +1356,116 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                   ],
                 ),
               ),
-              // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              // Content: tablet = Flexible; mobile = ConstrainedBox so sheet sizes to content
+              if (isTabletPanel)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).padding.bottom + 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _buildTourPlanDetailContent(ctx, item, customerName, customerCode),
+                    ),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: mobileMaxContentHeight),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).padding.bottom + 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: _buildTourPlanDetailContent(ctx, item, customerName, customerCode),
+                    ),
+                  ),
+                ),
+              // Footer actions
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_shouldShowDeleteButton(item)) ...[
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _deleteTourPlan(item);
+                          },
+                          icon: const Icon(Icons.delete_outlined, size: 18),
+                          label: const Text('Delete'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            minimumSize: const Size(0, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      // Modify Button
+                      if (_shouldShowModifyButton(item))
+                        OutlinedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(context).pop(); // Close bottom sheet
+                          
+                          // Navigate to NewTourPlanScreen directly
+                          // NewTourPlanScreen handles fetching full details in its initState
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => NewTourPlanScreen(tourPlanToEdit: item),
+                            ),
+                          );
+                          
+                          // Refresh list on return
+                          _refreshAllWithLoader();
+                        },
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Modify'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: tealGreen,
+                          side: const BorderSide(color: tealGreen),
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (isTablet) {
+      showDialog(
+        context: context,
+        useRootNavigator: true,
+        barrierColor: Colors.black54,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: buildPanelContent(ctx),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => buildPanelContent(ctx),
+      );
+    }
+  }
+
+  List<Widget> _buildTourPlanDetailContent(BuildContext ctx, TourPlanItem item, String customerName, String customerCode) {
+    final isTablet = MediaQuery.of(ctx).size.width >= 600;
+    return [
                     // Employee Information
                     // Get the correct date to check if section should be shown
                     Builder(
@@ -1560,72 +1664,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                         ),
                       ),
                     ],
-                  ],
-                ),
-              ),
-            ),
-              // Footer actions
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_shouldShowDeleteButton(item)) ...[
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            _deleteTourPlan(item);
-                          },
-                          icon: const Icon(Icons.delete_outlined, size: 18),
-                          label: const Text('Delete'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                            minimumSize: const Size(0, 44),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
-                      // Modify Button
-                      if (_shouldShowModifyButton(item))
-                        OutlinedButton.icon(
-                        onPressed: () async {
-                          Navigator.of(context).pop(); // Close bottom sheet
-                          
-                          // Navigate to NewTourPlanScreen directly
-                          // NewTourPlanScreen handles fetching full details in its initState
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => NewTourPlanScreen(tourPlanToEdit: item),
-                            ),
-                          );
-                          
-                          // Refresh list on return
-                          _refreshAllWithLoader();
-                        },
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Modify'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: tealGreen,
-                          side: const BorderSide(color: tealGreen),
-                          minimumSize: const Size(0, 44),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    ];
   }
 
   /// Convert TourPlanItem to domain.TourPlanEntry for editing
@@ -1669,15 +1708,17 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     );
   }
   
-  /// Detail row widget for popup (matching deviation screen)
+  /// Detail row widget for popup. One row per label-value; responsive label width on mobile (tablet unchanged).
   Widget _DetailRow(String label, String value, {bool isMultiline = false}) {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final labelWidth = isMobile ? (screenWidth * 0.38).clamp(100.0, 140.0) : 120.0;
+
     return Row(
       crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: isMobile ? 100 : 120,
+          width: labelWidth,
           child: Text(
             label,
             style: GoogleFonts.inter(
@@ -1685,9 +1726,11 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
               fontWeight: FontWeight.w600,
               fontSize: isMobile ? 11 : 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isMobile ? 8 : 12),
         Expanded(
           child: Text(
             value,
@@ -4028,8 +4071,27 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    _filteredOptions = widget.options;
+    _filteredOptions = List.from(widget.options);
     _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SearchableFilterDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.options != widget.options) {
+      _applyFilter();
+    }
+  }
+
+  void _applyFilter() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredOptions = query.isEmpty
+          ? List.from(widget.options)
+          : widget.options
+              .where((option) => option.toLowerCase().contains(query))
+              .toList();
+    });
   }
   
   @override
@@ -4040,20 +4102,17 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   }
   
   void _onSearchChanged() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredOptions = widget.options
-          .where((option) => option.toLowerCase().contains(query))
-          .toList();
-    });
+    _applyFilter();
   }
   
   void _toggleExpanded() {
     setState(() {
       _isExpanded = !_isExpanded;
-      if (!_isExpanded) {
+      if (_isExpanded) {
+        _applyFilter();
+      } else {
         _searchController.clear();
-        _filteredOptions = widget.options;
+        _filteredOptions = List.from(widget.options);
       }
     });
     if (_isExpanded) {
@@ -4068,7 +4127,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
     setState(() {
       _isExpanded = false;
       _searchController.clear();
-      _filteredOptions = widget.options;
+      _filteredOptions = List.from(widget.options);
     });
   }
   

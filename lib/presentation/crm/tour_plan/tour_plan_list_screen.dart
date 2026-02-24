@@ -1540,65 +1540,116 @@ class _TourPlanManagerReviewListState extends State<TourPlanManagerReviewList> {
   bool _isSameDate(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<void> _showPlanDetails(domain.TourPlanEntry e) async {
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Plan Details',
-                        style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    Icon(_statusIcon(e.status), color: _statusColor(e.status)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _detailRow('Date', '${e.date.day.toString().padLeft(2, '0')}-${e.date.month.toString().padLeft(2, '0')}-${e.date.year}'),
-                _detailRow('Employee', e.employeeName),
-                _detailRow('Customer', e.customer),
-                _detailRow('Cluster', e.cluster),
-                _detailRow('Status', e.status.name),
-                if ((e.callDetails.purposes).isNotEmpty)
-                  _detailRow('Purpose', e.callDetails.purposes.join(', ')),
-                if ((e.callDetails.productsToDiscuss ?? '').isNotEmpty)
-                  _detailRow('Products', e.callDetails.productsToDiscuss ?? ''),
-                if ((e.callDetails.samplesToDistribute ?? '').isNotEmpty)
-                  _detailRow('Samples', e.callDetails.samplesToDistribute ?? ''),
-                if ((e.callDetails.remarks ?? '').isNotEmpty)
-                  _detailRow('Remarks', e.callDetails.remarks ?? ''),
-                const SizedBox(height: 16),
-                // Delete button - only show for non-approved plans
-                if (e.status != domain.TourPlanEntryStatus.approved)
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(ctx).pop(); // Close bottom sheet
-                      _deleteTourPlan(e);
-                    },
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Delete'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: BorderSide(color: Colors.red.withOpacity(0.6)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    final isTablet = MediaQuery.of(context).size.width >= 600;
+
+    Widget buildContent(BuildContext ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Plan Details',
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                     ),
                   ),
-                const SizedBox(height: 8),
+                  Icon(_statusIcon(e.status), color: _statusColor(e.status)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _detailRow('Date', '${e.date.day.toString().padLeft(2, '0')}-${e.date.month.toString().padLeft(2, '0')}-${e.date.year}'),
+              _detailRow('Employee', e.employeeName),
+              _detailRow('Customer', e.customer),
+              _detailRow('Cluster', e.cluster),
+              _detailRow('Status', e.status.name),
+              if ((e.callDetails.purposes).isNotEmpty)
+                _detailRow('Purpose', e.callDetails.purposes.join(', ')),
+              if ((e.callDetails.productsToDiscuss ?? '').isNotEmpty)
+                _detailRow('Products', e.callDetails.productsToDiscuss ?? ''),
+              if ((e.callDetails.samplesToDistribute ?? '').isNotEmpty)
+                _detailRow('Samples', e.callDetails.samplesToDistribute ?? ''),
+              if ((e.callDetails.remarks ?? '').isNotEmpty)
+                _detailRow('Remarks', e.callDetails.remarks ?? ''),
+              const SizedBox(height: 16),
+              if (e.status != domain.TourPlanEntryStatus.approved)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _deleteTourPlan(e);
+                  },
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Delete'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: BorderSide(color: Colors.red.withOpacity(0.6)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (isTablet) {
+      await Navigator.of(context, rootNavigator: true).push<void>(
+        MaterialPageRoute<void>(
+          builder: (ctx) => Scaffold(
+            backgroundColor: Colors.black54,
+            body: Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(ctx).pop(),
+                  ),
+                ),
+                Center(
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    elevation: 8,
+                    child: SizedBox(
+                      width: 600,
+                      height: MediaQuery.of(ctx).size.height * 0.85,
+                      child: Stack(
+                        children: [
+                          SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: buildContent(ctx),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.of(ctx).pop(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-        );
-      },
+        ),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => buildContent(ctx),
     );
   }
 

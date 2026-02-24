@@ -2938,20 +2938,22 @@ class _TourPlanScreenState extends State<TourPlanScreen>
         ? ' - P${fullItem.customerId.toString().padLeft(5, '0')}'
         : '';
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight:
-              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
+    Widget buildDetailPanel(BuildContext sheetContext, {bool inPushedRoute = false}) {
+      final screenHeight = MediaQuery.of(sheetContext).size.height;
+      final screenWidth = MediaQuery.of(sheetContext).size.width;
+      // On mobile: use smaller max height so sheet doesn't leave large empty space below buttons.
+      final isMobilePanel = screenWidth < 600;
+      final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
+      final double mobileMaxContentHeight = screenHeight * 0.6;
+
+      return Container(
+        width: isTablet ? 600 : screenWidth,
+        height: isTablet ? panelHeight : null,
+        constraints: isTablet ? null : BoxConstraints(maxHeight: panelHeight),
+        margin: (isTablet && !inPushedRoute)
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
+                horizontal: (screenWidth - 600) / 2,
+                vertical: screenHeight * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -2969,7 +2971,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
           top: false,
           bottom: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTablet ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header (mint like deviation screen)
               Container(
@@ -3054,7 +3056,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ),
                         ),
                         IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => Navigator.of(sheetContext).pop(),
                           icon: const Icon(Icons.close),
                           tooltip: 'Close',
                           color: Colors.grey[700],
@@ -3066,7 +3068,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
               ),
               // Content
               Builder(
-                builder: (context) {
+                builder: (sheetContext) {
                   final item = fullItem!; // Use non-nullable version
                   // Get samples from tourPlanDetails first, then fallback to item level
                   final String? samplesToDistribute =
@@ -3083,11 +3085,9 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               ? item.samplesToDistribute!.trim()
                               : null);
 
-                  return Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                      child: Column(
+                  final scrollChild = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           // Employee Information
                           // Get the correct date to check if section should be shown
@@ -3322,9 +3322,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             ),
                           ],
                         ],
-                      ),
-                    ),
-                  );
+                      );
+                  final padding = EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(sheetContext).padding.bottom + 20);
+                  if (isTablet) return Flexible(child: SingleChildScrollView(padding: padding, child: scrollChild));
+                  return ConstrainedBox(constraints: BoxConstraints(maxHeight: mobileMaxContentHeight), child: SingleChildScrollView(padding: padding, child: scrollChild));
                 },
               ),
               // Footer actions
@@ -3352,7 +3353,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                   return FilledButton.icon(
                                     onPressed: isEnabled
                                         ? () {
-                                            Navigator.of(context).pop();
+                                            Navigator.of(sheetContext).pop();
                                             _editTourPlan(fullItem!);
                                           }
                                         : null,
@@ -3386,7 +3387,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               )
                             : FilledButton.icon(
                                 onPressed: () {
-                                  Navigator.of(context).pop();
+                                  Navigator.of(sheetContext).pop();
                                   _editTourPlan(fullItem!);
                                 },
                                 icon: Icon(Icons.edit_outlined,
@@ -3442,7 +3443,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                       if (_canCreateDcrFromTourPlan(statusItem))
                         FilledButton.icon(
                           onPressed: () {
-                            Navigator.of(context).pop();
+                            Navigator.of(sheetContext).pop();
                             _createDcrFromTourPlan(fullItem!);
                           },
                           icon: Icon(Icons.description_outlined,
@@ -3470,7 +3471,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                       if (_canDeleteTourPlan(statusItem))
                         OutlinedButton.icon(
                           onPressed: () {
-                            Navigator.of(context).pop();
+                            Navigator.of(sheetContext).pop();
                             _deleteTourPlan(fullItem!);
                           },
                           icon: Icon(Icons.delete_outlined,
@@ -3498,7 +3499,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                       if (_isApprovedTourPlan(statusItem))
                         FilledButton.icon(
                           onPressed: () {
-                            Navigator.of(context).pop();
+                            Navigator.of(sheetContext).pop();
                             _viewTourPlan(fullItem!);
                           },
                           icon: Icon(Icons.visibility_outlined,
@@ -3529,38 +3530,75 @@ class _TourPlanScreenState extends State<TourPlanScreen>
             ],
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (isTablet) {
+      Navigator.of(context, rootNavigator: true).push(
+        PageRouteBuilder<void>(
+          opaque: false,
+          barrierColor: Colors.black54,
+          barrierDismissible: true,
+          pageBuilder: (ctx, _, __) => Center(
+            child: Material(
+              color: Colors.transparent,
+              child: buildDetailPanel(ctx, inPushedRoute: true),
+            ),
+          ),
+          transitionsBuilder: (_, anim, __, child) =>
+              FadeTransition(opacity: anim, child: child),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => buildDetailPanel(context),
+      );
+    }
   }
 
-  /// Detail row widget for popup (matching deviation screen)
+  /// Detail row widget for popup. One row per label-value; compact on mobile and tablet.
   Widget _DetailRow(String label, String value, {bool isMultiline = false}) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    final labelStyle = GoogleFonts.inter(
+      color: Colors.black54,
+      fontWeight: FontWeight.w600,
+      fontSize: isMobile ? 11 : 12,
+    );
+    final valueStyle = GoogleFonts.inter(
+      color: Colors.black87,
+      fontWeight: FontWeight.w500,
+      fontSize: isMobile ? 12 : 13,
+    );
+
+    // Label width: on mobile use ~38% of width so "Clusters/Cities" and
+    // "Products to Discuss" stay on one line without squeezing the value.
+    final labelWidth = isMobile
+        ? (screenWidth * 0.38).clamp(100.0, 140.0)
+        : 120.0;
 
     return Row(
       crossAxisAlignment:
           isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: isMobile ? 100 : 120,
+          width: labelWidth,
           child: Text(
             label,
-            style: GoogleFonts.inter(
-              color: Colors.black54,
-              fontWeight: FontWeight.w600,
-              fontSize: isMobile ? 11 : 12,
-            ),
+            style: labelStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isMobile ? 8 : 12),
         Expanded(
           child: Text(
             value,
-            style: GoogleFonts.inter(
-              color: Colors.black87,
-              fontWeight: FontWeight.w500,
-              fontSize: isMobile ? 12 : 13,
-            ),
+            style: valueStyle,
             maxLines: isMultiline ? null : 3,
             overflow:
                 isMultiline ? TextOverflow.visible : TextOverflow.ellipsis,
@@ -7605,8 +7643,27 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    _filteredOptions = widget.options;
+    _filteredOptions = List.from(widget.options);
     _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SearchableFilterDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.options != widget.options) {
+      _applyFilter();
+    }
+  }
+
+  void _applyFilter() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredOptions = query.isEmpty
+          ? List.from(widget.options)
+          : widget.options
+              .where((option) => option.toLowerCase().contains(query))
+              .toList();
+    });
   }
 
   @override
@@ -7617,20 +7674,17 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   }
 
   void _onSearchChanged() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredOptions = widget.options
-          .where((option) => option.toLowerCase().contains(query))
-          .toList();
-    });
+    _applyFilter();
   }
 
   void _toggleExpanded() {
     setState(() {
       _isExpanded = !_isExpanded;
-      if (!_isExpanded) {
+      if (_isExpanded) {
+        _applyFilter();
+      } else {
         _searchController.clear();
-        _filteredOptions = widget.options;
+        _filteredOptions = List.from(widget.options);
       }
     });
     if (_isExpanded) {
@@ -7645,7 +7699,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
     setState(() {
       _isExpanded = false;
       _searchController.clear();
-      _filteredOptions = widget.options;
+      _filteredOptions = List.from(widget.options);
     });
   }
 

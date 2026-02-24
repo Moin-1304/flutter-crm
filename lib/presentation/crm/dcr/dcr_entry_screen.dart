@@ -29,6 +29,10 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/rendering.dart';
 
+/// Max value for 32-bit signed int (backend UIN type). Max digits = 10.
+const int _kUinMaxInt = 2147483647;
+const int _kUinMaxDigits = 10;
+
 /// Format DateTime for Service Report Save API. .NET expects ISO 8601 (e.g. 2026-02-18T17:08:18.163) for JSON DateTime.
 String _formatServiceReportDateTimeForApi(DateTime d) {
   return d.toIso8601String();
@@ -4052,8 +4056,14 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           label: 'UIN',
           child: TextFormField(
             controller: _uinCtrl,
-            decoration: const InputDecoration(
-              hintText: 'Enter UIN',
+            keyboardType: TextInputType.number,
+            maxLength: _kUinMaxDigits,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+            ],
+            decoration: InputDecoration(
+              hintText: 'Enter UIN (max $_kUinMaxDigits digits)',
+              counterText: '',
             ),
           ),
         ),
@@ -4229,6 +4239,21 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         icon: Icons.error_outline,
       );
       return;
+    }
+    // UIN is int on backend; must be within 32-bit signed int range (max $_kUinMaxDigits digits)
+    if (uin.isNotEmpty) {
+      final int? uinVal = int.tryParse(uin);
+      if (uinVal == null ||
+          uinVal < 0 ||
+          uinVal > _kUinMaxInt) {
+        ToastMessage.show(
+          context,
+          message: 'UIN must be a number with at most $_kUinMaxDigits digits (max $_kUinMaxInt)',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
     }
 
     final UserDetailStore? userDetailStore = getIt.isRegistered<UserDetailStore>()
@@ -4478,9 +4503,18 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           icon: Icons.check_circle_outline,
         );
       } else {
+        String? serverMsg;
+        final headers = response.headers.map;
+        if (headers.containsKey('errormessage')) {
+          serverMsg = headers['errormessage']?.first;
+        }
+        if (serverMsg == null || serverMsg.trim().isEmpty) {
+          serverMsg = _extractServerErrorMessage(response.data);
+        }
+        final message = _customerSaveErrorMessage(serverMsg);
         ToastMessage.show(
           context,
-          message: 'Failed to save customer (status ${response.statusCode})',
+          message: message,
           type: ToastType.error,
           icon: Icons.error_outline,
         );
@@ -4488,26 +4522,21 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop(); // close loader if open
-        String message = 'Error saving customer.';
+        String? serverMsg;
         if (e is DioException && e.response != null) {
-          final dynamic data = e.response!.data;
-          final int? statusCode = e.response!.statusCode;
-          // Always log full response so we can see what the server actually returned
+          final resp = e.response!;
+          final dynamic data = resp.data;
+          final int? statusCode = resp.statusCode;
           print('Pharmacy/Doctor Save $statusCode - Full response: $data');
-          final String? serverMessage = _extractServerErrorMessage(data);
-          if (serverMessage != null && serverMessage.isNotEmpty) {
-            message = serverMessage.length > 250
-                ? '${serverMessage.substring(0, 250)}...'
-                : serverMessage;
-          } else {
-            message =
-                'Server error ($statusCode). Customer save failed. Check with admin or try different Code/Type.';
+          final headers = resp.headers.map;
+          if (headers.containsKey('errormessage')) {
+            serverMsg = headers['errormessage']?.first;
           }
-        } else if (e.toString().contains('500') || e.toString().contains('DioException')) {
-          message = 'Server error while saving customer. Please check that all fields are valid and try again.';
-        } else {
-          message = 'Error saving customer: ${e.toString().replaceFirst('Exception: ', '')}';
+          if (serverMsg == null || serverMsg.trim().isEmpty) {
+            serverMsg = _extractServerErrorMessage(data);
+          }
         }
+        final message = _customerSaveErrorMessage(serverMsg);
         ToastMessage.show(
           context,
           message: message,
@@ -4516,6 +4545,27 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         );
       }
     }
+  }
+
+  /// Whether the server message indicates duplicate customer number/code.
+  bool _isDuplicateCustomerNumberError(String? msg) {
+    if (msg == null || msg.trim().isEmpty) return false;
+    final lower = msg.trim().toLowerCase();
+    return lower.contains('already exist') ||
+        lower.contains('duplicate') ||
+        lower.contains('customer with this') ||
+        lower.contains('code already') ||
+        lower.contains('name already');
+  }
+
+  /// Resolve user-facing message for customer save error (duplicate vs other).
+  String _customerSaveErrorMessage(String? serverMsg) {
+    if (_isDuplicateCustomerNumberError(serverMsg)) {
+      return 'Customer with this name already exists. try with another';
+    }
+    return serverMsg != null && serverMsg.trim().isNotEmpty
+        ? serverMsg.trim()
+        : 'Action failed, pls try again later';
   }
 
   /// Extract error message from server response (Map, String, or List).

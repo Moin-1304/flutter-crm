@@ -3,6 +3,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:boilerplate/domain/entity/dcr/unified_dcr_item.dart';
 import 'package:boilerplate/domain/entity/dcr/dcr_api_models.dart';
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
+import 'package:boilerplate/domain/entity/common/common_api_models.dart' show CommonDropdownItem;
+import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/presentation/crm/dcr/base_dcr_map_view_screen.dart';
@@ -42,8 +44,11 @@ class _MedicalRepMapViewScreenState extends State<MedicalRepMapViewScreen> {
     });
 
     try {
-      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() 
-          ? getIt<DcrRepository>() 
+      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>()
+          ? getIt<DcrRepository>()
+          : null;
+      final CommonRepository? commonRepo = getIt.isRegistered<CommonRepository>()
+          ? getIt<CommonRepository>()
           : null;
 
       if (dcrRepo == null) {
@@ -53,9 +58,8 @@ class _MedicalRepMapViewScreenState extends State<MedicalRepMapViewScreen> {
         return;
       }
 
-      // Get manager ID to load team DCRs
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() 
-          ? getIt<UserDetailStore>() 
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
           : null;
       final int? managerId = userStore?.userDetail?.employeeId;
 
@@ -66,39 +70,75 @@ class _MedicalRepMapViewScreenState extends State<MedicalRepMapViewScreen> {
         return;
       }
 
-      // Load DCRs for the selected date range
-      final employeeIdToUse = widget.employeeId ?? managerId;
-      final apiItems = await dcrRepo.getDcrListUnified(
-        start: widget.fromDate,
-        end: widget.toDate,
-        employeeId: employeeIdToUse.toString(),
-        transactionType: "DCR",
-      );
+      List<DcrApiItem> apiItems = [];
 
-      // Convert to unified items and filter for doctor visits
-      // Filter DCR items that have valid coordinates
+      if (widget.employeeId != null) {
+        // Single employee (e.g. from filter)
+        apiItems = await dcrRepo.getDcrListUnified(
+          start: widget.fromDate,
+          end: widget.toDate,
+          employeeId: widget.employeeId.toString(),
+          transactionType: 'DCR',
+        );
+      } else {
+        // Load manager's DCRs + all team members' DCRs for the date range
+        apiItems = await dcrRepo.getDcrListUnified(
+          start: widget.fromDate,
+          end: widget.toDate,
+          employeeId: managerId.toString(),
+          transactionType: 'DCR',
+        );
+        if (commonRepo != null) {
+          try {
+            final List<CommonDropdownItem> teamItems = await commonRepo.getEmployeesReportingTo(managerId);
+            for (final item in teamItems) {
+              final int empId = item.id;
+              if (empId != managerId) {
+                try {
+                  final List<DcrApiItem> teamDcrs = await dcrRepo.getDcrListUnified(
+                    start: widget.fromDate,
+                    end: widget.toDate,
+                    employeeId: empId.toString(),
+                    transactionType: 'DCR',
+                  );
+                  apiItems.addAll(teamDcrs);
+                } catch (e) {
+                  print('MedicalRepMapViewScreen: Error loading DCRs for employee $empId: $e');
+                }
+              }
+            }
+          } catch (e) {
+            print('MedicalRepMapViewScreen: Error loading team list: $e');
+          }
+        }
+      }
+
       final validDcrs = apiItems
           .where((item) {
-            if (item.transactionType != "DCR") return false;
+            if (item.transactionType != 'DCR') return false;
             final lat = item.customerLatitude;
             final lng = item.customerLongitude;
-            return lat != null && 
-                   lng != null && 
-                   lat != 0.0 && 
-                   lng != 0.0;
+            return lat != null &&
+                lng != null &&
+                lat != 0.0 &&
+                lng != 0.0;
           })
           .map((item) => UnifiedDcrItem.fromDcrApiItem(item))
           .toList();
 
-      setState(() {
-        _dcrItems = validDcrs;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _dcrItems = validDcrs;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      print('Error loading DCR data: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      print('MedicalRepMapViewScreen: Error loading DCR data: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

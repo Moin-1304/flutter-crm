@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:boilerplate/data/network/apis/expense/expense_api_models.dart';
 import 'package:boilerplate/data/network/constants/endpoints.dart';
@@ -25,9 +28,34 @@ class AttachmentViewerScreen extends StatelessWidget {
         t.contains('webp');
   }
 
-  /// Open a single attachment: images in full-screen, others via external app.
-  static Future<void> openAttachment(BuildContext context, ExpenseAttachment att) async {
-    final url = Endpoints.fileDownload(att.filePath, att.fileName);
+  /// Open a single attachment: images in full-screen, others (docx, pdf, etc.) download then open in system app.
+  static Future<void> openAttachment(
+      BuildContext context, ExpenseAttachment att) async {
+    final path = att.filePath.trim();
+    final name = att.fileName.trim();
+    if (path.isEmpty || name.isEmpty) {
+      if (context.mounted) {
+        ToastMessage.show(
+          context,
+          message: 'Invalid attachment: missing file path or name',
+          type: ToastType.error,
+        );
+      }
+      return;
+    }
+    String url;
+    try {
+      url = Endpoints.fileDownload(path, name);
+    } catch (e) {
+      if (context.mounted) {
+        ToastMessage.show(
+          context,
+          message: 'Invalid attachment: ${e.toString()}',
+          type: ToastType.error,
+        );
+      }
+      return;
+    }
     final isImage = isImageType(att.fileType);
     if (isImage) {
       await Navigator.of(context).push(
@@ -39,13 +67,66 @@ class AttachmentViewerScreen extends StatelessWidget {
         ),
       );
     } else {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else if (context.mounted) {
+      // For docx, pdf, etc.: download with auth then open in system app; fallback to browser.
+      if (!context.mounted) return;
+      ToastMessage.show(
+        context,
+        message: 'Opening ${att.fileName}...',
+        type: ToastType.info,
+      );
+      bool opened = false;
+      try {
+        if (getIt.isRegistered<DioClient>()) {
+          final dio = getIt<DioClient>().dio;
+          final response = await dio.get<List<int>>(
+            url,
+            options: Options(responseType: ResponseType.bytes),
+          );
+          final data = response.data;
+          if (data != null && data.isNotEmpty) {
+            final tempDir = await getTemporaryDirectory();
+            final safeName = name.replaceAll(RegExp(r'[^\w\.\-]'), '_');
+            final file = File('${tempDir.path}/$safeName');
+            await file.writeAsBytes(data);
+            final result = await OpenFilex.open(file.path);
+            if (result.type == ResultType.done) {
+              opened = true;
+            } else if (context.mounted) {
+              if (result.type == ResultType.noAppToOpen) {
+                ToastMessage.show(
+                  context,
+                  message:
+                      'No app to open this file. Opening in browser instead.',
+                  type: ToastType.info,
+                );
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // Download or open failed; try browser fallback below
+      }
+      if (!opened && context.mounted) {
+        final uri = Uri.parse(url);
+        try {
+          if (await canLaunchUrl(uri)) {
+            final launched =
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+            if (launched) {
+              ToastMessage.show(
+                context,
+                message:
+                    'Opened in browser. You can download or open the file there.',
+                type: ToastType.info,
+              );
+              return;
+            }
+          }
+        } catch (_) {}
         ToastMessage.show(
           context,
-          message: 'Could not open attachment',
+          message:
+              'Could not open attachment. Try opening the link in a browser.',
           type: ToastType.error,
         );
       }
@@ -70,32 +151,33 @@ class AttachmentViewerScreen extends StatelessWidget {
               ),
             )
           : ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: attachments.length,
-        itemBuilder: (context, index) {
-          final att = attachments[index];
-          final isImage = isImageType(att.fileType);
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            color: Colors.grey[900],
-            child: ListTile(
-              leading: Icon(
-                isImage ? Icons.image : Icons.attach_file,
-                color: const Color(0xFF4db1b3),
-                size: 28,
-              ),
-              title: Text(
-                att.fileName,
-                style: const TextStyle(color: Colors.white),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: const Icon(Icons.open_in_full, color: Color(0xFF4db1b3)),
-              onTap: () => openAttachment(context, att),
+              padding: const EdgeInsets.all(16),
+              itemCount: attachments.length,
+              itemBuilder: (context, index) {
+                final att = attachments[index];
+                final isImage = isImageType(att.fileType);
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  color: Colors.grey[900],
+                  child: ListTile(
+                    leading: Icon(
+                      isImage ? Icons.image : Icons.attach_file,
+                      color: const Color(0xFF4db1b3),
+                      size: 28,
+                    ),
+                    title: Text(
+                      att.fileName,
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.open_in_full,
+                        color: Color(0xFF4db1b3)),
+                    onTap: () => openAttachment(context, att),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 }

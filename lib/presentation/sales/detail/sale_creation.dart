@@ -25,6 +25,7 @@ import 'package:boilerplate/domain/repository/workflow/workflow_repository.dart'
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/di/service_locator.dart';
+import 'package:boilerplate/core/widgets/toast_message.dart';
 
 import 'models/sales_product.dart';
 
@@ -95,6 +96,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   double get _subTotal => double.tryParse(_subTotalController.text) ?? 0.0;
 
+  static int? _parseChargeDetailId(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is double) return v.round();
+    return int.tryParse(v.toString());
+  }
+
   // Multiple tax/discount/other charge rows
   final List<_TaxChargeRow> _taxRows = [];
   final List<_TaxChargeRow> _discountRows = [];
@@ -106,6 +114,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   // Tax Component Formulas (loaded from API)
   List<TaxComponentResponse> _taxComponentFormulas = [];
   bool _isLoadingTaxFormulas = false;
+
+  // When editing: preserve API ids for tax/charge rows so save sends them back (avoids 500)
+  int? _loadedPriceAdjustmentChargeId;
+  int? _loadedGrandTotalChargeId;
 
   // Workflow Actions (loaded from API)
   WorkflowGetAllActionsResponse? _workflowResponse;
@@ -769,6 +781,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Parse tax and charges from taxAndOtherChargesDetail using typeText
     if (orderData.taxAndOtherChargesDetail != null &&
         orderData.taxAndOtherChargesDetail is List) {
+      _loadedPriceAdjustmentChargeId = null;
+      _loadedGrandTotalChargeId = null;
       final charges = orderData.taxAndOtherChargesDetail as List;
       for (var charge in charges) {
         if (charge is Map<String, dynamic>) {
@@ -788,9 +802,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               typeText.toLowerCase() == 'tax' ||
               label.toLowerCase() == 'tax') {
             // Add tax row
+            final chargeId = _parseChargeDetailId(charge['id'] ?? charge['Id']);
             final taxRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'tax',
+              chargeDetailApiId: chargeId,
             );
             taxRow.valueController.text =
                 value == 0.0 ? '' : value.toStringAsFixed(2);
@@ -815,9 +831,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           } else if (typeText == 'Discount' ||
               typeText.toLowerCase() == 'discount') {
             // Add discount row
+            final chargeId = _parseChargeDetailId(charge['id'] ?? charge['Id']);
             final discountRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'discount',
+              chargeDetailApiId: chargeId,
             );
             discountRow.valueController.text =
                 value == 0.0 ? '' : value.toStringAsFixed(2);
@@ -860,19 +878,27 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           } else if (typeText == 'OtherCharge' ||
               typeText.toLowerCase() == 'othercharge') {
             // Add other charge row
+            final chargeId = _parseChargeDetailId(charge['id'] ?? charge['Id']);
             final otherChargeRow = _TaxChargeRow(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               rowType: 'otherCharge',
+              chargeDetailApiId: chargeId,
             );
             otherChargeRow.valueController.text =
                 value == 0.0 ? '' : value.toStringAsFixed(2);
             _otherChargeRows.add(otherChargeRow);
           } else if (typeText == 'PriceAdjustment' ||
               typeText.toLowerCase() == 'priceadjustment') {
+            _loadedPriceAdjustmentChargeId =
+                _parseChargeDetailId(charge['id'] ?? charge['Id']);
             _priceAdjustmentController.text =
                 value == 0.0 ? '' : value.toStringAsFixed(2);
+          } else if (typeText == 'GrandTotal' ||
+              typeText.toLowerCase() == 'grandtotal') {
+            _loadedGrandTotalChargeId =
+                _parseChargeDetailId(charge['id'] ?? charge['Id']);
           }
-          // Note: GrandTotal is calculated, not stored in a controller
+          // Note: GrandTotal value is calculated, not stored in a controller
         }
       }
     } else {
@@ -1664,6 +1690,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     print(
         '📝 Draft Save Enabled: $_isDraftSaveEnabled (ButtonSave: $_hasButtonSaveRight, IsSalesRepEdit: $isSalesRepEdit, EditMode: $_isEditMode, IsOrderEditable: $isOrderEditable, HasAnyEditableAction: $hasAnyEditableAction)');
+  }
+
+  /// True when order is approved: show Modify and Cancel in bottom bar instead of Save and Submit.
+  bool get _isApprovedOrder {
+    if (!_isEditMode || _loadedOrderData == null) return false;
+    final statusLower = _loadedOrderData!.statusText?.toLowerCase() ?? '';
+    if (statusLower.contains('approved')) return true;
+    return _workflowActions
+        .any((action) => action.transactionCompleted == true);
   }
 
   Future<void> _loadTaxComponentFormulas({required int id, int? userId}) async {
@@ -4674,118 +4709,235 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                   ),
                 ],
               )
-            : Row(
-                children: [
-                  // Save Button - Enabled based on Draft Save privilege (ButtonSave HasRight OR IsSalesRepEdit)
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isDraftSaveEnabled ? _onSaveDraft : null,
-                      style: OutlinedButton.styleFrom(
-                        padding: EdgeInsets.symmetric(
-                          vertical: isTablet ? 16 : 14,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: BorderSide(
-                          color: _isDraftSaveEnabled
-                              ? tealGreen
-                              : Colors.grey.shade300,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Text(
-                        'Save',
-                        style: GoogleFonts.inter(
-                          fontSize: isTablet ? 16 : 14,
-                          fontWeight: FontWeight.w700,
-                          color: _isDraftSaveEnabled
-                              ? tealGreen
-                              : Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Workflow Action Buttons - Display dynamically from API response
-                  // Display all buttons, but enable only those with processAction value
-                  ...(_workflowActions.map((action) {
-                    // Enable button if processAction has value (not null and not empty)
-                    final hasProcessAction = action.processAction != null &&
-                        action.processAction!.isNotEmpty;
-                    final isEnabled = hasProcessAction && !_isLoading;
-
-                    // Parse color from API, but use tealGreen for enabled buttons if color is grey/light
-                    final parsedColor = _parseColorFromHex(action.color);
-                    Color enabledColor;
-                    if (isEnabled && parsedColor != null) {
-                      // Check if color is too light/grey - if so, use tealGreen instead
-                      final brightness = parsedColor.computeLuminance();
-                      if (brightness > 0.7 ||
-                          action.color?.toLowerCase().contains('d3d3d3') ==
-                              true) {
-                        // Color is too light or grey, use tealGreen for enabled buttons
-                        enabledColor = tealGreen;
-                      } else {
-                        enabledColor = parsedColor;
-                      }
-                    } else {
-                      enabledColor =
-                          tealGreen; // Default to tealGreen for enabled buttons
-                    }
-
-                    print(
-                        '🔘 Workflow Button: ${action.name}, ProcessAction: ${action.processAction?.length ?? 0}, Enabled: $isEnabled, Color: ${action.color} -> ${enabledColor.value.toRadixString(16)}');
-
-                    return [
-                      const SizedBox(width: 12),
+            : _isApprovedOrder
+                ? _buildApprovedOrderBottomBar(isTablet: isTablet)
+                : Row(
+                    children: [
+                      // Save Button - Enabled based on Draft Save privilege (ButtonSave HasRight OR IsSalesRepEdit)
                       Expanded(
-                        child: ElevatedButton(
-                          onPressed: isEnabled
-                              ? () => _onWorkflowAction(action)
-                              : null,
-                          style: ElevatedButton.styleFrom(
+                        child: OutlinedButton(
+                          onPressed: _isDraftSaveEnabled ? _onSaveDraft : null,
+                          style: OutlinedButton.styleFrom(
                             padding: EdgeInsets.symmetric(
                               vertical: isTablet ? 16 : 14,
                             ),
-                            backgroundColor:
-                                isEnabled ? enabledColor : Colors.grey.shade300,
-                            foregroundColor:
-                                isEnabled ? Colors.white : Colors.grey.shade600,
-                            disabledBackgroundColor: Colors.grey.shade300,
-                            disabledForegroundColor: Colors.grey.shade600,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            elevation: isEnabled ? 2 : 0,
+                            side: BorderSide(
+                              color: _isDraftSaveEnabled
+                                  ? tealGreen
+                                  : Colors.grey.shade300,
+                              width: 1.5,
+                            ),
                           ),
-                          child: _isLoading
-                              ? SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      isEnabled
-                                          ? Colors.white
-                                          : Colors.grey.shade600,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  action.name,
-                                  style: GoogleFonts.inter(
-                                    fontSize: isTablet ? 16 : 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
+                          child: Text(
+                            'Save',
+                            style: GoogleFonts.inter(
+                              fontSize: isTablet ? 16 : 14,
+                              fontWeight: FontWeight.w700,
+                              color: _isDraftSaveEnabled
+                                  ? tealGreen
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
                         ),
                       ),
-                    ];
-                  }).expand((buttons) => buttons)),
-                ],
-              ),
+                      // Workflow Action Buttons - Display dynamically from API response
+                      // Display all buttons, but enable only those with processAction value
+                      ...(_workflowActions.map((action) {
+                        // Enable button if processAction has value (not null and not empty)
+                        final hasProcessAction = action.processAction != null &&
+                            action.processAction!.isNotEmpty;
+                        final isEnabled = hasProcessAction && !_isLoading;
+
+                        // Parse color from API, but use tealGreen for enabled buttons if color is grey/light
+                        final parsedColor = _parseColorFromHex(action.color);
+                        Color enabledColor;
+                        if (isEnabled && parsedColor != null) {
+                          // Check if color is too light/grey - if so, use tealGreen instead
+                          final brightness = parsedColor.computeLuminance();
+                          if (brightness > 0.7 ||
+                              action.color?.toLowerCase().contains('d3d3d3') ==
+                                  true) {
+                            // Color is too light or grey, use tealGreen for enabled buttons
+                            enabledColor = tealGreen;
+                          } else {
+                            enabledColor = parsedColor;
+                          }
+                        } else {
+                          enabledColor =
+                              tealGreen; // Default to tealGreen for enabled buttons
+                        }
+
+                        print(
+                            '🔘 Workflow Button: ${action.name}, ProcessAction: ${action.processAction?.length ?? 0}, Enabled: $isEnabled, Color: ${action.color} -> ${enabledColor.value.toRadixString(16)}');
+
+                        return [
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: isEnabled
+                                  ? () => _onWorkflowAction(action)
+                                  : null,
+                              style: ElevatedButton.styleFrom(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: isTablet ? 16 : 14,
+                                ),
+                                backgroundColor:
+                                    isEnabled ? enabledColor : Colors.grey.shade300,
+                                foregroundColor:
+                                    isEnabled ? Colors.white : Colors.grey.shade600,
+                                disabledBackgroundColor: Colors.grey.shade300,
+                                disabledForegroundColor: Colors.grey.shade600,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: isEnabled ? 2 : 0,
+                              ),
+                              child: _isLoading
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          isEnabled
+                                              ? Colors.white
+                                              : Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      action.name,
+                                      style: GoogleFonts.inter(
+                                        fontSize: isTablet ? 16 : 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ];
+                      }).expand((buttons) => buttons)),
+                    ],
+                  ),
       ),
     );
+  }
+
+  /// Bottom bar for approved orders: Amend, Modify, and Cancel (no Save, no Submit).
+  Widget _buildApprovedOrderBottomBar({required bool isTablet}) {
+    const Color tealGreen = Color(0xFF4db1b3);
+    final bool transactionCompleted = _workflowActions.isNotEmpty &&
+        _workflowActions
+            .any((action) => action.transactionCompleted == true);
+    final bool isCancelled = _loadedOrderData?.isCancelled == 1;
+    final bool isShortClosed = _loadedOrderData?.isShortClosed == 1;
+    final bool showModify = transactionCompleted &&
+        !isCancelled &&
+        !isShortClosed &&
+        (_buttonPrivileges['ButtonModify'] ?? _buttonPrivileges['buttonModify'])
+            ?.hasRight ==
+            true;
+    final bool showCancel = transactionCompleted &&
+        !isCancelled &&
+        !isShortClosed &&
+        (_buttonPrivileges['ButtonCancel'] ?? _buttonPrivileges['buttonCancel'])
+            ?.hasRight ==
+            true;
+    // Amend: workflow action with name "Amend" (from API)
+    final amendList = _workflowActions
+        .where((a) =>
+            a.name.toLowerCase() == 'amend' &&
+            a.processAction != null &&
+            a.processAction!.isNotEmpty)
+        .toList();
+    final ProcessActionDetail? amendAction =
+        amendList.isEmpty ? null : amendList.first;
+    final bool showAmend = !_isLoading && amendAction != null;
+    final ProcessActionDetail? amendActionForButton = amendAction;
+
+    final List<Widget> buttons = [];
+    if (showAmend && amendActionForButton != null) {
+      final amendActionToRun = amendActionForButton;
+      buttons.add(
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => _onWorkflowAction(amendActionToRun),
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: isTablet ? 16 : 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              side: const BorderSide(color: tealGreen, width: 1.5),
+            ),
+            child: Text(
+              'Amend',
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 16 : 14,
+                fontWeight: FontWeight.w700,
+                color: tealGreen,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (showModify) {
+      if (buttons.isNotEmpty) buttons.add(const SizedBox(width: 12));
+      buttons.add(
+        Expanded(
+          child: OutlinedButton(
+            onPressed: _handleModifyOrder,
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: isTablet ? 16 : 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              side: const BorderSide(color: tealGreen, width: 1.5),
+            ),
+            child: Text(
+              'Modify',
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 16 : 14,
+                fontWeight: FontWeight.w700,
+                color: tealGreen,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (showCancel) {
+      if (buttons.isNotEmpty) buttons.add(const SizedBox(width: 12));
+      buttons.add(
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _handleCancelOrder,
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: isTablet ? 16 : 14),
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 2,
+            ),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 16 : 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (buttons.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Row(children: buttons);
   }
 
   /// Build actions menu overlay with smooth animation
@@ -4814,8 +4966,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         'color': Colors.blue,
         'action': () {
           setState(() => _isActionsMenuOpen = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Print action triggered')),
+          ToastMessage.show(
+            context,
+            message: 'Print action triggered',
+            type: ToastType.info,
+            icon: Icons.print_outlined,
+            duration: const Duration(seconds: 2),
           );
         },
       },
@@ -4828,11 +4984,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           _onSaveDraft();
         },
       },
+      'ButtonDelete': {
+        'icon': Icons.delete_outlined,
+        'label': 'Delete',
+        'color': Colors.red,
+        'action': () => _handleDeleteOrder(),
+      },
       // ButtonShortClose is removed - not needed for sales rep
     };
 
     // Collect buttons with hasRight = true, but exclude ButtonSave (already shown in bottom bar)
-    // Also apply special logic for ButtonCancel
+    // Exclude Modify and Cancel from actions menu - they are shown in the bottom bar for approved orders
     final List<Map<String, dynamic>> enabledButtons = [];
     for (final entry in _buttonPrivileges.entries) {
       final buttonKey = entry.key;
@@ -4843,12 +5005,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         continue;
       }
 
+      // Skip Modify and Cancel - shown in bottom bar for approved orders, not in actions section
+      if (buttonKey == 'ButtonModify' || buttonKey == 'buttonModify') {
+        continue;
+      }
+      if (buttonKey == 'ButtonCancel' || buttonKey == 'buttonCancel') {
+        continue;
+      }
+
       // Skip ButtonShortClose - not needed for sales rep
       if (buttonKey == 'ButtonShortClose') {
         continue;
       }
 
-      // Special handling for ButtonCancel
+      // Special handling for ButtonCancel (kept for any other code path; button already skipped above)
       if (buttonKey == 'ButtonCancel') {
         // Check if cancel button should be shown:
         // 1. Must have privilege (hasRight = true)
@@ -4918,6 +5088,25 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
           if (isCancelled || isShortClosed) {
             continue; // Already cancelled or short closed, skip
+          }
+        }
+      }
+
+      // Special handling for ButtonDelete (same visibility as Cancel)
+      if (buttonKey == 'ButtonDelete') {
+        if (!privilege.hasRight) continue;
+
+        bool transactionCompleted = false;
+        if (_workflowActions.isNotEmpty) {
+          transactionCompleted = _workflowActions
+              .any((action) => action.transactionCompleted == true);
+        }
+        if (!transactionCompleted) continue;
+
+        if (_isEditMode && _loadedOrderData != null) {
+          if (_loadedOrderData!.isCancelled == 1 ||
+              _loadedOrderData!.isShortClosed == 1) {
+            continue;
           }
         }
       }
@@ -5237,8 +5426,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         }
       }
 
-      // Backend requires non-null Id for existing lines when editing. Use line detailId if API returned it, else order id to avoid 500.
-      final int? lineId = _isEditMode ? (item.detailId ?? _loadedOrderData?.id) : null;
+      // Existing line items: send their line item Id (detailId from API). New line items: must send null. Never use header/order id as line id (causes 500).
+      final int? lineId = _isEditMode ? item.detailId : null;
       contractItems.add(SalesContractItem(
         id: lineId,
         createdBy: user.userId,
@@ -5288,7 +5477,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       if ((taxRow.selectedType != null && taxRow.selectedType!.isNotEmpty) ||
           value > 0) {
         taxCharges.add(TaxAndOtherChargeDetail(
-          id: null,
+          id: _isEditMode ? taxRow.chargeDetailApiId : null,
           gridId: 80, // Should be from tax component formulas
           type: 22, // Tax type - should be mapped from selectedType
           value: value,
@@ -5321,7 +5510,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           : null;
 
       taxCharges.add(TaxAndOtherChargeDetail(
-        id: null,
+        id: _isEditMode ? discountRow.chargeDetailApiId : null,
         gridId: 81,
         type: -1, // Discount type
         value: value,
@@ -5348,7 +5537,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final value = otherChargeRow.value;
       if (value > 0) {
         taxCharges.add(TaxAndOtherChargeDetail(
-          id: null,
+          id: _isEditMode ? otherChargeRow.chargeDetailApiId : null,
           gridId: 82,
           type: 0,
           value: value,
@@ -5372,7 +5561,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Add Price Adjustment
     final priceAdjustment = _priceAdjustment;
     taxCharges.add(TaxAndOtherChargeDetail(
-      id: null,
+      id: _isEditMode ? _loadedPriceAdjustmentChargeId : null,
       gridId: 83,
       type: 0,
       value: priceAdjustment,
@@ -5394,7 +5583,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Calculate Grand Total
     final grandTotal = _calculateGrandTotal();
     taxCharges.add(TaxAndOtherChargeDetail(
-      id: null,
+      id: _isEditMode ? _loadedGrandTotalChargeId : null,
       gridId: 84,
       type: 0,
       value: grandTotal,
@@ -5423,11 +5612,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     final totalAdjust = priceAdjustment;
     final netAmount = grandTotal;
 
-    // Get workflow info from _workflowResponse if available
-    final processActionId = _workflowActions.isNotEmpty
+    // Pass processId and processActionId only when order has been submitted
+    // (workflowFlag == 1). For draft / not approved (workflowFlag == 0), do not pass them.
+    final int? processId =
+        workflowFlag == 1 ? _workflowResponse?.id : null;
+    final int? processActionId = (workflowFlag == 1 && _workflowActions.isNotEmpty)
         ? _workflowActions.first.processActionId
         : null;
-    final processId = _workflowResponse?.id;
 
     // Get dynamic userId from user
     final dynamicUserId = user.userId;
@@ -5862,34 +6053,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       });
 
       if (response.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} modified successfully',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.fixed,
-            duration: const Duration(seconds: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} modified successfully',
+          type: ToastType.success,
+          icon: Icons.check_circle_outline,
+          duration: const Duration(seconds: 2),
         );
-
         // Navigate back to listing screen
         Navigator.of(context).pop(true);
       } else {
@@ -5992,36 +6162,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      // Show success message
+      // Show success message at top as snackbar-style toast
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} cancelled successfully',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.fixed,
-          duration: const Duration(seconds: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
+      ToastMessage.show(
+        context,
+        message: 'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} cancelled successfully',
+        type: ToastType.success,
+        icon: Icons.check_circle_outline,
+        duration: const Duration(seconds: 2),
       );
-
       // Navigate back to listing screen
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -6034,6 +6183,108 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to cancel sales order: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.fixed,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Handle Delete Order action with confirmation.
+  /// API: /api/SaleOrder/Delete with Id = Transaction Id.
+  Future<void> _handleDeleteOrder() async {
+    if (!_isEditMode || _loadedOrderData == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Sales Order'),
+          content: Text(
+            'Are you sure you want to delete sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'}? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Yes, Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    if (!mounted) return;
+    setState(() => _isActionsMenuOpen = false);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      final transactionId = _loadedOrderData!.id;
+      if (transactionId == null) {
+        throw Exception('Transaction ID not available.');
+      }
+
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) {
+        throw Exception('User not available');
+      }
+      final userId = user.userId ?? user.id;
+
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
+      int? bizUnitFromPrefs = user.sbuId;
+      final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
+              : 1);
+
+      final salesRepository = getIt<SalesRepository>();
+      await salesRepository.deleteSalesOrder(
+        id: transactionId,
+        bizunit: bizUnit,
+        userId: userId,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      if (!mounted) return;
+      ToastMessage.show(
+        context,
+        message: 'Sales order ${_loadedOrderData?.soNumber ?? 'SO-${_loadedOrderData?.id ?? ''}'} deleted successfully',
+        type: ToastType.success,
+        icon: Icons.check_circle_outline,
+        duration: const Duration(seconds: 2),
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete sales order: ${e.toString()}'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.fixed,
           duration: const Duration(seconds: 4),
@@ -6183,12 +6434,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       });
 
       if (response.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Order ${action.name} successfully'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Order ${action.name} successfully',
+          type: ToastType.success,
+          icon: Icons.check_circle_outline,
+          duration: const Duration(seconds: 2),
         );
         // Navigate back to listing screen with success result
         Navigator.of(context).pop(true);
@@ -6703,11 +6954,15 @@ class _TaxChargeRow {
   bool isPercentageEnabled = false;
   final TextEditingController percentageController;
 
+  /// When editing: API id of this charge row (from taxAndOtherChargesDetail). Send back on save to avoid 500.
+  int? chargeDetailApiId;
+
   _TaxChargeRow({
     required this.id,
     this.selectedType,
     required this.rowType,
     this.isPercentageEnabled = false,
+    this.chargeDetailApiId,
   })  : valueController = TextEditingController(text: ''),
         percentageController = TextEditingController(text: '');
 

@@ -463,21 +463,40 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final String statusLabel =
         issue.status.isNotEmpty ? issue.status : 'Status';
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
+    final double mobileMaxContentHeight = screenHeight * 0.5;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight:
-              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
+    List<Widget> buildDetailRows(BuildContext ctx) {
+      return [
+        _DetailRow('ST Date',
+            DateFormat('dd-MMM-yyyy').format(issue.stDate)),
+        const SizedBox(height: 12),
+        _DetailRow('Issue No',
+            issue.issueNo.isEmpty ? 'N/A' : issue.issueNo),
+        const SizedBox(height: 12),
+        _DetailRow('From Store', issue.fromStore),
+        const SizedBox(height: 12),
+        _DetailRow('Status', issue.status),
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        _DetailRow('Item Details', issue.itemDetails,
+            isMultiline: true),
+      ];
+    }
+
+    Widget buildPanelContent(BuildContext ctx) {
+      final isTabletPanel = isTablet;
+      return Container(
+        width: isTabletPanel ? 600 : screenWidth,
+        height: isTabletPanel ? panelHeight : null,
+        constraints: isTabletPanel ? null : BoxConstraints(maxHeight: panelHeight),
+        margin: isTabletPanel
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
+                horizontal: (screenWidth - 600) / 2,
+                vertical: screenHeight * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -494,7 +513,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
         child: SafeArea(
           top: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTabletPanel ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header
               Container(
@@ -530,7 +549,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                               style: GoogleFonts.inter(
                                 fontWeight: FontWeight.w700,
                                 color: Colors.grey[900],
-                                fontSize: isTablet ? 16 : 14,
+                                fontSize: isTabletPanel ? 16 : 14,
                               ),
                             ),
                           ),
@@ -548,36 +567,39 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                   ],
                 ),
               ),
-              // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    20,
-                    20,
-                    MediaQuery.of(context).padding.bottom + 20,
+              // Content: tablet = Flexible; mobile = ConstrainedBox so sheet sizes to content
+              if (isTabletPanel)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: buildDetailRows(ctx),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DetailRow('ST Date',
-                          DateFormat('dd-MMM-yyyy').format(issue.stDate)),
-                      const SizedBox(height: 12),
-                      _DetailRow('Issue No',
-                          issue.issueNo.isEmpty ? 'N/A' : issue.issueNo),
-                      const SizedBox(height: 12),
-                      _DetailRow('From Store', issue.fromStore),
-                      const SizedBox(height: 12),
-                      _DetailRow('Status', issue.status),
-                      const SizedBox(height: 20),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 20),
-                      _DetailRow('Item Details', issue.itemDetails,
-                          isMultiline: true),
-                    ],
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: mobileMaxContentHeight),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: buildDetailRows(ctx),
+                    ),
                   ),
                 ),
-              ),
               // Footer actions
               SafeArea(
                 top: false,
@@ -680,8 +702,32 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
             ],
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (isTablet) {
+      showGeneralDialog(
+        context: context,
+        useRootNavigator: true,
+        barrierDismissible: true,
+        barrierColor: Colors.black54,
+        barrierLabel: 'Issue details',
+        transitionDuration: const Duration(milliseconds: 200),
+        pageBuilder: (ctx, _, __) => Center(
+          child: Material(
+            color: Colors.transparent,
+            child: buildPanelContent(ctx),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => buildPanelContent(ctx),
+      );
+    }
   }
 
   Widget _getStatusChip(String status) {
@@ -1964,28 +2010,39 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final labelWidth = isMobile ? (screenWidth * 0.38).clamp(100.0, 140.0) : 120.0;
+
+    return Row(
+      crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey.shade600,
-            letterSpacing: 0.2,
+        SizedBox(
+          width: labelWidth,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: isMobile ? 11 : 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+              letterSpacing: 0.2,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade900,
+        SizedBox(width: isMobile ? 8 : 12),
+        Expanded(
+          child: Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: isMobile ? 12 : 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade900,
+            ),
+            maxLines: isMultiline ? null : 2,
+            overflow: isMultiline ? null : TextOverflow.ellipsis,
           ),
-          maxLines: isMultiline ? null : 2,
-          overflow: isMultiline ? null : TextOverflow.ellipsis,
         ),
       ],
     );

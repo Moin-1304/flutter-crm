@@ -969,8 +969,8 @@ class _DcrListScreenState extends State<DcrListScreen>
             builder: (context, _) {
               final validationStore = getIt<UserValidationStore>();
               // Service Engineers: always allow New DCR; others: use validate-user API
-              final canCreateDcr =
-                  _isCurrentUserServiceEngineer() || validationStore.canCreateDcr;
+              final canCreateDcr = _isCurrentUserServiceEngineer() ||
+                  validationStore.canCreateDcr;
 
               return Row(
                 children: [
@@ -1001,13 +1001,13 @@ class _DcrListScreenState extends State<DcrListScreen>
                       color: tealGreen,
                       isMobile: isMobile,
                       onTap: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) => const ExpenseEntryScreen()),
-                              );
-                              if (context.mounted) {
-                                await _load();
-                              }
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const ExpenseEntryScreen()),
+                        );
+                        if (context.mounted) {
+                          await _load();
+                        }
                       },
                     ),
                   ),
@@ -1654,7 +1654,20 @@ class _DcrListScreenState extends State<DcrListScreen>
     if (raw == null || raw.trim().isEmpty) return '—';
     try {
       final d = DateTime.parse(raw);
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
       final day = d.day.toString().padLeft(2, '0');
       final month = months[d.month - 1];
       final year = d.year;
@@ -2297,20 +2310,23 @@ class _DcrListScreenState extends State<DcrListScreen>
     if (!mounted) return;
 
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight:
-              MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final double panelHeight =
+        isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
+    final double mobileMaxContentHeight = screenHeight * 0.7;
+
+    Widget buildPanelContent(BuildContext ctx) {
+      final isTabletPanel = isTablet;
+      return Container(
+        width: isTabletPanel ? 600 : screenWidth,
+        height: isTabletPanel ? panelHeight : null,
+        constraints:
+            isTabletPanel ? null : BoxConstraints(maxHeight: panelHeight),
+        margin: isTabletPanel
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
+                horizontal: (screenWidth - 600) / 2,
+                vertical: screenHeight * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -2327,7 +2343,7 @@ class _DcrListScreenState extends State<DcrListScreen>
         child: SafeArea(
           top: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTabletPanel ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header (mint like tour plan)
               Container(
@@ -2369,7 +2385,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w700,
                                     color: Colors.grey[900],
-                                    fontSize: isTablet ? 16 : 14,
+                                    fontSize: isTabletPanel ? 16 : 14,
                                   ),
                                 ),
                               ),
@@ -2389,266 +2405,42 @@ class _DcrListScreenState extends State<DcrListScreen>
                   ],
                 ),
               ),
-              // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    20,
-                    20,
-                    MediaQuery.of(context).padding.bottom + 20,
+              // Content: tablet = Flexible; mobile = ConstrainedBox so sheet sizes to content
+              if (isTabletPanel)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _buildDcrDetailContent(
+                          ctx, displayItem, item, isTabletPanel),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DetailRow(
-                          'Transaction Type', displayItem.transactionType),
-                      const SizedBox(height: 12),
-                      _DetailRow(
-                          'Date',
-                          _formatDate(
-                              displayItem.parsedDate ?? DateTime.now())),
-                      const SizedBox(height: 12),
-                      _DetailRow('Employee', displayItem.employeeName),
-                      const SizedBox(height: 12),
-                      if (displayItem.designation.isNotEmpty) ...[
-                        _DetailRow('Designation', displayItem.designation),
-                        const SizedBox(height: 12),
-                      ],
-                      _DetailRow('Cluster', displayItem.clusterDisplayName),
-                      const SizedBox(height: 12),
-                      _DetailRow('Status', displayItem.statusText),
-                      if (displayItem.isDcr) ...[
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        _DetailRow('Customer', displayItem.customerName),
-                        const SizedBox(height: 12),
-                        _DetailRow('Purpose', displayItem.typeOfWork),
-                        const SizedBox(height: 12),
-                        if (displayItem.samplesToDistribute != null &&
-                            displayItem.samplesToDistribute!.isNotEmpty) ...[
-                          _DetailRow('Samples to Distribute',
-                              displayItem.samplesToDistribute!),
-                          const SizedBox(height: 12),
-                        ],
-                        if (displayItem.productsToDiscuss != null &&
-                            displayItem.productsToDiscuss!.isNotEmpty) ...[
-                          _DetailRow('Products to Discuss',
-                              displayItem.productsToDiscuss!),
-                          const SizedBox(height: 12),
-                        ],
-                      ] else ...[
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        _DetailRow('Expense Type',
-                            displayItem.expenseType ?? 'Unknown'),
-                        const SizedBox(height: 12),
-                        _DetailRow(
-                            'Amount',
-                            displayItem.expenseAmount != null
-                                ? 'LKR ${displayItem.expenseAmount!.toStringAsFixed(2)}'
-                                : 'Unknown'),
-                        // Attachments: always show section and button for expense details
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Attachments',
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.grey[900],
-                            fontSize: isTablet ? 15 : 14,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        FutureBuilder<ExpenseDetailResponse?>(
-                          future: getIt.isRegistered<ExpenseRepository>()
-                              ? getIt<ExpenseRepository>().getExpenseFromApi(item.id)
-                              : Future.value(null),
-                          builder: (context, snapshot) {
-                            final attachments = snapshot.data?.attachments ?? [];
-                            final isLoading = snapshot.connectionState == ConnectionState.waiting;
-                            if (isLoading) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: _DcrListScreenState.tealGreen,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Loading attachments...',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-                            if (attachments.isEmpty) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                child: Text(
-                                  'No attachments',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              );
-                            }
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: attachments.map((att) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 6),
-                                  child: InkWell(
-                                    onTap: () =>
-                                        AttachmentViewerScreen.openAttachment(
-                                            context, att),
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 8, horizontal: 4),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.attach_file,
-                                            size: 18,
-                                            color: _DcrListScreenState.tealGreen,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              att.fileName,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 13,
-                                                color: _DcrListScreenState.tealGreen,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          Icon(
-                                            Icons.open_in_new,
-                                            size: 16,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            );
-                          },
-                        ),
-                      ],
-                      // Service Report details (show when DCR has this data - for SE and for manager review)
-                      Builder(
-                        builder: (context) {
-                          final bool hasServiceReportData =
-                              _hasServiceReportData(displayItem);
-                          final bool shouldShow = displayItem.isDcr &&
-                              hasServiceReportData;
-
-                          if (!shouldShow) {
-                            return const SizedBox.shrink();
-                          }
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 20),
-                              Divider(height: 1, color: Colors.grey.shade300),
-                              const SizedBox(height: 20),
-                              // Text(
-                              //   'Service Report Details',
-                              //   style: GoogleFonts.inter(
-                              //     fontWeight: FontWeight.w700,
-                              //     color: Colors.cyan,
-                              //     fontSize: isTablet ? 16 : 14,
-                              //   ),
-                              // ),
-                              // const SizedBox(height: 16),
-                              if (displayItem.mappedInstruments != null &&
-                                  displayItem
-                                      .mappedInstruments!.isNotEmpty) ...[
-                                _DetailRow(
-                                  'Mapped Instruments',
-                                  displayItem.mappedInstruments!
-                                      .map((e) =>
-                                          e['productName'] ??
-                                          e['ProductName'] ??
-                                          'Unknown')
-                                      .join(', '),
-                                ),
-                                const SizedBox(height: 12),
-                              ],
-                              if (displayItem.complaint != null &&
-                                  displayItem.complaint!.isNotEmpty) ...[
-                                _DetailRow('Complaint', displayItem.complaint!,
-                                    isMultiline: true),
-                                const SizedBox(height: 12),
-                              ],
-                              if (displayItem.actionTaken != null &&
-                                  displayItem.actionTaken!.isNotEmpty) ...[
-                                _DetailRow(
-                                    'Action Taken', displayItem.actionTaken!,
-                                    isMultiline: true),
-                                const SizedBox(height: 12),
-                              ],
-                              if (displayItem.result != null &&
-                                  displayItem.result!.isNotEmpty) ...[
-                                _DetailRow('Result', displayItem.result!,
-                                    isMultiline: true),
-                                const SizedBox(height: 12),
-                              ],
-                              if (displayItem.complaintStatus != null &&
-                                  displayItem.complaintStatus!.isNotEmpty) ...[
-                                _DetailRow('Complaint Status',
-                                    displayItem.complaintStatus!),
-                                const SizedBox(height: 12),
-                              ],
-                              if (displayItem.complaintDate != null &&
-                                  displayItem.complaintDate!.isNotEmpty) ...[
-                                _DetailRow('Complaint Date',
-                                    _formatComplaintDate(displayItem.complaintDate)),
-                                const SizedBox(height: 12),
-                              ],
-                              if (displayItem.complaintRemarks != null &&
-                                  displayItem.complaintRemarks!.isNotEmpty) ...[
-                                _DetailRow('Complaint Remarks',
-                                    displayItem.complaintRemarks!,
-                                    isMultiline: true),
-                                const SizedBox(height: 12),
-                              ],
-                            ],
-                          );
-                        },
-                      ),
-                      if (displayItem.remarks.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        _DetailRow('Remarks', displayItem.remarks,
-                            isMultiline: true),
-                      ],
-                    ],
+                )
+              else
+                ConstrainedBox(
+                  constraints:
+                      BoxConstraints(maxHeight: mobileMaxContentHeight),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: _buildDcrDetailContent(
+                          ctx, displayItem, item, isTabletPanel),
+                    ),
                   ),
                 ),
-              ),
               // Footer actions (Tour Plan-like wide pill buttons)
               SafeArea(
                 top: false,
@@ -2743,8 +2535,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                         Expanded(
                           child: Builder(
                             builder: (context) {
-                              final bool showFilled = !_isDcrEditable(
-                                  item); // if it's the only action, make it primary
+                              final bool showFilled = !_isDcrEditable(item);
                               final onPressed = () {
                                 Navigator.of(context).pop();
                                 Navigator.of(context).push(
@@ -2801,8 +2592,273 @@ class _DcrListScreenState extends State<DcrListScreen>
             ],
           ),
         ),
+      );
+    }
+
+    if (isTablet) {
+      Navigator.of(context, rootNavigator: true)
+          .push(
+        PageRouteBuilder<void>(
+          opaque: false,
+          barrierColor: Colors.black54,
+          barrierDismissible: true,
+          pageBuilder: (ctx, _, __) => Center(
+            child: Material(
+              color: Colors.transparent,
+              child: buildPanelContent(ctx),
+            ),
+          ),
+          transitionsBuilder: (_, anim, __, child) =>
+              FadeTransition(opacity: anim, child: child),
+        ),
+      )
+          .then((_) {
+        if (mounted) _load();
+      });
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => buildPanelContent(ctx),
+      ).then((_) {
+        if (mounted) _load();
+      });
+    }
+  }
+
+  List<Widget> _buildDcrDetailContent(BuildContext ctx,
+      UnifiedDcrItem displayItem, UnifiedDcrItem item, bool isTablet) {
+    return [
+      _DetailRow('Transaction Type', displayItem.transactionType),
+      const SizedBox(height: 12),
+      _DetailRow('Date', _formatDate(displayItem.parsedDate ?? DateTime.now())),
+      const SizedBox(height: 12),
+      _DetailRow('Employee', displayItem.employeeName),
+      const SizedBox(height: 12),
+      if (displayItem.designation.isNotEmpty) ...[
+        _DetailRow('Designation', displayItem.designation),
+        const SizedBox(height: 12),
+      ],
+      _DetailRow('Cluster', displayItem.clusterDisplayName),
+      const SizedBox(height: 12),
+      _DetailRow('Status', displayItem.statusText),
+      if (displayItem.isDcr) ...[
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        _DetailRow('Customer', displayItem.customerName),
+        const SizedBox(height: 12),
+        _DetailRow('Purpose', displayItem.typeOfWork),
+        const SizedBox(height: 12),
+        if (displayItem.samplesToDistribute != null &&
+            displayItem.samplesToDistribute!.isNotEmpty) ...[
+          _DetailRow('Samples to Distribute', displayItem.samplesToDistribute!),
+          const SizedBox(height: 12),
+        ],
+        if (displayItem.productsToDiscuss != null &&
+            displayItem.productsToDiscuss!.isNotEmpty) ...[
+          _DetailRow('Products to Discuss', displayItem.productsToDiscuss!),
+          const SizedBox(height: 12),
+        ],
+      ] else ...[
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        _DetailRow('Expense Type', displayItem.expenseType ?? 'Unknown'),
+        const SizedBox(height: 12),
+        _DetailRow(
+            'Amount',
+            displayItem.expenseAmount != null
+                ? 'LKR ${displayItem.expenseAmount!.toStringAsFixed(2)}'
+                : 'Unknown'),
+        // Attachments: always show section and button for expense details
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        Text(
+          'Attachments',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w700,
+            color: Colors.grey[900],
+            fontSize: isTablet ? 15 : 14,
+          ),
+        ),
+        const SizedBox(height: 12),
+        FutureBuilder<ExpenseDetailResponse?>(
+          future: getIt.isRegistered<ExpenseRepository>()
+              ? getIt<ExpenseRepository>().getExpenseFromApi(item.id)
+              : Future.value(null),
+          builder: (context, snapshot) {
+            final attachments = snapshot.data?.attachments ?? [];
+            final isLoading =
+                snapshot.connectionState == ConnectionState.waiting;
+            if (isLoading) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _DcrListScreenState.tealGreen,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Loading attachments...',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            if (attachments.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'No attachments',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: attachments.map((att) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: InkWell(
+                    onTap: () =>
+                        AttachmentViewerScreen.openAttachment(context, att),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.attach_file,
+                            size: 18,
+                            color: _DcrListScreenState.tealGreen,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              att.fileName,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: _DcrListScreenState.tealGreen,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Icon(
+                            Icons.open_in_new,
+                            size: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+      // Service Report details (show when DCR has this data - for SE and for manager review)
+      Builder(
+        builder: (context) {
+          final bool hasServiceReportData = _hasServiceReportData(displayItem);
+          final bool shouldShow = displayItem.isDcr && hasServiceReportData;
+
+          if (!shouldShow) {
+            return const SizedBox.shrink();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+              Divider(height: 1, color: Colors.grey.shade300),
+              const SizedBox(height: 20),
+              // Text(
+              //   'Service Report Details',
+              //   style: GoogleFonts.inter(
+              //     fontWeight: FontWeight.w700,
+              //     color: Colors.cyan,
+              //     fontSize: isTablet ? 16 : 14,
+              //   ),
+              // ),
+              // const SizedBox(height: 16),
+              if (displayItem.mappedInstruments != null &&
+                  displayItem.mappedInstruments!.isNotEmpty) ...[
+                _DetailRow(
+                  'Mapped Instruments',
+                  displayItem.mappedInstruments!
+                      .map((e) =>
+                          e['productName'] ?? e['ProductName'] ?? 'Unknown')
+                      .join(', '),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (displayItem.complaint != null &&
+                  displayItem.complaint!.isNotEmpty) ...[
+                _DetailRow('Complaint', displayItem.complaint!,
+                    isMultiline: true),
+                const SizedBox(height: 12),
+              ],
+              if (displayItem.actionTaken != null &&
+                  displayItem.actionTaken!.isNotEmpty) ...[
+                _DetailRow('Action Taken', displayItem.actionTaken!,
+                    isMultiline: true),
+                const SizedBox(height: 12),
+              ],
+              if (displayItem.result != null &&
+                  displayItem.result!.isNotEmpty) ...[
+                _DetailRow('Result', displayItem.result!, isMultiline: true),
+                const SizedBox(height: 12),
+              ],
+              if (displayItem.complaintStatus != null &&
+                  displayItem.complaintStatus!.isNotEmpty) ...[
+                _DetailRow('Complaint Status', displayItem.complaintStatus!),
+                const SizedBox(height: 12),
+              ],
+              if (displayItem.complaintDate != null &&
+                  displayItem.complaintDate!.isNotEmpty) ...[
+                _DetailRow('Complaint Date',
+                    _formatComplaintDate(displayItem.complaintDate)),
+                const SizedBox(height: 12),
+              ],
+              if (displayItem.complaintRemarks != null &&
+                  displayItem.complaintRemarks!.isNotEmpty) ...[
+                _DetailRow('Complaint Remarks', displayItem.complaintRemarks!,
+                    isMultiline: true),
+                const SizedBox(height: 12),
+              ],
+            ],
+          );
+        },
       ),
-    );
+      if (displayItem.remarks.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        _DetailRow('Key Points Discussed', displayItem.remarks,
+            isMultiline: true),
+      ],
+    ];
   }
 }
 
@@ -3297,13 +3353,16 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final labelWidth =
+        isMobile ? (screenWidth * 0.38).clamp(100.0, 140.0) : 120.0;
 
     return Row(
       crossAxisAlignment:
           isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: isMobile ? 100 : 120,
+          width: labelWidth,
           child: Text(
             label,
             style: GoogleFonts.inter(
@@ -3311,9 +3370,11 @@ class _DetailRow extends StatelessWidget {
               fontWeight: FontWeight.w600,
               fontSize: isMobile ? 11 : 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isMobile ? 8 : 12),
         Expanded(
           child: Text(
             value,

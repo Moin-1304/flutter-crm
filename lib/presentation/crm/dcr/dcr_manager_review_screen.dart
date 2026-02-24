@@ -1069,19 +1069,69 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
   void _showDcrDetails(UnifiedDcrItem item) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
+    final double mobileMaxContentHeight = screenHeight * 0.7;
+
+    List<Widget> buildDetailRows(BuildContext ctx) {
+      return [
+        _DetailRow('Transaction Type', item.transactionType),
+        const SizedBox(height: 12),
+        _DetailRow('Date', _formatDate(item.parsedDate ?? DateTime.now())),
+        const SizedBox(height: 12),
+        _DetailRow('Employee', item.employeeName),
+        const SizedBox(height: 12),
+        if (item.designation.isNotEmpty) ...[
+          _DetailRow('Designation', item.designation),
+          const SizedBox(height: 12),
+        ],
+        _DetailRow('Cluster', item.clusterDisplayName),
+        const SizedBox(height: 12),
+        _DetailRow('Status', item.statusText),
+        if (item.isDcr) ...[
+          const SizedBox(height: 20),
+          Divider(height: 1, color: Colors.grey.shade300),
+          const SizedBox(height: 20),
+          _DetailRow('Customer', item.customerName),
+          const SizedBox(height: 12),
+          _DetailRow('Purpose', item.typeOfWork),
+          const SizedBox(height: 12),
+          if (item.samplesToDistribute != null && item.samplesToDistribute!.isNotEmpty) ...[
+            _DetailRow('Samples to Distribute', item.samplesToDistribute!),
+            const SizedBox(height: 12),
+          ],
+          if (item.productsToDiscuss != null && item.productsToDiscuss!.isNotEmpty) ...[
+            _DetailRow('Products to Discuss', item.productsToDiscuss!),
+            const SizedBox(height: 12),
+          ],
+        ] else ...[
+          const SizedBox(height: 20),
+          Divider(height: 1, color: Colors.grey.shade300),
+          const SizedBox(height: 20),
+          _DetailRow('Expense Type', item.expenseType ?? 'Unknown'),
+          const SizedBox(height: 12),
+          _DetailRow('Amount', item.expenseAmount != null ? 'LKR ${item.expenseAmount!.toStringAsFixed(2)}' : 'Unknown'),
+        ],
+        if (item.remarks.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Divider(height: 1, color: Colors.grey.shade300),
+          const SizedBox(height: 20),
+          _DetailRow('Remarks', item.remarks, isMultiline: true),
+        ],
+      ];
+    }
+
+    Widget buildPanelContent(BuildContext ctx) {
+      final isTabletPanel = isTablet;
+      return Container(
+        width: isTabletPanel ? 600 : screenWidth,
+        height: isTabletPanel ? panelHeight : null,
+        constraints: isTabletPanel ? null : BoxConstraints(maxHeight: panelHeight),
+        margin: isTabletPanel
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
+                horizontal: (screenWidth - 600) / 2,
+                vertical: screenHeight * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -1098,7 +1148,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         child: SafeArea(
           top: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTabletPanel ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header (mint like tour plan)
               Container(
@@ -1135,7 +1185,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                                   style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w700,
                                     color: Colors.grey[900],
-                                    fontSize: isTablet ? 16 : 14,
+                                    fontSize: isTabletPanel ? 16 : 14,
                                   ),
                                 ),
                               ),
@@ -1155,70 +1205,64 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                   ],
                 ),
               ),
-              // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    20,
-                    20,
-                    MediaQuery.of(context).padding.bottom + 20,
+              // Content: tablet = Flexible; mobile = ConstrainedBox so sheet sizes to content
+              if (isTabletPanel)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: buildDetailRows(ctx),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DetailRow('Transaction Type', item.transactionType),
-                      const SizedBox(height: 12),
-                      _DetailRow('Date', _formatDate(item.parsedDate ?? DateTime.now())),
-                      const SizedBox(height: 12),
-                      _DetailRow('Employee', item.employeeName),
-                      const SizedBox(height: 12),
-                      if (item.designation.isNotEmpty) ...[
-                        _DetailRow('Designation', item.designation),
-                        const SizedBox(height: 12),
-                      ],
-                      _DetailRow('Cluster', item.clusterDisplayName),
-                      const SizedBox(height: 12),
-                      _DetailRow('Status', item.statusText),
-                      if (item.isDcr) ...[
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        _DetailRow('Customer', item.customerName),
-                        const SizedBox(height: 12),
-                        _DetailRow('Purpose', item.typeOfWork),
-                        const SizedBox(height: 12),
-                        if (item.samplesToDistribute != null && item.samplesToDistribute!.isNotEmpty) ...[
-                          _DetailRow('Samples to Distribute', item.samplesToDistribute!),
-                          const SizedBox(height: 12),
-                        ],
-                        if (item.productsToDiscuss != null && item.productsToDiscuss!.isNotEmpty) ...[
-                          _DetailRow('Products to Discuss', item.productsToDiscuss!),
-                          const SizedBox(height: 12),
-                        ],
-                      ] else ...[
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        _DetailRow('Expense Type', item.expenseType ?? 'Unknown'),
-                        const SizedBox(height: 12),
-                        _DetailRow('Amount', item.expenseAmount != null ? 'LKR ${item.expenseAmount!.toStringAsFixed(2)}' : 'Unknown'),
-                      ],
-                      if (item.remarks.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        Divider(height: 1, color: Colors.grey.shade300),
-                        const SizedBox(height: 20),
-                        _DetailRow('Remarks', item.remarks, isMultiline: true),
-                      ],
-                    ],
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: mobileMaxContentHeight),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: buildDetailRows(ctx),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (isTablet) {
+      showDialog(
+        context: context,
+        useRootNavigator: true,
+        barrierColor: Colors.black54,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: buildPanelContent(ctx),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => buildPanelContent(ctx),
+      );
+    }
   }
 
   Future<void> _showBulkActionDialog(String action) async {
@@ -1661,12 +1705,9 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         ),
       );
 
-      // Call GetDCRMapDetails API
       final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
-      
       if (dcrRepo == null) {
-        print('❌ [DcrManagerReviewScreen] DCR Repository not available');
-        if (mounted) Navigator.of(context).pop(); // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
         ToastMessage.show(
           context,
           message: 'DCR Repository not available',
@@ -1676,67 +1717,79 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         return;
       }
 
-      final request = DcrMapDetailsRequest(
-        searchText: null,
-        pageNumber: 0,
-        pageSize: 0,
-        sortOrder: 0,
-        sortDir: 0,
-        managerId: managerId,
-      );
+      // Use same date range and employee filter as the list (current month, selected or all team)
+      final DateTime start = DateTime(_date.year, _date.month, 1);
+      final DateTime end = DateTime(_date.year, _date.month + 1, 0);
+      final int? selectedEmployeeId = _selectedEmployeeId();
+      final int? statusId = _statusIdFromText(_status);
 
-      print('📞 [DcrManagerReviewScreen] Calling getDcrMapDetails API...');
-      print('   Request: ${request.toJson()}');
-      
-      final response = await dcrRepo.getDcrMapDetails(request);
+      List<DcrApiItem> apiItems = [];
+      if (selectedEmployeeId != null) {
+        apiItems = await dcrRepo.getDcrListUnified(
+          start: start,
+          end: end,
+          employeeId: selectedEmployeeId.toString(),
+          statusId: statusId,
+          transactionType: 'DCR',
+        );
+      } else {
+        apiItems = await dcrRepo.getDcrListUnified(
+          start: start,
+          end: end,
+          employeeId: managerId.toString(),
+          statusId: statusId,
+          transactionType: 'DCR',
+        );
+        if (_employeeOptions.isNotEmpty) {
+          for (final employeeName in _employeeOptions) {
+            final int? empId = _employeeNameToId[employeeName];
+            if (empId != null && empId != managerId) {
+              try {
+                final List<DcrApiItem> teamDcrs = await dcrRepo.getDcrListUnified(
+                  start: start,
+                  end: end,
+                  employeeId: empId.toString(),
+                  statusId: statusId,
+                  transactionType: 'DCR',
+                );
+                apiItems.addAll(teamDcrs);
+              } catch (e) {
+                print('DcrManagerReviewScreen: Error loading DCRs for employee $employeeName: $e');
+              }
+            }
+          }
+        }
+      }
 
-      print('✅ [DcrManagerReviewScreen] Received API response:');
-      print('   Total items: ${response.items.length}');
-      print('   Total records: ${response.totalRecords}');
-      print('   Filtered records: ${response.filteredRecords}');
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close loading dialog
 
-      // Close loading dialog
-      if (mounted) Navigator.of(context).pop();
-
-      // Convert DcrMapDetailsItem to UnifiedDcrItem
-      print('🔄 [DcrManagerReviewScreen] Converting items to UnifiedDcrItem...');
-      final List<UnifiedDcrItem> allMapItems = response.items
-          .map((item) => UnifiedDcrItem.fromDcrMapDetailsItem(item))
-          .toList();
-      
-      print('   Converted items: ${allMapItems.length}');
-      
-      // Filter items with valid coordinates
+      final List<DcrApiItem> dcrOnly = apiItems.where((i) => i.transactionType == 'DCR').toList();
+      final List<UnifiedDcrItem> allMapItems = dcrOnly.map((item) => UnifiedDcrItem.fromDcrApiItem(item)).toList();
       final List<UnifiedDcrItem> mapItems = allMapItems
-        .where((item) =>
-            item.customerLatitude != null &&
-            item.customerLongitude != null &&
-            item.customerLatitude != 0.0 &&
-            item.customerLongitude != 0.0)
-        .toList();
-
-      print('   Items with valid coordinates: ${mapItems.length}');
-      print('   Items filtered out (no coordinates): ${allMapItems.length - mapItems.length}');
+          .where((item) =>
+              item.customerLatitude != null &&
+              item.customerLongitude != null &&
+              item.customerLatitude != 0.0 &&
+              item.customerLongitude != 0.0)
+          .toList();
 
       if (mapItems.isEmpty) {
-        print('⚠️ [DcrManagerReviewScreen] No DCR visits with location data available');
-      ToastMessage.show(
-        context,
-        message: 'No DCR visits with location data available',
-        type: ToastType.info,
-        icon: Icons.info_outline,
-      );
-      return;
-    }
+        ToastMessage.show(
+          context,
+          message: 'No DCR visits with location data available for the selected period',
+          type: ToastType.info,
+          icon: Icons.info_outline,
+        );
+        return;
+      }
 
-      print('🚀 [DcrManagerReviewScreen] Opening map view with ${mapItems.length} items');
       if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
+      Navigator.of(context).push(
+        MaterialPageRoute(
           builder: (context) => DcrMapViewScreen(dcrItems: mapItems),
         ),
       );
-      print('✅ [DcrManagerReviewScreen] Map view opened successfully');
     } catch (e) {
       print('❌ [DcrManagerReviewScreen] Error opening map view: ${e.toString()}');
       print('   Error type: ${e.runtimeType}');
@@ -2094,6 +2147,23 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   }
   
   @override
+  void didUpdateWidget(covariant _SearchableFilterDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.options != widget.options) {
+      _applyFilter();
+    }
+  }
+
+  void _applyFilter() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredOptions = query.isEmpty
+          ? List<String>.from(widget.options)
+          : widget.options.where((o) => o.toLowerCase().contains(query)).toList();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
@@ -2101,10 +2171,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   }
   
   void _onSearchChanged() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredOptions = widget.options.where((o) => o.toLowerCase().contains(query)).toList();
-    });
+    _applyFilter();
   }
   
   void _toggleExpanded() {
@@ -2975,12 +3042,14 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final labelWidth = isMobile ? (screenWidth * 0.38).clamp(100.0, 140.0) : 120.0;
+
     return Row(
       crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: isMobile ? 100 : 120,
+          width: labelWidth,
           child: Text(
             label,
             style: GoogleFonts.inter(
@@ -2988,9 +3057,11 @@ class _DetailRow extends StatelessWidget {
               fontWeight: FontWeight.w600,
               fontSize: isMobile ? 11 : 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isMobile ? 8 : 12),
         Expanded(
           child: Text(
             value,

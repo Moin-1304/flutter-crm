@@ -691,13 +691,27 @@ class _SideMenu extends StatelessWidget {
                     isTablet: isTablet,
                   ),
                   SizedBox(height: isTablet ? 8 : 6),
-                  _ModernDrawerItem(
-                    icon: Icons.sell_outlined,
-                    selectedIcon: Icons.sell,
-                    label: 'Sales',
-                    selected: selected == 5,
-                    onTap: () => onSelect(5),
-                    isTablet: isTablet,
+                  ListenableBuilder(
+                    listenable: userDetailStore,
+                    builder: (context, _) {
+                      final isSalesRep =
+                          userDetailStore.userDetail?.roleCategory == 3 &&
+                              userDetailStore.userDetail?.repType == 1;
+                      if (!isSalesRep) return const SizedBox.shrink();
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _ModernDrawerItem(
+                            icon: Icons.sell_outlined,
+                            selectedIcon: Icons.sell,
+                            label: 'Sales',
+                            selected: selected == 5,
+                            onTap: () => onSelect(5),
+                            isTablet: isTablet,
+                          ),
+                        ],
+                      );
+                    },
                   ),
 
                   //  _DrawerItem(

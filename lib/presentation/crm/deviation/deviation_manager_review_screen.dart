@@ -800,22 +800,86 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
     final bool isSentBack = statusLower.contains('sent back') || statusLower.contains('sentback');
     
     // Buttons should be enabled if it's not already approved or sent back
-    // This includes "Open", "Pending", or empty status
     final bool buttonsEnabled = !isApproved && !isSentBack;
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
+    final double mobileMaxContentHeight = screenHeight * 0.5;
+
+    List<Widget> buildDetailRows(BuildContext ctx) {
+      return [
+        _DetailRow('Deviation Type', typeLabel),
+        const SizedBox(height: 12),
+        _DetailRow('Date', _EnhancedDeviationCard._formatDate(data.dateOfDeviation)),
+        const SizedBox(height: 12),
+        _DetailRow('Employee', _EnhancedDeviationCard._valueOrPlaceholder(data.employeeName)),
+        if (data.employeeCode.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _DetailRow('Employee Code', data.employeeCode),
+        ],
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        if (typeLabel.toLowerCase().contains('unplanned visit')) ...[
+          if (data.tourPlanName.isNotEmpty) ...[
+            Text(
+              'From Area / Customer',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+                letterSpacing: 0.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _DetailRow('From Cluster', _parseFromClusterFromTourPlan(data.tourPlanName)),
+            const SizedBox(height: 12),
+            _DetailRow('From Customer', _parseFromCustomerFromTourPlan(data.tourPlanName)),
+            const SizedBox(height: 20),
+          ],
+          Text(
+            'To Area / Customer',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+              letterSpacing: 0.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _DetailRow('To Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
+          const SizedBox(height: 12),
+          _DetailRow('To Customer', data.customerId > 0 ? 'Customer ID: ${data.customerId}' : 'Not Assigned'),
+          const SizedBox(height: 20),
+        ],
+        _DetailRow('Tour Plan', _EnhancedDeviationCard._valueOrPlaceholder(data.tourPlanName, placeholder: 'Not Linked')),
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        _DetailRow('Impact', _EnhancedDeviationCard._valueOrPlaceholder(data.impact, placeholder: 'Not Provided')),
+        const SizedBox(height: 12),
+        _DetailRow('Description', _EnhancedDeviationCard._valueOrPlaceholder(parsedDesc.reason, placeholder: 'No description provided'), isMultiline: true),
+        if (parsedDesc.instrumentName != null && parsedDesc.instrumentName!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _DetailRow('Instrument', parsedDesc.instrumentName!),
+        ],
+        if (parsedDesc.serialNumber != null && parsedDesc.serialNumber!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _DetailRow('Serial Number', parsedDesc.serialNumber!),
+        ],
+      ];
+    }
+
+    Widget buildPanelContent(BuildContext ctx) {
+      final isTabletPanel = isTablet;
+      return Container(
+        width: isTabletPanel ? 600 : screenWidth,
+        height: isTabletPanel ? panelHeight : null,
+        constraints: isTabletPanel ? null : BoxConstraints(maxHeight: panelHeight),
+        margin: isTabletPanel
             ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
+                horizontal: (screenWidth - 600) / 2,
+                vertical: screenHeight * 0.075,
               )
             : null,
         decoration: BoxDecoration(
@@ -832,7 +896,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
         child: SafeArea(
           top: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTabletPanel ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header (mint like DCR list)
               Container(
@@ -869,7 +933,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                   style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w700,
                                     color: Colors.grey[900],
-                                    fontSize: isTablet ? 16 : 14,
+                                    fontSize: isTabletPanel ? 16 : 14,
                                   ),
                                 ),
                               ),
@@ -889,84 +953,39 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                   ],
                 ),
               ),
-              // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    20,
-                    20,
-                    MediaQuery.of(context).padding.bottom + 20,
+              // Content: tablet = Flexible; mobile = ConstrainedBox so sheet sizes to content
+              if (isTabletPanel)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: buildDetailRows(ctx),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _DetailRow('Deviation Type', typeLabel),
-                      const SizedBox(height: 12),
-                      _DetailRow('Date', _EnhancedDeviationCard._formatDate(data.dateOfDeviation)),
-                      const SizedBox(height: 12),
-                      _DetailRow('Employee', _EnhancedDeviationCard._valueOrPlaceholder(data.employeeName)),
-                      if (data.employeeCode.trim().isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _DetailRow('Employee Code', data.employeeCode),
-                      ],
-                      const SizedBox(height: 20),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 20),
-                      // Show From and To Area/Customer for "UnPlanned Visit"
-                      if (typeLabel.toLowerCase().contains('unplanned visit')) ...[
-                        // From Area / Customer (from Tour Plan) - Only show if Tour Plan is linked
-                        if (data.tourPlanName.isNotEmpty) ...[
-                          Text(
-                            'From Area / Customer',
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[700],
-                              letterSpacing: 0.1,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _DetailRow('From Cluster', _parseFromClusterFromTourPlan(data.tourPlanName)),
-                          const SizedBox(height: 12),
-                          _DetailRow('From Customer', _parseFromCustomerFromTourPlan(data.tourPlanName)),
-                          const SizedBox(height: 20),
-                        ],
-                        // To Area / Customer
-                        Text(
-                          'To Area / Customer',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[700],
-                            letterSpacing: 0.1,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _DetailRow('To Cluster', _EnhancedDeviationCard._valueOrPlaceholder(data.clusterName, placeholder: 'Not Assigned')),
-                        const SizedBox(height: 12),
-                        _DetailRow('To Customer', data.customerId > 0 ? 'Customer ID: ${data.customerId}' : 'Not Assigned'),
-                        const SizedBox(height: 20),
-                      ],
-                      _DetailRow('Tour Plan', _EnhancedDeviationCard._valueOrPlaceholder(data.tourPlanName, placeholder: 'Not Linked')),
-                      const SizedBox(height: 20),
-                      Divider(height: 1, color: Colors.grey.shade300),
-                      const SizedBox(height: 20),
-                      _DetailRow('Impact', _EnhancedDeviationCard._valueOrPlaceholder(data.impact, placeholder: 'Not Provided')),
-                      const SizedBox(height: 12),
-                      _DetailRow('Description', _EnhancedDeviationCard._valueOrPlaceholder(parsedDesc.reason, placeholder: 'No description provided'), isMultiline: true),
-                      if (parsedDesc.instrumentName != null && parsedDesc.instrumentName!.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _DetailRow('Instrument', parsedDesc.instrumentName!),
-                      ],
-                      if (parsedDesc.serialNumber != null && parsedDesc.serialNumber!.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _DetailRow('Serial Number', parsedDesc.serialNumber!),
-                      ],
-                    ],
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: mobileMaxContentHeight),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      20,
+                      20,
+                      MediaQuery.of(ctx).padding.bottom + 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: buildDetailRows(ctx),
+                    ),
                   ),
                 ),
-              ),
               // Footer actions
               SafeArea(
                 top: false,
@@ -1024,8 +1043,32 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
             ],
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (isTablet) {
+      showGeneralDialog(
+        context: context,
+        useRootNavigator: true,
+        barrierDismissible: true,
+        barrierColor: Colors.black54,
+        barrierLabel: 'Deviation details',
+        transitionDuration: const Duration(milliseconds: 200),
+        pageBuilder: (ctx, _, __) => Center(
+          child: Material(
+            color: Colors.transparent,
+            child: buildPanelContent(ctx),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => buildPanelContent(ctx),
+      );
+    }
   }
 
   Future<void> _showIndividualActionModal(String action, DeviationApiItem deviation, {BuildContext? viewDetailsContext}) async {
@@ -2734,12 +2777,14 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
-    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final labelWidth = isMobile ? (screenWidth * 0.38).clamp(100.0, 140.0) : 120.0;
+
     return Row(
       crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: isMobile ? 100 : 120,
+          width: labelWidth,
           child: Text(
             label,
             style: GoogleFonts.inter(
@@ -2747,9 +2792,11 @@ class _DetailRow extends StatelessWidget {
               fontWeight: FontWeight.w600,
               fontSize: isMobile ? 11 : 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: isMobile ? 8 : 12),
         Expanded(
           child: Text(
             value,

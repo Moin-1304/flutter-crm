@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:boilerplate/domain/repository/expense/expense_repository.dart';
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
@@ -9,11 +8,11 @@ import 'package:boilerplate/domain/entity/expense/expense.dart';
 import 'package:boilerplate/domain/entity/dcr/dcr_api_models.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/data/network/apis/expense/expense_api_models.dart';
-import 'package:boilerplate/data/network/constants/endpoints.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart';
+import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
 import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 
@@ -1772,21 +1771,60 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
     
     if (!mounted) return;
     
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-          maxWidth: isTablet ? 600 : MediaQuery.of(context).size.width,
-          maxHeight: MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9),
-        ),
-        margin: isTablet
-            ? EdgeInsets.symmetric(
-                horizontal: (MediaQuery.of(context).size.width - 600) / 2,
-                vertical: MediaQuery.of(context).size.height * 0.075,
-              )
-            : null,
+    final double panelHeight = MediaQuery.of(context).size.height * (isTablet ? 0.85 : 0.9);
+    final double panelWidth = isTablet ? 600 : MediaQuery.of(context).size.width;
+    // On mobile, max content height so sheet can shrink when content is short
+    final double mobileMaxContentHeight = MediaQuery.of(context).size.height * 0.7;
+
+    List<Widget> buildDetailRows(BuildContext ctx) {
+      return [
+        _DetailRow('Transaction Type', 'Expense'),
+        const SizedBox(height: 12),
+        _DetailRow('Date', ExpenseManagerReviewScreenState._formatDate(item.date)),
+        const SizedBox(height: 12),
+        _DetailRow('Employee', expenseDetails?.employeeName ?? item.employeeName),
+        const SizedBox(height: 12),
+        _DetailRow('Cluster', expenseDetails?.clusterNames ?? item.cluster),
+        const SizedBox(height: 12),
+        _DetailRow('Status', _getStatusText(item.status)),
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        _DetailRow('Expense Head', item.expenseHead),
+        const SizedBox(height: 12),
+        _DetailRow('Amount', 'LKR ${(expenseDetails?.expenseAmount ?? item.amount).toStringAsFixed(2)}'),
+        if ((expenseDetails?.remarks ?? item.remarks).isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Divider(height: 1, color: Colors.grey.shade300),
+          const SizedBox(height: 20),
+          _DetailRow('Remarks', expenseDetails?.remarks ?? item.remarks, isMultiline: true),
+        ],
+        if (expenseDetails != null && expenseDetails!.attachments.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Divider(height: 1, color: Colors.grey.shade300),
+          const SizedBox(height: 20),
+          Text(
+            'Attachments',
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w700,
+              fontSize: isTablet ? 15 : 14,
+              color: Colors.grey[900],
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...expenseDetails!.attachments.map((attachment) => _buildAttachmentCard(attachment, isTablet)),
+        ],
+      ];
+    }
+
+    Widget buildPanelContent(BuildContext ctx) {
+      // Mobile: size to content (no fixed height) to avoid empty space at bottom.
+      // Tablet: fixed height panel as before.
+      final bool isTabletPanel = isTablet;
+      return Container(
+        width: panelWidth,
+        height: isTabletPanel ? panelHeight : null,
+        constraints: isTabletPanel ? null : BoxConstraints(maxHeight: panelHeight),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -1801,7 +1839,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         child: SafeArea(
           top: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: isTabletPanel ? MainAxisSize.max : MainAxisSize.min,
             children: [
               // Header (mint like tour plan)
               Container(
@@ -1838,7 +1876,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                                   style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w700,
                                     color: Colors.grey[900],
-                                    fontSize: isTablet ? 16 : 14,
+                                    fontSize: isTabletPanel ? 16 : 14,
                                   ),
                                 ),
                               ),
@@ -1848,7 +1886,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                           ),
                         ),
                         IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => Navigator.of(ctx).pop(),
                           icon: const Icon(Icons.close),
                           tooltip: 'Close',
                           color: Colors.grey[700],
@@ -1858,143 +1896,140 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                   ],
                 ),
               ),
-              // Content
-              Flexible(
-                child: isLoadingDetails
-                    ? const Center(child: CircularProgressIndicator())
-                    : SingleChildScrollView(
-                        padding: EdgeInsets.fromLTRB(
-                          20,
-                          20,
-                          20,
-                          MediaQuery.of(context).padding.bottom + 20,
+              // Content: on tablet use Flexible; on mobile use ConstrainedBox so sheet sizes to content
+              if (isTabletPanel)
+                Flexible(
+                  child: isLoadingDetails
+                      ? const Center(child: CircularProgressIndicator())
+                      : SingleChildScrollView(
+                          padding: EdgeInsets.fromLTRB(
+                            20,
+                            20,
+                            20,
+                            MediaQuery.of(ctx).padding.bottom + 20,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: buildDetailRows(ctx),
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _DetailRow('Transaction Type', 'Expense'),
-                            const SizedBox(height: 12),
-                            _DetailRow('Date', ExpenseManagerReviewScreenState._formatDate(item.date)),
-                            const SizedBox(height: 12),
-                            _DetailRow('Employee', expenseDetails?.employeeName ?? item.employeeName),
-                            const SizedBox(height: 12),
-                            _DetailRow('Cluster', expenseDetails?.clusterNames ?? item.cluster),
-                            const SizedBox(height: 12),
-                            _DetailRow('Status', _getStatusText(item.status)),
-                            const SizedBox(height: 20),
-                            Divider(height: 1, color: Colors.grey.shade300),
-                            const SizedBox(height: 20),
-                            _DetailRow('Expense Head', item.expenseHead),
-                            const SizedBox(height: 12),
-                            _DetailRow('Amount', 'LKR ${(expenseDetails?.expenseAmount ?? item.amount).toStringAsFixed(2)}'),
-                            if ((expenseDetails?.remarks ?? item.remarks).isNotEmpty) ...[
-                              const SizedBox(height: 20),
-                              Divider(height: 1, color: Colors.grey.shade300),
-                              const SizedBox(height: 20),
-                              _DetailRow('Remarks', expenseDetails?.remarks ?? item.remarks, isMultiline: true),
-                            ],
-                            // Attachments section
-                            if (expenseDetails != null && expenseDetails!.attachments.isNotEmpty) ...[
-                              const SizedBox(height: 20),
-                              Divider(height: 1, color: Colors.grey.shade300),
-                              const SizedBox(height: 20),
-                              Text(
-                                'Attachments',
-                                style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: isTablet ? 15 : 14,
-                                  color: Colors.grey[900],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              ...expenseDetails!.attachments.map((attachment) => _buildAttachmentCard(attachment, isTablet)),
-                            ],
-                          ],
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: mobileMaxContentHeight),
+                  child: isLoadingDetails
+                      ? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+                      : SingleChildScrollView(
+                          padding: EdgeInsets.fromLTRB(
+                            20,
+                            20,
+                            20,
+                            MediaQuery.of(ctx).padding.bottom + 20,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: buildDetailRows(ctx),
+                          ),
                         ),
-                      ),
-              ),
+                ),
             ],
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (isTablet) {
+      showDialog(
+        context: context,
+        useRootNavigator: true,
+        barrierColor: Colors.black54,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Center(
+            child: buildPanelContent(ctx),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => buildPanelContent(ctx),
+      );
+    }
   }
 
   Widget _buildAttachmentCard(ExpenseAttachment attachment, bool isTablet) {
-    // Use FileDownload API with URL-encoded path and name parameters
-    // IMPORTANT: Use the EXACT FilePath and FileName from the backend response
-    // Do NOT modify or rebuild the path - use it exactly as returned
-    // Format: /api/FileDownload/Download?path=<urlEncodedFilePath>&name=<urlEncodedFileName>
-    
-    // Get exact values from backend response
-    final exactFilePath = attachment.filePath; // Use exactly as returned by backend
-    final exactFileName = attachment.fileName; // Use exactly as returned by backend
-    
-    // Log for debugging
-    print('Attachment Download - FilePath: $exactFilePath, FileName: $exactFileName');
-    
-    final fileUrl = Endpoints.fileDownload(exactFilePath, exactFileName);
-    
-    print('Generated Download URL: $fileUrl');
-    
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFF4db1b3).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              _getFileIcon(attachment.fileType),
-              color: const Color(0xFF4db1b3),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => AttachmentViewerScreen.openAttachment(context, attachment),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
               children: [
-                Text(
-                  attachment.fileName,
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w600,
-                    fontSize: isTablet ? 13 : 12,
-                    color: Colors.grey[900],
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4db1b3).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  child: Icon(
+                    _getFileIcon(attachment.fileType),
+                    color: const Color(0xFF4db1b3),
+                    size: 20,
+                  ),
                 ),
-                if (attachment.fileType.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    attachment.fileType.toUpperCase(),
-                    style: GoogleFonts.inter(
-                      fontSize: isTablet ? 11 : 10,
-                      color: Colors.grey[600],
-                    ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        attachment.fileName,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: isTablet ? 13 : 12,
+                          color: Colors.grey[900],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (attachment.fileType.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          attachment.fileType.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: isTablet ? 11 : 10,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
+                Icon(
+                  Icons.open_in_new,
+                  size: 20,
+                  color: const Color(0xFF4db1b3),
+                ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: () => _openAttachment(fileUrl),
-            icon: const Icon(Icons.open_in_new, size: 20),
-            color: const Color(0xFF4db1b3),
-            tooltip: 'View attachment',
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2009,33 +2044,6 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
       return Icons.description;
     } else {
       return Icons.attach_file;
-    }
-  }
-
-  void _openAttachment(String url) async {
-    try {
-      print('Opening attachment URL: $url');
-      
-      final Uri uri = Uri.parse(url);
-      
-      // Verify URL structure
-      print('Parsed URI - Scheme: ${uri.scheme}, Host: ${uri.host}, Path: ${uri.path}, Query: ${uri.query}');
-      
-      // Try to launch URL directly
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication, // Opens in external browser/app
-      );
-      
-      if (!launched) {
-        print('Failed to launch URL');
-        _showToast('Could not open attachment. Please check the URL.', type: ToastType.error);
-      } else {
-        print('URL launched successfully');
-      }
-    } catch (e) {
-      print('Error opening attachment: $e');
-      _showToast('Failed to open attachment: ${e.toString()}', type: ToastType.error);
     }
   }
 
