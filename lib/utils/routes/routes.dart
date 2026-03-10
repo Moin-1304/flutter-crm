@@ -1,5 +1,6 @@
 import 'package:boilerplate/presentation/home/home.dart';
 import 'package:boilerplate/presentation/login/login.dart';
+import 'package:boilerplate/presentation/server_setup/server_setup_screen.dart';
 import 'package:boilerplate/presentation/welcome/welcome_screen.dart';
 import 'package:boilerplate/presentation/crm/crm_shell.dart';
 import 'package:boilerplate/presentation/splash/splash_screen.dart';
@@ -15,6 +16,7 @@ class Routes {
 
   //static variables
   static const String splash = '/splash';
+  static const String serverSetup = '/server-setup';
   static const String login = '/login';
   static const String welcome = '/welcome';
   static const String home = '/post';
@@ -32,6 +34,7 @@ class Routes {
 
   static final routes = <String, WidgetBuilder>{
     splash: (BuildContext context) => const SplashScreen(),
+    serverSetup: (BuildContext context) => const ServerSetupScreen(),
     welcome: (BuildContext context) => const WelcomeScreen(),
     login: (BuildContext context) => const LoginScreen(),
     home: (BuildContext context) => const HomeScreen(),

@@ -507,6 +507,8 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
   }
 
   Widget _buildFooterActions() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Row(
       children: [
         Expanded(
@@ -516,13 +518,13 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
-              backgroundColor: const Color(0xFFC0C1C3),
-              side: BorderSide(color: Colors.grey.shade300),
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              side: BorderSide(color: colorScheme.outline),
+              foregroundColor: colorScheme.onSurface,
             ),
             child: const Text(
               'Save as Draft',
-              style: TextStyle(
-                  color: Color(0xFF374151), fontWeight: FontWeight.w600),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -532,8 +534,8 @@ class _SaleOrderCreationScreenState extends State<SaleOrderCreationScreen> {
             onPressed: _onSubmitForApproval,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              backgroundColor: const Color(0xFF2563EB),
-              foregroundColor: Colors.white,
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
             ),

@@ -4,6 +4,10 @@ import 'package:boilerplate/data/network/constants/endpoints.dart';
 import 'package:boilerplate/domain/entity/user/user.dart';
 import 'package:dio/dio.dart';
 
+/// User-friendly message when server is unreachable or returns unexpected data
+/// (e.g. wrong base URL, 404, or non-JSON response).
+const String _kServerConnectionError =
+    'Could not connect to the server. Please check the server URL in Server Setup and try again.';
 
 class LoginApi {
   final DioClient _dioClient;
@@ -16,42 +20,53 @@ class LoginApi {
         Endpoints.login,
         data: {'email': email, 'password': password},
       );
-      if (res.data['isSuccess'] == true) {
-        return User.fromJson(res.data);
+      if (res.data is! Map<String, dynamic>) {
+        throw Exception(_kServerConnectionError);
+      }
+      final data = res.data as Map<String, dynamic>;
+      if (data['isSuccess'] == true) {
+        return User.fromJson(data);
       } else {
-        throw Exception(res.data['message'] ?? 'Login failed');
+        throw Exception(data['message'] ?? 'Login failed');
       }
     } on DioException catch (e) {
-      // Handle DioException (401, 400, etc.)
       String errorMessage;
-      
+
       if (e.response != null) {
-        // Server responded with an error status code
         final statusCode = e.response!.statusCode;
         final responseData = e.response!.data;
-        
+
         if (statusCode == 401) {
-          // Unauthorized - Invalid credentials
-          errorMessage = responseData?['message'] ?? 'Invalid email or password. Please try again.';
+          errorMessage =
+              responseData is Map
+                  ? (responseData['message'] ?? 'Invalid email or password. Please try again.')
+                  : 'Invalid email or password. Please try again.';
         } else if (statusCode == 400) {
-          // Bad request
-          errorMessage = responseData?['message'] ?? 'Invalid request. Please check your input.';
+          errorMessage =
+              responseData is Map
+                  ? (responseData['message'] ?? 'Invalid request. Please check your input.')
+                  : 'Invalid request. Please check your input.';
+        } else if (statusCode == 404 || statusCode == 502 || statusCode == 503) {
+          errorMessage = _kServerConnectionError;
         } else {
-          // Other error codes
-          errorMessage = responseData?['message'] ?? 'Login failed. Please try again.';
+          errorMessage =
+              responseData is Map
+                  ? (responseData['message'] ?? 'Login failed. Please try again.')
+                  : 'Login failed. Please try again.';
         }
       } else {
-        // No response from server
-        errorMessage = 'Unable to connect to server. Please check your internet connection.';
+        // No response: connection refused, timeout, wrong host, SSL error, etc.
+        errorMessage = _kServerConnectionError;
       }
-      
+
       throw Exception(errorMessage);
+    } on TypeError catch (_) {
+      throw Exception(_kServerConnectionError);
+    } on FormatException catch (_) {
+      throw Exception(_kServerConnectionError);
     } catch (e) {
-      // Re-throw as Exception to maintain consistency
-      if (e is Exception) {
-        rethrow;
-      }
-      throw Exception(e.toString());
+      if (e is Exception) rethrow;
+      throw Exception(_kServerConnectionError);
     }
   }
 }

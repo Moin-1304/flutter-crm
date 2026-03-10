@@ -1676,16 +1676,10 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
   Future<void> _openMapView() async {
     try {
-      print('🗺️ [DcrManagerReviewScreen] Opening map view...');
-      
-      // Get manager ID from UserDetailStore
       final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
       final int? managerId = userStore?.userDetail?.employeeId;
-      
-      print('   Manager ID: $managerId');
-      
+
       if (managerId == null) {
-        print('❌ [DcrManagerReviewScreen] Manager ID not available');
         ToastMessage.show(
           context,
           message: 'Manager ID not available',
@@ -1695,84 +1689,66 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         return;
       }
 
-      // Show loading indicator
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
-      if (dcrRepo == null) {
-        if (mounted) Navigator.of(context).pop();
-        ToastMessage.show(
-          context,
-          message: 'DCR Repository not available',
-          type: ToastType.error,
-          icon: Icons.error_outline,
-        );
-        return;
-      }
-
-      // Use same date range and employee filter as the list (current month, selected or all team)
-      final DateTime start = DateTime(_date.year, _date.month, 1);
-      final DateTime end = DateTime(_date.year, _date.month + 1, 0);
-      final int? selectedEmployeeId = _selectedEmployeeId();
-      final int? statusId = _statusIdFromText(_status);
-
-      List<DcrApiItem> apiItems = [];
-      if (selectedEmployeeId != null) {
-        apiItems = await dcrRepo.getDcrListUnified(
-          start: start,
-          end: end,
-          employeeId: selectedEmployeeId.toString(),
-          statusId: statusId,
-          transactionType: 'DCR',
-        );
-      } else {
-        apiItems = await dcrRepo.getDcrListUnified(
-          start: start,
-          end: end,
-          employeeId: managerId.toString(),
-          statusId: statusId,
-          transactionType: 'DCR',
-        );
-        if (_employeeOptions.isNotEmpty) {
-          for (final employeeName in _employeeOptions) {
-            final int? empId = _employeeNameToId[employeeName];
-            if (empId != null && empId != managerId) {
-              try {
-                final List<DcrApiItem> teamDcrs = await dcrRepo.getDcrListUnified(
-                  start: start,
-                  end: end,
-                  employeeId: empId.toString(),
-                  statusId: statusId,
-                  transactionType: 'DCR',
-                );
-                apiItems.addAll(teamDcrs);
-              } catch (e) {
-                print('DcrManagerReviewScreen: Error loading DCRs for employee $employeeName: $e');
-              }
-            }
-          }
-        }
-      }
-
-      if (!mounted) return;
-      Navigator.of(context).pop(); // Close loading dialog
-
-      final List<DcrApiItem> dcrOnly = apiItems.where((i) => i.transactionType == 'DCR').toList();
-      final List<UnifiedDcrItem> allMapItems = dcrOnly.map((item) => UnifiedDcrItem.fromDcrApiItem(item)).toList();
-      final List<UnifiedDcrItem> mapItems = allMapItems
+      // 1) Use already-loaded list data (same date range and filters as the screen)
+      final List<UnifiedDcrItem> fromList = _unifiedItems
           .where((item) =>
+              item.isDcr &&
               item.customerLatitude != null &&
               item.customerLongitude != null &&
               item.customerLatitude != 0.0 &&
               item.customerLongitude != 0.0)
           .toList();
+
+      if (fromList.isNotEmpty) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => DcrMapViewScreen(dcrItems: fromList),
+          ),
+        );
+        return;
+      }
+
+      // 2) Fallback: fetch from map API (returns items with coordinates for manager's team)
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+      if (dcrRepo == null) {
+        if (mounted) Navigator.of(context).pop();
+        ToastMessage.show(context, message: 'DCR Repository not available', type: ToastType.error, icon: Icons.error_outline);
+        return;
+      }
+
+      final DateTime start = DateTime(_date.year, _date.month, 1);
+      final DateTime end = DateTime(_date.year, _date.month + 1, 0);
+      final int? selectedEmployeeId = _selectedEmployeeId();
+
+      List<UnifiedDcrItem> mapItems = [];
+      try {
+        final response = await dcrRepo.getDcrMapDetails(
+          DcrMapDetailsRequest(managerId: managerId, pageNumber: 0, pageSize: 2000),
+        );
+        for (final item in response.items) {
+          final lat = item.latitude ?? item.customerLatitude;
+          final lng = item.longitude ?? item.customerLongitude;
+          if (lat == null || lng == null || lat == 0.0 || lng == 0.0) continue;
+          final unified = UnifiedDcrItem.fromDcrMapDetailsItem(item);
+          final itemDate = unified.parsedDate;
+          if (itemDate == null || itemDate.isBefore(start) || itemDate.isAfter(end)) continue;
+          if (selectedEmployeeId != null && unified.employeeId != selectedEmployeeId) continue;
+          mapItems.add(unified);
+        }
+      } catch (e) {
+        print('DcrManagerReviewScreen: getDcrMapDetails fallback error: $e');
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close loading dialog
 
       if (mapItems.isEmpty) {
         ToastMessage.show(
@@ -1784,24 +1760,20 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         return;
       }
 
-      if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => DcrMapViewScreen(dcrItems: mapItems),
         ),
       );
     } catch (e) {
-      print('❌ [DcrManagerReviewScreen] Error opening map view: ${e.toString()}');
-      print('   Error type: ${e.runtimeType}');
-      // Close loading dialog if still open
       if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+        Navigator.of(context).pop(); // Close loading dialog if open
         ToastMessage.show(
           context,
-          message: 'Failed to load map data: ${e.toString()}',
+          message: 'Failed to load map data',
           type: ToastType.error,
           icon: Icons.error_outline,
-    );
+        );
       }
     }
   }

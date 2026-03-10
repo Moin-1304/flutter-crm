@@ -817,19 +817,103 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container();
   }
 
+  /// Message shown when server is unreachable (wrong URL, etc.). When this
+  /// error occurs we show a dialog with an option to go to Server Setup.
+  static const String _serverConnectionErrorSubstring = 'check the server URL in Server Setup';
+
   // General Methods:-----------------------------------------------------------
   _showErrorMessage(String message) {
-    if (message.isNotEmpty) {
-      Future.delayed(const Duration(milliseconds: 0), () {
-        if (message.isNotEmpty && mounted) {
-          AnimatedToast.showError(
-            context,
-            message,
-            title: 'Error',
-          );
-        }
-      });
-    }
+    if (message.isEmpty) return const SizedBox.shrink();
+
+    Future.delayed(const Duration(milliseconds: 0), () {
+      if (!mounted || message.isEmpty) return;
+
+      final isServerConnectionError = message.contains(_serverConnectionErrorSubstring);
+
+      if (isServerConnectionError) {
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            backgroundColor: Colors.white,
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tealGreen.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.wifi_off_rounded,
+                    color: tealGreen,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Text(
+                    'Connection Error',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+            content: Text(
+              message,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.45,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+            actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.grey.shade700,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                child: const Text('OK'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pushReplacementNamed(Routes.serverSetup);
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: tealGreen,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  shadowColor: tealGreen.withOpacity(0.4),
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text('Server Setup'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        AnimatedToast.showError(
+          context,
+          message,
+          title: 'Error',
+        );
+      }
+    });
 
     return const SizedBox.shrink();
   }

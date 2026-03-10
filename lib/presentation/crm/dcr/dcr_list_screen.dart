@@ -2496,7 +2496,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                         ),
                         const SizedBox(width: 10),
                       ],
-                      // View only for submitted DCRs (drafts can be updated via Edit)
+                      // View for submitted DCRs; allow editing/creating Service Report and saving (drafts use Edit)
                       if (item.isDcr &&
                           _isCurrentUserServiceEngineer() &&
                           !_isDcrEditable(item)) ...[
@@ -2510,6 +2510,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                     id: item.id.toString(),
                                     dcrId: item.dcrId.toString(),
                                     viewOnly: true,
+                                    allowServiceReportEditOnly: true,
                                   ),
                                 ),
                               );

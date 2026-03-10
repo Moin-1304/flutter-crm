@@ -35,9 +35,9 @@ class NetworkModule {
       ),
     );
 
-    // Dio configs
+    // Dio configs (baseUrl is runtime value from secure storage)
     getIt.registerSingleton<DioConfigs>(
-      const DioConfigs(
+      DioConfigs(
         baseUrl: Endpoints.baseUrl,
         connectionTimeout: Endpoints.connectionTimeout,
         receiveTimeout: Endpoints.receiveTimeout,

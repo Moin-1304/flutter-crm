@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:boilerplate/core/stores/error/error_store.dart';
 import 'package:boilerplate/core/stores/form/form_store.dart';
-import 'package:boilerplate/data/network/apis/user/lib/data/network/constants/endpoints.dart';
+import 'package:boilerplate/data/network/constants/endpoints.dart' as app_endpoints;
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/domain/repository/setting/setting_repository.dart';
 import 'package:boilerplate/domain/usecase/post/get_post_usecase.dart';
@@ -89,13 +89,13 @@ class StoreModule {
       ),
     );
 
-    // User Detail Store
+    // User Detail Store (uses main app base URL from secure storage)
     getIt.registerSingleton<UserDetailStore>(
       UserDetailStore(
         UserApiClient(
           DioClient(
             dioConfigs: DioConfigs(
-              baseUrl: Endpoints.baseUrl,
+              baseUrl: app_endpoints.Endpoints.baseUrl,
               connectionTimeout: 30000,
               receiveTimeout: 15000,
             ),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:boilerplate/domain/entity/dcr/unified_dcr_item.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -162,156 +161,6 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
     return dcrDate;
   }
 
-  // Narrow filter: only authorization/API key errors (avoids hundreds of "google"/"maps" lines)
-  static const String _logcatCommand =
-      'adb logcat -d | grep -iE "authorization failure|api key not valid|not authorized to use|API_KEY|api.key invalid"';
-  static const String _logcatCommandMac =
-      '\$HOME/Library/Android/sdk/platform-tools/adb logcat -d | grep -iE "authorization failure|api key not valid|not authorized to use|API_KEY|api.key invalid"';
-
-  void _showMapTroubleshootingDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.map, color: tealGreen, size: 28),
-            const SizedBox(width: 10),
-            const Text('Map blank? Check API key', style: TextStyle(fontSize: 18)),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'When the key is wrong or restricted, Android logs the reason. To see it, run the command below on your computer.',
-                style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[800]),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: tealGreen.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 18, color: tealGreen),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Use Terminal on your Mac/PC (or Cursor terminal), not inside the emulator. Keep the app open on the map screen, then paste and run the command.',
-                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[800]),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Command (if adb is in PATH):',
-                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey[700]),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  _logcatCommand,
-                  style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[900]),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Mac: if you see "command not found: adb", use:',
-                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey[700]),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  _logcatCommandMac,
-                  style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[900]),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Look for lines like "Authorization failure", "This API project is not authorized", or "API key not valid".',
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[700]),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'In Google Cloud Console, ensure:',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 6),
-              _bullet('Maps SDK for Android is enabled'),
-              _bullet('Billing is enabled for the project'),
-              _bullet('If the key has Android restriction: add package name com.iotecksolutions.todoapp and your debug SHA-1'),
-              const SizedBox(height: 8),
-              Text(
-                'See MAPS_SETUP.md in the project for full steps.',
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              // Copy Mac path version so it works when adb is not in PATH
-              Clipboard.setData(const ClipboardData(text: _logcatCommandMac));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logcat command (Mac path) copied to clipboard'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-              Navigator.of(ctx).pop();
-            },
-            icon: const Icon(Icons.copy, size: 18),
-            label: const Text('Copy command'),
-            style: FilledButton.styleFrom(backgroundColor: tealGreen),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bullet(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('• ', style: GoogleFonts.inter(fontSize: 14, color: tealGreen)),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[800]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _fitMarkers() {
     if (_markers.isEmpty || _mapController == null || !mounted) return;
 
@@ -373,13 +222,6 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline, color: Colors.black87),
-            tooltip: 'Map setup / API key troubleshooting',
-            onPressed: _showMapTroubleshootingDialog,
-          ),
-        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(
@@ -523,27 +365,6 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                // Hint when map may be blank (API key in app but tiles not loading = Cloud setup)
-                if (_markers.isNotEmpty)
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    bottom: 24,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.black87,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Map blank? In Google Cloud: enable Maps SDK for Android, turn on Billing, and if key is restricted add package com.iotecksolutions.todoapp + your SHA-1. See MAPS_SETUP.md',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: Colors.white70,
-                        ),
                       ),
                     ),
                   ),

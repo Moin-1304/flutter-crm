@@ -71,10 +71,14 @@ class UserStore extends ChangeNotifier {
     } catch (e) {
       success = false;
       isLoggedIn = false;
-      // Clean up the error message - remove "Exception: " prefix if present
       String errorMsg = e.toString();
       if (errorMsg.startsWith('Exception: ')) {
         errorMsg = errorMsg.substring('Exception: '.length);
+      }
+      // Replace technical parsing/type errors with a user-friendly message
+      if (_isTechnicalError(errorMsg)) {
+        errorMsg =
+            'Could not connect to the server. Please check the server URL in Server Setup and try again.';
       }
       errorMessage = errorMsg;
       notifyListeners();
@@ -83,6 +87,19 @@ class UserStore extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Returns true if the error message is a technical one (parsing, type, etc.)
+  /// that should be replaced with a user-friendly server connection message.
+  bool _isTechnicalError(String msg) {
+    final lower = msg.toLowerCase();
+    return lower.contains("subtype") ||
+        lower.contains('sub type') ||
+        lower.contains('type \'string\' is not') ||
+        lower.contains('type \'int\' is not') ||
+        lower.contains('type \'double\' is not') ||
+        lower.contains('formatexception') ||
+        lower.contains('unexpected character');
   }
 
   Future<void> logout() async {

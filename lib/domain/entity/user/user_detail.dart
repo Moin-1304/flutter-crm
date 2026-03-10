@@ -260,6 +260,15 @@ class UserDetail {
     this.repType,
   });
 
+  /// Resolves roleCategory from API. Service Engineers (serviceArea) are treated as 3 if API omits it.
+  static int _parseRoleCategory(Map<String, dynamic> json) {
+    final raw = json['roleCategory'];
+    if (raw != null && raw is int) return raw;
+    final serviceArea = (json['serviceArea'] as String?)?.trim() ?? '';
+    if (serviceArea == 'Service Engineer') return 3;
+    return 0;
+  }
+
   factory UserDetail.fromJson(Map<String, dynamic> json) {
     return UserDetail(
       createdDate: json['createdDate'],
@@ -326,7 +335,8 @@ class UserDetail {
       isAdmin: json['isAdmin'] ?? false,
       appType: json['appType'] ?? '',
       userType: json['userType'] ?? 0,
-      roleCategory: json['roleCategory'] ?? 0,
+      // Default roleCategory: if API omits it but user is Service Engineer, treat as 3 (non-manager)
+      roleCategory: _parseRoleCategory(json),
       file: json['file'],
       slNo: json['slNo'],
       physicalFile: json['physicalFile'],

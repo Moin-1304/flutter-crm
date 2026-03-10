@@ -1,8 +1,19 @@
 class Endpoints {
   Endpoints._();
 
-  // base url
-  static const String baseUrl = "https://103.141.54.146:1445/erpapi/api";
+  /// Default base URL (used when none is stored). Shown as suggestion on server setup.
+  static const String _defaultBaseUrl = "https://103.141.54.146:1443/erpapi/api";
+
+  /// Suggested base URL for server setup screen (e.g. for existing users upgrading).
+  static const String suggestedBaseUrl = _defaultBaseUrl;
+
+  /// Runtime base URL for API calls. Set from secure storage at startup or when user configures server.
+  static String _baseUrl = _defaultBaseUrl;
+
+  static String get baseUrl => _baseUrl;
+  static set baseUrl(String value) {
+    _baseUrl = value.isEmpty ? _defaultBaseUrl : value;
+  }
 
   // receiveTimeout
   static const int receiveTimeout = 15000;
@@ -11,98 +22,98 @@ class Endpoints {
   static const int connectionTimeout = 30000;
 
   // booking endpoints
-  static const String getPosts = "$baseUrl/posts";
+  static String get getPosts => "$baseUrl/posts";
 
   //login endpoints
-  static const String login = "$baseUrl/Login/Login";
+  static String get login => "$baseUrl/Login/Login";
 
   // menu endpoints
-  static const String menuGet = "$baseUrl/Menu/Get";
+  static String get menuGet => "$baseUrl/Menu/Get";
 
   // user endpoints
-  static const String userGet = "$baseUrl/User/Get";
+  static String get userGet => "$baseUrl/User/Get";
 
   // tour plan endpoints
-  static const String tourPlanGet = "$baseUrl/PharmaCRM/TourPlan/Get";
+  static String get tourPlanGet => "$baseUrl/PharmaCRM/TourPlan/Get";
 
-  static String tourPlanCalendarView =
+  static String get tourPlanCalendarView =>
       "$baseUrl/PharmaCRM/TourPlan/GetCalendarViewData";
 
-  static const String tourPlanSave = "$baseUrl/PharmaCRM/TourPlan/Save";
+  static String get tourPlanSave => "$baseUrl/PharmaCRM/TourPlan/Save";
 
-  static const String tourPlanUpdate = "$baseUrl/PharmaCRM/TourPlan/Update";
+  static String get tourPlanUpdate => "$baseUrl/PharmaCRM/TourPlan/Update";
 
-  static const String tourPlanAggregateCountSummary =
+  static String get tourPlanAggregateCountSummary =>
       "$baseUrl/PharmaCRM/TourPlan/GetAggregateCountSummary";
 
-  static const String tourPlanGetSummary =
+  static String get tourPlanGetSummary =>
       "$baseUrl/PharmaCRM/TourPlan/GetSummary";
 
-  static const String tourPlanDashboard =
+  static String get tourPlanDashboard =>
       "$baseUrl/PharmaCRM/TourPlan/TourPlanDashboard";
 
-  static const String tourPlanGetManagerSummary =
+  static String get tourPlanGetManagerSummary =>
       "$baseUrl/PharmaCRM/TourPlan/GetManagerSummary";
 
-  static const String tourPlanGetEmployeeListSummary =
+  static String get tourPlanGetEmployeeListSummary =>
       "$baseUrl/PharmaCRM/TourPlan/GetEmployeeListSummary";
 
   // Tour Plan Action endpoints
-  static const String tourPlanApproveSingle =
+  static String get tourPlanApproveSingle =>
       "$baseUrl/PharmaCRM/TourPlan/ApproveSingle";
 
-  static const String tourPlanRejectSingle =
+  static String get tourPlanRejectSingle =>
       "$baseUrl/PharmaCRM/TourPlan/RejectSingle";
 
-  static const String tourPlanBulkApprove =
+  static String get tourPlanBulkApprove =>
       "$baseUrl/PharmaCRM/TourPlan/BulkApprove";
 
-  static const String tourPlanBulkSendBack =
+  static String get tourPlanBulkSendBack =>
       "$baseUrl/PharmaCRM/TourPlan/BulkSendBack";
 
-  static const String tourPlanGetMappedCustomersByEmployeeId =
+  static String get tourPlanGetMappedCustomersByEmployeeId =>
       "$baseUrl/PharmaCRM/TourPlan/GetMappedCustomersByEmployeeId";
 
-  static const String tourPlanList = "$baseUrl/PharmaCRM/TourPlan/List";
+  static String get tourPlanList => "$baseUrl/PharmaCRM/TourPlan/List";
 
-  static const String tourPlanDelete = "$baseUrl/PharmaCRM/TourPlan/Delete";
+  static String get tourPlanDelete => "$baseUrl/PharmaCRM/TourPlan/Delete";
 
   // Tour Plan Comment endpoints
-  static const String tourPlanCommentSave =
+  static String get tourPlanCommentSave =>
       "$baseUrl/PharmaCRM/TourPlanComment/Save";
-  static const String tourPlanCommentGetList =
+  static String get tourPlanCommentGetList =>
       "$baseUrl/PharmaCRM/TourPlanComment/GetList";
 
   // DCR endpoints
-  static const String dcrList = "$baseUrl/PharmaCRM/DCR/List";
+  static String get dcrList => "$baseUrl/PharmaCRM/DCR/List";
 
-  static const String dcrSave = "$baseUrl/PharmaCRM/DCR/Save";
-  static const String dcrUpdate = "$baseUrl/PharmaCRM/DCR/Update";
-  static const String dcrGet = "$baseUrl/PharmaCRM/DCR/Get";
-  static const String dcrGetExpense = "$baseUrl/PharmaCRM/DCR/GetExpense";
-  static const String dcrApproveSingle = "$baseUrl/PharmaCRM/DCR/ApproveSingle";
-  static const String dcrSendBackSingle =
+  static String get dcrSave => "$baseUrl/PharmaCRM/DCR/Save";
+  static String get dcrUpdate => "$baseUrl/PharmaCRM/DCR/Update";
+  static String get dcrGet => "$baseUrl/PharmaCRM/DCR/Get";
+  static String get dcrGetExpense => "$baseUrl/PharmaCRM/DCR/GetExpense";
+  static String get dcrApproveSingle => "$baseUrl/PharmaCRM/DCR/ApproveSingle";
+  static String get dcrSendBackSingle =>
       "$baseUrl/PharmaCRM/DCR/SendBackSingle";
-  static const String dcrBulkApprove = "$baseUrl/PharmaCRM/DCR/BulkApprove";
-  static const String dcrBulkSendBack = "$baseUrl/PharmaCRM/DCR/BulkReject";
-  static const String dcrValidateUser = "$baseUrl/PharmaCRM/DCR/ValidateUser";
-  static const String dcrGetMapDetails =
+  static String get dcrBulkApprove => "$baseUrl/PharmaCRM/DCR/BulkApprove";
+  static String get dcrBulkSendBack => "$baseUrl/PharmaCRM/DCR/BulkReject";
+  static String get dcrValidateUser => "$baseUrl/PharmaCRM/DCR/ValidateUser";
+  static String get dcrGetMapDetails =>
       "$baseUrl/PharmaCRM/DCR/GetDCRMapDetails";
 
   // Placeholder endpoint for creating a new customer from DCR Customer tab.
   // NOTE: The actual URL can be updated later without changing UI logic.
-  static const String dcrCustomerSaveDummy =
+  static String get dcrCustomerSaveDummy =>
       "$baseUrl/PharmaCRM/DCR/SaveCustomerDummy";
 
   /// Medical Rep: save doctor/customer from DCR Customer tab
-  static const String doctorSave = "$baseUrl/Doctor/Save";
+  static String get doctorSave => "$baseUrl/Doctor/Save";
 
   /// Sales Rep: save pharmacy/customer from DCR Customer tab
-  static const String pharmacySave = "$baseUrl/Pharmacy/Save";
+  static String get pharmacySave => "$baseUrl/Pharmacy/Save";
   // Service Report Save endpoint
-  static const String serviceReportSave =
+  static String get serviceReportSave =>
       "$baseUrl/PharmaCRM/ServiceReport/Save";
-  static const String serviceReportUpdate =
+  static String get serviceReportUpdate =>
       "$baseUrl/PharmaCRM/ServiceReport/Update";
 
   /// Service Report Get: pass DCR details Id to autofill service report when updating DCR.
@@ -111,46 +122,46 @@ class Endpoints {
       "$baseUrl/PharmaCRM/ServiceReport/Get?Id=$dcrDetailId";
 
 // Common endpoints for dropdowns
-  static const String commonGetAuto = "$baseUrl/Common/GetAuto";
-  static const String commonGetAutoBigInt = "$baseUrl/Common/GetAutoBigInt";
-  static const String commonGetCatItemTax = "$baseUrl/Common/GetCatItemTax";
-  static const String commonGetItemDetail = "$baseUrl/Common/GetItemDetail";
+  static String get commonGetAuto => "$baseUrl/Common/GetAuto";
+  static String get commonGetAutoBigInt => "$baseUrl/Common/GetAutoBigInt";
+  static String get commonGetCatItemTax => "$baseUrl/Common/GetCatItemTax";
+  static String get commonGetItemDetail => "$baseUrl/Common/GetItemDetail";
 
   // Tax Component endpoints
-  static const String taxComponentGet = "$baseUrl/TaxComponent/Get";
+  static String get taxComponentGet => "$baseUrl/TaxComponent/Get";
 
   // Workflow endpoints
-  static const String workflowGetAllActions =
+  static String get workflowGetAllActions =>
       "$baseUrl/WorkFlowMaster/GetAllActions";
-  static const String workflowGetUserPagePrivileges =
+  static String get workflowGetUserPagePrivileges =>
       "$baseUrl/WorkFlow/GetUserPagePrivileges";
 
   // Deviation endpoints
-  static const String deviationList = "$baseUrl/PharmaCRM/Deviation/List";
-  static const String deviationSave = "$baseUrl/PharmaCRM/Deviation/Save";
-  static const String deviationUpdate =
+  static String get deviationList => "$baseUrl/PharmaCRM/Deviation/List";
+  static String get deviationSave => "$baseUrl/PharmaCRM/Deviation/Save";
+  static String get deviationUpdate =>
       "$baseUrl/PharmaCRM/Deviation/DeviationUpdate";
-  static const String deviationApprove = "$baseUrl/PharmaCRM/Deviation/Approve";
-  static const String deviationGetComments =
+  static String get deviationApprove => "$baseUrl/PharmaCRM/Deviation/Approve";
+  static String get deviationGetComments =>
       "$baseUrl/PharmaCRM/Deviation/GetCommentsList";
-  static const String deviationAddComment =
+  static String get deviationAddComment =>
       "$baseUrl/PharmaCRM/Deviation/AddManagerComment";
 
   // Expense endpoints
-  static const String expenseSave = "$baseUrl/PharmaCRM/DCR/SaveExpenses";
-  static const String expenseGet = "$baseUrl/PharmaCRM/DCR/GetExpense";
-  static const String expenseApproveSingle =
+  static String get expenseSave => "$baseUrl/PharmaCRM/DCR/SaveExpenses";
+  static String get expenseGet => "$baseUrl/PharmaCRM/DCR/GetExpense";
+  static String get expenseApproveSingle =>
       "$baseUrl/PharmaCRM/DCR/ApproveExpenseSingle";
-  static const String expenseSendBackSingle =
+  static String get expenseSendBackSingle =>
       "$baseUrl/PharmaCRM/DCR/SendBackExpenseSingle";
-  static const String expenseBulkApprove =
+  static String get expenseBulkApprove =>
       "$baseUrl/PharmaCRM/DCR/BulkApproveExpense";
-  static const String expenseBulkReject =
+  static String get expenseBulkReject =>
       "$baseUrl/PharmaCRM/DCR/BulkRejectExpense";
 
   // PunchInOut endpoints
-  static const String punchInOutSave = "$baseUrl/PunchInOut/Save";
-  static const String punchInOutList = "$baseUrl/PunchInOut/List";
+  static String get punchInOutSave => "$baseUrl/PunchInOut/Save";
+  static String get punchInOutList => "$baseUrl/PunchInOut/List";
 
   // File Download endpoint
   // Base URL for file downloads (erpweb instead of erpapi)
@@ -206,17 +217,17 @@ class Endpoints {
       "$fileUploadBaseUrl/FilesUpload/GetBaseUrl";
 
   // ItemIssue endpoints
-  static const String itemIssueList = "$baseUrl/ItemIssue/List";
-  static const String itemIssueSave = "$baseUrl/ItemIssue/Save";
+  static String get itemIssueList => "$baseUrl/ItemIssue/List";
+  static String get itemIssueSave => "$baseUrl/ItemIssue/Save";
   static String itemIssueGet(int id) => "$baseUrl/ItemIssue/Get?Id=$id";
 
   // Sales endpoints
-  static const String salesOrderList = "$baseUrl/SaleOrder/List";
-  static const String salesOrderGet = "$baseUrl/SaleOrder/Get";
-  static const String salesOrderSave = "$baseUrl/SaleOrder/Save";
-  static const String salesOrderDelete = "$baseUrl/SaleOrder/Delete";
-  static const String salesOrderTransactionCancel =
+  static String get salesOrderList => "$baseUrl/SaleOrder/List";
+  static String get salesOrderGet => "$baseUrl/SaleOrder/Get";
+  static String get salesOrderSave => "$baseUrl/SaleOrder/Save";
+  static String get salesOrderDelete => "$baseUrl/SaleOrder/Delete";
+  static String get salesOrderTransactionCancel =>
       "$baseUrl/SaleOrder/TransactionCancel";
-  static const String salesInvoiceCommonAuto =
+  static String get salesInvoiceCommonAuto =>
       "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
 }

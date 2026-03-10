@@ -276,9 +276,11 @@ class _TourPlanScreenState extends State<TourPlanScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Check if Manager Review tab should be hidden
-    final shouldHideManagerReview =
-        _userDetailStore.userDetail?.roleCategory == 3;
+    // Hide Manager Review for non-managers (roleCategory == 3) or Service Engineers
+    final detail = _userDetailStore.userDetail;
+    final bool isServiceEngineer = detail?.serviceArea?.trim() == 'Service Engineer';
+    final bool isNonManagerRole = detail?.roleCategory == 3;
+    final shouldHideManagerReview = isNonManagerRole || isServiceEngineer;
     final tabLength = shouldHideManagerReview ? 1 : 2;
     final isTablet = MediaQuery.of(context).size.width >= 600;
 

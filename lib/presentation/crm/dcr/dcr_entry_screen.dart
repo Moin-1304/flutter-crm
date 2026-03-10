@@ -196,6 +196,9 @@ class DcrEntryScreen extends StatefulWidget {
   final int? initialTypeOfWorkId;
   /// When true, form is shown in read-only mode (same layout as edit, no save buttons).
   final bool viewOnly;
+  /// When true (e.g. for submitted DCRs), Create DCR tab stays read-only but Service Report
+  /// tab is editable and can be saved. Used with viewOnly for "View DCR + Edit Service Report".
+  final bool allowServiceReportEditOnly;
 
   const DcrEntryScreen({
     super.key,
@@ -206,6 +209,7 @@ class DcrEntryScreen extends StatefulWidget {
     this.initialClusterId,
     this.initialTypeOfWorkId,
     this.viewOnly = false,
+    this.allowServiceReportEditOnly = false,
   });
 
   @override
@@ -2449,7 +2453,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               ),
               child: isExistingDcr
                   ? IgnorePointer(
-                      ignoring: _isViewOnly,
+                      // Allow Service Report edit when viewOnly + allowServiceReportEditOnly (submitted DCRs)
+                      ignoring: _isViewOnly && !widget.allowServiceReportEditOnly,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: _buildServiceReportFields(context, screenTheme),
@@ -3675,8 +3680,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 24),
-      // Save Service Report button (hidden in view-only mode)
-      if (!_isViewOnly)
+      // Save Service Report button (shown when editable, or when view-only but service report edit allowed for submitted DCRs)
+      if (!_isViewOnly || widget.allowServiceReportEditOnly)
         FilledButton(
           onPressed: _isSubmitting
               ? null

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:boilerplate/utils/routes/routes.dart';
-import 'package:boilerplate/presentation/login/store/login_store.dart';
+import 'package:boilerplate/data/secure_storage/secure_storage_helper.dart';
 import 'package:boilerplate/di/service_locator.dart';
+import 'package:boilerplate/presentation/login/store/login_store.dart';
+import 'package:boilerplate/utils/routes/routes.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -91,6 +92,13 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(seconds: 3));
 
     if (!mounted) return;
+
+    // On new install, base URL is not set — show server setup first
+    final baseUrl = await getIt<SecureStorageHelper>().getApiBaseUrl();
+    if (baseUrl == null || baseUrl.isEmpty) {
+      Navigator.of(context).pushReplacementNamed(Routes.serverSetup);
+      return;
+    }
 
     // Check login status and navigate accordingly
     if (_userStore.isUserLoggedIn) {

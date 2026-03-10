@@ -70,9 +70,13 @@ class _CRMShellState extends State<CRMShell> with WidgetsBindingObserver {
   }
 
   List<Widget> get _pages {
-    // Check if Manager Review tab should be hidden (roleCategory == 3)
+    // Hide Manager Review for non-managers: roleCategory == 3 (e.g. Medical Rep, Service Engineer)
+    // or when serviceArea is "Service Engineer" (in case API omits roleCategory for some users).
     final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final shouldHideManagerReview = userStore?.userDetail?.roleCategory == 3;
+    final detail = userStore?.userDetail;
+    final bool isServiceEngineer = (detail?.serviceArea ?? '').trim() == 'Service Engineer';
+    final bool isNonManagerRole = detail?.roleCategory == 3;
+    final shouldHideManagerReview = isNonManagerRole || isServiceEngineer;
     
     return <Widget>[
             CRMSectionScaffold(
@@ -192,39 +196,59 @@ class _CRMShellState extends State<CRMShell> with WidgetsBindingObserver {
         // Expenses tab removed per requirement
         CRMSectionScaffold(
           title: 'Tour Plan',
-          tabs: [
-            Tab(
-              child: Builder(
-                builder: (context) {
-                  final isTablet = MediaQuery.of(context).size.width >= 600;
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.route_outlined, size: isTablet ? 20 : 18),
-                      SizedBox(width: isTablet ? 8 : 6),
-                      const Text('My Plans'),
-                    ],
-                  );
-                },
-              ),
-            ),
-            Tab(
-              child: Builder(
-                builder: (context) {
-                  final isTablet = MediaQuery.of(context).size.width >= 600;
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.verified_user_outlined, size: isTablet ? 20 : 18),
-                      SizedBox(width: isTablet ? 8 : 6),
-                      const Text('Manager Review'),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ],
-          tabViews: const [TourPlanListScreen(), TourPlanManagerReviewScreen()],
+          tabs: shouldHideManagerReview
+              ? [
+                  Tab(
+                    child: Builder(
+                      builder: (context) {
+                        final isTablet = MediaQuery.of(context).size.width >= 600;
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.route_outlined, size: isTablet ? 20 : 18),
+                            SizedBox(width: isTablet ? 8 : 6),
+                            const Text('My Plans'),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ]
+              : [
+                  Tab(
+                    child: Builder(
+                      builder: (context) {
+                        final isTablet = MediaQuery.of(context).size.width >= 600;
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.route_outlined, size: isTablet ? 20 : 18),
+                            SizedBox(width: isTablet ? 8 : 6),
+                            const Text('My Plans'),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  Tab(
+                    child: Builder(
+                      builder: (context) {
+                        final isTablet = MediaQuery.of(context).size.width >= 600;
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.verified_user_outlined, size: isTablet ? 20 : 18),
+                            SizedBox(width: isTablet ? 8 : 6),
+                            const Text('Manager Review'),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+          tabViews: shouldHideManagerReview
+              ? const [TourPlanListScreen()]
+              : const [TourPlanListScreen(), TourPlanManagerReviewScreen()],
           fab: Builder(
             builder: (ctx) => FloatingActionButton.extended(
               onPressed: () => Navigator.of(ctx).push(
@@ -238,8 +262,12 @@ class _CRMShellState extends State<CRMShell> with WidgetsBindingObserver {
         CRMSectionScaffold(
           title: 'Sale Contracts',
           showTitle: false,
-          tabs: const [Tab(text: 'My Contracts'), Tab(text: 'Manager Review')],
-          tabViews: const [SaleContractListScreen(), _SaleContractManagerReviewList()],
+          tabs: shouldHideManagerReview
+              ? const [Tab(text: 'My Contracts')]
+              : const [Tab(text: 'My Contracts'), Tab(text: 'Manager Review')],
+          tabViews: shouldHideManagerReview
+              ? const [SaleContractListScreen()]
+              : const [SaleContractListScreen(), _SaleContractManagerReviewList()],
           fab: Builder(
             builder: (ctx) => FloatingActionButton.extended(
               onPressed: () => Navigator.of(ctx).push(
