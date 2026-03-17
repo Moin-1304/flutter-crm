@@ -1,5 +1,13 @@
 /// ItemIssue List API Models
 
+/// Parses issueAgainst from API (can be String e.g. "EMAR Pharma" or int ID).
+String? _issueAgainstFromJson(dynamic v) {
+  if (v == null) return null;
+  if (v is String) return v;
+  if (v is int) return v.toString();
+  return null;
+}
+
 class ItemIssueListRequest {
   final String? searchText;
   final int sortOrder;
@@ -173,9 +181,9 @@ class ItemIssueApiItem {
   final int? moduleId;
   final int? userId;
   final int? divisionGroup;
-  final int? issueAgainst;
+  final String? issueAgainst; // API returns display text e.g. "EMAR Pharma"
   final int? issueReceiptType;
-  final String itemText;
+  final String? itemText;
 
   ItemIssueApiItem({
     required this.createdDate,
@@ -240,7 +248,7 @@ class ItemIssueApiItem {
     this.divisionGroup,
     this.issueAgainst,
     this.issueReceiptType,
-    required this.itemText,
+    this.itemText,
   });
 
   factory ItemIssueApiItem.fromJson(Map<String, dynamic> json) {
@@ -307,9 +315,9 @@ class ItemIssueApiItem {
       moduleId: json['moduleId'],
       userId: json['userId'],
       divisionGroup: json['divisionGroup'],
-      issueAgainst: json['issueAgainst'],
+      issueAgainst: _issueAgainstFromJson(json['issueAgainst']),
       issueReceiptType: json['issueReceiptType'],
-      itemText: json['itemText'] ?? '',
+      itemText: json['itemText'],
     );
   }
 }

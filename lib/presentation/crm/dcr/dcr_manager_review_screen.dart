@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:intl/intl.dart';
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/dcr/dcr.dart';
@@ -451,40 +452,40 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                             ],
                           ),
                         ),
-                        // Medical Rep Map View Button
-                        Container(
-                          margin: EdgeInsets.only(right: isMobile ? 8 : 12),
-                          width: isMobile ? 48 : 56,
-                          height: isMobile ? 48 : 56,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.grey.withOpacity(0.2),
-                              width: 1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _openMedicalRepMapView,
-                              borderRadius: BorderRadius.circular(12),
-                              child: Icon(
-                                Icons.local_hospital_rounded,
-                                color: tealGreen,
-                                size: isMobile ? 24 : 28,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Sales Rep Map View Button
+                        // Medical Rep Map View Button (commented out - single map button used)
+                        // Container(
+                        //   margin: EdgeInsets.only(right: isMobile ? 8 : 12),
+                        //   width: isMobile ? 48 : 56,
+                        //   height: isMobile ? 48 : 56,
+                        //   decoration: BoxDecoration(
+                        //     color: Colors.white,
+                        //     borderRadius: BorderRadius.circular(12),
+                        //     border: Border.all(
+                        //       color: Colors.grey.withOpacity(0.2),
+                        //       width: 1,
+                        //     ),
+                        //     boxShadow: [
+                        //       BoxShadow(
+                        //         color: Colors.black.withOpacity(0.05),
+                        //         blurRadius: 8,
+                        //         offset: const Offset(0, 2),
+                        //       ),
+                        //     ],
+                        //   ),
+                        //   child: Material(
+                        //     color: Colors.transparent,
+                        //     child: InkWell(
+                        //       onTap: _openMedicalRepMapView,
+                        //       borderRadius: BorderRadius.circular(12),
+                        //       child: Icon(
+                        //         Icons.local_hospital_rounded,
+                        //         color: tealGreen,
+                        //         size: isMobile ? 24 : 28,
+                        //       ),
+                        //     ),
+                        //   ),
+                        // ),
+                        // Map button (single map for DCR visits)
                         Container(
                           margin: EdgeInsets.only(right: isMobile ? 8 : 12),
                           width: isMobile ? 48 : 56,
@@ -1674,8 +1675,42 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     _filterModalController.forward();
   }
 
+  /// Shows date range popup for map (within current filter month). Returns selected range or null if cancelled.
+  Future<({DateTime from, DateTime to})?> _showMapDateRangeDialog() async {
+    final DateTime monthStart = DateTime(_date.year, _date.month, 1);
+    final DateTime monthEnd = DateTime(_date.year, _date.month + 1, 0);
+    const Color tealGreen = Color(0xFF4db1b3);
+    final result = await showDialog<({DateTime from, DateTime to})>(
+      context: context,
+      builder: (ctx) => _VisitDateRangeWithinMonthDialog(
+        monthStart: monthStart,
+        monthEnd: monthEnd,
+        initialFrom: monthStart,
+        initialTo: monthEnd,
+        tealGreen: tealGreen,
+      ),
+    );
+    return result;
+  }
+
+  /// Filter items by visit date range (for map only).
+  List<UnifiedDcrItem> _filterByDateRange(List<UnifiedDcrItem> list, DateTime from, DateTime to) {
+    final fromDate = DateTime(from.year, from.month, from.day);
+    final toDate = DateTime(to.year, to.month, to.day);
+    return list.where((item) {
+      final d = item.parsedDate;
+      if (d == null) return false;
+      final dDate = DateTime(d.year, d.month, d.day);
+      return !dDate.isBefore(fromDate) && !dDate.isAfter(toDate);
+    }).toList();
+  }
+
   Future<void> _openMapView() async {
     try {
+      // Show date range popup first (scoped to current filter month)
+      final dateRange = await _showMapDateRangeDialog();
+      if (dateRange == null || !mounted) return;
+
       final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
       final int? managerId = userStore?.userDetail?.employeeId;
 
@@ -1689,8 +1724,10 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         return;
       }
 
-      // 1) Use already-loaded list data (same date range and filters as the screen)
-      final List<UnifiedDcrItem> fromList = _unifiedItems
+      // 1) Apply status/employee filters, then date range from popup, then with location
+      final List<UnifiedDcrItem> filtered = _applyFilters(_unifiedItems);
+      final List<UnifiedDcrItem> dateFiltered = _filterByDateRange(filtered, dateRange.from, dateRange.to);
+      final List<UnifiedDcrItem> fromList = dateFiltered
           .where((item) =>
               item.isDcr &&
               item.customerLatitude != null &&
@@ -1724,8 +1761,8 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         return;
       }
 
-      final DateTime start = DateTime(_date.year, _date.month, 1);
-      final DateTime end = DateTime(_date.year, _date.month + 1, 0);
+      final DateTime start = dateRange.from;
+      final DateTime end = DateTime(dateRange.to.year, dateRange.to.month, dateRange.to.day, 23, 59, 59);
       final int? selectedEmployeeId = _selectedEmployeeId();
 
       List<UnifiedDcrItem> mapItems = [];
@@ -1808,8 +1845,176 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
 class _ClusterGroup {
   _ClusterGroup({required this.cluster, required this.items});
-  final String cluster; 
+  final String cluster;
   final List<UnifiedDcrItem> items;
+}
+
+/// Date range picker for visits; dates are limited to the selected filter month.
+class _VisitDateRangeWithinMonthDialog extends StatefulWidget {
+  const _VisitDateRangeWithinMonthDialog({
+    required this.monthStart,
+    required this.monthEnd,
+    required this.initialFrom,
+    required this.initialTo,
+    required this.tealGreen,
+  });
+  final DateTime monthStart;
+  final DateTime monthEnd;
+  final DateTime initialFrom;
+  final DateTime initialTo;
+  final Color tealGreen;
+
+  @override
+  State<_VisitDateRangeWithinMonthDialog> createState() => _VisitDateRangeWithinMonthDialogState();
+}
+
+class _VisitDateRangeWithinMonthDialogState extends State<_VisitDateRangeWithinMonthDialog> {
+  late DateTime _from;
+  late DateTime _to;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = widget.initialFrom;
+    _to = widget.initialTo;
+  }
+
+  Future<void> _pickFrom() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _from,
+      firstDate: widget.monthStart,
+      lastDate: widget.monthEnd,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(primary: widget.tealGreen),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _from = picked;
+        if (_to.isBefore(_from)) _to = _from;
+      });
+    }
+  }
+
+  Future<void> _pickTo() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _to,
+      firstDate: _from.isBefore(widget.monthStart) ? widget.monthStart : _from,
+      lastDate: widget.monthEnd,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(primary: widget.tealGreen),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _to = picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isTablet = MediaQuery.of(context).size.width >= 600;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(isTablet ? 24 : 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Visit date range (within ${DateFormat('MMM yyyy').format(widget.monthStart)})',
+              style: GoogleFonts.inter(
+                fontSize: isTablet ? 18 : 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[900],
+              ),
+            ),
+            const SizedBox(height: 20),
+            InkWell(
+              onTap: _pickFrom,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_today, size: 20, color: widget.tealGreen),
+                    const SizedBox(width: 12),
+                    Text(
+                      'From: ${DateFormat('dd MMM yyyy').format(_from)}',
+                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: _pickTo,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_today, size: 20, color: widget.tealGreen),
+                    const SizedBox(width: 12),
+                    Text(
+                      'To: ${DateFormat('dd MMM yyyy').format(_to)}',
+                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: widget.tealGreen,
+                      side: BorderSide(color: widget.tealGreen),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop((from: _from, to: _to)),
+                    style: FilledButton.styleFrom(backgroundColor: widget.tealGreen),
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ------- Filter Modal & Searchable Dropdown (ported from My DCR) -------

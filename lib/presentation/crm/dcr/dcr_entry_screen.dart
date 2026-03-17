@@ -194,8 +194,10 @@ class DcrEntryScreen extends StatefulWidget {
   final int? initialCustomerId;
   final int? initialClusterId; // AKA cityId in API
   final int? initialTypeOfWorkId;
+
   /// When true, form is shown in read-only mode (same layout as edit, no save buttons).
   final bool viewOnly;
+
   /// When true (e.g. for submitted DCRs), Create DCR tab stays read-only but Service Report
   /// tab is editable and can be saved. Used with viewOnly for "View DCR + Edit Service Report".
   final bool allowServiceReportEditOnly;
@@ -294,6 +296,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   // Signature storage (drawing as base64 for local display; uploaded path for API)
   String? _signatureImageBase64;
   String? _signatureValue;
+
   /// Uploaded signature image path from FilesUpload API (sent as SignatureImageUrl in Save).
   String? _signatureImageUrl;
   bool _isUploadingSignature = false;
@@ -1751,10 +1754,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               _complaintStatus =
                   dcrEntry.complaintStatus == 1 ? 'Resolved' : 'Not Resolved';
               // Sync dropdown (Complaint Status uses ServiceReportStatus enum)
-              _selectedServiceReportStatus =
-                  dcrEntry.complaintStatus == 1
-                      ? ServiceReportStatus.Resolved
-                      : ServiceReportStatus.NotResolved;
+              _selectedServiceReportStatus = dcrEntry.complaintStatus == 1
+                  ? ServiceReportStatus.Resolved
+                  : ServiceReportStatus.NotResolved;
             }
 
             if (dcrEntry.complaintDate != null) {
@@ -2411,8 +2413,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                     ignoring: _isViewOnly,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children:
-                          _buildCreateDcrFields(context, screenTheme, tealGreen),
+                      children: _buildCreateDcrFields(
+                          context, screenTheme, tealGreen),
                     ),
                   ),
                 ),
@@ -2454,10 +2456,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               child: isExistingDcr
                   ? IgnorePointer(
                       // Allow Service Report edit when viewOnly + allowServiceReportEditOnly (submitted DCRs)
-                      ignoring: _isViewOnly && !widget.allowServiceReportEditOnly,
+                      ignoring:
+                          _isViewOnly && !widget.allowServiceReportEditOnly,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: _buildServiceReportFields(context, screenTheme),
+                        children:
+                            _buildServiceReportFields(context, screenTheme),
                       ),
                     )
                   : Column(
@@ -3012,7 +3016,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : const Text('Submit'),
@@ -3624,7 +3629,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                             SizedBox(height: 8),
-                            Text('Uploading signature…', style: TextStyle(fontSize: 14)),
+                            Text('Uploading signature…',
+                                style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       )
@@ -3662,7 +3668,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                               ),
               ),
             ),
-            if (_signatureImageBase64 != null || _signatureImageUrl != null) ...[
+            if (_signatureImageBase64 != null ||
+                _signatureImageUrl != null) ...[
               const SizedBox(height: 8),
               TextButton.icon(
                 onPressed: () {
@@ -3686,180 +3693,182 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           onPressed: _isSubmitting
               ? null
               : () async {
-                // Save Service Report
-                setState(() {
-                  _isSubmitting = true;
-                });
+                  // Save Service Report
+                  setState(() {
+                    _isSubmitting = true;
+                  });
 
-                // Show loading dialog
-                if (!mounted) return;
-                showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(
-                          child: CircularProgressIndicator(),
-                        ));
+                  // Show loading dialog
+                  if (!mounted) return;
+                  showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(
+                            child: CircularProgressIndicator(),
+                          ));
 
-                try {
-                  final dioClient = getIt.isRegistered<DioClient>()
-                      ? getIt<DioClient>()
-                      : null;
-                  if (dioClient == null) {
-                    throw Exception('Network client not available');
-                  }
+                  try {
+                    final dioClient = getIt.isRegistered<DioClient>()
+                        ? getIt<DioClient>()
+                        : null;
+                    if (dioClient == null) {
+                      throw Exception('Network client not available');
+                    }
 
-                  final int customerId =
-                      (_customerNameToId[_serviceReportCustomer] ?? 0);
-                  final int productId =
-                      (_productNameToId[_serviceReportProduct] ?? 0);
-                  final int currentUserId =
-                      getIt.isRegistered<UserDetailStore>()
-                          ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
-                          : 0;
-                  final int dcrDetailId = _loadedEntry?.detailId ?? 0;
-                  final bool isUpdate =
-                      _serviceReportId != null && _serviceReportId! > 0;
-                  final DateTime now = DateTime.now();
-                  final String dateTimeStr =
-                      _formatServiceReportDateTimeForApi(now);
-                  // On update, send original CreatedDate in same format (yyyy-MM-dd HH:mm:ss.SSS)
-                  String createdDateForPayload = dateTimeStr;
-                  if (isUpdate &&
-                      _serviceReportCreatedDate != null &&
-                      _serviceReportCreatedDate!.isNotEmpty) {
-                    createdDateForPayload = _serviceReportCreatedDate!;
-                  }
-                  // Payload with PascalCase keys to match Service Report Save API
-                  final Map<String, dynamic> payload = {
-                    'CreatedDate': createdDateForPayload,
-                    'ModifiedBy': isUpdate ? currentUserId : 0,
-                    'ModifiedDate': dateTimeStr,
-                    'Id': _serviceReportId,
-                    'CreatedBy': currentUserId,
-                    'Status': isUpdate ? 0 : 1,
-                    'SbuId': 0,
-                    'DcrDetailId': dcrDetailId,
-                    'CustomerName': _serviceReportCustomer ?? '',
-                    'CustomerId': customerId,
-                    'ContactPerson': _contactPersonCtrl.text.trim(),
-                    'ContactMobile': _contactMobileCtrl.text.trim(),
-                    'ServiceDate': _formatServiceReportDateTimeForApi(
-                        _serviceDate ?? DateTime.now()),
-                    'ProductId': productId,
-                    'Product': _serviceReportProduct ?? '',
-                    'SerialNumber': _serialNumberCtrl.text.trim(),
-                    'ServiceTypeId': _selectedServiceType?.value ?? 0,
-                    'ServiceType': _selectedServiceType?.description ?? '',
-                    'StartTime': _startTime != null
-                        ? _formatServiceReportDateTimeForApi(_startTime!)
-                        : null,
-                    'EndTime': _endTime != null
-                        ? _formatServiceReportDateTimeForApi(_endTime!)
-                        : null,
-                    'ElectricitySafetyTest':
-                        _selectedElectricitySafetyTest?.description,
-                    'ElectricitySafetyTestId':
-                        _selectedElectricitySafetyTest?.value ?? 0,
-                    'ComplaintDetails': _complaintCtrl.text.trim(),
-                    'ActionTaken': _actionTakenCtrl.text.trim(),
-                    'Result': _resultCtrl.text.trim(),
-                    'ComplaintDateTime': _complaintDateTime != null
-                        ? _formatServiceReportDateTimeForApi(
-                            _complaintDateTime!)
-                        : null,
-                    'ServiceStatusId': _selectedServiceReportStatus?.value ?? 0,
-                    'ServiceStatus':
-                        _selectedServiceReportStatus?.description ?? '',
-                    'WorkDescription': _workDescriptionCtrl.text.trim(),
-                    'MaterialsUsed': _materialsUsedCtrl.text.trim(),
-                    'Remarks': _serviceRemarksCtrl.text.trim(),
-                    'FeedbackOption':
-                        _selectedFeedbackOption?.description ?? '',
-                    'FeedbackOptionId': _selectedFeedbackOption?.value ?? 0,
-                    'SignedBy': _signedByCtrl.text.trim(),
-                    'SignatureImageUrl': _signatureImageUrl,
-                    'ServiceRate':
-                        double.tryParse(_serviceRateCtrl.text.trim()) ?? 0.0
-                  };
-                  // Omit null values except Id (API expects Id: null for new report)
-                  payload.removeWhere((k, v) => v == null && k != 'Id');
+                    final int customerId =
+                        (_customerNameToId[_serviceReportCustomer] ?? 0);
+                    final int productId =
+                        (_productNameToId[_serviceReportProduct] ?? 0);
+                    final int currentUserId =
+                        getIt.isRegistered<UserDetailStore>()
+                            ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
+                            : 0;
+                    final int dcrDetailId = _loadedEntry?.detailId ?? 0;
+                    final bool isUpdate =
+                        _serviceReportId != null && _serviceReportId! > 0;
+                    final DateTime now = DateTime.now();
+                    final String dateTimeStr =
+                        _formatServiceReportDateTimeForApi(now);
+                    // On update, send original CreatedDate in same format (yyyy-MM-dd HH:mm:ss.SSS)
+                    String createdDateForPayload = dateTimeStr;
+                    if (isUpdate &&
+                        _serviceReportCreatedDate != null &&
+                        _serviceReportCreatedDate!.isNotEmpty) {
+                      createdDateForPayload = _serviceReportCreatedDate!;
+                    }
+                    // Payload with PascalCase keys to match Service Report Save API
+                    final Map<String, dynamic> payload = {
+                      'CreatedDate': createdDateForPayload,
+                      'ModifiedBy': isUpdate ? currentUserId : 0,
+                      'ModifiedDate': dateTimeStr,
+                      'Id': _serviceReportId,
+                      'CreatedBy': currentUserId,
+                      'Status': isUpdate ? 0 : 1,
+                      'SbuId': 0,
+                      'DcrDetailId': dcrDetailId,
+                      'CustomerName': _serviceReportCustomer ?? '',
+                      'CustomerId': customerId,
+                      'ContactPerson': _contactPersonCtrl.text.trim(),
+                      'ContactMobile': _contactMobileCtrl.text.trim(),
+                      'ServiceDate': _formatServiceReportDateTimeForApi(
+                          _serviceDate ?? DateTime.now()),
+                      'ProductId': productId,
+                      'Product': _serviceReportProduct ?? '',
+                      'SerialNumber': _serialNumberCtrl.text.trim(),
+                      'ServiceTypeId': _selectedServiceType?.value ?? 0,
+                      'ServiceType': _selectedServiceType?.description ?? '',
+                      'StartTime': _startTime != null
+                          ? _formatServiceReportDateTimeForApi(_startTime!)
+                          : null,
+                      'EndTime': _endTime != null
+                          ? _formatServiceReportDateTimeForApi(_endTime!)
+                          : null,
+                      'ElectricitySafetyTest':
+                          _selectedElectricitySafetyTest?.description,
+                      'ElectricitySafetyTestId':
+                          _selectedElectricitySafetyTest?.value ?? 0,
+                      'ComplaintDetails': _complaintCtrl.text.trim(),
+                      'ActionTaken': _actionTakenCtrl.text.trim(),
+                      'Result': _resultCtrl.text.trim(),
+                      'ComplaintDateTime': _complaintDateTime != null
+                          ? _formatServiceReportDateTimeForApi(
+                              _complaintDateTime!)
+                          : null,
+                      'ServiceStatusId':
+                          _selectedServiceReportStatus?.value ?? 0,
+                      'ServiceStatus':
+                          _selectedServiceReportStatus?.description ?? '',
+                      'WorkDescription': _workDescriptionCtrl.text.trim(),
+                      'MaterialsUsed': _materialsUsedCtrl.text.trim(),
+                      'Remarks': _serviceRemarksCtrl.text.trim(),
+                      'FeedbackOption':
+                          _selectedFeedbackOption?.description ?? '',
+                      'FeedbackOptionId': _selectedFeedbackOption?.value ?? 0,
+                      'SignedBy': _signedByCtrl.text.trim(),
+                      'SignatureImageUrl': _signatureImageUrl,
+                      'ServiceRate':
+                          double.tryParse(_serviceRateCtrl.text.trim()) ?? 0.0
+                    };
+                    // Omit null values except Id (API expects Id: null for new report)
+                    payload.removeWhere((k, v) => v == null && k != 'Id');
 
-                  final String url = isUpdate
-                      ? Endpoints.serviceReportUpdate
-                      : Endpoints.serviceReportSave;
-                  print(
-                      '📞 [ServiceReport] Sending to $url payload: ${payload}');
-                  final response = await dioClient.dio.post(
-                    url,
-                    data: payload,
-                    options: Options(
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                    ),
-                  );
-
-                  if (mounted) Navigator.of(context).pop(); // close loading
-
-                  if (response.statusCode != null &&
-                      response.statusCode! >= 200 &&
-                      response.statusCode! < 300) {
-                    ToastMessage.show(
-                      context,
-                      message: 'Service report saved successfully',
-                      type: ToastType.success,
-                      icon: Icons.check_circle_outline,
-                    );
-                    print('✅ [ServiceReport] Save response: ${response.data}');
-                  } else {
+                    final String url = isUpdate
+                        ? Endpoints.serviceReportUpdate
+                        : Endpoints.serviceReportSave;
                     print(
-                        '❌ [ServiceReport] Save failed: ${response.statusCode} ${response.data}');
+                        '📞 [ServiceReport] Sending to $url payload: ${payload}');
+                    final response = await dioClient.dio.post(
+                      url,
+                      data: payload,
+                      options: Options(
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                      ),
+                    );
+
+                    if (mounted) Navigator.of(context).pop(); // close loading
+
+                    if (response.statusCode != null &&
+                        response.statusCode! >= 200 &&
+                        response.statusCode! < 300) {
+                      ToastMessage.show(
+                        context,
+                        message: 'Service report saved successfully',
+                        type: ToastType.success,
+                        icon: Icons.check_circle_outline,
+                      );
+                      print(
+                          '✅ [ServiceReport] Save response: ${response.data}');
+                    } else {
+                      print(
+                          '❌ [ServiceReport] Save failed: ${response.statusCode} ${response.data}');
+                      ToastMessage.show(
+                        context,
+                        message: 'Failed to save service report',
+                        type: ToastType.error,
+                        icon: Icons.error_outline,
+                      );
+                    }
+                  } catch (e, s) {
+                    if (mounted) Navigator.of(context).pop();
+                    if (e is DioException && e.response != null) {
+                      print(
+                          '❌ [ServiceReport] Server ${e.response?.statusCode}: ${e.response?.data}');
+                    }
+                    print(
+                        '❌ [ServiceReport] Error saving service report: $e\n$s');
                     ToastMessage.show(
                       context,
-                      message: 'Failed to save service report',
+                      message: 'Error: ${e.toString()}',
                       type: ToastType.error,
                       icon: Icons.error_outline,
                     );
+                  } finally {
+                    if (mounted) {
+                      setState(() {
+                        _isSubmitting = false;
+                      });
+                    }
                   }
-                } catch (e, s) {
-                  if (mounted) Navigator.of(context).pop();
-                  if (e is DioException && e.response != null) {
-                    print(
-                        '❌ [ServiceReport] Server ${e.response?.statusCode}: ${e.response?.data}');
-                  }
-                  print(
-                      '❌ [ServiceReport] Error saving service report: $e\n$s');
-                  ToastMessage.show(
-                    context,
-                    message: 'Error: ${e.toString()}',
-                    type: ToastType.error,
-                    icon: Icons.error_outline,
-                  );
-                } finally {
-                  if (mounted) {
-                    setState(() {
-                      _isSubmitting = false;
-                    });
-                  }
-                }
-              },
-        style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFF4db1b3),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+                },
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF4db1b3),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            elevation: 2,
           ),
-          elevation: 2,
-        ),
-        child: _isSubmitting
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
-            : const Text('Save'),
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
+              : const Text('Save'),
         ),
     ];
   }
@@ -3921,8 +3930,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     if (!getIt.isRegistered<ExpenseApi>()) return null;
     try {
       final bytes = base64Decode(base64Png);
-      final name =
-          'signature_${DateTime.now().millisecondsSinceEpoch}.png';
+      final name = 'signature_${DateTime.now().millisecondsSinceEpoch}.png';
       final file = PlatformFile(name: name, size: bytes.length, bytes: bytes);
       final api = getIt<ExpenseApi>();
       final res = await api.uploadFile(
@@ -4248,12 +4256,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     // UIN is int on backend; must be within 32-bit signed int range (max $_kUinMaxDigits digits)
     if (uin.isNotEmpty) {
       final int? uinVal = int.tryParse(uin);
-      if (uinVal == null ||
-          uinVal < 0 ||
-          uinVal > _kUinMaxInt) {
+      if (uinVal == null || uinVal < 0 || uinVal > _kUinMaxInt) {
         ToastMessage.show(
           context,
-          message: 'UIN must be a number with at most $_kUinMaxDigits digits (max $_kUinMaxInt)',
+          message:
+              'UIN must be a number with at most $_kUinMaxDigits digits (max $_kUinMaxInt)',
           type: ToastType.error,
           icon: Icons.error_outline,
         );
@@ -4261,11 +4268,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       }
     }
 
-    final UserDetailStore? userDetailStore = getIt.isRegistered<UserDetailStore>()
-        ? getIt<UserDetailStore>()
-        : null;
-    final int currentUserId =
-        userDetailStore?.userDetail?.id ?? 0;
+    final UserDetailStore? userDetailStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int currentUserId = userDetailStore?.userDetail?.id ?? 0;
     final int? roleCategory = userDetailStore?.userDetail?.roleCategory;
     final int? employeeId = userDetailStore?.userDetail?.employeeId;
     final int userSbuId = userDetailStore?.userDetail?.sbuId ?? 1;
@@ -4576,14 +4581,22 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   /// Extract error message from server response (Map, String, or List).
   String? _extractServerErrorMessage(dynamic data) {
     if (data == null) return null;
-    if (data is String) return data.trim().isEmpty ? null : (data.length > 300 ? '${data.substring(0, 300)}...' : data);
+    if (data is String)
+      return data.trim().isEmpty
+          ? null
+          : (data.length > 300 ? '${data.substring(0, 300)}...' : data);
     if (data is Map) {
       // .NET often uses ExceptionMessage, message, error, or nested innerException
-      final msg = data['ExceptionMessage'] ?? data['exceptionMessage'] ??
-          data['message'] ?? data['Message'] ??
-          data['error'] ?? data['Error'] ??
-          data['MessageDetail'] ?? data['messageDetail'];
-      if (msg != null && msg.toString().trim().isNotEmpty) return msg.toString().trim();
+      final msg = data['ExceptionMessage'] ??
+          data['exceptionMessage'] ??
+          data['message'] ??
+          data['Message'] ??
+          data['error'] ??
+          data['Error'] ??
+          data['MessageDetail'] ??
+          data['messageDetail'];
+      if (msg != null && msg.toString().trim().isNotEmpty)
+        return msg.toString().trim();
       final inner = data['innerException'] ?? data['InnerException'];
       if (inner is Map) return _extractServerErrorMessage(inner);
       if (inner is String && inner.trim().isNotEmpty) return inner.trim();
@@ -5224,14 +5237,14 @@ extension on _DcrEntryScreenState {
         result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
             ? _resultCtrl.text.trim()
             : null,
-        complaintStatus: _isServiceEngineer && _selectedServiceReportStatus != null
-            ? (_selectedServiceReportStatus == ServiceReportStatus.Resolved
-                ? 1
-                : 0) // API: 1 = Resolved, 0 = Not Resolved
-            : null,
-        complaintDate: _isServiceEngineer
-            ? (_complaintDateTime ?? _complaintDate)
-            : null,
+        complaintStatus:
+            _isServiceEngineer && _selectedServiceReportStatus != null
+                ? (_selectedServiceReportStatus == ServiceReportStatus.Resolved
+                    ? 1
+                    : 0) // API: 1 = Resolved, 0 = Not Resolved
+                : null,
+        complaintDate:
+            _isServiceEngineer ? (_complaintDateTime ?? _complaintDate) : null,
         complaintRemarks:
             _isServiceEngineer && _complaintRemarksCtrl.text.trim().isNotEmpty
                 ? _complaintRemarksCtrl.text.trim()
@@ -5302,7 +5315,8 @@ extension on _DcrEntryScreenState {
           result: _isServiceEngineer && _resultCtrl.text.trim().isNotEmpty
               ? _resultCtrl.text.trim()
               : null,
-          complaintStatus: _isServiceEngineer && _selectedServiceReportStatus != null
+          complaintStatus: _isServiceEngineer &&
+                  _selectedServiceReportStatus != null
               ? (_selectedServiceReportStatus == ServiceReportStatus.Resolved
                   ? 1
                   : 0) // API: 1 = Resolved, 0 = Not Resolved

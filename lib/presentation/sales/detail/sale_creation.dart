@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -951,6 +952,21 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
   }
 
+  /// Parse an int from itemData using the first key that exists (API may use camelCase or PascalCase).
+  int _parseIntFromItemData(Map<String, dynamic> itemData, List<String> keys) {
+    for (final key in keys) {
+      final v = itemData[key];
+      if (v == null) continue;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) {
+        final n = int.tryParse(v);
+        if (n != null) return n;
+      }
+    }
+    return 0;
+  }
+
   _LineItem _parseItemFromData(Map<String, dynamic> itemData) {
     print('🔵 _parseItemFromData called with keys: ${itemData.keys.toList()}');
 
@@ -999,11 +1015,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       mrp = null;
     }
 
-    // Safely parse discount
+    // Safely parse discount (API may send Discount, DiscountAmount, discount, discountAmount)
     double discount = 0.0;
     try {
-      final discountValue =
-          itemData['discount'] ?? itemData['discountAmount'] ?? 0.0;
+      final discountValue = itemData['discount'] ??
+          itemData['discountAmount'] ??
+          itemData['Discount'] ??
+          itemData['DiscountAmount'] ??
+          0.0;
       if (discountValue is num) {
         discount = discountValue.toDouble();
       } else if (discountValue is String) {
@@ -1153,11 +1172,18 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       qty:
           (itemData['quantity'] ?? itemData['Quantity'] ?? itemData['qty'] ?? 0)
               .toInt(),
-      bonusQty:
-          (itemData['bonusQty'] ?? itemData['bonusQuantity'] ?? 0).toInt(),
-      addlBonusQty:
-          (itemData['addlBonus'] ?? itemData['additionalBonusQuantity'] ?? 0)
-              .toInt(),
+      bonusQty: _parseIntFromItemData(itemData, [
+        'bonusQty',
+        'bonusQuantity',
+        'BonusQuantity',
+      ]),
+      addlBonusQty: _parseIntFromItemData(itemData, [
+        'addlBonus',
+        'additionalBonusQuantity',
+        'additionalQuantity',
+        'AdditionalBonusQuantity',
+        'AdditionalQuantity',
+      ]),
       itemDescription: itemDescription,
       rate: rate, // Pass rate even if 0, so it can be loaded from API later
       mrp: mrp, // Pass MRP even if 0, so it can be loaded from API later
@@ -1320,7 +1346,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           : null;
 
       if (customerId == null) {
-        print('⚠️ Cannot load item detail: Customer not selected');
+        print(
+            '⚠️ [GetItemDetail] Skipped — customer not selected. Select customer to print full API details for ItemId: $itemId');
         return;
       }
 
@@ -1336,6 +1363,53 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         date: dateStr,
         customerId: customerId,
       );
+
+      // Complete API payload for this item (GetItemDetail)
+      print('');
+      print(
+          '══════════════════════════════════════════════════════════════════════════════');
+      print(
+          '[GetItemDetail] COMPLETE API DETAILS — ItemId: $itemId, CustomerId: $customerId, Date: $dateStr');
+      print(
+          '══════════════════════════════════════════════════════════════════════════════');
+      final raw = itemDetail.otherFields;
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          print(JsonEncoder.withIndent('  ').convert(raw));
+        } catch (e) {
+          print(
+              '[GetItemDetail] (JSON encode failed: $e — printing key/value pairs)');
+          for (final entry in raw.entries) {
+            print('  ${entry.key}: ${entry.value}');
+          }
+        }
+      } else {
+        print('  (no otherFields on response)');
+      }
+      print(
+          '──────────────────────────────────────────────────────────────────────────────');
+      print('[GetItemDetail] Parsed model fields:');
+      print('   item: ${itemDetail.item}');
+      print('   itemText: ${itemDetail.itemText}');
+      print('   manufacturerName: ${itemDetail.manufacturerName}');
+      print('   rate: ${itemDetail.rate}');
+      print('   retailRate: ${itemDetail.retailRate}');
+      print('   mrp: ${itemDetail.mrp}');
+      print('   unitPrice: ${itemDetail.unitPrice}');
+      print('   uom: ${itemDetail.uom} | uomText: ${itemDetail.uomText}');
+      print('   discount: ${itemDetail.discount}');
+      print('   amount: ${itemDetail.amount}');
+      print('   quantity: ${itemDetail.quantity}');
+      print('   bonusQuantity: ${itemDetail.bonusQuantity}');
+      print('   additionalBonusQuantity: ${itemDetail.additionalBonusQuantity}');
+      print('   divisionGroup: ${itemDetail.divisionGroup}');
+      print('   divisionGroupText: ${itemDetail.divisionGroupText}');
+      print('   isFOC: ${itemDetail.isFOC}');
+      print('   isRateUpdateConfirm: ${itemDetail.isRateUpdateConfirm}');
+      print('   reqdDate: ${itemDetail.reqdDate}');
+      print(
+          '══════════════════════════════════════════════════════════════════════════════');
+      print('');
 
       print('✅ Item Detail loaded:');
       print('   Rate: ${itemDetail.rate}');
@@ -1367,6 +1441,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       if (itemDetail.discount != null && itemDetail.discount! > 0) {
         item.discountController.text = itemDetail.discount!.toStringAsFixed(2);
         print('✅ Updated Discount: ${item.discountController.text}');
+      } else if (itemDetail.discount != null) {
+        item.discountController.text = itemDetail.discount!.toStringAsFixed(2);
+      }
+
+      // Update Bonus Qty and Addl. Bonus from Item Detail API when available
+      if (itemDetail.bonusQuantity != null) {
+        item.bonusQtyController.text = itemDetail.bonusQuantity!.toInt().toString();
+        print('✅ Updated Bonus Qty from API: ${item.bonusQtyController.text}');
+      }
+      if (itemDetail.additionalBonusQuantity != null) {
+        item.addlBonusQtyController.text =
+            itemDetail.additionalBonusQuantity!.toInt().toString();
+        print('✅ Updated Addl. Bonus from API: ${item.addlBonusQtyController.text}');
       }
 
       // Update UOM if available
@@ -5279,12 +5366,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             : 1);
 
     // Get distributor ID - use selected distributor or fallback to bizUnit
-    // Note: Keep bizunit and sbuId same as listing API (user's default bizUnit)
-    // Only use distributor ID for DistributerForId field
     int distributorId = bizUnit; // Default to user's bizUnit
-    // Keep finalBizUnit and finalSbuId same as listing API (always use user's default bizUnit)
-    int finalBizUnit = bizUnit; // Same as listing API
-    int finalSbuId = bizUnit; // Same as listing API
 
     if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
       try {
@@ -5292,16 +5374,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           (item) => item.text == _selectedDistributor,
         );
         distributorId = distributorItem.id;
-        // distributorId is used for DistributerForId only
-        // bizunit and sbuId remain as user's default bizUnit to match listing API
-        print(
-            '🔵 Selected Distributor ID: $distributorId, but keeping bizUnit: $finalBizUnit for consistency with listing');
+        print('🔵 Selected Distributor ID: $distributorId');
       } catch (e) {
-        // Distributor not found, use defaults
         print(
             'Warning: Selected distributor not found in list, using bizUnit: $e');
       }
     }
+
+    // Backend requires SbuId and Bizunit to be set to DistributorId for workflow/amendment processing
+    final int finalSbuId = distributorId;
+    final int finalBizUnit = distributorId;
 
     // Get customer ID
     final int? customerId = _selectedCustomerCode != null
@@ -5432,7 +5514,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         id: lineId,
         createdBy: user.userId,
         status: 0,
-        sbuId: bizUnit,
+        sbuId: finalSbuId,
         itemCategoryText: 'Pharma', // Should be from product data
         itemCategory: 6, // Should be from product data
         itemText: item.itemDescriptionController.text.isNotEmpty
@@ -5634,18 +5716,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     print(
         'Customer (field): ${_selectedCustomer?.name} (sending name instead of ID)');
     print('Sales Rep ID: $salesRepId');
-    print('BizUnit: $finalBizUnit (same as listing API)');
-    print('SbuId: $finalSbuId (same as listing API)');
-    print('Distributor ID: $distributorId (for DistributerForId field only)');
+    print('SbuId / Bizunit (DistributorId): $finalSbuId');
+    print('Distributor ID (DistributerForId): $distributorId');
     print('═══════════════════════════════════════════════════════════');
 
     return SalesOrderSaveRequest(
       id: _isEditMode && _loadedOrderData != null ? _loadedOrderData!.id : null,
       createdBy: dynamicUserId, // Dynamic userId from user
       status: 0,
-      sbuId: finalSbuId, // Same as listing API (user's default bizUnit)
+      sbuId: finalSbuId, // Must be DistributorId per backend requirement
       company: 1, // Default - should be from user/config
-      bizunit: finalBizUnit, // Same as listing API (user's default bizUnit)
+      bizunit: finalBizUnit, // Must be DistributorId per backend requirement
       userId: dynamicUserId, // Dynamic userId from user
       workflowFlag: workflowFlag,
       code: 'SO',
@@ -6300,11 +6381,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       return;
     }
 
-    // Use actionValue as workflowFlag, default to 1 if not available
-    final int workflowFlag = action.actionValue;
+    // Backend requires WorkflowFlag = 1 for Save/Amend; actionValue identifies the action (e.g. 15 for Amend)
+    const int workflowFlag = 1;
 
     print(
-        '📤 Executing workflow action: ${action.name} with WorkflowFlag: $workflowFlag');
+        '📤 Executing workflow action: ${action.name} with WorkflowFlag: $workflowFlag, ActionValue: ${action.actionValue}');
 
     try {
       // Show loading indicator
@@ -6312,11 +6393,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         _isLoading = true;
       });
 
-      // Build save request with the workflow action's actionValue as workflowFlag
+      // Build save request with WorkflowFlag = 1 (required for workflow/amendment processing)
       final request = await _buildSaveRequest(workflowFlag);
 
-      // Update processActionId from the action
-      // Note: We need to create a new request with the updated processActionId
+      // Update processId (use actionValue per client example, e.g. 15 for Amend), processActionId and actionValue
       final updatedRequest = SalesOrderSaveRequest(
         id: request.id,
         createdBy: request.createdBy,
@@ -6360,7 +6440,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         refid: request.refid,
         processId: action.processID,
         processActionId: action.processActionId,
-        processName: request.processName,
+        processName: action.name, // e.g. "Amend", "Submit" per client payload
         menuId: request.menuId,
         moduleId: request.moduleId,
         module: request.module,
@@ -6380,7 +6460,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         divisionText: request.divisionText,
         divisionGroupText: request.divisionGroupText,
         divisionGroupName: request.divisionGroupName,
-        actionValue: request.actionValue,
+        actionValue: action.actionValue.toString(), // e.g. 15 for Amend
         saleOrderShortCloseReason: request.saleOrderShortCloseReason,
         saleOrderShortCloseRefNo: request.saleOrderShortCloseRefNo,
         checkFlag: request.checkFlag,
@@ -6575,6 +6655,8 @@ class _ItemCard extends StatelessWidget {
 
                 // Load item details (MRP, Rate, etc.) from GetItemDetail API
                 final itemId = int.tryParse(product.id) ?? 0;
+                print(
+                    '🔵 [onProductSelected] Requesting GetItemDetail for itemId=$itemId (full API dump follows in console when customer + date are set)');
                 if (itemId > 0) {
                   // Load item detail first to get accurate MRP and Rate
                   loadItemDetail(item, itemId, onChanged);

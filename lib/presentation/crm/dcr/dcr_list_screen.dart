@@ -735,14 +735,6 @@ class _DcrListScreenState extends State<DcrListScreen>
                               if (item.isDcr) ...[
                                 Builder(
                                   builder: (context) {
-                                    print('DCR Item Debug:');
-                                    print('  - Customer: ${item.customerName}');
-                                    print('  - isDcr: ${item.isDcr}');
-                                    print('  - tourPlanId: ${item.tourPlanId}');
-                                    print(
-                                        '  - transactionType: ${item.transactionType}');
-                                    print(
-                                        '  - Should show deviation icon: ${item.isDcr && !_isDcrSentBack(item)}');
                                     return const SizedBox.shrink();
                                   },
                                 ),
@@ -757,21 +749,6 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   onCreateDeviation: item.isDcr &&
                                           !_isDcrSentBack(item)
                                       ? () {
-                                          print('Deviation Icon Debug:');
-                                          print(
-                                              '  - item.isDcr: ${item.isDcr}');
-                                          print(
-                                              '  - item.tourPlanId: ${item.tourPlanId}');
-                                          print(
-                                              '  - item.dcrId: ${item.dcrId}');
-                                          print(
-                                              '  - item.transactionType: ${item.transactionType}');
-                                          print(
-                                              '  - StatusText: ${item.statusText}');
-                                          print(
-                                              '  - dcrStatusId: ${item.dcrStatusId}');
-                                          print(
-                                              '  - Should show deviation: ${item.isDcr && !_isDcrSentBack(item)}');
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
                                               builder: (_) =>
@@ -796,11 +773,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                               return; // Button disabled
                                             }
                                           }
-                                          print(
-                                              'Edit button clicked - TransactionType: ${item.transactionType}, ID: ${item.id}, DCRId: ${item.dcrId}');
                                           if (item.isDcr) {
-                                            print(
-                                                'Navigating to DCR edit screen');
                                             // Edit DCR - pass both id and dcrId
                                             await Navigator.of(context).push(
                                               MaterialPageRoute(
@@ -812,8 +785,6 @@ class _DcrListScreenState extends State<DcrListScreen>
                                                       )),
                                             );
                                           } else if (item.isExpense) {
-                                            print(
-                                                'Navigating to Expense edit screen');
                                             // Edit Expense - pass both id and dcrId
                                             await Navigator.of(context).push(
                                               MaterialPageRoute(
@@ -2186,8 +2157,6 @@ class _DcrListScreenState extends State<DcrListScreen>
     final String? serviceArea = userStore?.userDetail?.serviceArea;
     final bool isServiceEngineer =
         serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    print(
-        '_isCurrentUserServiceEngineer: serviceArea="$serviceArea", result=$isServiceEngineer');
     return isServiceEngineer;
   }
 
@@ -2270,42 +2239,6 @@ class _DcrListScreenState extends State<DcrListScreen>
         print('Falling back to list item data');
       }
     }
-
-    // Debug logs for Service Report Details
-    print('=== DCR Details View - Debug Info ===');
-    print('Item ID: ${displayItem.id}, DCR ID: ${displayItem.dcrId}');
-    print('Is DCR: ${displayItem.isDcr}');
-
-    // Check if user is Service Engineer
-    final UserDetailStore? userStore =
-        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final String? serviceArea = userStore?.userDetail?.serviceArea;
-    final bool isServiceEngineer = _isCurrentUserServiceEngineer();
-    print('User Service Area: "$serviceArea"');
-    print('Is Service Engineer: $isServiceEngineer');
-
-    // Check Service Report fields
-    print('Service Report Fields:');
-    print('  - mappedInstruments: "${displayItem.mappedInstruments}"');
-    print('  - complaint: "${displayItem.complaint}"');
-    print('  - actionTaken: "${displayItem.actionTaken}"');
-    print('  - result: "${displayItem.result}"');
-    print('  - complaintStatus: "${displayItem.complaintStatus}"');
-    print('  - complaintDate: "${displayItem.complaintDate}"');
-    print('  - complaintRemarks: "${displayItem.complaintRemarks}"');
-
-    // Check if has Service Report data
-    final bool hasServiceReportData = _hasServiceReportData(displayItem);
-    print('Has Service Report Data: $hasServiceReportData');
-
-    // Check conditions for showing Service Report section
-    final bool shouldShowServiceReport =
-        displayItem.isDcr && isServiceEngineer && hasServiceReportData;
-    print('Should Show Service Report Section: $shouldShowServiceReport');
-    print('  - item.isDcr: ${displayItem.isDcr}');
-    print('  - isServiceEngineer: $isServiceEngineer');
-    print('  - hasServiceReportData: $hasServiceReportData');
-    print('=====================================');
 
     if (!mounted) return;
 
@@ -3399,10 +3332,6 @@ class _DetailRow extends StatelessWidget {
 _StatusChip _getStatusChipForItem(UnifiedDcrItem item) {
   // Clean and normalize the status text
   final statusText = item.statusText.trim().toLowerCase();
-
-  // Debug print to see what status we're getting
-  print(
-      'DCR Status Debug: Raw statusText="${item.statusText}", normalized="$statusText", dcrStatusId=${item.dcrStatusId}');
 
   if (item.isDcr) {
     // Map status text to DCR status with more flexible matching

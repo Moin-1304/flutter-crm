@@ -101,27 +101,6 @@ class UnifiedDcrItem {
         : null;
     final String? complaintDate = detail?.complaintDate;
     final String? complaintRemarks = detail?.complaintRemarks;
-
-    print('UnifiedDcrItem.fromDcrApiItem - Service Report Fields Extraction:');
-    print('  - DCR ID: ${item.dcrId}, Item ID: ${item.id}');
-    print('  - tourPlanDCRDetails count: ${item.tourPlanDCRDetails.length}');
-    if (detail != null) {
-      print('  - First detail ID: ${detail.id}');
-      print('  - mappedInstruments from API: "${detail.mappedInstruments}"');
-      print('  - complaint from API: "${detail.complaint}"');
-      print('  - actionTaken from API: "${detail.actionTaken}"');
-      print('  - result from API: "${detail.result}"');
-      print('  - complaintStatus from API: "${detail.complaintStatus}"');
-      print('  - complaintDate from API: "${detail.complaintDate}"');
-      print('  - complaintRemarks from API: "${detail.complaintRemarks}"');
-    }
-    print('  - Extracted mappedInstruments: "$mappedInstruments"');
-    print('  - Extracted complaint: "$complaint"');
-    print('  - Extracted actionTaken: "$actionTaken"');
-    print('  - Extracted result: "$result"');
-    print('  - Extracted complaintStatus: "$complaintStatus"');
-    print('  - Extracted complaintDate: "$complaintDate"');
-    print('  - Extracted complaintRemarks: "$complaintRemarks"');
     
     return UnifiedDcrItem(
       id: item.id,

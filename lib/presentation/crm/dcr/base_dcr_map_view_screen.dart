@@ -79,7 +79,7 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
       // Format DCR time - enhanced for managers to see DCR time clearly
       String dcrTimeFormatted = _formatDcrTimeWithTime(item.dcrDate);
 
-      // Build info window snippet with DCR time prominently displayed
+      // Build info window snippet with DCR details (shown on tap / hover)
       String snippet = 'DCR Time: $dcrTimeFormatted';
       if (item.employeeName.isNotEmpty) {
         snippet += '\nEmployee: ${item.employeeName}';
@@ -87,8 +87,15 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
       if (item.designation.isNotEmpty) {
         snippet += '\n${item.designation}';
       }
+      if (item.statusText.trim().isNotEmpty) {
+        snippet += '\nStatus: ${item.statusText}';
+      }
+      if (item.clusterNames.trim().isNotEmpty) {
+        snippet += '\nCluster: ${item.clusterNames}';
+      }
 
       // Use index in ID so every marker is unique (item.id can repeat)
+      final int index = i;
       markers.add(
         Marker(
           markerId: MarkerId('dcr_${i}_${item.id}'),
@@ -98,6 +105,7 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
             snippet: snippet,
           ),
           icon: BitmapDescriptor.defaultMarkerWithHue(widget.markerColor),
+          onTap: () => _showDcrDetailsSheet(validDcrs[index]),
         ),
       );
     }
@@ -159,6 +167,139 @@ class _BaseDcrMapViewScreenState extends State<BaseDcrMapViewScreen> {
     
     // Fallback to original string if all parsing fails
     return dcrDate;
+  }
+
+  /// Show a bottom sheet with full DCR details when user taps a map marker
+  void _showDcrDetailsSheet(UnifiedDcrItem item) {
+    final dcrTimeStr = _formatDcrTimeWithTime(item.dcrDate);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.65,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 12,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on, color: tealGreen, size: 24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      item.customerName,
+                      style: GoogleFonts.inter(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey[900],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.of(context).padding.bottom + 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _detailRow(Icons.schedule, 'Date & Time', dcrTimeStr),
+                    if (item.employeeName.isNotEmpty)
+                      _detailRow(Icons.person_outline, 'Employee', item.employeeName),
+                    if (item.designation.isNotEmpty)
+                      _detailRow(Icons.badge_outlined, 'Designation', item.designation),
+                    if (item.statusText.trim().isNotEmpty)
+                      _detailRow(Icons.verified_outlined, 'Status', item.statusText.trim()),
+                    if (item.clusterNames.trim().isNotEmpty)
+                      _detailRow(Icons.group_work_outlined, 'Cluster', item.clusterNames.trim()),
+                    if (item.typeOfWork.trim().isNotEmpty)
+                      _detailRow(Icons.work_outline, 'Type of work', item.typeOfWork.trim()),
+                    if (item.remarks.trim().isNotEmpty)
+                      _detailRow(Icons.notes, 'Remarks', item.remarks.trim()),
+                    if (item.productsToDiscuss != null && item.productsToDiscuss!.trim().isNotEmpty)
+                      _detailRow(Icons.inventory_2_outlined, 'Products', item.productsToDiscuss!.trim()),
+                    if (item.samplesToDistribute != null && item.samplesToDistribute!.trim().isNotEmpty)
+                      _detailRow(Icons.science_outlined, 'Samples', item.samplesToDistribute!.trim()),
+                    if (item.complaint != null && item.complaint!.trim().isNotEmpty)
+                      _detailRow(Icons.report_problem_outlined, 'Complaint', item.complaint!.trim()),
+                    if (item.actionTaken != null && item.actionTaken!.trim().isNotEmpty)
+                      _detailRow(Icons.build_outlined, 'Action taken', item.actionTaken!.trim()),
+                    if (item.result != null && item.result!.trim().isNotEmpty)
+                      _detailRow(Icons.check_circle_outline, 'Result', item.result!.trim()),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: tealGreen),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _fitMarkers() {

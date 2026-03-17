@@ -291,7 +291,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
         fromStore: apiItem.toStoreText.isNotEmpty
             ? apiItem.toStoreText
             : apiItem.departmentText,
-        itemDetails: apiItem.itemText,
+        itemDetails: apiItem.itemText ?? '',
         status: apiItem.statusText,
       );
     }).toList();

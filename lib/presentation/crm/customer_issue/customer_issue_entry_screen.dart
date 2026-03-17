@@ -691,7 +691,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         }
         print('   ✅ Stored: Issue ID ${apiIssue.id}, No: ${apiIssue.no}');
         print(
-            '   ✅ Stored: Issue To ID ${apiIssue.issueTo}, Issue Against ID ${apiIssue.issueAgainst}');
+            '   ✅ Stored: Issue To ID ${apiIssue.issueTo}, Issue Against: ${apiIssue.issueAgainst}');
         print('   ✅ Stored: Details count ${apiIssue.details?.length ?? 0}');
 
         // If dropdowns are already loaded, populate immediately
@@ -735,7 +735,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     print('Date: ${apiIssue.date}');
     print('Department Text: ${apiIssue.departmentText}');
     print('To Store Text: ${apiIssue.toStoreText}');
-    print('Issue Against ID: ${apiIssue.issueAgainst}');
+    print('Issue Against: ${apiIssue.issueAgainst}');
     print('Issue Receipt Type ID: ${apiIssue.issueReceiptType}');
     print('Issue To ID: ${apiIssue.issueTo}');
     print('Reference: ${apiIssue.reference}');
@@ -763,42 +763,39 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           apiIssue.departmentText.isNotEmpty ? apiIssue.departmentText : null;
       _toStore = apiIssue.toStoreText.isNotEmpty ? apiIssue.toStoreText : null;
 
-      // Map issue against - convert ID to text value
-      // Fallback: if issueAgainst is null, use issueReceiptType as ID
-      final effectiveIssueAgainstId =
-          apiIssue.issueAgainst ?? apiIssue.issueReceiptType;
+      // Map issue against - API returns display text (e.g. "EMAR Pharma"); fallback to issueReceiptType ID
+      final issueAgainstText = apiIssue.issueAgainst?.trim();
+      final issueAgainstId = apiIssue.issueReceiptType;
 
-      if (effectiveIssueAgainstId != null) {
+      if (issueAgainstText != null && issueAgainstText.isNotEmpty) {
+        // Match by display text from API
         if (_issueAgainstList.isNotEmpty) {
           try {
-            print('🔍 Looking for Issue Against ID: $effectiveIssueAgainstId');
-            print(
-                '   Available IDs in list: ${_issueAgainstList.map((e) => e.id).toList()}');
-
             final issueAgainstItem = _issueAgainstList.firstWhere(
-              (item) => item.id == effectiveIssueAgainstId,
+              (item) => item.text == issueAgainstText,
             );
             _issueAgainst = issueAgainstItem.text;
-            print(
-                '✅ Mapped Issue Against: ID $effectiveIssueAgainstId -> "${issueAgainstItem.text}"');
+            print('✅ Mapped Issue Against by text: "$issueAgainstText"');
           } catch (e) {
-            print(
-                '❌ ERROR: Could not find issue against for ID: $effectiveIssueAgainstId');
-            print(
-                '   Available IDs: ${_issueAgainstList.map((e) => e.id).toList()}');
-            print(
-                '   Available texts: ${_issueAgainstList.map((e) => e.text).toList()}');
-            print('   Error: $e');
-            // Don't set _issueAgainst, leave it as null so user can select
+            _issueAgainst = issueAgainstText;
+            print('✅ Using Issue Against text from API: "$issueAgainstText"');
           }
         } else {
-          print(
-              '⚠️ Issue Against list is empty, cannot map ID: $effectiveIssueAgainstId');
+          _issueAgainst = issueAgainstText;
+        }
+      } else if (issueAgainstId != null && _issueAgainstList.isNotEmpty) {
+        try {
+          final issueAgainstItem = _issueAgainstList.firstWhere(
+            (item) => item.id == issueAgainstId,
+          );
+          _issueAgainst = issueAgainstItem.text;
+          print('✅ Mapped Issue Against by ID: $issueAgainstId -> "${issueAgainstItem.text}"');
+        } catch (e) {
+          print('❌ Could not find issue against for ID: $issueAgainstId');
+          _issueAgainst = null;
         }
       } else {
-        print(
-            'ℹ️ Issue Against and Issue Receipt Type are null in API response (field is optional)');
-        _issueAgainst = null; // Explicitly set to null
+        _issueAgainst = null;
       }
 
       // Map issue to - convert ID to text value
