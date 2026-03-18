@@ -817,6 +817,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
               selectedCount: _selectedItems.length,
               onApprove: () => _showBulkActionDialog('Approve'),
               onSendBack: () => _showBulkActionDialog('Send Back'),
+              onReject: () => _showBulkActionDialog('Reject'),
               onClear: () {
                 setState(() => _selectedItems.clear());
                 _showToast(
@@ -827,6 +828,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
               },
               canApprove: _canApproveSelected(),
               canSendBack: _canSendBackSelected(),
+              canReject: _canRejectSelected(),
             )
           : null,
     );
@@ -932,7 +934,10 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     
     return !allApproved && !allSentBack && allSubmitted;
   }
-  
+
+  /// Reject (DCR only): same eligibility as Send Back — submitted, not all approved/sent back.
+  bool _canRejectSelected() => _canSendBackSelected();
+
   Future<void> _clearAllFilters() async {
     // Get logged-in employee (manager) to set as default
     final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
@@ -1331,8 +1336,14 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       }
 
       if (mounted) {
+        final String done = switch (action) {
+          'Approve' => 'approved',
+          'Send Back' => 'sent back',
+          'Reject' => 'rejected',
+          _ => '${action.toLowerCase()}d',
+        };
         _showToast(
-          'Successfully ${action.toLowerCase()}ed ${selectedIds.length} DCR(s)',
+          'Successfully $done ${selectedIds.length} DCR(s)',
           type: ToastType.success,
           icon: Icons.check_circle,
         );
@@ -2163,7 +2174,8 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                 Builder(
                                   builder: (_) {
                                     _pendingFilterApply = () {
-                                      setState(() {
+                                      if (!mounted) return;
+                                      this.setState(() {
                                         _status = _tempStatus;
                                         _selectedEmployee = _tempEmployee;
                                         _date = _tempDate;
@@ -2932,17 +2944,21 @@ class _BottomActionBar extends StatelessWidget {
     required this.selectedCount,
     required this.onApprove,
     required this.onSendBack,
+    required this.onReject,
     required this.onClear,
     required this.canApprove,
     required this.canSendBack,
+    required this.canReject,
   });
   
   final int selectedCount;
   final VoidCallback onApprove;
   final VoidCallback onSendBack;
+  final VoidCallback onReject;
   final VoidCallback onClear;
   final bool canApprove;
   final bool canSendBack;
+  final bool canReject;
 
   @override
   Widget build(BuildContext context) {
@@ -3045,7 +3061,7 @@ class _BottomActionBar extends StatelessWidget {
                                 isEnabled: canApprove,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Expanded(
                               child: _FloatingActionButton(
                                 label: 'Send Back',
@@ -3054,6 +3070,17 @@ class _BottomActionBar extends StatelessWidget {
                                 onPressed: onSendBack,
                                 isMobile: true,
                                 isEnabled: canSendBack,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _FloatingActionButton(
+                                label: 'Reject',
+                                icon: Icons.cancel,
+                                color: Colors.red.shade700,
+                                onPressed: onReject,
+                                isMobile: true,
+                                isEnabled: canReject,
                               ),
                             ),
                           ],
@@ -3140,6 +3167,17 @@ class _BottomActionBar extends StatelessWidget {
                                 onPressed: onSendBack,
                                 isMobile: false,
                                 isEnabled: canSendBack,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _FloatingActionButton(
+                                label: 'Reject',
+                                icon: Icons.cancel,
+                                color: Colors.red.shade700,
+                                onPressed: onReject,
+                                isMobile: false,
+                                isEnabled: canReject,
                               ),
                             ),
                           ],

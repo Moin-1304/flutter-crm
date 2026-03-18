@@ -372,6 +372,11 @@ class DcrApi {
         ),
       );
 
+      // Some deployments return 204 No Content on success
+      if (response.statusCode == 204) {
+        return DcrActionResponse(status: true, message: 'Success');
+      }
+
       if (response.data != null) {
         return DcrActionResponse.fromJson(response.data);
       } else {
@@ -406,12 +411,12 @@ class DcrApi {
     }
   }
 
-  /// Bulk send back DCRs
-  Future<DcrActionResponse> bulkSendBackDcr(
+  /// Bulk reject DCRs (Action 8)
+  Future<DcrActionResponse> bulkRejectDcr(
       DcrBulkSendBackRequest request) async {
     try {
       final response = await _dioClient.dio.post(
-        Endpoints.dcrBulkSendBack,
+        Endpoints.dcrBulkReject,
         data: request.toJson(),
         options: Options(
           headers: {
@@ -420,13 +425,17 @@ class DcrApi {
         ),
       );
 
+      if (response.statusCode == 204) {
+        return DcrActionResponse(status: true, message: 'Success');
+      }
+
       if (response.data != null) {
         return DcrActionResponse.fromJson(response.data);
       } else {
         throw Exception('No response data received');
       }
     } catch (e) {
-      throw Exception('Failed to bulk send back DCRs: ${e.toString()}');
+      throw Exception('Failed to bulk reject DCRs: ${e.toString()}');
     }
   }
 

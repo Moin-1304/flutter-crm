@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../../core/data/network/dio/dio_client.dart';
@@ -284,6 +283,8 @@ class ExpenseApi {
 
   /// Send Back Single Expense
   /// URL: /api/PharmaCRM/DCR/SendBackExpenseSingle
+  /// Backend often returns HTTP 200 with an empty body; default Dio JSON decode
+  /// throws on empty body — use plain text and treat 2xx + empty as success.
   Future<ExpenseActionResponse> sendBackExpenseSingle(ExpenseActionRequest request) async {
     try {
       final response = await _dioClient.dio.post(
@@ -293,14 +294,19 @@ class ExpenseApi {
           headers: {
             'Content-Type': 'application/json',
           },
+          responseType: ResponseType.plain,
+          validateStatus: (status) => status != null && status < 500,
         ),
       );
 
-      if (response.data != null) {
-        return ExpenseActionResponse.fromJson(response.data);
-      } else {
-        throw Exception('No response data received');
+      final int code = response.statusCode ?? 0;
+      if (code >= 200 && code < 300) {
+        return ExpenseActionResponse(success: true, message: 'Expense sent back successfully');
       }
+      return ExpenseActionResponse(
+        success: false,
+        message: 'Request failed with status $code',
+      );
     } catch (e) {
       throw Exception('Failed to send back expense: ${e.toString()}');
     }

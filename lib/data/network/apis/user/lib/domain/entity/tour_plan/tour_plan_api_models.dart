@@ -984,7 +984,14 @@ class MappedCustomer {
       // Use API "text" strictly as the display name
       customerName: json['text'] ?? '',
       clusterId: json['clusterId'] ?? json['ClusterId'] ?? 0,
-      clusterName: json['clusterName'] ?? json['ClusterName'] ?? '',
+      // Some backends return "CityName"/"cityName" instead of "ClusterName"
+      clusterName: json['clusterName'] ??
+          json['ClusterName'] ??
+          json['cityName'] ??
+          json['CityName'] ??
+          json['cluster'] ??
+          json['Cluster'] ??
+          '',
       employeeId: json['employeeId'] ?? json['EmployeeId'] ?? 0,
       employeeName: json['employeeName'] ?? json['EmployeeName'] ?? '',
       isActive: json['isActive'] ?? json['IsActive'] ?? json['active'] ?? false,

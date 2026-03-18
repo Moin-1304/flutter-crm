@@ -95,7 +95,8 @@ class Endpoints {
   static String get dcrSendBackSingle =>
       "$baseUrl/PharmaCRM/DCR/SendBackSingle";
   static String get dcrBulkApprove => "$baseUrl/PharmaCRM/DCR/BulkApprove";
-  static String get dcrBulkSendBack => "$baseUrl/PharmaCRM/DCR/BulkReject";
+  /// Bulk reject DCRs (Action: 8)
+  static String get dcrBulkReject => "$baseUrl/PharmaCRM/DCR/BulkReject";
   static String get dcrValidateUser => "$baseUrl/PharmaCRM/DCR/ValidateUser";
   static String get dcrGetMapDetails =>
       "$baseUrl/PharmaCRM/DCR/GetDCRMapDetails";

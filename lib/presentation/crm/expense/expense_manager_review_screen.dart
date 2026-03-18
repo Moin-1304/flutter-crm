@@ -2157,7 +2157,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
           id: userId, // Using manager's ID as the ID
           comments: comments,
           userId: userId,
-          action: 5, // Action 5 for approve
+          action: 5, // Approve
           expenseAction: expenseActions,
         );
         
@@ -2165,19 +2165,34 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         success = response.success;
         message = response.message;
         print('Bulk Approve Response - Success: $success, Message: $message');
-      } else if (action == 'Send Back' || action == 'Reject') {
+      } else if (action == 'Send Back') {
+        // PharmaCRM/DCR/SendBackExpenseSingle per expense (Action: 4)
+        bool allOk = true;
+        String lastMsg = '';
+        for (final id in selectedExpenseIds) {
+          final map = await expenseRepo.sendBackExpenseSingle(id, comment: comments);
+          final ok = map['success'] == true;
+          if (!ok) {
+            allOk = false;
+            lastMsg = map['message']?.toString() ?? 'Send back failed';
+          }
+        }
+        success = allOk;
+        message = lastMsg;
+        print('SendBackExpenseSingle batch - Success: $success, Message: $message');
+      } else if (action == 'Reject') {
+        // BulkRejectExpense (Action: 8)
         final request = ExpenseBulkRejectRequest(
-          id: userId, // Using manager's ID as the ID
+          id: userId,
           comments: comments,
           userId: userId,
-          action: 4, // Action 4 for reject/send back
+          action: 8,
           expenseAction: expenseActions,
         );
-        
         final response = await expenseRepo.bulkRejectExpenses(request);
         success = response.success;
         message = response.message;
-        print('Bulk Reject Response - Success: $success, Message: $message');
+        print('BulkRejectExpense - Success: $success, Message: $message');
       }
 
       // Close loading dialog

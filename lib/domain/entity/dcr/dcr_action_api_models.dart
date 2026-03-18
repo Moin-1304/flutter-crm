@@ -116,9 +116,20 @@ class DcrActionResponse {
   });
 
   factory DcrActionResponse.fromJson(Map<String, dynamic> json) {
+    // Backend responses are inconsistent across endpoints/environments.
+    // Common patterns observed: { isSuccess: true }, { status: true }, { success: true }
+    final dynamic rawStatus =
+        json['isSuccess'] ?? json['status'] ?? json['success'];
+    final bool ok = rawStatus == true || rawStatus == 1 || rawStatus == '1';
+
     return DcrActionResponse(
-      status: json['isSuccess'] ?? false,
-      message: json['message'] ?? json['errorMessage'] ?? '',
+      status: ok,
+      message: (json['message'] ??
+              json['msg'] ??
+              json['errorMessage'] ??
+              json['errormessage'] ??
+              '')
+          .toString(),
     );
   }
 }

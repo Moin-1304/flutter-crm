@@ -1201,6 +1201,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 dateLabel: _formatDate(_tourPlanDate),
                                 data: _calls[i],
                                 customerOptions: _customerOptions,
+                                customerLabelBuilder: (name) {
+                                  final cluster =
+                                      _customerNameToClusterName[name]?.trim();
+                                  if (cluster == null || cluster.isEmpty) {
+                                    return name;
+                                  }
+                                  return '$name ($cluster)';
+                                },
                                 purposeOptions: _purposeOptions,
                                 productOptions: _productOptions,
                                 isViewOnly: _isViewOnlyMode,
@@ -1359,7 +1367,44 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           ? 0
           : (_clusterNameToId[_selectedClusters.first] ?? 0);
 
-      // Build details: one entry per cluster per call
+      // Enforce: for each selected cluster/city, at least one customer must be selected
+      if (_selectedClusters.isNotEmpty) {
+        String norm(String s) => s.toLowerCase().trim();
+
+        final Set<String> selectedClustersNorm =
+            _selectedClusters.map(norm).toSet();
+
+        final Set<String> clustersWithCustomersNorm = <String>{};
+        for (final call in _calls) {
+          for (final customer in call.customers) {
+            final customerCluster =
+                _customerNameToClusterName[customer]?.trim();
+            if (customerCluster == null || customerCluster.isEmpty) continue;
+            final cNorm = norm(customerCluster);
+            if (selectedClustersNorm.contains(cNorm)) {
+              clustersWithCustomersNorm.add(cNorm);
+            }
+          }
+        }
+
+        final missingClusters = _selectedClusters
+            .where((c) => !clustersWithCustomersNorm.contains(norm(c)))
+            .toList(growable: false);
+
+        if (missingClusters.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _clusterError =
+                  'Select at least one customer for each selected cluster/city';
+            });
+          }
+          _showSnack(
+              'Please select at least one customer for each selected cluster/city: ${missingClusters.join(', ')}');
+          return;
+        }
+      }
+
+      // Build details: one entry per selected customer (with its cluster)
       final List<Map<String, dynamic>> details = <Map<String, dynamic>>[];
       // Array of selected cluster IDs
       final List<int> clusterIdsArray = _selectedClusters
@@ -1372,7 +1417,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           ? clusterIdsArray 
           : (resolvedClusterId > 0 ? [resolvedClusterId] : []);
 
-      // Create one detail entry for each cluster and call combination
+      // Create one detail entry for each selected customer (per call)
       int detailIndex = 0;
       for (int callIndex = 0; callIndex < _calls.length; callIndex++) {
         final _CallData call = _calls[callIndex];
@@ -1380,36 +1425,35 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             ? 0
             : (_typeOfWorkNameToId[call.purpose!] ?? 0);
 
-        final List<int> customerIdsArray = call.customers
-            .map((name) => _customerNameToId[name] ?? 0)
-            .where((id) => id > 0)
-            .toList();
-
-        // If no clusters selected, create one detail entry per call
-        if (effectiveClusterIds.isEmpty) {
-          // Build customers array with CustomerId and ClusterId pairs
-          final List<Map<String, dynamic>> customersArray =
-              <Map<String, dynamic>>[];
-          for (int j = 0; j < call.customers.length; j++) {
-            final customerName = call.customers.elementAt(j);
-            final customerId = _customerNameToId[customerName] ?? 0;
-            customersArray.add({
-              'CustomerId': customerId,
-              'ClusterId': 0, // No cluster selected
+        // Build ProductsToBeDiscussed array with ProductId and ProductName
+        final List<Map<String, dynamic>> productsToBeDiscussedArray =
+            <Map<String, dynamic>>[];
+        for (final productName in call.products) {
+          final productId = _productNameToId[productName] ?? 0;
+          if (productId > 0) {
+            productsToBeDiscussedArray.add({
+              'ProductId': productId,
+              'ProductName': null,
             });
           }
+        }
 
-          // Build ProductsToBeDiscussed array with ProductId and ProductName
-          final List<Map<String, dynamic>> productsToBeDiscussedArray =
-              <Map<String, dynamic>>[];
-          for (final productName in call.products) {
-            final productId = _productNameToId[productName] ?? 0;
-            if (productId > 0) {
-              productsToBeDiscussedArray.add({
-                'ProductId': productId,
-                'ProductName': null,
-              });
-            }
+        for (final customerName in call.customers) {
+          final int customerId = _customerNameToId[customerName] ?? 0;
+
+          // Prefer cluster mapping returned by API for this customer; fallback if only one cluster selected
+          String clusterName =
+              (_customerNameToClusterName[customerName] ?? '').trim();
+          if (clusterName.isEmpty && _selectedClusters.length == 1) {
+            clusterName = _selectedClusters.first.trim();
+          }
+
+          int clusterId = 0;
+          if (clusterName.isNotEmpty) {
+            clusterId = _clusterNameToId[clusterName] ?? 0;
+          }
+          if (clusterId == 0 && effectiveClusterIds.length == 1) {
+            clusterId = effectiveClusterIds.first;
           }
 
           // If editing, map existing detail id from fetched item by index
@@ -1418,18 +1462,30 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                       _fullTourPlanData!.tourPlanDetails!.length > detailIndex)
                   ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
                   : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
-                          widget.tourPlanToEdit!.tourPlanDetails!.length > detailIndex)
-                      ? widget.tourPlanToEdit!.tourPlanDetails![detailIndex].id
+                          widget.tourPlanToEdit!.tourPlanDetails!.length >
+                              detailIndex)
+                      ? widget
+                          .tourPlanToEdit!.tourPlanDetails![detailIndex].id
                       : 0);
 
-          final String locationFromCustomer =
-              call.customers.isNotEmpty ? ' - ${call.customers.first}' : ' - ';
+          final List<Map<String, dynamic>> customersArray =
+              <Map<String, dynamic>>[
+            {
+              'CustomerId': customerId,
+              'ClusterId': clusterId,
+            }
+          ];
+
+          final String locationFromCustomer = clusterName.isNotEmpty
+              ? '$clusterName - $customerName'
+              : ' - $customerName';
+
           details.add({
             'Id': existingDetailId,
             'PlanDate': '${planDateStr}T06:30:00.000',
             'TypeOfWorkId': typeOfWorkId,
-            'ClusterId': 0,
-            'CustomerId': customerIdsArray.isEmpty ? 0 : customerIdsArray.first,
+            'ClusterId': clusterId,
+            'CustomerId': customerId,
             'Status': 1,
             'Remarks': call.remarksCtrl.text.trim(),
             'Location': locationFromCustomer,
@@ -1437,75 +1493,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             'Longitude': null,
             'SamplesToDistribute': call.samplesCtrl.text.trim(),
             'ProductsToDiscuss': '',
-            'ClusterNames': null,
+            'ClusterNames': clusterName.isNotEmpty ? clusterName : null,
             'Customers': customersArray,
             'ProductsToBeDiscussed': productsToBeDiscussedArray,
             'MappedInstruments': [],
           });
           detailIndex++;
-        } else {
-          // Create one detail entry for each selected cluster
-          for (int clusterIndex = 0; clusterIndex < effectiveClusterIds.length; clusterIndex++) {
-            final int clusterId = effectiveClusterIds[clusterIndex];
-            final String clusterName = _selectedClusters.elementAt(clusterIndex);
-
-            // Build customers array with CustomerId and ClusterId pairs
-            final List<Map<String, dynamic>> customersArray =
-                <Map<String, dynamic>>[];
-            for (int j = 0; j < call.customers.length; j++) {
-              final customerName = call.customers.elementAt(j);
-              final customerId = _customerNameToId[customerName] ?? 0;
-              customersArray.add({
-                'CustomerId': customerId,
-                'ClusterId': clusterId,
-              });
-            }
-
-            // Build ProductsToBeDiscussed array with ProductId and ProductName
-            final List<Map<String, dynamic>> productsToBeDiscussedArray =
-                <Map<String, dynamic>>[];
-            for (final productName in call.products) {
-              final productId = _productNameToId[productName] ?? 0;
-              if (productId > 0) {
-                productsToBeDiscussedArray.add({
-                  'ProductId': productId,
-                  'ProductName': null,
-                });
-              }
-            }
-
-            // If editing, map existing detail id from fetched item by index
-            final int existingDetailId =
-                (_fullTourPlanData?.tourPlanDetails != null &&
-                        _fullTourPlanData!.tourPlanDetails!.length > detailIndex)
-                    ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
-                    : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
-                            widget.tourPlanToEdit!.tourPlanDetails!.length > detailIndex)
-                        ? widget.tourPlanToEdit!.tourPlanDetails![detailIndex].id
-                        : 0);
-
-            final String locationFromCustomer =
-                call.customers.isNotEmpty ? '$clusterName - ${call.customers.first}' : '$clusterName - ';
-            details.add({
-              'Id': existingDetailId,
-              'PlanDate': '${planDateStr}T06:30:00.000',
-              'TypeOfWorkId': typeOfWorkId,
-              'ClusterId': clusterId, // Use the specific cluster ID for this detail
-              'CustomerId': customerIdsArray.isEmpty ? 0 : customerIdsArray.first,
-              'Status': 1,
-              'Remarks': call.remarksCtrl.text.trim(),
-              'Location': locationFromCustomer,
-              'Latitude': null,
-              'Longitude': null,
-              'SamplesToDistribute': call.samplesCtrl.text.trim(),
-              'ProductsToDiscuss': '',
-              'ClusterNames': clusterName,
-              'Customers': customersArray,
-              'ProductsToBeDiscussed': productsToBeDiscussedArray,
-              'MappedInstruments': [],
-            });
-            detailIndex++;
-          }
         }
       }
 
@@ -1540,7 +1533,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           (_isManagerOrFieldManager && _selectedEmployeeId != null)
               ? _selectedEmployeeId!
               : (userStore.userDetail?.employeeId ?? 0);
-      final String employee =
+      final String employeeName =
           (_isManagerOrFieldManager && _selectedReportingStaff != null)
               ? _selectedReportingStaff!
               : (userStore.userDetail?.employeeName ?? "");
@@ -1550,8 +1543,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       // For updates: Header Id must be TourPlanId from the list item
       final bool isNewTourPlan = widget.tourPlanToEdit == null;
-      final String headerClusterName =
-          _selectedClusters.isNotEmpty ? _selectedClusters.first : "";
+      // (kept) headerClusterName was unused; removed
 
       // Get customer type ID
       final int? customerTypeId = _selectedCustomerType != null &&
@@ -1603,7 +1595,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'Comments': [],
         'Bizunit': sbuId,
         'IsSelected': false,
-        'EmployeeName': "",
+        'EmployeeName': employeeName,
         'Designation': "",
         'StatusText': "",
         'PlanDate': '0001-01-01T00:00:00.000',
@@ -2922,7 +2914,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             _customerOptions.add(mc.customerName);
             _customerNameToId[mc.customerName] = mc.customerId;
             _customerIdToName[mc.customerId] = mc.customerName;
-            final String clusterName = mc.clusterName.trim();
+            // Cluster/city label for this customer:
+            // Prefer API-provided clusterName; if missing but clusterId exists,
+            // derive name from existing cluster list mapping.
+            String clusterName = mc.clusterName.trim();
+            if (clusterName.isEmpty && mc.clusterId > 0) {
+              try {
+                clusterName = _clusterNameToId.entries
+                    .firstWhere((e) => e.value == mc.clusterId)
+                    .key
+                    .trim();
+              } catch (_) {
+                // ignore if we can't resolve a name for this id
+              }
+            }
             if (clusterName.isNotEmpty) {
               _customerNameToClusterName[mc.customerName] = clusterName;
             }
@@ -3179,6 +3184,7 @@ class _CallCard extends StatelessWidget {
     required this.dateLabel,
     required this.data,
     required this.customerOptions,
+    this.customerLabelBuilder,
     required this.purposeOptions,
     required this.productOptions,
     this.isLoadingPurpose = false,
@@ -3196,6 +3202,7 @@ class _CallCard extends StatelessWidget {
   final String dateLabel;
   final _CallData data;
   final List<String> customerOptions;
+  final String Function(String)? customerLabelBuilder;
   final List<String> purposeOptions;
   final List<String> productOptions;
   final bool isLoadingPurpose;
@@ -3303,6 +3310,7 @@ class _CallCard extends StatelessWidget {
                 child: _MultiSelectDropdown(
                   options: customerOptions,
                   selectedValues: data.customers,
+                  labelBuilder: customerLabelBuilder,
                   hintText: 'Select customer',
                   emptyMessage: 'No customers found',
                   isEnabled: !isViewOnly,
@@ -3514,6 +3522,7 @@ class _MultiSelectDropdown extends StatefulWidget {
     required this.options,
     required this.selectedValues,
     required this.onChanged,
+    this.labelBuilder,
     this.hintText,
     this.isLoading = false,
     this.onBeforeOpen,
@@ -3523,6 +3532,7 @@ class _MultiSelectDropdown extends StatefulWidget {
   final List<String> options;
   final Set<String> selectedValues;
   final ValueChanged<Set<String>> onChanged;
+  final String Function(String value)? labelBuilder;
   final String? hintText;
   final bool isLoading;
   final Future<void> Function()? onBeforeOpen;
@@ -3591,6 +3601,11 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
       _displayController.selection =
           TextSelection.collapsed(offset: display.length);
     }
+  }
+
+  String _labelFor(String value) {
+    final builder = widget.labelBuilder;
+    return builder != null ? builder(value) : value;
   }
 
   @override
@@ -3878,7 +3893,10 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                     ? widget.options
                                     : widget.options
                                         .where((o) =>
-                                            o.toLowerCase().contains(_query))
+                                            o.toLowerCase().contains(_query) ||
+                                            _labelFor(o)
+                                                .toLowerCase()
+                                                .contains(_query))
                                         .toList(growable: false);
 
                                 // Sort to show selected items on top
@@ -3962,7 +3980,7 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                             const SizedBox(width: 14),
                                             Expanded(
                                               child: Text(
-                                                opt,
+                                                _labelFor(opt),
                                                 style: GoogleFonts.inter(
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w500,
@@ -4036,8 +4054,10 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
 
   String _summary(Set<String> values) {
     if (values.isEmpty) return '';
-    if (values.length <= 2) return values.join(', ');
-    final firstTwo = values.take(2).join(', ');
+    if (values.length <= 2) {
+      return values.map(_labelFor).join(', ');
+    }
+    final firstTwo = values.take(2).map(_labelFor).join(', ');
     return '$firstTwo +${values.length - 2}';
   }
 }

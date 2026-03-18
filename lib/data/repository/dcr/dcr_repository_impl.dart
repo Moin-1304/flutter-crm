@@ -508,8 +508,7 @@ class DcrRepositoryImpl implements DcrRepository {
         final dcrApi = getIt<DcrApi>();
         final request = DcrSendBackRequest(
           id: int.tryParse(ids.first) ?? 0,
-          action:
-              2, // Send back action (matches _mapStatusToServer where sentBack = 2)
+          action: 4, // SendBack (manager review)
           comment: comment,
         );
 
@@ -1142,42 +1141,28 @@ class DcrRepositoryImpl implements DcrRepository {
 
   @override
   Future<void> bulkSendBack(List<String> ids, {required String comment}) async {
-    try {
-      // Try to use API first for bulk send back
-      if (getIt.isRegistered<DcrApi>()) {
-        final dcrApi = getIt<DcrApi>();
-
-        // Get user data from shared preferences
-        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-        final user = await sharedPrefHelper.getUser();
-
-        if (user != null) {
-          final request = DcrBulkSendBackRequest(
-            id: user.userId ?? user.id,
-            comments: comment,
-            userId: user.userId ?? user.id,
-            action:
-                4, // Manager review send back action (Action: 4 for DCR manager review screen)
-            tourPlanDCRDetails: ids
-                .map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0))
-                .toList(),
+    // PharmaCRM/DCR/SendBackSingle per row (Action: 4)
+    if (getIt.isRegistered<DcrApi>()) {
+      final dcrApi = getIt<DcrApi>();
+      for (final idStr in ids) {
+        final int id = int.tryParse(idStr) ?? 0;
+        if (id <= 0) {
+          throw Exception('Invalid DCR detail id: $idStr');
+        }
+        final response = await dcrApi.sendBackDcr(
+          DcrSendBackRequest(id: id, action: 4, comment: comment),
+        );
+        if (!response.status) {
+          throw Exception(
+            response.message.isNotEmpty
+                ? response.message
+                : 'Send back failed for id $id',
           );
-
-          final response = await dcrApi.bulkSendBackDcr(request);
-
-          if (response.status) {
-            _bulkUpdate(ids, DcrStatus.sentBack);
-            return;
-          } else {
-            throw Exception('API bulk send back failed: ${response.message}');
-          }
         }
       }
-    } catch (e) {
-      // API bulk send back failed, falling back to local update
+      _bulkUpdate(ids, DcrStatus.sentBack);
+      return;
     }
-
-    // Fallback to local update
     _bulkUpdate(ids, DcrStatus.sentBack);
   }
 
@@ -1199,14 +1184,13 @@ class DcrRepositoryImpl implements DcrRepository {
             id: user.userId ?? user.id,
             comments: comment,
             userId: user.userId ?? user.id,
-            action:
-                4, // Reject action (matches _mapStatusToServer where rejected = 4)
+            action: 8, // Reject (BulkReject API)
             tourPlanDCRDetails: ids
                 .map((id) => DcrBulkDetail(id: int.tryParse(id) ?? 0))
                 .toList(),
           );
 
-          final response = await dcrApi.bulkSendBackDcr(request);
+          final response = await dcrApi.bulkRejectDcr(request);
 
           if (response.status) {
             _bulkUpdate(ids, DcrStatus.rejected);
