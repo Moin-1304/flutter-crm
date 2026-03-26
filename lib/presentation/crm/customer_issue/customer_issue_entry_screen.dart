@@ -248,7 +248,39 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
               '   ⚠️ WARNING: Both _pendingApiIssueData and widget.apiIssueData are null!');
           print('   This means the Get API either failed or was not called.');
         }
+
+        // New issue: default-select From/To stores.
+        // - From store: top 1 item in dropdown
+        // - To store: first item that is NOT the same as From store
+        _applyDefaultStoreSelectionIfNeeded();
       }
+    });
+  }
+
+  void _applyDefaultStoreSelectionIfNeeded() {
+    if (!mounted) return;
+    // Only for create/new screen (not edit/view)
+    if (_isEditMode || _isViewMode) return;
+
+    // Don't override user selections if already set
+    if (_fromStore != null || _toStore != null) return;
+
+    if (_fromStoreOptions.isEmpty) return;
+
+    final String defaultFrom = _fromStoreOptions.first;
+    String? defaultTo;
+    for (final s in _toStoreOptions) {
+      if (s != defaultFrom) {
+        defaultTo = s;
+        break;
+      }
+    }
+
+    setState(() {
+      _fromStore = defaultFrom;
+      _toStore = defaultTo;
+      _fromStoreError = null;
+      _toStoreError = null;
     });
   }
 

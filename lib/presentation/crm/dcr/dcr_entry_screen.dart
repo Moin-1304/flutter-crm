@@ -273,6 +273,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   String? _durationErrorText;
   String? _productsErrorText;
 
+  bool get _customerRequiredForSelectedVisitType {
+    final p = _purpose?.trim().toLowerCase() ?? '';
+    if (p.isEmpty || p == 'loading...') return true;
+    // For these visit types, customer is not applicable.
+    if (p.contains('training') || p.contains('meeting') || p.contains('conference')) {
+      return false;
+    }
+    return true;
+  }
+
   // Service Engineer specific fields
   bool _isServiceEngineer = false;
   List<String> _instrumentOptions = [];
@@ -2611,21 +2621,27 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       // 6. Customer *
       _LabeledField(
         label: 'Customer',
-        required: true,
+        required: _customerRequiredForSelectedVisitType,
         errorText: _customerErrorText,
-        child: SearchableDropdown(
-          options: _customerOptions,
-          value: _customer,
-          hintText: '-- Select Customer --',
-          searchHintText: 'Search customer...',
-          hasError: _customerErrorText != null,
-          onChanged: (v) {
-            setState(() {
-              _customer = v;
-              _customerErrorText = null;
-              _loadInstrumentsList();
-            });
-          },
+        child: Opacity(
+          opacity: _customerRequiredForSelectedVisitType ? 1.0 : 0.55,
+          child: IgnorePointer(
+            ignoring: !_customerRequiredForSelectedVisitType || _isViewOnly,
+            child: SearchableDropdown(
+              options: _customerOptions,
+              value: _customer,
+              hintText: '-- Select Customer --',
+              searchHintText: 'Search customer...',
+              hasError: _customerErrorText != null,
+              onChanged: (v) {
+                setState(() {
+                  _customer = v;
+                  _customerErrorText = null;
+                  _loadInstrumentsList();
+                });
+              },
+            ),
+          ),
         ),
       ),
       const SizedBox(height: 16),
@@ -2646,6 +2662,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             setState(() {
               _purpose = v;
               _purposeErrorText = null;
+              if (!_customerRequiredForSelectedVisitType) {
+                _customer = null;
+                _customerErrorText = null;
+              }
             });
           },
         ),
@@ -5015,7 +5035,8 @@ extension on _DcrEntryScreenState {
     }
 
     String? customerError;
-    if (_customer == null || _customer!.trim().isEmpty) {
+    if (_customerRequiredForSelectedVisitType &&
+        (_customer == null || _customer!.trim().isEmpty)) {
       customerError = 'Please select a customer';
       isValid = false;
       firstMessage ??= 'Select a customer';
@@ -5133,7 +5154,9 @@ extension on _DcrEntryScreenState {
       if (widget.dcrId != null) {
         typeOfWorkId ??= 1; // Default fallback for editing
         cityId ??= 1; // Default fallback for editing
-        customerId ??= 1; // Default fallback for editing
+        if (_customerRequiredForSelectedVisitType) {
+          customerId ??= 1; // Default fallback for editing when customer is required
+        }
       }
 
       // Debug logging
@@ -5163,7 +5186,7 @@ extension on _DcrEntryScreenState {
         print('Available clusters in map: ${_clusterNameToId.keys.toList()}');
         throw Exception('Please select a valid cluster/locality');
       }
-      if (customerId == null) {
+      if (_customerRequiredForSelectedVisitType && customerId == null) {
         print('ERROR: No customerId found for customer: $_customer');
         print('Available customers in map: ${_customerNameToId.keys.toList()}');
         throw Exception('Please select a valid customer');
@@ -5197,7 +5220,7 @@ extension on _DcrEntryScreenState {
       final params = CreateDcrParams(
         date: visit,
         cluster: _cluster!,
-        customer: _customer!,
+        customer: _customerRequiredForSelectedVisitType ? (_customer ?? '') : '',
         purposeOfVisit: _purpose!,
         callDurationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 0,
         productsDiscussed: _selectedProducts.join(', '),
@@ -5211,7 +5234,7 @@ extension on _DcrEntryScreenState {
         // Pass the IDs for API call
         typeOfWorkId: typeOfWorkId,
         cityId: cityId,
-        customerId: customerId,
+        customerId: _customerRequiredForSelectedVisitType ? customerId : null,
         userId: actualUserId,
         bizunit: userDetail.sbuId,
         latitude: _position?.latitude,
@@ -5275,7 +5298,7 @@ extension on _DcrEntryScreenState {
         final updateParams = CreateDcrParams(
           date: visit,
           cluster: _cluster!,
-          customer: _customer!,
+          customer: _customerRequiredForSelectedVisitType ? (_customer ?? '') : '',
           purposeOfVisit: _purpose!,
           callDurationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 0,
           productsDiscussed: _selectedProducts.join(', '),
@@ -5288,7 +5311,7 @@ extension on _DcrEntryScreenState {
           geoProximity: _atLocation ? GeoProximity.at : GeoProximity.away,
           typeOfWorkId: typeOfWorkId,
           cityId: cityId,
-          customerId: customerId,
+          customerId: _customerRequiredForSelectedVisitType ? customerId : null,
           userId: actualUserId,
           bizunit: userDetail.sbuId,
           latitude: _position?.latitude,

@@ -62,7 +62,6 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
       _currentExpenseStatus; // Store the current expense status (e.g., "Draft", "Submitted")
   int?
       _currentExpenseStatusId; // Store the current expense status ID (e.g., 1 for Draft, 3 for Submitted)
-  String? _clusterErrorText;
   bool _isInitializing = true;
 
   // Multiple expense details
@@ -170,7 +169,6 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
               detail.expenseTypeError = null;
               detail.amountError = null;
               detail.remarksError = null;
-              _clusterErrorText = null;
 
               print('After setting expense data:');
               print('  - Expense Type: ${detail.expenseType}');
@@ -249,7 +247,6 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                     ..amountError = null
                     ..remarksError = null
                 ];
-                _clusterErrorText = null;
               });
             }
           }
@@ -315,8 +312,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
               ? const Center(
                   child: CircularProgressIndicator(
                     strokeWidth: 3,
-                    valueColor:
-                        AlwaysStoppedAnimation(Color(0xFF4db1b3)),
+                    valueColor: AlwaysStoppedAnimation(Color(0xFF4db1b3)),
                   ),
                 )
               : SingleChildScrollView(
@@ -349,17 +345,14 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                           const SizedBox(height: 12),
                           _Labeled(
                             label: 'Cluster / City',
-                            required: true,
-                            errorText: _clusterErrorText,
+                            required: false,
                             child: SearchableDropdown(
                               options: _clusterOptions,
                               value: _cluster,
                               hintText: '-- Select City --',
                               searchHintText: 'Search city...',
-                              hasError: _clusterErrorText != null,
                               onChanged: (v) => setState(() {
                                 _cluster = v;
-                                _clusterErrorText = null;
                                 // Clear linked DCR when city changes
                                 _linkedDcrId = null;
                                 _refreshDcrListIfNeeded();
@@ -844,9 +837,11 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
 
-        print('FilePicker: File selected - Name: ${file.name}, Size: ${file.size} bytes');
+        print(
+            'FilePicker: File selected - Name: ${file.name}, Size: ${file.size} bytes');
         print('FilePicker: File path: ${file.path}');
-        print('FilePicker: File bytes available: ${file.bytes != null ? 'Yes (${file.bytes!.length} bytes)' : 'No'}');
+        print(
+            'FilePicker: File bytes available: ${file.bytes != null ? 'Yes (${file.bytes!.length} bytes)' : 'No'}');
         print('FilePicker: File extension: ${file.extension}');
 
         // Check file size (limit to 10MB)
@@ -895,13 +890,6 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
     String? firstMessage;
     int? firstInvalidDetailIndex;
 
-    String? clusterError;
-    if (_cluster == null || _cluster!.trim().isEmpty) {
-      clusterError = 'Please select a cluster / city';
-      isValid = false;
-      firstMessage ??= 'Select a cluster / city';
-    }
-
     for (int i = 0; i < _expenseDetails.length; i++) {
       final detail = _expenseDetails[i];
       detail.expenseTypeError = null;
@@ -944,7 +932,6 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
     }
 
     setState(() {
-      _clusterErrorText = clusterError;
       if (firstInvalidDetailIndex != null) {
         _expandedIndex = firstInvalidDetailIndex!;
       }
@@ -999,8 +986,10 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
       }
 
       // Get cluster ID
-      final cityId =
-          _clusterNameToId[_cluster!] ?? 150953; // Default to Andheri East
+      final String? clusterName = _cluster?.trim();
+      final int? cityId = (clusterName == null || clusterName.isEmpty)
+          ? 0
+          : _clusterNameToId[clusterName];
 
       // Process each expense detail
       for (final detail in _expenseDetails) {
@@ -1027,7 +1016,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
           dcrId: _linkedDcrId != null ? int.tryParse(_linkedDcrId!) : 0,
           dateOfExpense: dateFormatted,
           employeeId: employeeId,
-          cityId: cityId,
+          cityId: cityId ?? 0,
           clusterId: submit
               ? cityId
               : null, // Only set clusterId for submitted expenses
@@ -1070,7 +1059,8 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
         if (detail.receiptFile != null) {
           print('File selected for upload: ${detail.receiptFile!.name}');
           print('File path: ${detail.receiptFile!.path}');
-          print('File bytes: ${detail.receiptFile!.bytes != null ? 'Available (${detail.receiptFile!.bytes!.length} bytes)' : 'Not available'}');
+          print(
+              'File bytes: ${detail.receiptFile!.bytes != null ? 'Available (${detail.receiptFile!.bytes!.length} bytes)' : 'Not available'}');
           print('File size: ${detail.receiptFile!.size} bytes');
           filesToUpload.add(detail.receiptFile!);
         } else {
@@ -1078,7 +1068,8 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
         }
 
         print('Files to upload count: ${filesToUpload.length}');
-        final result = await repo.saveExpenseToApi(apiParams, files: filesToUpload.isNotEmpty ? filesToUpload : null);
+        final result = await repo.saveExpenseToApi(apiParams,
+            files: filesToUpload.isNotEmpty ? filesToUpload : null);
         print('Expense saved to API: $result');
       }
 

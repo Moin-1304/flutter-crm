@@ -237,6 +237,23 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     return statusText.contains('approved');
   }
 
+  bool _isSentBack(UnifiedDcrItem item) {
+    final statusText = item.statusText.trim().toLowerCase();
+    return statusText.contains('sent back') || statusText.contains('send back');
+  }
+
+  bool _isRejected(UnifiedDcrItem item) {
+    if (item.isDcr && item.dcrStatusId == 4) return true;
+    final statusText = item.statusText.trim().toLowerCase();
+    return statusText.contains('rejected');
+  }
+
+  bool _isSelectableForBulkReview(UnifiedDcrItem item) {
+    // Manager bulk actions are only valid for "Submitted" items.
+    // Hide the checkbox entirely for "Sent Back" and "Rejected" items.
+    return _isSubmittedStatus(item) && !_isApproved(item) && !_isSentBack(item) && !_isRejected(item);
+  }
+
   /// Build empty state widget for manager review when no DCRs are available
   Widget _buildManagerReviewEmptyState() {
     return Container(
@@ -776,10 +793,11 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                       child: _ManagerReviewUnifiedItemCard(
                         item: item,
                         isSelected: _selectedItems.contains(item.id.toString()),
-                        isEnabled: !_isApproved(item), // Disable selection for approved DCRs
+                        showCheckbox: _isSelectableForBulkReview(item),
+                        isEnabled: _isSelectableForBulkReview(item),
                         onSelectionChanged: (selected) {
-                          // Only allow selection if item is not approved
-                          if (!_isApproved(item)) {
+                          // Only allow selection for items eligible for bulk review actions
+                          if (_isSelectableForBulkReview(item)) {
                             setState(() {
                               if (selected) {
                                 _selectedItems.add(item.id.toString());
@@ -2605,6 +2623,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
     required this.isSelected,
     required this.onSelectionChanged,
     required this.onViewDetails,
+    this.showCheckbox = true,
     this.isEnabled = true, // Default to enabled
   });
   
@@ -2612,6 +2631,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
   final bool isSelected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onViewDetails;
+  final bool showCheckbox;
   final bool isEnabled; // Whether the item can be selected
 
   @override
@@ -2654,20 +2674,23 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                SizedBox(
-                  width: isTablet ? 20 : 18,
-                  height: isTablet ? 20 : 18,
-                  child: Checkbox(
-                    value: isSelected,
-                    onChanged: isEnabled ? (value) => onSelectionChanged(value ?? false) : null,
-                    activeColor: const Color(0xFF4db1b3),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                if (showCheckbox)
+                  SizedBox(
+                    width: isTablet ? 20 : 18,
+                    height: isTablet ? 20 : 18,
+                    child: Checkbox(
+                      value: isSelected,
+                      onChanged: isEnabled ? (value) => onSelectionChanged(value ?? false) : null,
+                      activeColor: const Color(0xFF4db1b3),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
                     ),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-                  ),
-                ),
+                  )
+                else
+                  SizedBox(width: isTablet ? 20 : 18, height: isTablet ? 20 : 18),
                 const SizedBox(width: 8),
                 Container(
                   width: isTablet ? 40 : 36,

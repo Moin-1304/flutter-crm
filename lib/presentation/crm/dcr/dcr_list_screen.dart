@@ -26,6 +26,8 @@ import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.da
 
 const String kFilterClearToken = '__CLEAR__';
 
+enum _DateFilterMode { day, range }
+
 /// Daily Call Report screen (My DCR) – styled closely to the provided mock
 class DcrListScreen extends StatefulWidget {
   const DcrListScreen({super.key});
@@ -36,13 +38,66 @@ class DcrListScreen extends StatefulWidget {
 
 class _DcrListScreenState extends State<DcrListScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  // Initialize to first day of current month for month-wise filtering
-  DateTime _date = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  // Date filter (defaults to current day)
+  _DateFilterMode _dateFilterMode = _DateFilterMode.day;
+  DateTime _selectedDay = DateTime.now();
+  DateTimeRange _selectedRange =
+      DateTimeRange(start: DateTime.now(), end: DateTime.now());
   String? _status;
   String? _employee; // managers only
   List<UnifiedDcrItem> _unifiedItems = const [];
   Position? _currentPosition;
   double _geoFenceRadiusMeters = 5000; // 5 km in meters
+
+  static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _isDefaultDateFilter() {
+    final today = _dayOnly(DateTime.now());
+    if (_dateFilterMode == _DateFilterMode.day) {
+      return _dayOnly(_selectedDay) == today;
+    }
+    return _dayOnly(_selectedRange.start) == today &&
+        _dayOnly(_selectedRange.end) == today;
+  }
+
+  static String _formatDateRange(DateTimeRange r) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    String fmt(DateTime d) =>
+        '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
+    return '${fmt(r.start)} - ${fmt(r.end)}';
+  }
+
+  static String _formatSingleDay(DateTime d) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    final dd = d.day.toString().padLeft(2, '0');
+    return '$dd ${months[d.month - 1]} ${d.year}';
+  }
 
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = {};
@@ -197,11 +252,16 @@ class _DcrListScreenState extends State<DcrListScreen>
         return;
       }
 
-      // Calculate first and last day of the selected month
-      final DateTime start =
-          DateTime(_date.year, _date.month, 1); // First day of month
-      final DateTime end =
-          DateTime(_date.year, _date.month + 1, 0); // Last day of month
+      final DateTime start;
+      final DateTime end;
+      if (_dateFilterMode == _DateFilterMode.day) {
+        final d = _dayOnly(_selectedDay);
+        start = d;
+        end = d;
+      } else {
+        start = _dayOnly(_selectedRange.start);
+        end = _dayOnly(_selectedRange.end);
+      }
       final DcrRepository? dcrRepo =
           getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
 
@@ -380,9 +440,9 @@ class _DcrListScreenState extends State<DcrListScreen>
       _status = null;
       _selectedTransactionTypes = {'DCR', 'Expense'}; // Reset to both selected
       // Preserve employee filter selection even when clearing
-      final now = DateTime.now();
-      _date = DateTime(
-          now.year, now.month, 1); // Reset to first day of current month
+      _dateFilterMode = _DateFilterMode.day;
+      _selectedDay = DateTime.now();
+      _selectedRange = DateTimeRange(start: _selectedDay, end: _selectedDay);
     });
     await _load();
     _showToast(
@@ -394,9 +454,7 @@ class _DcrListScreenState extends State<DcrListScreen>
 
   // Check if any filters are active
   bool _hasActiveFilters() {
-    final DateTime now = DateTime.now();
-    final bool isDateFiltered =
-        !(_date.year == now.year && _date.month == now.month);
+    final bool isDateFiltered = !_isDefaultDateFilter();
     final bool isTransactionTypeFiltered =
         _selectedTransactionTypes.length != 2;
     return _status != null ||
@@ -1165,13 +1223,12 @@ class _DcrListScreenState extends State<DcrListScreen>
       tags.add(_buildFilterTag(_employee!, isMobile, tealGreen));
     }
 
-    // Date tag if not today
-    final DateTime today = DateTime.now();
-    final bool isDateFiltered = !(_date.year == today.year &&
-        _date.month == today.month &&
-        _date.day == today.day);
-    if (isDateFiltered) {
-      tags.add(_buildFilterTag(_formatDate(_date), isMobile, tealGreen));
+    // Date tag
+    if (!_isDefaultDateFilter()) {
+      final label = _dateFilterMode == _DateFilterMode.day
+          ? _formatSingleDay(_selectedDay)
+          : _formatDateRange(_selectedRange);
+      tags.add(_buildFilterTag(label, isMobile, tealGreen));
     }
 
     if (tags.isEmpty) return const SizedBox.shrink();
@@ -1231,7 +1288,9 @@ class _DcrListScreenState extends State<DcrListScreen>
     // Temp selections that live for the lifetime of the modal (StatefulBuilder rebuilds won't reset these)
     String? _tempStatus = _status;
     String? _tempEmployee = _employee;
-    DateTime _tempDate = _date;
+    _DateFilterMode _tempMode = _dateFilterMode;
+    DateTime _tempDay = _selectedDay;
+    DateTimeRange _tempRange = _selectedRange;
     // Keep transaction types local to the modal until Apply is pressed
     final Set<String> _tempTransactionTypes = {..._selectedTransactionTypes};
     return GestureDetector(
@@ -1412,20 +1471,171 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   ),
                                 ),
                                 const SizedBox(height: 12),
+                                // One day / Date range toggle
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.grey.shade200,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: InkWell(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          onTap: () {
+                                            setModalState(() {
+                                              _tempMode = _DateFilterMode.day;
+                                              _tempDay = _dayOnly(_tempDay);
+                                              _tempRange = DateTimeRange(
+                                                  start: _tempDay,
+                                                  end: _tempDay);
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tempMode ==
+                                                      _DateFilterMode.day
+                                                  ? Colors.white
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                'One day',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _tempMode ==
+                                                          _DateFilterMode.day
+                                                      ? Colors.grey[900]
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: InkWell(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          onTap: () {
+                                            setModalState(() {
+                                              _tempMode =
+                                                  _DateFilterMode.range;
+                                              final s = _dayOnly(_tempRange.start);
+                                              final e = _dayOnly(_tempRange.end);
+                                              _tempRange =
+                                                  DateTimeRange(start: s, end: e);
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tempMode ==
+                                                      _DateFilterMode.range
+                                                  ? Colors.white
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                'Date range',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _tempMode ==
+                                                          _DateFilterMode.range
+                                                      ? Colors.grey[900]
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
                                 _EnhancedDateSelector(
-                                  label: _formatDate(_tempDate),
-                                  isActive: !_isToday(_tempDate),
+                                  label: _tempMode == _DateFilterMode.day
+                                      ? _formatSingleDay(_tempDay)
+                                      : _formatDateRange(_tempRange),
+                                  isActive: _tempMode == _DateFilterMode.day
+                                      ? _dayOnly(_tempDay) != _dayOnly(DateTime.now())
+                                      : !(_dayOnly(_tempRange.start) ==
+                                              _dayOnly(DateTime.now()) &&
+                                          _dayOnly(_tempRange.end) ==
+                                              _dayOnly(DateTime.now())),
                                   onTap: () async {
-                                    // Show month/year picker
-                                    final DateTime? picked =
-                                        await _showMonthYearPicker(
-                                            context, _tempDate, tealGreen);
-                                    if (picked != null) {
-                                      setModalState(() {
-                                        // Set to first day of selected month
-                                        _tempDate = DateTime(
-                                            picked.year, picked.month, 1);
-                                      });
+                                    if (_tempMode == _DateFilterMode.day) {
+                                      final DateTime? picked =
+                                          await showDatePicker(
+                                        context: context,
+                                        initialDate: _dayOnly(_tempDay),
+                                        firstDate: DateTime(2000, 1, 1),
+                                        lastDate: DateTime.now()
+                                            .add(const Duration(days: 365)),
+                                        builder: (context, child) {
+                                          final theme = Theme.of(context);
+                                          return Theme(
+                                            data: theme.copyWith(
+                                              colorScheme:
+                                                  theme.colorScheme.copyWith(
+                                                primary: tealGreen,
+                                              ),
+                                            ),
+                                            child: child ??
+                                                const SizedBox.shrink(),
+                                          );
+                                        },
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() {
+                                          _tempDay = _dayOnly(picked);
+                                          _tempRange = DateTimeRange(
+                                              start: _tempDay, end: _tempDay);
+                                        });
+                                      }
+                                    } else {
+                                      final DateTimeRange? picked =
+                                          await showDateRangePicker(
+                                        context: context,
+                                        firstDate: DateTime(2000, 1, 1),
+                                        lastDate: DateTime.now().add(
+                                            const Duration(days: 365)),
+                                        initialDateRange: _tempRange,
+                                        builder: (context, child) {
+                                          final theme = Theme.of(context);
+                                          return Theme(
+                                            data: theme.copyWith(
+                                              colorScheme:
+                                                  theme.colorScheme.copyWith(
+                                                primary: tealGreen,
+                                                secondary: tealGreen,
+                                              ),
+                                            ),
+                                            child: child ??
+                                                const SizedBox.shrink(),
+                                          );
+                                        },
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() => _tempRange = picked);
+                                      }
                                     }
                                   },
                                 ),
@@ -1470,7 +1680,9 @@ class _DcrListScreenState extends State<DcrListScreen>
                                         ..addAll(_tempTransactionTypes);
                                       _status = _tempStatus;
                                       _employee = _tempEmployee;
-                                      _date = _tempDate;
+                                      _dateFilterMode = _tempMode;
+                                      _selectedDay = _tempDay;
+                                      _selectedRange = _tempRange;
                                     });
                                   };
                                   return const SizedBox.shrink();
@@ -2563,6 +2775,11 @@ class _DcrListScreenState extends State<DcrListScreen>
 
   List<Widget> _buildDcrDetailContent(BuildContext ctx,
       UnifiedDcrItem displayItem, UnifiedDcrItem item, bool isTablet) {
+    final String clusterRaw = displayItem.clusterNames.trim();
+    final bool hasCluster = clusterRaw.isNotEmpty;
+    final String customerName = displayItem.customerName.trim();
+    final bool hasCustomer =
+        customerName.isNotEmpty && customerName != 'Unknown Customer' && displayItem.customerId != 0;
     return [
       _DetailRow('Transaction Type', displayItem.transactionType),
       const SizedBox(height: 12),
@@ -2574,15 +2791,19 @@ class _DcrListScreenState extends State<DcrListScreen>
         _DetailRow('Designation', displayItem.designation),
         const SizedBox(height: 12),
       ],
-      _DetailRow('Cluster', displayItem.clusterDisplayName),
-      const SizedBox(height: 12),
+      if (hasCluster) ...[
+        _DetailRow('Cluster', displayItem.clusterDisplayName),
+        const SizedBox(height: 12),
+      ],
       _DetailRow('Status', displayItem.statusText),
       if (displayItem.isDcr) ...[
         const SizedBox(height: 20),
         Divider(height: 1, color: Colors.grey.shade300),
         const SizedBox(height: 20),
-        _DetailRow('Customer', displayItem.customerName),
-        const SizedBox(height: 12),
+        if (hasCustomer) ...[
+          _DetailRow('Customer', customerName),
+          const SizedBox(height: 12),
+        ],
         _DetailRow('Purpose', displayItem.typeOfWork),
         const SizedBox(height: 12),
         if (displayItem.samplesToDistribute != null &&
@@ -4045,6 +4266,9 @@ class _DcrDetails extends StatelessWidget {
         .textTheme
         .bodyLarge
         ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final String trimmedCustomer = customer.trim();
+    final bool showCustomer =
+        trimmedCustomer.isNotEmpty && trimmedCustomer != 'Unknown Customer';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4068,18 +4292,20 @@ class _DcrDetails extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: Text('Customer', style: label)),
-            Expanded(
-                child: Text(customer,
-                    style: value,
-                    textAlign: TextAlign.right,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2)),
-          ],
-        ),
-        const SizedBox(height: 12),
+        if (showCustomer) ...[
+          Row(
+            children: [
+              Expanded(child: Text('Customer', style: label)),
+              Expanded(
+                  child: Text(trimmedCustomer,
+                      style: value,
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2)),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         Row(
           children: [
             Expanded(child: Text('Purpose', style: label)),
@@ -4186,11 +4412,14 @@ class _ExpenseDetails extends StatelessWidget {
         .textTheme
         .bodyLarge
         ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final String trimmedCluster = cluster.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _row('Cluster', cluster, label, value),
-        const SizedBox(height: 12),
+        if (trimmedCluster.isNotEmpty) ...[
+          _row('Cluster', trimmedCluster, label, value),
+          const SizedBox(height: 12),
+        ],
         _row('Customer', expenseTitle, label, value),
         const SizedBox(height: 12),
         Row(
@@ -4252,6 +4481,9 @@ class _DcrCompactCard extends StatelessWidget {
         ?.copyWith(color: Colors.black45, fontWeight: FontWeight.w600);
     final TextStyle? value = theme.textTheme.bodyLarge
         ?.copyWith(color: const Color(0xFF12223B), fontWeight: FontWeight.w800);
+    final String trimmedCustomer = customer.trim();
+    final bool showCustomer =
+        trimmedCustomer.isNotEmpty && trimmedCustomer != 'Unknown Customer';
     final bool inRange = geo == GeoProximity.at;
     return Container(
       decoration: BoxDecoration(
@@ -4309,8 +4541,10 @@ class _DcrCompactCard extends StatelessWidget {
           const SizedBox(height: 12),
           _kvRow('Cluster', cluster, label, value),
           const SizedBox(height: 10),
-          _kvRow('Customer', customer, label, value),
-          const SizedBox(height: 10),
+          if (showCustomer) ...[
+            _kvRow('Customer', trimmedCustomer, label, value),
+            const SizedBox(height: 10),
+          ],
           _kvRow('Purpose', purpose, label, value),
         ],
       ),
@@ -4734,7 +4968,7 @@ extension _Grouping on _DcrListScreenState {
     // Count employee only if the filter is enabled (not MR role)
     if (_employee != null && !_shouldDisableEmployeeFilter()) count++;
     // Count date if not today
-    if (!_DcrListScreenState._isToday(_date)) count++;
+    if (!_isDefaultDateFilter()) count++;
     return count;
   }
 

@@ -42,20 +42,21 @@ class DcrRepositoryImpl implements DcrRepository {
           }
         }
 
+        final bool isCustomerRequired =
+            _isCustomerRequiredForVisitType(params.purposeOfVisit);
+
         // Validate required IDs
-        if (params.typeOfWorkId == null ||
-            params.cityId == null ||
-            params.customerId == null) {
-          throw Exception(
-              'Missing required IDs (typeOfWorkId, cityId, or customerId)');
+        if (params.typeOfWorkId == null || params.cityId == null) {
+          throw Exception('Missing required IDs (typeOfWorkId or cityId)');
+        }
+        if (isCustomerRequired && params.customerId == null) {
+          throw Exception('Missing required ID (customerId)');
         }
 
         // Create tour plan DCR details with IDs from params
         final int? linkedTourPlanIdInt =
             int.tryParse(params.linkedTourPlanId ?? '');
 
-        // Check if this is an update (dcrId or detailId provided)
-        final bool isUpdate = params.dcrId != null || params.detailId != null;
         final int? dcrIdInt =
             params.dcrId != null ? int.tryParse(params.dcrId!) : null;
 
@@ -65,7 +66,7 @@ class DcrRepositoryImpl implements DcrRepository {
             planDate: params.date.toIso8601String().split('T')[0],
             typeOfWorkId: params.typeOfWorkId!,
             cityId: params.cityId!,
-            customerId: params.customerId!,
+            customerId: params.customerId ?? 0,
             statusId: params.submit
                 ? 3
                 : 0, // 3 for submitted as per API, 0 for draft
@@ -246,6 +247,17 @@ class DcrRepositoryImpl implements DcrRepository {
     );
     _items.add(entry);
     return entry;
+  }
+
+  bool _isCustomerRequiredForVisitType(String purposeOfVisit) {
+    final p = purposeOfVisit.trim().toLowerCase();
+    if (p.isEmpty) return true;
+    if (p.contains('training') ||
+        p.contains('meeting') ||
+        p.contains('conference')) {
+      return false;
+    }
+    return true;
   }
 
   @override

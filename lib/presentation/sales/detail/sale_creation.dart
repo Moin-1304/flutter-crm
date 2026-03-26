@@ -180,7 +180,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     super.initState();
     // Initialize with default values first to prevent null errors
     _contractDate = DateTime.now();
-    _deliveryDate = DateTime.now().add(const Duration(days: 7));
+    _deliveryDate = DateTime.now();
 
     // Load tax and discount options for Tax section dropdowns
     _loadTaxOptionsForTaxSection();
@@ -608,7 +608,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       try {
         _deliveryDate = DateTime.parse(orderData.deliveryDate!);
       } catch (e) {
-        _deliveryDate = DateTime.now().add(const Duration(days: 7));
+        _deliveryDate = DateTime.now();
       }
     }
 
@@ -2191,7 +2191,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
   void _loadNewModeData() {
     _contractDate = DateTime.now();
-    _deliveryDate = DateTime.now().add(const Duration(days: 7));
+    _deliveryDate = DateTime.now();
     _reqdDate = null; // Will be calculated from items when added
     _soNumber = null; // Auto-generated
     _selectedType = null;
@@ -5702,15 +5702,27 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         ? _workflowActions.first.processActionId
         : null;
 
-    // Get dynamic userId from user
+    // Get dynamic userId from user (login user)
     final dynamicUserId = user.userId;
+
+    // Backend requirement:
+    // - New (Submit / Save as new): UserId = login userId
+    // - Edit / Amend: UserId = CreatedBy from GET response
+    final int payloadUserId = _isEditMode
+        ? (_loadedOrderData?.createdBy ??
+            _loadedOrderData?.actualCreatedBy ??
+            dynamicUserId)
+        : dynamicUserId;
 
     // Console logging for dynamic values
     print('═══════════════════════════════════════════════════════════');
     print('📤 Sales Order Save - Dynamic Values');
     print('═══════════════════════════════════════════════════════════');
-    print('User ID: $dynamicUserId (from user.userId)');
-    print('Created By: ${user.userId}');
+    print('Login User ID: $dynamicUserId (from user.userId)');
+    print(
+        'Payload UserId: $payloadUserId (${_isEditMode ? "EDIT/AMEND uses CreatedBy from GET" : "NEW uses login user"})');
+    print(
+        'Loaded Order CreatedBy (GET): ${_loadedOrderData?.createdBy}, ActualCreatedBy (GET): ${_loadedOrderData?.actualCreatedBy}');
     print('Customer ID: $customerId');
     print('Customer Name: ${_selectedCustomer?.name}');
     print(
@@ -5727,7 +5739,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       sbuId: finalSbuId, // Must be DistributorId per backend requirement
       company: 1, // Default - should be from user/config
       bizunit: finalBizUnit, // Must be DistributorId per backend requirement
-      userId: dynamicUserId, // Dynamic userId from user
+      userId: payloadUserId,
       workflowFlag: workflowFlag,
       code: 'SO',
       department: 1, // Default - should be from user/config
@@ -5896,12 +5908,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
           if (!_isEditMode) {
             // For new orders, navigate back to listing screen with success result
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Order created successfully'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
+            ToastMessage.show(
+              context,
+              message: 'Order drafted successfully',
+              type: ToastType.success,
+              icon: Icons.check_circle_outline,
+              duration: const Duration(seconds: 2),
             );
             // Pop with result to trigger refresh in listing screen
             Navigator.of(context).pop(true);
@@ -5909,11 +5921,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           }
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Order saved as draft successfully'),
-            backgroundColor: Colors.green,
-          ),
+        ToastMessage.show(
+          context,
+          message: 'Draft order edited successfully',
+          type: ToastType.success,
+          icon: Icons.check_circle_outline,
         );
       } else {
         throw Exception(response.message ?? 'Failed to save order');

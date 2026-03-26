@@ -373,7 +373,7 @@ class DcrApi {
       );
 
       // Some deployments return 204 No Content on success
-      if (response.statusCode == 204) {
+      if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
         return DcrActionResponse(status: true, message: 'Success');
       }
 

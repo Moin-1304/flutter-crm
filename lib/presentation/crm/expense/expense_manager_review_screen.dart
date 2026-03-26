@@ -1777,6 +1777,8 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
     final double mobileMaxContentHeight = MediaQuery.of(context).size.height * 0.7;
 
     List<Widget> buildDetailRows(BuildContext ctx) {
+      final String clusterText =
+          (expenseDetails?.clusterNames ?? item.cluster).trim();
       return [
         _DetailRow('Transaction Type', 'Expense'),
         const SizedBox(height: 12),
@@ -1784,8 +1786,10 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         const SizedBox(height: 12),
         _DetailRow('Employee', expenseDetails?.employeeName ?? item.employeeName),
         const SizedBox(height: 12),
-        _DetailRow('Cluster', expenseDetails?.clusterNames ?? item.cluster),
-        const SizedBox(height: 12),
+        if (clusterText.isNotEmpty) ...[
+          _DetailRow('Cluster', clusterText),
+          const SizedBox(height: 12),
+        ],
         _DetailRow('Status', _getStatusText(item.status)),
         const SizedBox(height: 20),
         Divider(height: 1, color: Colors.grey.shade300),

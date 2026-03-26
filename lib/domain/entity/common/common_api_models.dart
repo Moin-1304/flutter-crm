@@ -2050,13 +2050,21 @@ class ItemDetailResponse {
 
     return ItemDetailResponse(
       item: parseInt(json['Item'] ?? json['item']),
-      rate: parseDouble(json['Rate'] ?? json['rate'] ?? json['WholesaleRate'] ?? json['wholesaleRate']),
+      rate: parseDouble(json['Rate'] ??
+          json['rate'] ??
+          json['WholesaleRate'] ??
+          json['wholesaleRate']),
       retailRate: parseDouble(json['RetailRate'] ?? json['retailRate']),
       mrp: parseDouble(json['MRP'] ?? json['mrp'] ?? json['MaxRetailPrice']),
-      unitPrice:
-          parseDouble(json['UnitPrice'] ?? json['unitPrice'] ?? json['Price'] ?? json['rate'] ?? json['Rate']),
+      unitPrice: parseDouble(json['UnitPrice'] ??
+          json['unitPrice'] ??
+          json['Price'] ??
+          json['rate'] ??
+          json['Rate']),
       uom: parseInt(json['UOM'] ?? json['uom'] ?? json['Uom']),
-      uomText: json['UOMText']?.toString() ?? json['uomText']?.toString() ?? json['UomText']?.toString(),
+      uomText: json['UOMText']?.toString() ??
+          json['uomText']?.toString() ??
+          json['UomText']?.toString(),
       discount: parseDouble(json['Discount'] ?? json['discount']),
       amount: parseDouble(json['Amount'] ?? json['amount']),
       itemText: json['ItemText']?.toString() ?? json['itemText']?.toString(),

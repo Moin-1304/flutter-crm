@@ -3,7 +3,7 @@ class ExpenseSaveRequest {
   final int dcrId;
   final String dateOfExpense;
   final int employeeId;
-  final int cityId;
+  final int? cityId;
   final int? clusterId;
   final int bizUnit;
   final int expenceType;
@@ -22,7 +22,7 @@ class ExpenseSaveRequest {
     required this.dcrId,
     required this.dateOfExpense,
     required this.employeeId,
-    required this.cityId,
+    this.cityId,
     this.clusterId,
     required this.bizUnit,
     required this.expenceType,

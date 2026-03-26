@@ -20,7 +20,7 @@ class ExpenseApi {
   }) async {
     try {
       print('Uploading file: ${file.name}');
-      
+
       // Prepare file for upload
       MultipartFile multipartFile;
       if (file.bytes != null) {
@@ -56,7 +56,7 @@ class ExpenseApi {
       );
 
       print('File upload response: ${response.data}');
-      
+
       if (response.data != null) {
         return FileUploadResponse.fromJson(response.data);
       } else {
@@ -104,26 +104,27 @@ class ExpenseApi {
       // If files are provided, upload them first using Option 1 (File Upload API)
       if (files != null && files.isNotEmpty) {
         final attachmentsWithFilePath = <ExpenseAttachment>[];
-        
+
         for (final file in files) {
           print('Processing file: ${file.name}');
-          
+
           try {
             // Upload file using Option 1 (File Upload API)
             final uploadResponse = await uploadFile(
               file,
               relativePath: 'Uploads/Attachments/DCR/Expenses',
             );
-            
+
             print('File uploaded successfully:');
             print('  - Original fileName: ${file.name}');
             print('  - Uploaded fileName: ${uploadResponse.fileName}');
             print('  - Uploaded path: ${uploadResponse.path}');
-            
+
             // Determine file type from extension
             final extension = file.extension?.toLowerCase() ?? '';
             String fileType = 'FILE';
-            if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(extension)) {
+            if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']
+                .contains(extension)) {
               fileType = 'IMG';
             } else if (extension == 'pdf') {
               fileType = 'PDF';
@@ -136,18 +137,20 @@ class ExpenseApi {
             } else if (extension == 'txt') {
               fileType = 'TXT';
             }
-            
+
             // Use the fileName and path returned from the upload API
             attachmentsWithFilePath.add(
               ExpenseAttachment(
-                fileName: uploadResponse.fileName, // Use fileName from upload response
+                fileName: uploadResponse
+                    .fileName, // Use fileName from upload response
                 fileType: fileType, // IMG, PDF, DOC, etc.
                 filePath: uploadResponse.path, // Use path from upload response
-                type: extension.isNotEmpty ? extension : 'file', // File extension
+                type:
+                    extension.isNotEmpty ? extension : 'file', // File extension
                 fileData: null, // No FileData - not included in request
               ),
             );
-            
+
             print('Attachment prepared with uploaded fileName and path');
           } catch (uploadError) {
             print('Error uploading file ${file.name}: $uploadError');
@@ -156,7 +159,7 @@ class ExpenseApi {
             print('Skipping file ${file.name} due to upload error');
           }
         }
-        
+
         // Create request with attachments containing fileName and path from upload API
         final requestWithFiles = ExpenseSaveRequest(
           id: request.id,
@@ -177,25 +180,28 @@ class ExpenseApi {
           employeeName: request.employeeName,
           attachments: attachmentsWithFilePath,
         );
-        
+
         final requestJson = requestWithFiles.toJson();
-        
+
         // Verify the JSON structure
         print('=== FINAL REQUEST STRUCTURE ===');
         print('Request JSON keys: ${requestJson.keys.toList()}');
         print('Attachments count: ${requestJson['Attachments']?.length ?? 0}');
-        
-        if (requestJson['Attachments'] != null && (requestJson['Attachments'] as List).isNotEmpty) {
-          final firstAttachment = (requestJson['Attachments'] as List).first as Map<String, dynamic>;
+
+        if (requestJson['Attachments'] != null &&
+            (requestJson['Attachments'] as List).isNotEmpty) {
+          final firstAttachment = (requestJson['Attachments'] as List).first
+              as Map<String, dynamic>;
           print('First attachment keys: ${firstAttachment.keys.toList()}');
           print('FileName: ${firstAttachment['FileName']}');
           print('FileType: ${firstAttachment['FileType']}');
           print('FilePath: "${firstAttachment['FilePath']}"');
           print('Type: ${firstAttachment['Type']}');
-          print('FileData present: ${firstAttachment.containsKey('FileData')} (should be false)');
+          print(
+              'FileData present: ${firstAttachment.containsKey('FileData')} (should be false)');
           print('=== END REQUEST STRUCTURE ===');
         }
-        
+
         final response = await _dioClient.dio.post(
           Endpoints.expenseSave,
           data: requestJson,
@@ -208,8 +214,9 @@ class ExpenseApi {
 
         final responseData = response.data ?? {};
         print('SaveExpense Response - Expense ID: ${responseData['id']}');
-        print('SaveExpense Response - Attachments: ${responseData['attachments'] ?? responseData['Attachments']}');
-        
+        print(
+            'SaveExpense Response - Attachments: ${responseData['attachments'] ?? responseData['Attachments']}');
+
         return responseData;
       } else {
         // No files, send as JSON
@@ -247,7 +254,7 @@ class ExpenseApi {
         // Log the raw response for debugging
         print('GetExpense API Response: ${response.data}');
         print('Attachments in response: ${response.data['attachments']}');
-        
+
         return ExpenseDetailResponse.fromJson(response.data);
       } else {
         throw Exception('No response data received');
@@ -259,7 +266,8 @@ class ExpenseApi {
 
   /// Approve Single Expense
   /// URL: /api/PharmaCRM/DCR/ApproveExpenseSingle
-  Future<ExpenseActionResponse> approveExpenseSingle(ExpenseActionRequest request) async {
+  Future<ExpenseActionResponse> approveExpenseSingle(
+      ExpenseActionRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.expenseApproveSingle,
@@ -285,7 +293,8 @@ class ExpenseApi {
   /// URL: /api/PharmaCRM/DCR/SendBackExpenseSingle
   /// Backend often returns HTTP 200 with an empty body; default Dio JSON decode
   /// throws on empty body — use plain text and treat 2xx + empty as success.
-  Future<ExpenseActionResponse> sendBackExpenseSingle(ExpenseActionRequest request) async {
+  Future<ExpenseActionResponse> sendBackExpenseSingle(
+      ExpenseActionRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.expenseSendBackSingle,
@@ -301,7 +310,8 @@ class ExpenseApi {
 
       final int code = response.statusCode ?? 0;
       if (code >= 200 && code < 300) {
-        return ExpenseActionResponse(success: true, message: 'Expense sent back successfully');
+        return ExpenseActionResponse(
+            success: true, message: 'Expense sent back successfully');
       }
       return ExpenseActionResponse(
         success: false,
@@ -314,7 +324,8 @@ class ExpenseApi {
 
   /// Bulk Approve Expenses
   /// URL: /api/PharmaCRM/DCR/BulkApproveExpense
-  Future<ExpenseActionResponse> bulkApproveExpenses(ExpenseBulkApproveRequest request) async {
+  Future<ExpenseActionResponse> bulkApproveExpenses(
+      ExpenseBulkApproveRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.expenseBulkApprove,
@@ -338,7 +349,8 @@ class ExpenseApi {
 
   /// Bulk Reject Expenses
   /// URL: /api/PharmaCRM/DCR/BulkRejectExpense
-  Future<ExpenseActionResponse> bulkRejectExpenses(ExpenseBulkRejectRequest request) async {
+  Future<ExpenseActionResponse> bulkRejectExpenses(
+      ExpenseBulkRejectRequest request) async {
     try {
       final response = await _dioClient.dio.post(
         Endpoints.expenseBulkReject,

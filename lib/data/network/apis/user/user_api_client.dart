@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../../../../core/data/network/dio/dio_client.dart';
@@ -337,6 +335,11 @@ class UserApiClient {
     String token,
   ) async {
     try {
+      print('===========================================');
+      print('getTourPlanSummary: API Call');
+      print('URL: ${Endpoints.tourPlanGetSummary}');
+      print('getTourPlanSummary: request: ${request.toJson()}');
+      print('===========================================');
       final response = await _dioClient.dio.post(
         Endpoints.tourPlanGetSummary,
         data: request.toJson(),
@@ -708,7 +711,7 @@ class UserApiClient {
       } else {
         throw Exception('No tour plan comments list response received');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       throw Exception(
           'Failed to fetch tour plan comments list: ${e.toString()}');
     }

@@ -78,6 +78,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   String? _employeeError;
   bool _isLoadingEmployees = false;
   bool _isManagerOrFieldManager = false;
+  bool _isServiceEngineer = false;
 
   // Dynamic calls list
   final List<_CallData> _calls = <_CallData>[
@@ -159,6 +160,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   void _checkUserRole() {
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final String serviceArea =
+        (userStore?.userDetail?.serviceArea ?? '').trim();
+    _isServiceEngineer =
+        serviceArea.toLowerCase() == 'service engineer' ||
+        serviceArea.toLowerCase() == 'serviceeng purposevisit' ||
+        serviceArea.toLowerCase().contains('service engineer');
     final int? roleCategory = userStore?.userDetail?.roleCategory;
 
     if (roleCategory != null) {
@@ -1212,6 +1219,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 purposeOptions: _purposeOptions,
                                 productOptions: _productOptions,
                                 isViewOnly: _isViewOnlyMode,
+                                isCustomerEnabled: !(_isServiceEngineer &&
+                                    ((_calls[i].purpose ?? '')
+                                            .trim()
+                                            .toLowerCase() ==
+                                        'available')),
+                                isCustomerRequired: !(_isServiceEngineer &&
+                                    ((_calls[i].purpose ?? '')
+                                            .trim()
+                                            .toLowerCase() ==
+                                        'available')),
                                 customerError: i < _callErrors.length
                                     ? _callErrors[i].customerError
                                     : null,
@@ -1234,9 +1251,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? null
                                     : (purpose) => setState(() {
                                         _calls[i].purpose = purpose;
+                                        final bool isAvailable = _isServiceEngineer &&
+                                            (purpose ?? '')
+                                                .trim()
+                                                .toLowerCase() ==
+                                            'available';
+                                        if (isAvailable) {
+                                          _calls[i].customers = <String>{};
+                                        }
                                         if (_callErrors.length > i) {
                                           final List<_CallValidationState> updated =
                                               _cloneCallErrors();
+                                          if (isAvailable) {
+                                            updated[i].customerError = null;
+                                          }
                                           updated[i].purposeError = null;
                                           _callErrors = updated;
                                         }
@@ -1368,39 +1396,51 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           : (_clusterNameToId[_selectedClusters.first] ?? 0);
 
       // Enforce: for each selected cluster/city, at least one customer must be selected
+      // (Skip this enforcement when Service Engineer marks purpose as "Available".)
       if (_selectedClusters.isNotEmpty) {
         String norm(String s) => s.toLowerCase().trim();
 
-        final Set<String> selectedClustersNorm =
-            _selectedClusters.map(norm).toSet();
-
-        final Set<String> clustersWithCustomersNorm = <String>{};
-        for (final call in _calls) {
-          for (final customer in call.customers) {
-            final customerCluster =
-                _customerNameToClusterName[customer]?.trim();
-            if (customerCluster == null || customerCluster.isEmpty) continue;
-            final cNorm = norm(customerCluster);
-            if (selectedClustersNorm.contains(cNorm)) {
-              clustersWithCustomersNorm.add(cNorm);
-            }
-          }
+        bool isCallCustomerOptional(_CallData call) {
+          final purposeLower = (call.purpose ?? '').trim().toLowerCase();
+          return _isServiceEngineer && purposeLower == 'available';
         }
 
-        final missingClusters = _selectedClusters
-            .where((c) => !clustersWithCustomersNorm.contains(norm(c)))
-            .toList(growable: false);
+        final requiredCalls =
+            _calls.where((c) => !isCallCustomerOptional(c)).toList();
 
-        if (missingClusters.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              _clusterError =
-                  'Select at least one customer for each selected cluster/city';
-            });
+        // If no call requires customer selection, don't block submission.
+        if (requiredCalls.isNotEmpty) {
+          final Set<String> selectedClustersNorm =
+              _selectedClusters.map(norm).toSet();
+
+          final Set<String> clustersWithCustomersNorm = <String>{};
+          for (final call in requiredCalls) {
+            for (final customer in call.customers) {
+              final customerCluster =
+                  _customerNameToClusterName[customer]?.trim();
+              if (customerCluster == null || customerCluster.isEmpty) continue;
+              final cNorm = norm(customerCluster);
+              if (selectedClustersNorm.contains(cNorm)) {
+                clustersWithCustomersNorm.add(cNorm);
+              }
+            }
           }
-          _showSnack(
-              'Please select at least one customer for each selected cluster/city: ${missingClusters.join(', ')}');
-          return;
+
+          final missingClusters = _selectedClusters
+              .where((c) => !clustersWithCustomersNorm.contains(norm(c)))
+              .toList(growable: false);
+
+          if (missingClusters.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                _clusterError =
+                    'Select at least one customer for each selected cluster/city';
+              });
+            }
+            _showSnack(
+                'Please select at least one customer for each selected cluster/city: ${missingClusters.join(', ')}');
+            return;
+          }
         }
       }
 
@@ -1416,6 +1456,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       final List<int> effectiveClusterIds = clusterIdsArray.isNotEmpty 
           ? clusterIdsArray 
           : (resolvedClusterId > 0 ? [resolvedClusterId] : []);
+
+      String clusterNameFromId(int id) {
+        return _clusterNameToId.entries
+                .firstWhere(
+                  (e) => e.value == id,
+                  orElse: () => const MapEntry<String, int>('', 0),
+                )
+                .key
+            .trim();
+      }
 
       // Create one detail entry for each selected customer (per call)
       int detailIndex = 0;
@@ -1438,7 +1488,57 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           }
         }
 
-        for (final customerName in call.customers) {
+        final bool isAvailablePurposeForServiceEngineer =
+            _isServiceEngineer &&
+                ((call.purpose ?? '').trim().toLowerCase() == 'available');
+
+        if (isAvailablePurposeForServiceEngineer) {
+          for (final int clusterId in effectiveClusterIds) {
+            final String clusterName = clusterNameFromId(clusterId);
+
+            // If editing, map existing detail id from fetched item by index
+            final int existingDetailId =
+                (_fullTourPlanData?.tourPlanDetails != null &&
+                        _fullTourPlanData!.tourPlanDetails!.length >
+                            detailIndex)
+                    ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
+                    : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
+                            widget.tourPlanToEdit!.tourPlanDetails!.length >
+                                detailIndex)
+                        ? widget
+                            .tourPlanToEdit!.tourPlanDetails![detailIndex].id
+                        : 0);
+
+            final List<Map<String, dynamic>> customersArray =
+                <Map<String, dynamic>>[
+              {
+                'CustomerId': null,
+                'ClusterId': clusterId,
+              }
+            ];
+
+            details.add({
+              'Id': existingDetailId,
+              'PlanDate': '${planDateStr}T06:30:00.000',
+              'TypeOfWorkId': typeOfWorkId,
+              'ClusterId': clusterId,
+              'CustomerId': null,
+              'Status': 1,
+              'Remarks': call.remarksCtrl.text.trim(),
+              'Location': clusterName.isNotEmpty ? clusterName : '',
+              'Latitude': null,
+              'Longitude': null,
+              'SamplesToDistribute': call.samplesCtrl.text.trim(),
+              'ProductsToDiscuss': '',
+              'ClusterNames': clusterName.isNotEmpty ? clusterName : null,
+              'Customers': customersArray,
+              'ProductsToBeDiscussed': productsToBeDiscussedArray,
+              'MappedInstruments': [],
+            });
+            detailIndex++;
+          }
+        } else {
+          for (final customerName in call.customers) {
           final int customerId = _customerNameToId[customerName] ?? 0;
 
           // Prefer cluster mapping returned by API for this customer; fallback if only one cluster selected
@@ -1500,6 +1600,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           });
           detailIndex++;
         }
+        }
       }
 
       // Build header TourPlanType as array of all selected purposes
@@ -1527,6 +1628,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       final int userId = userStore.userDetail?.id ?? 0;
       final int sbuId = userStore.userDetail?.sbuId ?? 0;
+
+      final bool shouldSendNullCustomerForAvailable =
+          _isServiceEngineer &&
+              _calls.any((c) =>
+                  (c.purpose ?? '').trim().toLowerCase() == 'available');
 
       // For managers use selected reporting staff; otherwise use current user
       final int employeeId =
@@ -1599,8 +1705,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'Designation': "",
         'StatusText': "",
         'PlanDate': '0001-01-01T00:00:00.000',
-        'CustomerId': 0,
-        'CustomerName': "",
+        'CustomerId': shouldSendNullCustomerForAvailable ? null : 0,
+        'CustomerName': shouldSendNullCustomerForAvailable ? null : "",
         'Clusters': _selectedClusters.isNotEmpty ? _selectedClusters.join(', ') : "",
         'SamplesToDistribute':
             aggregatedSamples.isNotEmpty ? aggregatedSamples : null,
@@ -2151,7 +2257,11 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         final call = _calls[i];
         final String callLabel = 'Call ${i + 1}';
 
-        if (call.customers.isEmpty) {
+        final String callPurposeLower = (call.purpose ?? '').trim().toLowerCase();
+        final bool isAvailablePurposeForServiceEngineer =
+            _isServiceEngineer && callPurposeLower == 'available';
+
+        if (!isAvailablePurposeForServiceEngineer && call.customers.isEmpty) {
           callErrors[i].customerError = 'Please select at least one customer';
           firstMessage ??= 'Select customer for $callLabel';
           isValid = false;
@@ -3190,6 +3300,8 @@ class _CallCard extends StatelessWidget {
     this.isLoadingPurpose = false,
     this.isLoadingProducts = false,
     this.isViewOnly = false,
+    this.isCustomerEnabled = true,
+    this.isCustomerRequired = true,
     this.customerError,
     this.purposeError,
     this.onCustomersChanged,
@@ -3208,6 +3320,8 @@ class _CallCard extends StatelessWidget {
   final bool isLoadingPurpose;
   final bool isLoadingProducts;
   final bool isViewOnly;
+  final bool isCustomerEnabled;
+  final bool isCustomerRequired;
   final String? customerError;
   final String? purposeError;
   final ValueChanged<Set<String>>? onCustomersChanged;
@@ -3298,31 +3412,34 @@ class _CallCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (!expanded) ...[
-              _CollapsedSummary(data: data),
+              _CollapsedSummary(
+                data: data,
+                customersToShow: isCustomerEnabled ? data.customers : <String>{},
+              ),
               const SizedBox(height: 4),
             ],
             if (expanded) ...[
               const SizedBox(height: 4),
               _Labeled(
                 label: 'Customer',
-                required: true,
+                required: isCustomerRequired,
                 errorText: customerError,
                 child: _MultiSelectDropdown(
                   options: customerOptions,
-                  selectedValues: data.customers,
+                  selectedValues: isCustomerEnabled ? data.customers : <String>{},
                   labelBuilder: customerLabelBuilder,
                   hintText: 'Select customer',
                   emptyMessage: 'No customers found',
-                  isEnabled: !isViewOnly,
+                  isEnabled: !isViewOnly && isCustomerEnabled,
                   onChanged: isViewOnly
                       ? (_) {} // No-op function for view-only mode
-                      : (set) {
+                      : (!isCustomerEnabled ? (_) {} : (set) {
                           if (onCustomersChanged != null) {
                             onCustomersChanged!(set);
                           } else {
                             data.customers = set;
                           }
-                        },
+                        }),
                 ),
               ),
               const SizedBox(height: 12),
@@ -3438,14 +3555,19 @@ class _CallCard extends StatelessWidget {
 }
 
 class _CollapsedSummary extends StatelessWidget {
-  const _CollapsedSummary({required this.data});
+  const _CollapsedSummary({
+    required this.data,
+    required this.customersToShow,
+  });
   final _CallData data;
+  final Set<String> customersToShow;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    String customers =
-        data.customers.isEmpty ? 'No customer' : data.customers.join(', ');
+    String customers = customersToShow.isEmpty
+        ? 'No customer'
+        : customersToShow.join(', ');
     String purpose = data.purpose ?? 'No purpose';
     final String products = data.products.join(', ');
     return Column(
