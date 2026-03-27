@@ -153,6 +153,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
 // Items
   final List<_LineItem> _items = [];
+  final Map<int, bool> _slabAvailabilityCache = {};
+  final Map<int, List<SalesBonusSlabItem>> _discountSlabCache = {};
 
   // Attachments
   final List<PlatformFile> _attachments = [];
@@ -1472,6 +1474,248 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       print('⚠️ Error loading item detail for item $itemId: $e');
       // Don't block the UI if item detail fails - continue with existing values
     }
+  }
+
+  Future<void> _calculateAndApplyBonusForItem(
+      _LineItem item, int itemId, [VoidCallback? onChanged]) async {
+    try {
+      final quantity = double.tryParse(item.qtyController.text.trim()) ?? 0.0;
+      if (itemId <= 0 || quantity <= 0) {
+        item.bonusQtyController.text = '0';
+        if (onChanged != null) {
+          onChanged();
+        } else if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+
+      final salesRepository = getIt<SalesRepository>();
+      final bonusListResponse = await salesRepository.getBonusList(itemId: itemId);
+      if (bonusListResponse.items.isEmpty) {
+        item.bonusQtyController.text = '0';
+        if (onChanged != null) {
+          onChanged();
+        } else if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+
+      final List<(double maxVal, double bonusQty)> lumpSumSlabs = [];
+      final List<(double maxVal, double bonusPct)> percentageSlabs = [];
+
+      for (final bonus in bonusListResponse.items) {
+        final bonusQty = bonus.bonusQty ?? 0;
+        if (bonusQty <= 0) continue;
+
+        if ((bonus.lumpsum ?? 0) == 1) {
+          final minQty = bonus.qty ?? 0;
+          if (minQty > 0) {
+            lumpSumSlabs.add((minQty, bonusQty));
+          }
+          continue;
+        }
+
+        if (bonus.slabId == null) continue;
+        final slabId = bonus.slabId!;
+
+        bool hasSlab = _slabAvailabilityCache[slabId] ?? false;
+        if (!_slabAvailabilityCache.containsKey(slabId)) {
+          final slabResponse = await salesRepository.getBonusSlabList(slabId: slabId);
+          hasSlab = slabResponse.items.isNotEmpty;
+          _slabAvailabilityCache[slabId] = hasSlab;
+        }
+
+        if (hasSlab && bonus.maxVal != null) {
+          percentageSlabs.add((bonus.maxVal!, bonusQty));
+        }
+      }
+
+      lumpSumSlabs.sort((a, b) => b.$1.compareTo(a.$1));
+      percentageSlabs.sort((a, b) => b.$1.compareTo(a.$1));
+
+      double calculatedBonus = 0.0;
+      if (lumpSumSlabs.isNotEmpty) {
+        calculatedBonus = _calculateLumpSumBonusQuantity(lumpSumSlabs, quantity);
+      } else if (percentageSlabs.isNotEmpty) {
+        final matched = percentageSlabs.firstWhere(
+          (slab) => quantity > slab.$1,
+          orElse: () => (0.0, 0.0),
+        );
+        if (matched.$2 > 0) {
+          calculatedBonus = (quantity * matched.$2) / 100.0;
+        }
+      }
+
+      final bonusAsInt = calculatedBonus.floor();
+      item.bonusQtyController.text = bonusAsInt > 0 ? bonusAsInt.toString() : '0';
+
+      if (onChanged != null) {
+        onChanged();
+      } else if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('⚠️ Bonus calculation failed for itemId=$itemId: $e');
+    }
+  }
+
+  Future<void> _calculateAndApplyDiscountForItem(
+      _LineItem item, int itemId, [VoidCallback? onChanged]) async {
+    try {
+      final quantity = double.tryParse(item.qtyController.text.trim()) ?? 0.0;
+      final unitPrice = double.tryParse(item.rateController.text) ?? 0.0;
+      if (itemId <= 0 || quantity <= 0 || unitPrice <= 0) {
+        item.discountController.text = '0.00';
+        if (onChanged != null) {
+          onChanged();
+        } else if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+
+      final salesRepository = getIt<SalesRepository>();
+      final discountResponse = await salesRepository.getDiscountList(itemId: itemId);
+      if (discountResponse.items.isEmpty) {
+        item.discountController.text = '0.00';
+        if (onChanged != null) {
+          onChanged();
+        } else if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+
+      double discountPercentage = 0.0;
+      double bestMatchedMin = -1;
+      double bestMatchedMax = -1;
+      SalesDiscountItem? bestLumpSum;
+
+      for (final discount in discountResponse.items) {
+        final currentPct = (discount.bonusQty ?? 0.0);
+        if (currentPct <= 0) continue;
+
+        if ((discount.lumpsum ?? 0) == 1) {
+          final threshold = discount.qty ?? 0.0;
+          if (threshold <= quantity) {
+            if (bestLumpSum == null || threshold > (bestLumpSum.qty ?? 0.0)) {
+              bestLumpSum = discount;
+            }
+          }
+          continue;
+        }
+
+        if (discount.slabId == null) continue;
+        final slabId = discount.slabId!;
+        List<SalesBonusSlabItem> slabItems = _discountSlabCache[slabId] ?? [];
+        if (!_discountSlabCache.containsKey(slabId)) {
+          final slabResponse = await salesRepository.getBonusSlabList(slabId: slabId);
+          slabItems = slabResponse.items;
+          _discountSlabCache[slabId] = slabItems;
+        }
+
+        if (slabItems.isNotEmpty) {
+          final matchedSlab = slabItems.firstWhere(
+            (slab) {
+              final min = slab.minVal;
+              final max = slab.maxVal;
+              if (min == null || max == null) return false;
+              return quantity >= min && quantity <= max;
+            },
+            orElse: () => SalesBonusSlabItem(),
+          );
+          if (matchedSlab.id != null &&
+              matchedSlab.minVal != null &&
+              matchedSlab.maxVal != null &&
+              matchedSlab.id == slabId) {
+            // Pick the most specific matched slab range:
+            // higher minVal first, then higher maxVal.
+            final min = matchedSlab.minVal!;
+            final max = matchedSlab.maxVal!;
+            final isBetter = min > bestMatchedMin ||
+                (min == bestMatchedMin && max > bestMatchedMax);
+            if (isBetter) {
+              bestMatchedMin = min;
+              bestMatchedMax = max;
+              discountPercentage = currentPct / 100.0;
+              print(
+                  '✅ Discount slab(API) matched: item=$itemId slabId=$slabId range=$min-$max pct=${currentPct.toStringAsFixed(2)}');
+            }
+          }
+        }
+
+        // Fallback: when SlabList API is empty/unavailable, parse slabName range (e.g. "5-500")
+        // from DiscountList response and use it for percentage matching.
+        if (discountPercentage == 0.0) {
+          final range = _parseSlabNameRange(discount.slabName);
+          if (range != null) {
+            final min = range.$1;
+            final max = range.$2;
+            if (quantity >= min && quantity <= max) {
+              final isBetter = min > bestMatchedMin ||
+                  (min == bestMatchedMin && max > bestMatchedMax);
+              if (isBetter) {
+                bestMatchedMin = min;
+                bestMatchedMax = max;
+                discountPercentage = currentPct / 100.0;
+                print(
+                    '✅ Discount slab(name) matched: item=$itemId slabId=$slabId range=$min-$max pct=${currentPct.toStringAsFixed(2)}');
+              }
+            }
+          }
+        }
+      }
+
+      if (discountPercentage == 0.0 && bestLumpSum != null) {
+        discountPercentage = (bestLumpSum.bonusQty ?? 0.0) / 100.0;
+        print(
+            '✅ Discount lumpsum fallback: item=$itemId threshold=${bestLumpSum.qty} pct=${bestLumpSum.bonusQty}');
+      }
+
+      final amount = unitPrice * quantity;
+      final discountAmount = amount * discountPercentage;
+      item.discountController.text = discountAmount.toStringAsFixed(2);
+
+      if (onChanged != null) {
+        onChanged();
+      } else if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('⚠️ Discount calculation failed for itemId=$itemId: $e');
+    }
+  }
+
+  (double, double)? _parseSlabNameRange(String? slabName) {
+    if (slabName == null) return null;
+    final value = slabName.trim();
+    if (value.isEmpty) return null;
+    final parts = value.split('-');
+    if (parts.length != 2) return null;
+    final min = double.tryParse(parts[0].trim());
+    final max = double.tryParse(parts[1].trim());
+    if (min == null || max == null) return null;
+    return (min, max);
+  }
+
+  double _calculateLumpSumBonusQuantity(
+      List<(double maxVal, double bonusQty)> slabs, double quantity) {
+    if (quantity <= 0 || slabs.isEmpty) return 0.0;
+
+    double remaining = quantity;
+    double totalBonus = 0.0;
+
+    for (final slab in slabs) {
+      if (remaining < slab.$1 || slab.$1 <= 0) continue;
+      final multiplier = (remaining / slab.$1).floor();
+      if (multiplier <= 0) continue;
+      totalBonus += multiplier * slab.$2;
+      remaining -= multiplier * slab.$1;
+    }
+
+    return totalBonus;
   }
 
   Future<void> _loadTaxOptionsForTaxSection() async {
@@ -2801,6 +3045,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                       loadUOMForItem: _loadUOMForItem,
                       loadTaxForItem: _loadTaxForItem,
                       loadItemDetail: _loadItemDetail,
+                      calculateBonusForItem: _calculateAndApplyBonusForItem,
+                      calculateDiscountForItem: _calculateAndApplyDiscountForItem,
                       formatDate: _formatDate,
                       getDistributorId: () {
                         // Get distributor ID - use selected distributor or fallback to bizUnit
@@ -6574,6 +6820,10 @@ class _ItemCard extends StatelessWidget {
       loadUOMForItem;
   final Future<void> Function(_LineItem, int, [VoidCallback?]) loadTaxForItem;
   final Future<void> Function(_LineItem, int, [VoidCallback?]) loadItemDetail;
+  final Future<void> Function(_LineItem, int, [VoidCallback?])
+      calculateBonusForItem;
+  final Future<void> Function(_LineItem, int, [VoidCallback?])
+      calculateDiscountForItem;
   final String Function(DateTime) formatDate;
   final bool isEditMode;
   final int Function() getDistributorId;
@@ -6589,6 +6839,8 @@ class _ItemCard extends StatelessWidget {
     required this.loadUOMForItem,
     required this.loadTaxForItem,
     required this.loadItemDetail,
+    required this.calculateBonusForItem,
+    required this.calculateDiscountForItem,
     required this.formatDate,
     required this.isEditMode,
     required this.getDistributorId,
@@ -6675,6 +6927,8 @@ class _ItemCard extends StatelessWidget {
                   // Then load UOM and Tax
                   loadUOMForItem(item, itemId, null, onChanged);
                   loadTaxForItem(item, itemId, onChanged);
+                  calculateBonusForItem(item, itemId, onChanged);
+                  calculateDiscountForItem(item, itemId, onChanged);
                 }
 
                 // Verify Rate and MRP are set
@@ -6699,7 +6953,16 @@ class _ItemCard extends StatelessWidget {
                     label: 'Quantity*',
                     controller: item.qtyController,
                     min: 0,
-                    onChanged: (v) => onChanged(),
+                    onChanged: (v) {
+                      onChanged();
+                      item.debouncePricingRecalculation(() {
+                        final itemId = int.tryParse(item.product.id) ?? 0;
+                        if (itemId > 0) {
+                          calculateBonusForItem(item, itemId, onChanged);
+                          calculateDiscountForItem(item, itemId, onChanged);
+                        }
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -6909,6 +7172,7 @@ class _LineItem {
   List<String> taxOptions = []; // Tax options from API
 
   bool expanded;
+  Timer? _pricingDebounceTimer;
 
   /// Contract line detail Id from API (when editing). Sent as SalesContractItem.Id so backend can match and validate dispatched qty.
   int? detailId;
@@ -7017,15 +7281,21 @@ class _LineItem {
   }
 
   double get totalAmount {
-    // Total Amount = Quantity * Rate (as per requirement)
-    final qty = double.tryParse(qtyController.text) ?? 0.0;
-    final rate = double.tryParse(rateController.text) ?? 0.0;
-    return qty * rate;
+    return amount - discount;
   }
 
   double get lineTotal => totalAmount;
 
+  void debouncePricingRecalculation(
+    VoidCallback action, {
+    Duration delay = const Duration(milliseconds: 450),
+  }) {
+    _pricingDebounceTimer?.cancel();
+    _pricingDebounceTimer = Timer(delay, action);
+  }
+
   void dispose() {
+    _pricingDebounceTimer?.cancel();
     itemDescriptionController.dispose();
     qtyController.dispose();
     bonusQtyController.dispose();

@@ -534,6 +534,312 @@ class GetSalesInvoiceCommonAutoRequest {
   }
 }
 
+class SalesBonusListRequest {
+  final int itemId;
+
+  SalesBonusListRequest({required this.itemId});
+
+  Map<String, dynamic> toJson() {
+    return {
+      'PageNumber': 0,
+      'PageSize': 0,
+      'SortOrder': 0,
+      'SortDir': 0,
+      'SortField': null,
+      'SearchText': null,
+      'CommandText': null,
+      'PageName': null,
+      'SortExpression': null,
+      'FilterExpression': null,
+      'Id': null,
+      'ItemId': itemId,
+      'Lumpsum': null,
+      'ItemName': null,
+      'SlabName': null,
+      'UOMText': null,
+      'Percentage': null,
+      'SlabId': null,
+      'Qty': null,
+      'QtyUom': null,
+      'BonusQty': null,
+      'BqtyUom': null,
+      'Active': null,
+      'CreatedBy': null,
+      'FromDate': null,
+      'ToDate': null,
+      'HasHistory': null,
+      'SbuId': null,
+      'Status': 0,
+      'UserId': null,
+      'ActiveText': null,
+    };
+  }
+}
+
+class SalesBonusItem {
+  final int? id;
+  final int? itemId;
+  final int? lumpsum;
+  final double? maxVal;
+  final int? slabId;
+  final double? qty;
+  final double? bonusQty;
+
+  SalesBonusItem({
+    this.id,
+    this.itemId,
+    this.lumpsum,
+    this.maxVal,
+    this.slabId,
+    this.qty,
+    this.bonusQty,
+  });
+
+  static double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  factory SalesBonusItem.fromJson(Map<String, dynamic> json) {
+    return SalesBonusItem(
+      id: _asInt(json['id'] ?? json['Id']),
+      itemId: _asInt(json['itemId'] ?? json['ItemId']),
+      lumpsum: _asInt(json['lumpsum'] ?? json['Lumpsum']),
+      maxVal: _asDouble(json['maxVal'] ?? json['MaxVal']),
+      slabId: _asInt(json['slabId'] ?? json['SlabId']),
+      qty: _asDouble(json['qty'] ?? json['Qty']),
+      bonusQty: _asDouble(json['bonusQty'] ?? json['BonusQty']),
+    );
+  }
+}
+
+class SalesBonusListResponse {
+  final List<SalesBonusItem> items;
+  final int totalRecords;
+  final int filteredRecords;
+
+  SalesBonusListResponse({
+    required this.items,
+    required this.totalRecords,
+    required this.filteredRecords,
+  });
+
+  factory SalesBonusListResponse.fromJson(Map<String, dynamic> json) {
+    return SalesBonusListResponse(
+      items: (json['items'] as List<dynamic>?)
+              ?.map((e) => SalesBonusItem.fromJson(
+                  Map<String, dynamic>.from(e as Map)))
+              .toList() ??
+          [],
+      totalRecords: (json['totalRecords'] as num?)?.toInt() ?? 0,
+      filteredRecords: (json['filteredRecords'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class SalesBonusSlabListRequest {
+  final int id;
+
+  SalesBonusSlabListRequest({required this.id});
+
+  Map<String, dynamic> toJson() {
+    return {
+      'PageNumber': 1,
+      'PageSize': 15,
+      'SortOrder': 0,
+      'SortDir': 0,
+      'SortField': null,
+      'SearchText': null,
+      'Id': id,
+      'Name': null,
+      'Uom': 0,
+      'MinVal': 0,
+      'MaxVaL': 0,
+      'UomText': null,
+      'Active': 0,
+      'CreatedBy': null,
+      'SbuId': 0,
+      'Status': 0,
+      'UserId': null,
+      'ActiveText': null,
+    };
+  }
+}
+
+class SalesBonusSlabItem {
+  final int? id;
+  final double? minVal;
+  final double? maxVal;
+
+  SalesBonusSlabItem({
+    this.id,
+    this.minVal,
+    this.maxVal,
+  });
+
+  static double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  factory SalesBonusSlabItem.fromJson(Map<String, dynamic> json) {
+    return SalesBonusSlabItem(
+      id: _asInt(json['id'] ?? json['Id']),
+      minVal: _asDouble(json['minVal'] ?? json['MinVal']),
+      maxVal: _asDouble(json['maxVal'] ?? json['MaxVaL'] ?? json['MaxVal']),
+    );
+  }
+}
+
+class SalesBonusSlabListResponse {
+  final List<SalesBonusSlabItem> items;
+
+  SalesBonusSlabListResponse({required this.items});
+
+  factory SalesBonusSlabListResponse.fromJson(dynamic json) {
+    if (json is Map<String, dynamic>) {
+      final rawItems = json['items'];
+      if (rawItems is List) {
+        return SalesBonusSlabListResponse(
+          items: rawItems
+              .map((e) =>
+                  SalesBonusSlabItem.fromJson(Map<String, dynamic>.from(e)))
+              .toList(),
+        );
+      }
+      return SalesBonusSlabListResponse(items: []);
+    }
+    return SalesBonusSlabListResponse(items: []);
+  }
+}
+
+class SalesDiscountListRequest {
+  final int itemId;
+
+  SalesDiscountListRequest({required this.itemId});
+
+  Map<String, dynamic> toJson() {
+    return {
+      'PageNumber': 1,
+      'PageSize': 15,
+      'SortOrder': 0,
+      'SortDir': 0,
+      'SortField': null,
+      'SearchText': null,
+      'CommandText': null,
+      'PageName': null,
+      'SortExpression': null,
+      'FilterExpression': null,
+      'Id': null,
+      'ItemId': itemId,
+      'Lumpsum': 0,
+      'Percentage': 0,
+      'SlabId': null,
+      'Qty': 0.0,
+      'QtyUom': 0,
+      'BonusQty': 0.0,
+      'BqtyUom': 0,
+      'FromDate': null,
+      'ToDate': null,
+      'HasHistory': null,
+      'Active': null,
+      'CreatedBy': null,
+      'SbuId': 0,
+      'Status': 0,
+      'UserId': null,
+      'ActiveText': null,
+    };
+  }
+}
+
+class SalesDiscountItem {
+  final int? id;
+  final int? itemId;
+  final int? lumpsum;
+  final int? percentage;
+  final int? slabId;
+  final String? slabName;
+  final double? qty;
+  final double? bonusQty;
+
+  SalesDiscountItem({
+    this.id,
+    this.itemId,
+    this.lumpsum,
+    this.percentage,
+    this.slabId,
+    this.slabName,
+    this.qty,
+    this.bonusQty,
+  });
+
+  static double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  factory SalesDiscountItem.fromJson(Map<String, dynamic> json) {
+    return SalesDiscountItem(
+      id: _asInt(json['id'] ?? json['Id']),
+      itemId: _asInt(json['itemId'] ?? json['ItemId']),
+      lumpsum: _asInt(json['lumpsum'] ?? json['Lumpsum']),
+      percentage: _asInt(json['percentage'] ?? json['Percentage']),
+      slabId: _asInt(json['slabId'] ?? json['SlabId']),
+      slabName: (json['slabName'] ?? json['SlabName'])?.toString(),
+      qty: _asDouble(json['qty'] ?? json['Qty']),
+      bonusQty: _asDouble(json['bonusQty'] ?? json['BonusQty']),
+    );
+  }
+}
+
+class SalesDiscountListResponse {
+  final List<SalesDiscountItem> items;
+  final int totalRecords;
+  final int filteredRecords;
+
+  SalesDiscountListResponse({
+    required this.items,
+    required this.totalRecords,
+    required this.filteredRecords,
+  });
+
+  factory SalesDiscountListResponse.fromJson(Map<String, dynamic> json) {
+    return SalesDiscountListResponse(
+      items: (json['items'] as List<dynamic>?)
+              ?.map((e) => SalesDiscountItem.fromJson(
+                  Map<String, dynamic>.from(e as Map)))
+              .toList() ??
+          [],
+      totalRecords: (json['totalRecords'] as num?)?.toInt() ?? 0,
+      filteredRecords: (json['filteredRecords'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 // Sales Order Save Models
 class SalesContractItem {
   final int? id;

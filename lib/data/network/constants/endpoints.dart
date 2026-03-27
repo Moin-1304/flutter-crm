@@ -231,4 +231,7 @@ class Endpoints {
       "$baseUrl/SaleOrder/TransactionCancel";
   static String get salesInvoiceCommonAuto =>
       "$baseUrl/SaleOrder/GetSalesInvoiceCommonAuto";
+  static String get materialBonusList => "$baseUrl/Material/BonusList";
+  static String get materialSlabList => "$baseUrl/Material/SlabList";
+  static String get materialDiscountList => "$baseUrl/Material/DiscountList";
 }

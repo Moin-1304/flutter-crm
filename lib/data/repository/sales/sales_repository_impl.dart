@@ -156,6 +156,59 @@ class SalesRepositoryImpl implements SalesRepository {
   }
 
   @override
+  Future<SalesBonusListResponse> getBonusList({
+    required int itemId,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        return await salesApi.getBonusList(itemId: itemId);
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      return SalesBonusListResponse(
+        items: [],
+        totalRecords: 0,
+        filteredRecords: 0,
+      );
+    }
+  }
+
+  @override
+  Future<SalesBonusSlabListResponse> getBonusSlabList({
+    required int slabId,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        return await salesApi.getBonusSlabList(slabId: slabId);
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      return SalesBonusSlabListResponse(items: []);
+    }
+  }
+
+  @override
+  Future<SalesDiscountListResponse> getDiscountList({
+    required int itemId,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        return await salesApi.getDiscountList(itemId: itemId);
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      return SalesDiscountListResponse(
+        items: [],
+        totalRecords: 0,
+        filteredRecords: 0,
+      );
+    }
+  }
+
+  @override
   Future<SalesOrderSaveResponse> saveSalesOrder(
     SalesOrderSaveRequest request, {
     List<PlatformFile>? files,

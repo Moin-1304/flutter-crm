@@ -342,6 +342,101 @@ class SalesApi {
     }
   }
 
+  Future<SalesBonusListResponse> getBonusList({
+    required int itemId,
+  }) async {
+    try {
+      final request = SalesBonusListRequest(itemId: itemId);
+      final response = await _dioClient.dio.post(
+        Endpoints.materialBonusList,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data == null) {
+        return SalesBonusListResponse(
+          items: const [],
+          totalRecords: 0,
+          filteredRecords: 0,
+        );
+      }
+
+      if (response.data is Map<String, dynamic>) {
+        return SalesBonusListResponse.fromJson(response.data);
+      }
+
+      return SalesBonusListResponse(
+        items: const [],
+        totalRecords: 0,
+        filteredRecords: 0,
+      );
+    } catch (e) {
+      throw Exception('Failed to fetch bonus list: ${e.toString()}');
+    }
+  }
+
+  Future<SalesBonusSlabListResponse> getBonusSlabList({
+    required int slabId,
+  }) async {
+    try {
+      final request = SalesBonusSlabListRequest(id: slabId);
+      final response = await _dioClient.dio.post(
+        Endpoints.materialSlabList,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      return SalesBonusSlabListResponse.fromJson(response.data);
+    } catch (e) {
+      // Slab API may currently return empty/invalid payload; treat as no slabs.
+      return SalesBonusSlabListResponse(items: []);
+    }
+  }
+
+  Future<SalesDiscountListResponse> getDiscountList({
+    required int itemId,
+  }) async {
+    try {
+      final request = SalesDiscountListRequest(itemId: itemId);
+      final response = await _dioClient.dio.post(
+        Endpoints.materialDiscountList,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data == null) {
+        return SalesDiscountListResponse(
+          items: const [],
+          totalRecords: 0,
+          filteredRecords: 0,
+        );
+      }
+
+      if (response.data is Map<String, dynamic>) {
+        return SalesDiscountListResponse.fromJson(response.data);
+      }
+
+      return SalesDiscountListResponse(
+        items: const [],
+        totalRecords: 0,
+        filteredRecords: 0,
+      );
+    } catch (e) {
+      throw Exception('Failed to fetch discount list: ${e.toString()}');
+    }
+  }
+
   List<FileUploadDetail> _parseFileUploadDetails(dynamic raw) {
     if (raw == null) return [];
     if (raw is List) {

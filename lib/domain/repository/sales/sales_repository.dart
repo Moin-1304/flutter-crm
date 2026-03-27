@@ -42,6 +42,18 @@ abstract class SalesRepository {
     required int bizUnit,
   });
 
+  Future<SalesBonusListResponse> getBonusList({
+    required int itemId,
+  });
+
+  Future<SalesBonusSlabListResponse> getBonusSlabList({
+    required int slabId,
+  });
+
+  Future<SalesDiscountListResponse> getDiscountList({
+    required int itemId,
+  });
+
   Future<SalesOrderSaveResponse> saveSalesOrder(
     SalesOrderSaveRequest request, {
     List<PlatformFile>? files,
