@@ -24,11 +24,13 @@ class Customer {
   final String name;
   final String address;
   final String city;
+  final bool bonusEnabled;
 
   const Customer({
     required this.code,
     required this.name,
     required this.address,
     required this.city,
+    this.bonusEnabled = false,
   });
 }

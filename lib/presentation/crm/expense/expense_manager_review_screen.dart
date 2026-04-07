@@ -15,6 +15,7 @@ import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart
 import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
 import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
+import 'package:boilerplate/presentation/crm/expenses/expense_entry_screen.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -46,6 +47,8 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
   
   // Map to store dcrStatusId for each expense (key: expense id, value: dcrStatusId)
   final Map<String, int> _expenseIdToDcrStatusId = {};
+  /// Header/detail id is [ExpenseEntry.id]; expense GET API needs parent [dcrId].
+  final Map<String, int> _expenseIdToDcrId = {};
   
   // Filter modal state
   bool _showFilterModal = false;
@@ -235,11 +238,13 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
       
       // Convert API items to ExpenseEntry objects and store dcrStatusId mapping
       _expenseIdToDcrStatusId.clear(); // Clear previous mappings
+      _expenseIdToDcrId.clear();
       final List<ExpenseEntry> expenseItems = expenseApiItems
           .map((item) {
             final expenseEntry = _convertDcrApiItemToExpenseEntry(item);
             // Store the dcrStatusId for this expense
             _expenseIdToDcrStatusId[expenseEntry.id] = item.dcrStatusId;
+            _expenseIdToDcrId[expenseEntry.id] = item.dcrId;
             return expenseEntry;
           })
           .toList();
@@ -355,6 +360,32 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
 
   bool _isApproved(ExpenseEntry item) {
     return item.status == ExpenseStatus.approved;
+  }
+
+  Future<void> _openExpenseFullView(ExpenseEntry item) async {
+    final int? parsedId = int.tryParse(item.id);
+    if (parsedId == null || parsedId <= 0) {
+      if (!mounted) return;
+      ToastMessage.show(
+        context,
+        message: 'Cannot open expense: missing id.',
+        type: ToastType.error,
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+    final int? dcrId = _expenseIdToDcrId[item.id];
+    final String dcrIdArg = (dcrId != null && dcrId > 0) ? dcrId.toString() : '0';
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ExpenseEntryScreen(
+          id: item.id,
+          dcrId: dcrIdArg,
+          viewOnly: true,
+        ),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   int? _selectedEmployeeId() {
@@ -744,6 +775,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                             }
                           },
                           onViewDetails: () => _showExpenseDetails(item),
+                          onViewFull: () => _openExpenseFullView(item),
                         ),
                       ),
                   ],
@@ -1803,22 +1835,74 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
           const SizedBox(height: 20),
           _DetailRow('Remarks', expenseDetails?.remarks ?? item.remarks, isMultiline: true),
         ],
-        if (expenseDetails != null && expenseDetails!.attachments.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Divider(height: 1, color: Colors.grey.shade300),
-          const SizedBox(height: 20),
+        const SizedBox(height: 20),
+        Divider(height: 1, color: Colors.grey.shade300),
+        const SizedBox(height: 20),
+        Text(
+          'Attachments',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w700,
+            fontSize: isTablet ? 15 : 14,
+            color: Colors.grey[900],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (expenseDetails == null)
           Text(
-            'Attachments',
+            'Attachment list could not be loaded. Use View full expense below to open the record.',
             style: GoogleFonts.inter(
-              fontWeight: FontWeight.w700,
-              fontSize: isTablet ? 15 : 14,
-              color: Colors.grey[900],
+              fontSize: isTablet ? 13 : 12,
+              color: Colors.grey[600],
+              height: 1.35,
+            ),
+          )
+        else if (expenseDetails!.attachments.isEmpty)
+          Text(
+            'No attachments on file.',
+            style: GoogleFonts.inter(
+              fontSize: isTablet ? 13 : 12,
+              color: Colors.grey[600],
+            ),
+          )
+        else
+          ...expenseDetails!.attachments.map(
+            (attachment) => _buildAttachmentCard(ctx, attachment, isTablet),
+          ),
+      ];
+    }
+
+    Widget buildDetailsFooter(BuildContext ctx) {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          MediaQuery.of(ctx).padding.bottom + 16,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey.shade300)),
+        ),
+        child: OutlinedButton.icon(
+          onPressed: () {
+            Navigator.of(ctx).pop();
+            Future.microtask(() {
+              if (mounted) _openExpenseFullView(item);
+            });
+          },
+          icon: const Icon(Icons.visibility_outlined, size: 20),
+          label: const Text('View expense'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF4db1b3),
+            side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
             ),
           ),
-          const SizedBox(height: 12),
-          ...expenseDetails!.attachments.map((attachment) => _buildAttachmentCard(attachment, isTablet)),
-        ],
-      ];
+        ),
+      );
     }
 
     Widget buildPanelContent(BuildContext ctx) {
@@ -1937,6 +2021,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                           ),
                         ),
                 ),
+              buildDetailsFooter(ctx),
             ],
           ),
         ),
@@ -1967,7 +2052,13 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
     }
   }
 
-  Widget _buildAttachmentCard(ExpenseAttachment attachment, bool isTablet) {
+  Widget _buildAttachmentCard(
+      BuildContext sheetContext, ExpenseAttachment attachment, bool isTablet) {
+    const Color teal = Color(0xFF4db1b3);
+    void open() => AttachmentViewerScreen.openAttachment(
+          sheetContext,
+          attachment,
+        );
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -1975,65 +2066,87 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => AttachmentViewerScreen.openAttachment(context, attachment),
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4db1b3).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    _getFileIcon(attachment.fileType),
-                    color: const Color(0xFF4db1b3),
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: open,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
                     children: [
-                      Text(
-                        attachment.fileName,
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w600,
-                          fontSize: isTablet ? 13 : 12,
-                          color: Colors.grey[900],
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: teal.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        child: Icon(
+                          _getFileIcon(attachment.fileType),
+                          color: teal,
+                          size: 20,
+                        ),
                       ),
-                      if (attachment.fileType.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          attachment.fileType.toUpperCase(),
-                          style: GoogleFonts.inter(
-                            fontSize: isTablet ? 11 : 10,
-                            color: Colors.grey[600],
-                          ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              attachment.fileName,
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                                fontSize: isTablet ? 13 : 12,
+                                color: Colors.grey[900],
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (attachment.fileType.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                attachment.fileType.toUpperCase(),
+                                style: GoogleFonts.inter(
+                                  fontSize: isTablet ? 11 : 10,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.open_in_new,
-                  size: 20,
-                  color: const Color(0xFF4db1b3),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: TextButton.icon(
+              onPressed: open,
+              icon: const Icon(Icons.visibility_outlined, size: 18, color: teal),
+              label: Text(
+                'View',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  fontSize: isTablet ? 13 : 12,
+                  color: teal,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: teal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2552,6 +2665,7 @@ class _ManagerReviewExpenseItemCard extends StatelessWidget {
     required this.isSelected,
     required this.onSelectionChanged,
     required this.onViewDetails,
+    required this.onViewFull,
     this.isEnabled = true, // Default to enabled
   });
   
@@ -2559,6 +2673,7 @@ class _ManagerReviewExpenseItemCard extends StatelessWidget {
   final bool isSelected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onViewDetails;
+  final VoidCallback onViewFull;
   final bool isEnabled; // Whether the item can be selected
 
   @override
@@ -2635,16 +2750,29 @@ class _ManagerReviewExpenseItemCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // View Button - Right side (visual only, card is clickable)
-                  Container(
-                    width: isTablet ? 36 : 32,
-                    height: isTablet ? 36 : 32,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                  TextButton.icon(
+                    onPressed: onViewFull,
+                    icon: Icon(
+                      Icons.visibility_outlined,
+                      size: isTablet ? 16 : 14,
+                      color: const Color(0xFF4db1b3),
                     ),
-                    child: Icon(Icons.visibility_outlined, size: isTablet ? 16 : 14, color: Colors.grey.shade700),
+                    label: Text(
+                      'View',
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 12 : 11,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF4db1b3),
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isTablet ? 8 : 6,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                   ),
                 ],
               ),

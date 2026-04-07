@@ -129,11 +129,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     
     // Try to load punch records immediately, and also listen for user details
     _loadTodayPunchRecords();
-    // Only load Planned vs Visited Summary if user is not a Service Engineer
-    if (!_isServiceEngineer()) {
-    _loadPlannedVsVisitedSummary();
+    if (_isManagerUser()) {
+      _loadPlannedVsVisitedSummary();
+      _loadMonthlyStatusSummary();
     }
-    _loadMonthlyStatusSummary();
     
     // Listen for user details changes to reload punch records when ready
     _userDetailStore.addListener(_onUserDetailsChanged);
@@ -158,11 +157,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       Future.microtask(() {
         if (mounted && _userDetailStore.userDetail?.employeeId == newEmployeeId && _currentEmployeeId == newEmployeeId) {
           _loadTodayPunchRecords();
-          // Only load Planned vs Visited Summary if user is not a Service Engineer
-          if (!_isServiceEngineer()) {
-          _loadPlannedVsVisitedSummary();
+          if (_isManagerUser()) {
+            _loadPlannedVsVisitedSummary();
+            _loadMonthlyStatusSummary();
           }
-          _loadMonthlyStatusSummary();
         }
       });
     } else {
@@ -171,12 +169,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     }
   }
 
-  /// Check if current user is a Service Engineer
-  bool _isServiceEngineer() {
-    final userDetail = _userDetailStore.userDetail;
-    final String? serviceArea = userDetail?.serviceArea;
-    final bool isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    return isServiceEngineer;
+  /// Manager visibility rule used across CRM screens.
+  bool _isManagerUser() {
+    final roleCategory = _userDetailStore.userDetail?.roleCategory;
+    return roleCategory == 1 || roleCategory == 2;
   }
 
   @override
@@ -350,11 +346,12 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       const SizedBox(height: 16),
                       _buildPunchActivityCard(),
                       const SizedBox(height: 16),
-                      // Hide Planned vs Visited Summary for Service Engineers
-                      if (!_isServiceEngineer()) _buildPlannedVsVisitedSummaryCard(),
-                      if (!_isServiceEngineer()) const SizedBox(height: 16),
-                      _buildMonthlyStatusSummaryCard(),
-                      const SizedBox(height: 20),
+                      if (_isManagerUser()) ...[
+                        _buildPlannedVsVisitedSummaryCard(),
+                        const SizedBox(height: 16),
+                        _buildMonthlyStatusSummaryCard(),
+                        const SizedBox(height: 20),
+                      ],
                     ],
                   ),
                 ),
@@ -1599,11 +1596,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     if (withLocation) {
       await _loadLocation();
     }
-    // Only load Planned vs Visited Summary if user is not a Service Engineer
-    if (!_isServiceEngineer()) {
-    _loadPlannedVsVisitedSummary();
+    if (_isManagerUser()) {
+      _loadPlannedVsVisitedSummary();
+      _loadMonthlyStatusSummary();
     }
-    _loadMonthlyStatusSummary();
     if (mounted) setState(() {});
   }
 
@@ -1611,11 +1607,13 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
   Future<void> _refreshSummaryData() async {
     if (!mounted) return;
     print('🔄 [PunchHomeScreen] Starting summary data refresh...');
+    if (!_isManagerUser()) {
+      return;
+    }
     final List<Future<void>> refreshTasks = [
       _loadMonthlyStatusSummary(),
     ];
-    // Only refresh Planned vs Visited Summary if user is not a Service Engineer
-    if (!_isServiceEngineer()) {
+    if (_isManagerUser()) {
       refreshTasks.add(_loadPlannedVsVisitedSummary());
     }
     await Future.wait(refreshTasks);

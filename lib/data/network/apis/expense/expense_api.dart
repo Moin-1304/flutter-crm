@@ -160,6 +160,12 @@ class ExpenseApi {
           }
         }
 
+        // Keep existing server attachments and append newly uploaded files.
+        final mergedAttachments = <ExpenseAttachment>[
+          ...request.attachments,
+          ...attachmentsWithFilePath,
+        ];
+
         // Create request with attachments containing fileName and path from upload API
         final requestWithFiles = ExpenseSaveRequest(
           id: request.id,
@@ -178,7 +184,7 @@ class ExpenseApi {
           clusterNames: request.clusterNames,
           isGeneric: request.isGeneric,
           employeeName: request.employeeName,
-          attachments: attachmentsWithFilePath,
+          attachments: mergedAttachments,
         );
 
         final requestJson = requestWithFiles.toJson();

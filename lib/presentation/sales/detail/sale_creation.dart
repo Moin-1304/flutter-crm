@@ -86,6 +86,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   String? _selectedUserGroup;
   final TextEditingController _quotationNoController = TextEditingController();
   bool _isBonusSO = false;
+  bool _isBonusEnabled = false;
   final TextEditingController _exchangeRateController = TextEditingController();
   final TextEditingController _deliveryAddressController =
       TextEditingController();
@@ -292,6 +293,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
               name: item.text,
               address: item.address.isNotEmpty ? item.address : 'N/A',
               city: item.cityName.isNotEmpty ? item.cityName : 'N/A',
+              bonusEnabled: item.bonusEnabled,
             );
           }).toList();
           _isLoadingCustomers = false;
@@ -1034,6 +1036,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       discount = 0.0;
     }
 
+    // Safely parse per-line tax (API may send tax/Tax)
+    double tax = 0.0;
+    try {
+      final taxValue = itemData['tax'] ?? itemData['Tax'] ?? 0.0;
+      if (taxValue is num) {
+        tax = taxValue.toDouble();
+      } else if (taxValue is String) {
+        tax = double.tryParse(taxValue) ?? 0.0;
+      }
+    } catch (e) {
+      tax = 0.0;
+    }
+
     // Get UOM - prioritize uomText (actual text) over uom (numeric ID)
     final uom = itemData['uomText']?.toString() ??
         (itemData['uom'] != null ? itemData['uom'].toString() : null);
@@ -1190,6 +1205,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       rate: rate, // Pass rate even if 0, so it can be loaded from API later
       mrp: mrp, // Pass MRP even if 0, so it can be loaded from API later
       discount: discount,
+      taxAmount: tax,
       uom: uom,
       remarks: remarks,
     );
@@ -1479,9 +1495,26 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   Future<void> _calculateAndApplyBonusForItem(
       _LineItem item, int itemId, [VoidCallback? onChanged]) async {
     try {
+      // Match backend/client rules:
+      // - If bonus is disabled for selected customer, do nothing.
+      // - If this is a Bonus SO, do nothing.
+      if (_isBonusEnabled == false || _isBonusSO == true) {
+        item.calculatedBonusQuantity = 0;
+        item.bonusQtyController.text = '0';
+        item.validateBonusQty();
+        if (onChanged != null) {
+          onChanged();
+        } else if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+
       final quantity = double.tryParse(item.qtyController.text.trim()) ?? 0.0;
       if (itemId <= 0 || quantity <= 0) {
         item.bonusQtyController.text = '0';
+        item.calculatedBonusQuantity = 0;
+        item.validateBonusQty();
         if (onChanged != null) {
           onChanged();
         } else if (mounted) {
@@ -1494,6 +1527,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final bonusListResponse = await salesRepository.getBonusList(itemId: itemId);
       if (bonusListResponse.items.isEmpty) {
         item.bonusQtyController.text = '0';
+        item.calculatedBonusQuantity = 0;
+        item.validateBonusQty();
         if (onChanged != null) {
           onChanged();
         } else if (mounted) {
@@ -1549,7 +1584,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       }
 
       final bonusAsInt = calculatedBonus.floor();
+      item.calculatedBonusQuantity = bonusAsInt;
+
+      // Auto-fill with calculated value (but allow user to reduce later).
       item.bonusQtyController.text = bonusAsInt > 0 ? bonusAsInt.toString() : '0';
+      item.validateBonusQty();
 
       if (onChanged != null) {
         onChanged();
@@ -1704,15 +1743,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       List<(double maxVal, double bonusQty)> slabs, double quantity) {
     if (quantity <= 0 || slabs.isEmpty) return 0.0;
 
-    double remaining = quantity;
+    // factor = floor(remaining / maxVal)
+    // remaining = remaining % maxVal
+    // total += factor * bonusQty
     double totalBonus = 0.0;
+    double remainingQty = quantity;
 
     for (final slab in slabs) {
-      if (remaining < slab.$1 || slab.$1 <= 0) continue;
-      final multiplier = (remaining / slab.$1).floor();
-      if (multiplier <= 0) continue;
-      totalBonus += multiplier * slab.$2;
-      remaining -= multiplier * slab.$1;
+      final maxVal = slab.$1;
+      final bonusQty = slab.$2;
+      if (maxVal <= 0 || bonusQty <= 0) continue;
+
+      final factor = (remainingQty / maxVal).floorToDouble();
+      remainingQty = remainingQty % maxVal;
+      totalBonus += factor * bonusQty;
     }
 
     return totalBonus;
@@ -2786,6 +2830,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           setState(() {
             _selectedCustomerCode = customer.code;
             CustomerAddressController.text = customer.address;
+            _isBonusEnabled = customer.bonusEnabled;
           });
           // Load Sales Rep and Distributor when customer is selected
           _loadSalesReps(customer.code);
@@ -2795,6 +2840,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           setState(() {
             _selectedCustomerCode = null;
             CustomerAddressController.clear();
+            _isBonusEnabled = false;
           });
         },
       ),
@@ -5736,6 +5782,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final amountSent = quantity * unitPrice;
       final totalAmountSent = amountSent - discount;
       final bonusQty = double.tryParse(item.bonusQtyController.text) ?? 0.0;
+      final additionalQty =
+          int.tryParse(item.addlBonusQtyController.text.trim()) ?? 0;
       // Format ReqdDate using the same ISO 8601 format helper
       final reqdDateStr = formatDateForApi(item.requiredDate);
 
@@ -5773,7 +5821,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         mrp: mrp,
         amount: amountSent,
         discount: discount,
-        tax: null,
+        tax: item.taxAmount ?? 0.0,
         totalAmount: totalAmountSent,
         reqdDate: reqdDateStr,
         remarks: item.remarksController.text.isNotEmpty
@@ -5781,6 +5829,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             : null,
         addlRemarks: null,
         bonusQuantity: bonusQty,
+        // Backend expects AdditionalQuantity in SalesContractItems to persist Addl. Bonus Qty
+        additionalQuantity: additionalQty,
         uomText: item.selectedUOM ?? item.product.uom,
         discountAmount: discount,
         divisionGroup: 2, // Should be from product/customer data
@@ -5940,13 +5990,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     final totalAdjust = priceAdjustment;
     final netAmount = grandTotal;
 
-    // Pass processId and processActionId only when order has been submitted
-    // (workflowFlag == 1). For draft / not approved (workflowFlag == 0), do not pass them.
-    final int? processId =
-        workflowFlag == 1 ? _workflowResponse?.id : null;
-    final int? processActionId = (workflowFlag == 1 && _workflowActions.isNotEmpty)
+    // Workflow fields:
+    // Backend expects these even for Draft save in some environments.
+    // Prefer values from workflow-get; fallback to loaded order values (edit mode).
+    final int? processId = _workflowResponse?.id ?? _loadedOrderData?.processId;
+    final int? processActionId = _workflowActions.isNotEmpty
         ? _workflowActions.first.processActionId
-        : null;
+        : _loadedOrderData?.processActionId;
 
     // Get dynamic userId from user (login user)
     final dynamicUserId = user.userId;
@@ -5976,6 +6026,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     print('Sales Rep ID: $salesRepId');
     print('SbuId / Bizunit (DistributorId): $finalSbuId');
     print('Distributor ID (DistributerForId): $distributorId');
+    print('WorkflowFlag: $workflowFlag');
+    print('ProcessId: $processId');
+    print('ProcessActionId: $processActionId');
     print('═══════════════════════════════════════════════════════════');
 
     return SalesOrderSaveRequest(
@@ -6041,6 +6094,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       netAmountBC: netAmount,
       divisionGroup: 2, // Should be from customer/product data
       isBonusSO: _isBonusSO,
+      bonusEnabled: _isBonusEnabled,
       vatRegistered: true, // Should be from customer data
       taxInclusive: false, // Should be from config
       distributerForId: distributorId, // Important: Pass selected DistributerId
@@ -6101,6 +6155,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             content: Text(
               'Please fill all required fields (Item, Qty, Rate, UOM) for order item #$itemNumber.',
             ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return false;
+      }
+
+      // Bonus Qty must be <= calculated bonus qty (when we have a calculated value).
+      item.validateBonusQty();
+      if (item.bonusQtyError != null && item.bonusQtyError!.isNotEmpty) {
+        final int itemNumber = i + 1;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Item $itemNumber: ${item.bonusQtyError}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -7093,25 +7160,70 @@ class _ItemCard extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Row: Bonus Qty & Addl. Bonus
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _NumberField(
-                    label: 'Bonus Qty',
-                    controller: item.bonusQtyController,
-                    min: 0,
-                    onChanged: (v) => onChanged(),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _NumberField(
+                        label: 'Bonus Qty',
+                        controller: item.bonusQtyController,
+                        min: 0,
+                        highlightError: item.bonusQtyError != null &&
+                            item.bonusQtyError!.isNotEmpty,
+                        suffixIcon: (item.bonusQtyError != null &&
+                                item.bonusQtyError!.isNotEmpty)
+                            ? const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Color(0xFFDC2626),
+                              )
+                            : null,
+                        onChanged: (v) {
+                          item.validateBonusQty();
+                          onChanged();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _NumberField(
+                        label: 'Addl. Bonus',
+                        controller: item.addlBonusQtyController,
+                        min: 0,
+                        onChanged: (v) => onChanged(),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _NumberField(
-                    label: 'Addl. Bonus',
-                    controller: item.addlBonusQtyController,
-                    min: 0,
-                    onChanged: (v) => onChanged(),
+                if (item.bonusQtyError != null &&
+                    item.bonusQtyError!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 1),
+                        child: Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: Color(0xFFDC2626),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.bonusQtyError!,
+                          style: const TextStyle(
+                            color: Color(0xFFDC2626),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                ],
               ],
             ),
             const SizedBox(height: 16),
@@ -7163,6 +7275,7 @@ class _LineItem {
   final TextEditingController rateController; // Added for rate input
   final TextEditingController mrpController; // MRP field
   final TextEditingController discountController; // Discount field
+  double? taxAmount; // Per-line tax amount from API/selection
   TextEditingController?
       _remarksController; // Remarks field - nullable for hot reload compatibility
   String? selectedUOM; // UOM dropdown value
@@ -7173,6 +7286,8 @@ class _LineItem {
 
   bool expanded;
   Timer? _pricingDebounceTimer;
+  int? calculatedBonusQuantity;
+  String? bonusQtyError;
 
   /// Contract line detail Id from API (when editing). Sent as SalesContractItem.Id so backend can match and validate dispatched qty.
   int? detailId;
@@ -7196,12 +7311,15 @@ class _LineItem {
     required this.rateController,
     required this.mrpController,
     required this.discountController,
+    this.taxAmount,
     TextEditingController? remarksController,
     this.selectedUOM,
     this.selectedTax,
     this.expanded = true,
     this.detailId,
     this.despatchedQty,
+    this.calculatedBonusQuantity,
+    this.bonusQtyError,
   }) : _remarksController = remarksController ?? TextEditingController();
 
   factory _LineItem.fromProduct(
@@ -7214,6 +7332,7 @@ class _LineItem {
     double? rate,
     double? mrp,
     double? discount,
+    double? taxAmount,
     String? uom,
     String? remarks,
     bool expanded = true,
@@ -7234,10 +7353,13 @@ class _LineItem {
           text: mrp != null ? mrp.toStringAsFixed(2) : ''),
       discountController: TextEditingController(
           text: discount != null ? discount.toStringAsFixed(2) : '0.00'),
+      taxAmount: taxAmount,
       remarksController: TextEditingController(text: remarks ?? ''),
       selectedUOM: uom,
       selectedTax: null, // Will be auto-selected when item is selected
       expanded: expanded,
+      calculatedBonusQuantity: 0,
+      bonusQtyError: null,
     );
   }
 
@@ -7285,6 +7407,16 @@ class _LineItem {
   }
 
   double get lineTotal => totalAmount;
+
+  void validateBonusQty() {
+    final entered = int.tryParse(bonusQtyController.text.trim()) ?? 0;
+    final calculated = calculatedBonusQuantity ?? 0;
+    if (entered > calculated) {
+      bonusQtyError = 'Cannot add bonus for product with no approved bonus';
+    } else {
+      bonusQtyError = null;
+    }
+  }
 
   void debouncePricingRecalculation(
     VoidCallback action, {
@@ -7881,20 +8013,33 @@ class _NumberField extends StatelessWidget {
   final TextEditingController controller;
   final int min;
   final ValueChanged<String>? onChanged;
+  final bool highlightError;
+  final Widget? suffixIcon;
 
   const _NumberField({
     required this.label,
     required this.controller,
     this.min = 0,
     this.onChanged,
+    this.highlightError = false,
+    this.suffixIcon,
   });
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 800;
-    final border = OutlineInputBorder(
-      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+    final baseBorder = OutlineInputBorder(
+      borderSide: BorderSide(
+        color: highlightError ? const Color(0xFFDC2626) : const Color(0xFFD1D5DB),
+        width: highlightError ? 2 : 1,
+      ),
       borderRadius: BorderRadius.circular(10),
+    );
+    final focusedBorder = baseBorder.copyWith(
+      borderSide: BorderSide(
+        color: highlightError ? const Color(0xFFDC2626) : const Color(0xFF4db1b3),
+        width: 2,
+      ),
     );
 
     return Column(
@@ -7927,12 +8072,11 @@ class _NumberField extends StatelessWidget {
             ),
             filled: true,
             fillColor: Colors.white,
-            border: border,
-            enabledBorder: border,
-            focusedBorder: border.copyWith(
-              borderSide: const BorderSide(color: Color(0xFF4db1b3), width: 2),
-            ),
-            errorBorder: border,
+            border: baseBorder,
+            enabledBorder: baseBorder,
+            focusedBorder: focusedBorder,
+            errorBorder: baseBorder,
+            suffixIcon: suffixIcon,
           ),
         ),
       ],
@@ -8008,6 +8152,8 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
   bool _isLoading = false;
   bool _isInitialLoad = true;
   Timer? _debounceTimer;
+  /// Ignores stale API responses when the user types again before the request finishes.
+  int _searchGeneration = 0;
   bool _hasText = false; // Track if text field has content
 
   @override
@@ -8048,9 +8194,8 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
       return;
     }
 
-    // Debounce API calls - wait 500ms after user stops typing
-    // Start searching with single character
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+    // Debounce API calls after user pauses typing
+    _debounceTimer = Timer(const Duration(milliseconds: 350), () {
       if (query.isNotEmpty) {
         _searchItems(query);
       } else {
@@ -8062,10 +8207,12 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
 
   Future<void> _searchItems(String searchText) async {
     if (!mounted) return;
+    final gen = ++_searchGeneration;
 
     setState(() {
       _isLoading = true;
     });
+    _overlayEntry?.markNeedsBuild();
 
     try {
       print('🔍 [SearchableItemField] Getting CommonRepository');
@@ -8083,6 +8230,8 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
         searchText: searchText,
       );
 
+      if (!mounted || gen != _searchGeneration) return;
+
       print('🔍 [SearchableItemField] API returned ${items.length} items');
 
       // Log rate values from API response
@@ -8095,53 +8244,54 @@ class _SearchableItemFieldState extends State<_SearchableItemField> {
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _filteredProducts = items.map((item) {
-            final product = Product(
-              id: item.id.toString(),
-              name: item.text,
-              manufacturer: item.name.isNotEmpty ? item.name : 'N/A',
-              rate: item.rate,
-              mrp: null, // MRP will be loaded from item details if needed
-              uom: item.uom > 0 ? 'UOM-${item.uom}' : 'Unit',
-              availableQty: item.stock,
-            );
-            // Log if rate is 0 or missing
-            if (item.rate == 0 || item.rate == null) {
-              print(
-                  '⚠️ [SearchableItemField] Item "${item.text}" (ID: ${item.id}) has rate = ${item.rate}');
-            }
-            return product;
-          }).toList();
-          _isLoading = false;
-          _isInitialLoad = false;
+      final mapped = items.map((item) {
+        final product = Product(
+          id: item.id.toString(),
+          name: item.text,
+          manufacturer: item.name.isNotEmpty ? item.name : 'N/A',
+          rate: item.rate,
+          mrp: null, // MRP will be loaded from item details if needed
+          uom: item.uom > 0 ? 'UOM-${item.uom}' : 'Unit',
+          availableQty: item.stock,
+        );
+        if (item.rate == 0 || item.rate == null) {
           print(
-              '🔍 [SearchableItemField] Loaded ${_filteredProducts.length} products');
+              '⚠️ [SearchableItemField] Item "${item.text}" (ID: ${item.id}) has rate = ${item.rate}');
+        }
+        return product;
+      }).toList();
 
-          if (_filteredProducts.isNotEmpty) {
-            _showOverlay();
-          } else {
-            _removeOverlay();
-          }
-        });
+      setState(() {
+        _filteredProducts = mapped;
+        _isLoading = false;
+        _isInitialLoad = false;
+      });
+      print(
+          '🔍 [SearchableItemField] Loaded ${_filteredProducts.length} products');
+
+      if (_filteredProducts.isNotEmpty) {
+        _showOverlay();
+      } else {
+        _removeOverlay();
       }
     } catch (e, stackTrace) {
       print('❌ [SearchableItemField] Error loading items: $e');
       print('❌ [SearchableItemField] Stack trace: $stackTrace');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _isInitialLoad = false;
-          _filteredProducts = [];
-          _removeOverlay();
-        });
-      }
+      if (!mounted || gen != _searchGeneration) return;
+      setState(() {
+        _isLoading = false;
+        _isInitialLoad = false;
+        _filteredProducts = [];
+      });
+      _removeOverlay();
     }
   }
 
   void _showOverlay() {
-    if (_overlayEntry != null) return;
+    if (_overlayEntry != null) {
+      _overlayEntry!.markNeedsBuild();
+      return;
+    }
 
     // Get the width of the TextField to match overlay width
     final RenderBox? renderBox =

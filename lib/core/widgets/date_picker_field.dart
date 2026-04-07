@@ -25,6 +25,22 @@ class _DatePickerFieldState extends State<DatePickerField> {
   }
 
   @override
+  void didUpdateWidget(covariant DatePickerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final DateTime next = DateTime(
+      widget.initialDate.year,
+      widget.initialDate.month,
+      widget.initialDate.day,
+    );
+    if (next.year != _date.year ||
+        next.month != _date.month ||
+        next.day != _date.day) {
+      _date = next;
+      _controller.text = _formatDate(_date);
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();

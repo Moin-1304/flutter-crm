@@ -19,6 +19,7 @@ import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
 
 class ExpenseDetail {
   String? expenseType;
@@ -41,12 +42,15 @@ class ExpenseEntryScreen extends StatefulWidget {
   final String? expenseId; // Optional expense ID for editing existing expense
   final String? id; // Optional ID for editing existing expense
   final String? dcrId; // Optional DCR ID for editing existing expense
+  /// Read-only mode (e.g. manager review full view).
+  final bool viewOnly;
 
   const ExpenseEntryScreen({
     super.key,
     this.expenseId,
     this.id,
     this.dcrId,
+    this.viewOnly = false,
   });
 
   @override
@@ -75,6 +79,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
   List<String> _expenseTypeOptions = [];
   final Map<String, int> _expenseTypeNameToId = {};
   Future<List<domain.DcrEntry>>? _dcrListFuture;
+
+  /// Receipts returned from GetExpense (view / edit existing).
+  List<ExpenseAttachment> _serverAttachments = [];
 
   void _refreshDcrListIfNeeded() {
     if (!mounted) return;
@@ -119,6 +126,74 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
     super.dispose();
   }
 
+  DateTime _parseApiExpenseDate(String? raw) {
+    final String t = raw?.trim() ?? '';
+    if (t.isEmpty) return DateTime.now();
+    final parsed = DateTime.tryParse(t);
+    if (parsed != null) return parsed;
+    try {
+      return DateTime.parse(t);
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
+  List<ExpenseAttachment> _normalizeServerAttachments(
+      List<ExpenseAttachment>? raw) {
+    if (raw == null || raw.isEmpty) return [];
+    return raw
+        .where((a) =>
+            a.filePath.trim().isNotEmpty && a.fileName.trim().isNotEmpty)
+        .toList();
+  }
+
+  /// Applies GET payload to the form (used by DCR GetExpense and Id-only GetExpense).
+  void _applyLoadedExpenseFromServer({
+    required int id,
+    required String dcrStatus,
+    required int dcrStatusId,
+    String? clusterNames,
+    required DateTime date,
+    required int expenceType,
+    required double expenseAmount,
+    required String remarks,
+    int? dcrLinkId,
+    List<ExpenseAttachment>? attachments,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      _currentExpenseId = id;
+      _currentExpenseStatus = dcrStatus;
+      _currentExpenseStatusId = dcrStatusId;
+      final String? c = clusterNames?.trim();
+      _cluster = (c == null || c.isEmpty) ? null : c;
+      _date = date;
+      _refreshDcrListIfNeeded();
+
+      for (final detail in _expenseDetails) {
+        detail.dispose();
+      }
+      _expenseDetails = [ExpenseDetail()];
+
+      final detail = _expenseDetails.first;
+      final expenseTypeName = _getExpenseTypeName(expenceType);
+      detail.expenseType = expenseTypeName;
+      detail.amountController.text = expenseAmount.toString();
+      detail.remarksController.text = remarks;
+      detail.expenseTypeError = null;
+      detail.amountError = null;
+      detail.remarksError = null;
+
+      _linkedDcrId =
+          (dcrLinkId != null && dcrLinkId > 0) ? dcrLinkId.toString() : null;
+      _serverAttachments = _normalizeServerAttachments(attachments);
+    });
+    // Second frame resyncs SearchableDropdown / date field if their state lagged the first paint.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   Future<void> _loadExpenseData() async {
     try {
       // Use id parameter if available, otherwise fall back to expenseId
@@ -128,11 +203,18 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
         print(
             'Loading expense details for ID: $expenseIdToLoad, DCRId: ${widget.dcrId}');
 
-        // Try to use DCR API first for expense details
-        if (getIt.isRegistered<DcrApi>() && widget.dcrId != null) {
+        final int intId = int.tryParse(expenseIdToLoad) ?? 0;
+        // Draft / generic expenses use DCRId=0; callers may pass null — still call GET like Edit does with "0".
+        final int intDcrId = (widget.dcrId == null ||
+                widget.dcrId!.trim().isEmpty)
+            ? 0
+            : (int.tryParse(widget.dcrId!) ?? 0);
+
+        var loaded = false;
+
+        // DCR expense GET (Id + DCRId) — primary path for list/detail ids.
+        if (getIt.isRegistered<DcrApi>() && intId > 0) {
           final dcrApi = getIt<DcrApi>();
-          final intId = int.tryParse(expenseIdToLoad) ?? 0;
-          final intDcrId = int.tryParse(widget.dcrId!) ?? 0;
 
           try {
             print('Expense Get API Request - Id: $intId, DCRId: $intDcrId');
@@ -140,59 +222,56 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
             print(
                 'Expense Get API Response: ${response.employeeName} - ${response.expenseAmount}');
 
-            // Prefill form with API data
-            setState(() {
-              _currentExpenseId =
-                  response.id; // Store the expense ID for editing
-              _currentExpenseStatus =
-                  response.dcrStatus; // Store the expense status
-              _currentExpenseStatusId =
-                  response.dcrStatusId; // Store the expense status ID
-              _cluster = response.clusterNames;
-              _date = DateTime.parse(response.dateOfExpense);
-              _refreshDcrListIfNeeded();
+            _applyLoadedExpenseFromServer(
+              id: response.id,
+              dcrStatus: response.dcrStatus,
+              dcrStatusId: response.dcrStatusId,
+              clusterNames: response.clusterNames,
+              date: _parseApiExpenseDate(response.dateOfExpense),
+              expenceType: response.expenceType,
+              expenseAmount: response.expenseAmount,
+              remarks: response.remarks,
+              dcrLinkId: response.dcrId,
+              attachments: response.attachments,
+            );
 
-              // Clear existing expense details and add one with API data
-              for (final detail in _expenseDetails) {
-                detail.dispose();
-              }
-              _expenseDetails = [ExpenseDetail()];
-
-              // Set the expense data
-              final detail = _expenseDetails.first;
-              final expenseTypeName = _getExpenseTypeName(response.expenceType);
-              print(
-                  'Setting expense type: $expenseTypeName for ID: ${response.expenceType}');
-              detail.expenseType = expenseTypeName;
-              detail.amountController.text = response.expenseAmount.toString();
-              detail.remarksController.text = response.remarks;
-              detail.expenseTypeError = null;
-              detail.amountError = null;
-              detail.remarksError = null;
-
-              print('After setting expense data:');
-              print('  - Expense Type: ${detail.expenseType}');
-              print('  - Amount: ${detail.amountController.text}');
-              print('  - Remarks: ${detail.remarksController.text}');
-              print(
-                  '  - Status: ${response.dcrStatus} (ID: ${response.dcrStatusId})');
-
-              // Set linked DCR if available
-              if (response.dcrId != null) {
-                _linkedDcrId = response.dcrId.toString();
-              }
-            });
-
-            print('Expense form prefilled successfully');
-            return;
+            print('Expense form prefilled successfully (DCR GetExpense)');
+            loaded = true;
           } catch (e) {
             print('Expense Get API failed: $e');
-            // Fall through to repository fallback
           }
         }
 
-        // Fallback to repository
-        if (getIt.isRegistered<ExpenseRepository>()) {
+        // Same endpoint as list detail preview: GetExpense?Id= only (omits DCRId).
+        if (!loaded &&
+            getIt.isRegistered<ExpenseRepository>() &&
+            intId > 0) {
+          try {
+            final detail =
+                await getIt<ExpenseRepository>().getExpenseFromApi(intId);
+            if (!mounted) return;
+            final String cn = detail.clusterNames.trim();
+            _applyLoadedExpenseFromServer(
+              id: detail.id,
+              dcrStatus: detail.dcrStatus,
+              dcrStatusId: detail.dcrStatusId,
+              clusterNames: cn.isEmpty ? null : cn,
+              date: detail.dateOfExpense,
+              expenceType: detail.expenceType,
+              expenseAmount: detail.expenseAmount,
+              remarks: detail.remarks,
+              dcrLinkId: detail.dcrId,
+              attachments: detail.attachments,
+            );
+            print('Expense form prefilled successfully (Id-only GetExpense)');
+            loaded = true;
+          } catch (e) {
+            print('GetExpense Id-only fallback failed: $e');
+          }
+        }
+
+        // Fallback to in-memory repository (often empty on device).
+        if (!loaded && getIt.isRegistered<ExpenseRepository>()) {
           final expenseRepo = getIt<ExpenseRepository>();
           final expenseId = int.tryParse(expenseIdToLoad);
 
@@ -236,8 +315,11 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                 _date = expense.date;
                 _refreshDcrListIfNeeded();
                 _linkedDcrId = expense.linkedDcrId;
+                _serverAttachments = [];
 
-                // Create expense details from the loaded expense
+                for (final d in _expenseDetails) {
+                  d.dispose();
+                }
                 _expenseDetails = [
                   ExpenseDetail()
                     ..expenseType = expense.expenseHead
@@ -247,6 +329,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                     ..amountError = null
                     ..remarksError = null
                 ];
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() {});
               });
             }
           }
@@ -295,7 +380,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          _currentExpenseId != null ? 'Update Expense' : 'New Expense',
+          widget.viewOnly
+              ? 'View Expense'
+              : (_currentExpenseId != null ? 'Update Expense' : 'New Expense'),
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w900,
@@ -328,127 +415,138 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                               style: theme.textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 12),
-                          _Labeled(
-                            child: DatePickerField(
-                              initialDate: _date,
-                              label: 'Date',
-                              onChanged: (d) {
-                                setState(() {
-                                  _date = d;
-                                  // Clear linked DCR when date changes
-                                  _linkedDcrId = null;
-                                  _refreshDcrListIfNeeded();
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          _Labeled(
-                            label: 'Cluster / City',
-                            required: false,
-                            child: SearchableDropdown(
-                              options: _clusterOptions,
-                              value: _cluster,
-                              hintText: '-- Select City --',
-                              searchHintText: 'Search city...',
-                              onChanged: (v) => setState(() {
-                                _cluster = v;
-                                // Clear linked DCR when city changes
-                                _linkedDcrId = null;
-                                _refreshDcrListIfNeeded();
-                              }),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          _Labeled(
-                            label: 'Link to DCR (optional)',
-                            child: _cluster == null
-                                ? SearchableDropdown(
-                                    options: const [],
-                                    value: null,
-                                    hintText: 'Select City first',
-                                    searchHintText: 'Select City first',
-                                    onChanged: (_) {},
-                                  )
-                                : FutureBuilder<List<domain.DcrEntry>>(
-                                    future: _dcrListFuture,
-                                    builder: (context, snap) {
-                                      final isLoading = snap.connectionState ==
-                                          ConnectionState.waiting;
-                                      final items = snap.data ?? const [];
-                                      final labels = items
-                                          .map((e) =>
-                                              '${e.customer} • ${e.purposeOfVisit}')
-                                          .toList();
-                                      String? current;
-                                      if (_linkedDcrId != null) {
-                                        final idx = items.indexWhere(
-                                            (e) => e.id == _linkedDcrId);
-                                        if (idx >= 0) current = labels[idx];
-                                      }
-                                      return Stack(
-                                        alignment: Alignment.centerRight,
-                                        children: [
-                                          SearchableDropdown(
-                                            options: labels,
-                                            value: current,
-                                            hintText: labels.isEmpty
-                                                ? 'No DCRs found for this date and city'
-                                                : 'Select DCR to link',
-                                            searchHintText: 'Search DCR...',
-                                            onChanged: (v) {
-                                              final idx =
-                                                  labels.indexOf(v ?? '');
-                                              setState(() => _linkedDcrId =
-                                                  idx >= 0
-                                                      ? items[idx].id
-                                                      : null);
-                                            },
-                                          ),
-                                          if (isLoading)
-                                            Positioned(
-                                              right: 12,
-                                              child: SizedBox(
-                                                height: 18,
-                                                width: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2.2,
-                                                  valueColor:
-                                                      AlwaysStoppedAnimation(
-                                                          tealGreen),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      );
+                          IgnorePointer(
+                            ignoring: widget.viewOnly,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _Labeled(
+                                  child: DatePickerField(
+                                    initialDate: _date,
+                                    label: 'Date',
+                                    onChanged: (d) {
+                                      setState(() {
+                                        _date = d;
+                                        // Clear linked DCR when date changes
+                                        _linkedDcrId = null;
+                                        _refreshDcrListIfNeeded();
+                                      });
                                     },
                                   ),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Multiple Expense Details Section
-                          ..._buildExpenseDetailsSections(),
-
-                          const SizedBox(height: 16),
-                          Center(
-                            child: OutlinedButton.icon(
-                              onPressed: _addAnotherExpense,
-                              icon: const Icon(Icons.add, size: 20),
-                              label: const Text('Add Another Expense'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Color(0xFF4db1b3),
-                                side: const BorderSide(
-                                    color: Color(0xFF4db1b3), width: 1.5),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 20, vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
-                              ),
+                                ),
+                                const SizedBox(height: 12),
+                                _Labeled(
+                                  label: 'Cluster / City',
+                                  required: false,
+                                  child: SearchableDropdown(
+                                    options: _clusterOptions,
+                                    value: _cluster,
+                                    hintText: '-- Select City --',
+                                    searchHintText: 'Search city...',
+                                    onChanged: (v) => setState(() {
+                                      _cluster = v;
+                                      // Clear linked DCR when city changes
+                                      _linkedDcrId = null;
+                                      _refreshDcrListIfNeeded();
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _Labeled(
+                                  label: 'Link to DCR (optional)',
+                                  child: _cluster == null
+                                      ? SearchableDropdown(
+                                          options: const [],
+                                          value: null,
+                                          hintText: 'Select City first',
+                                          searchHintText: 'Select City first',
+                                          onChanged: (_) {},
+                                        )
+                                      : FutureBuilder<List<domain.DcrEntry>>(
+                                          future: _dcrListFuture,
+                                          builder: (context, snap) {
+                                            final isLoading =
+                                                snap.connectionState ==
+                                                    ConnectionState.waiting;
+                                            final items =
+                                                snap.data ?? const [];
+                                            final labels = items
+                                                .map((e) =>
+                                                    '${e.customer} • ${e.purposeOfVisit}')
+                                                .toList();
+                                            String? current;
+                                            if (_linkedDcrId != null) {
+                                              final idx = items.indexWhere(
+                                                  (e) => e.id == _linkedDcrId);
+                                              if (idx >= 0) {
+                                                current = labels[idx];
+                                              }
+                                            }
+                                            return Stack(
+                                              alignment: Alignment.centerRight,
+                                              children: [
+                                                SearchableDropdown(
+                                                  options: labels,
+                                                  value: current,
+                                                  hintText: labels.isEmpty
+                                                      ? 'No DCRs found for this date and city'
+                                                      : 'Select DCR to link',
+                                                  searchHintText: 'Search DCR...',
+                                                  onChanged: (v) {
+                                                    final idx =
+                                                        labels.indexOf(v ?? '');
+                                                    setState(() =>
+                                                        _linkedDcrId = idx >= 0
+                                                            ? items[idx].id
+                                                            : null);
+                                                  },
+                                                ),
+                                                if (isLoading)
+                                                  Positioned(
+                                                    right: 12,
+                                                    child: SizedBox(
+                                                      height: 18,
+                                                      width: 18,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2.2,
+                                                        valueColor:
+                                                            AlwaysStoppedAnimation(
+                                                                tealGreen),
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                ),
+                                const SizedBox(height: 20),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 20),
-                          _buildActionButtons(),
+                          ..._buildExpenseDetailsSections(),
+                          if (!widget.viewOnly) ...[
+                            const SizedBox(height: 16),
+                            Center(
+                              child: OutlinedButton.icon(
+                                onPressed: _addAnotherExpense,
+                                icon: const Icon(Icons.add, size: 20),
+                                label: const Text('Add Another Expense'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Color(0xFF4db1b3),
+                                  side: const BorderSide(
+                                      color: Color(0xFF4db1b3), width: 1.5),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            _buildActionButtons(),
+                          ],
                         ],
                       ),
                     ),
@@ -464,8 +562,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
 
     for (int i = 0; i < _expenseDetails.length; i++) {
       final detail = _expenseDetails[i];
-      final bool isExpanded =
-          _expenseDetails.length == 1 || _expandedIndex == i;
+      final bool isExpanded = widget.viewOnly ||
+          _expenseDetails.length == 1 ||
+          _expandedIndex == i;
 
       sections.add(
         Container(
@@ -481,7 +580,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
             children: [
               // Header with expand/collapse functionality
               InkWell(
-                onTap: _expenseDetails.length > 1
+                onTap: (!widget.viewOnly && _expenseDetails.length > 1)
                     ? () {
                         setState(() {
                           _expandedIndex = isExpanded ? -1 : i;
@@ -524,7 +623,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                         ),
                         const SizedBox(width: 8),
                       ],
-                      if (_expenseDetails.length > 1)
+                      if (_expenseDetails.length > 1 && !widget.viewOnly)
                         IconButton(
                           onPressed: () => _removeExpenseDetail(i),
                           icon: const Icon(Icons.close, size: 20),
@@ -544,159 +643,109 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _Labeled(
-                        label: 'Expense Type',
-                        required: true,
-                        errorText: detail.expenseTypeError,
-                        child: SearchableDropdown(
-                          options: _expenseTypeOptions,
-                          value: detail.expenseType,
-                          hintText: 'Travel',
-                          searchHintText: 'Search expense type...',
-                          hasError: detail.expenseTypeError != null,
-                          onChanged: (v) {
-                            print('Expense type dropdown changed to: $v');
-                            setState(() {
-                              detail.expenseType = v;
-                              detail.expenseTypeError = null;
-                            });
-                            print(
-                                'After setState - detail.expenseType: ${detail.expenseType}');
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _Labeled(
-                        label: 'Amount (LKR)',
-                        required: true,
-                        errorText: detail.amountError,
-                        child: TextFormField(
-                          controller: detail.amountController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: InputDecoration(
-                            hintText: 'e.g. 1500',
-                            filled: true,
-                            fillColor: Colors.white,
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                  color: detail.amountError != null
-                                      ? Colors.red.shade400
-                                      : Colors.grey.shade300,
-                                  width: 1),
+                      IgnorePointer(
+                        ignoring: widget.viewOnly,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _Labeled(
+                              label: 'Expense Type',
+                              required: true,
+                              errorText: detail.expenseTypeError,
+                              child: SearchableDropdown(
+                                options: _expenseTypeOptions,
+                                value: detail.expenseType,
+                                hintText: 'Travel',
+                                searchHintText: 'Search expense type...',
+                                hasError: detail.expenseTypeError != null,
+                                onChanged: (v) {
+                                  print('Expense type dropdown changed to: $v');
+                                  setState(() {
+                                    detail.expenseType = v;
+                                    detail.expenseTypeError = null;
+                                  });
+                                  print(
+                                      'After setState - detail.expenseType: ${detail.expenseType}');
+                                },
+                              ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                  color: detail.amountError != null
-                                      ? Colors.red.shade400
-                                      : Colors.blue.shade200,
-                                  width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 12),
-                          ),
-                          onChanged: (_) =>
-                              setState(() => detail.amountError = null),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _Labeled(
-                        label: 'Remarks',
-                        required: true,
-                        errorText: detail.remarksError,
-                        child: TextFormField(
-                          controller: detail.remarksController,
-                          maxLines: 4,
-                          decoration: InputDecoration(
-                            hintText: 'Add remarks',
-                            filled: true,
-                            fillColor: Colors.white,
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                  color: detail.remarksError != null
-                                      ? Colors.red.shade400
-                                      : Colors.grey.shade300,
-                                  width: 1),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                  color: detail.remarksError != null
-                                      ? Colors.red.shade400
-                                      : Colors.blue.shade200,
-                                  width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 12),
-                          ),
-                          onChanged: (_) =>
-                              setState(() => detail.remarksError = null),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _Labeled(
-                        label: 'Upload Receipt (Optional)',
-                        child: InkWell(
-                          onTap: () => _pickReceiptFile(i),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                  color: Colors.black.withOpacity(.10)),
-                              borderRadius: BorderRadius.circular(16),
-                              color: const Color(0xFFF5F6F8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.attach_file, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    detail.receiptFile?.name ?? 'Choose File',
-                                    style: TextStyle(
-                                      color: detail.receiptFile != null
-                                          ? Colors.black
-                                          : Colors.black54,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                            const SizedBox(height: 12),
+                            _Labeled(
+                              label: 'Amount (LKR)',
+                              required: true,
+                              errorText: detail.amountError,
+                              child: TextFormField(
+                                controller: detail.amountController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                        decimal: true),
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. 1500',
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                        color: detail.amountError != null
+                                            ? Colors.red.shade400
+                                            : Colors.grey.shade300,
+                                        width: 1),
                                   ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                        color: detail.amountError != null
+                                            ? Colors.red.shade400
+                                            : Colors.blue.shade200,
+                                        width: 2),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
                                 ),
-                                if (detail.receiptFile != null) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade50,
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                          color: Colors.blue.shade200),
-                                    ),
-                                    child: Text(
-                                      _getFileTypeLabel(
-                                          detail.receiptFile!.extension),
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.blue.shade700,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  InkWell(
-                                    onTap: () => setState(
-                                        () => detail.receiptFile = null),
-                                    child: const Icon(Icons.close, size: 16),
-                                  ),
-                                ],
-                              ],
+                                onChanged: (_) =>
+                                    setState(() => detail.amountError = null),
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 12),
+                            _Labeled(
+                              label: 'Remarks',
+                              required: true,
+                              errorText: detail.remarksError,
+                              child: TextFormField(
+                                controller: detail.remarksController,
+                                maxLines: 4,
+                                decoration: InputDecoration(
+                                  hintText: 'Add remarks',
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                        color: detail.remarksError != null
+                                            ? Colors.red.shade400
+                                            : Colors.grey.shade300,
+                                        width: 1),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide(
+                                        color: detail.remarksError != null
+                                            ? Colors.red.shade400
+                                            : Colors.blue.shade200,
+                                        width: 2),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                ),
+                                onChanged: (_) =>
+                                    setState(() => detail.remarksError = null),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      _buildReceiptAttachmentsBlock(i, detail),
                     ],
                   ),
                 ),
@@ -742,6 +791,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
   }
 
   Widget _buildActionButtons() {
+    if (widget.viewOnly) {
+      return const SizedBox.shrink();
+    }
     final List<_ActionButtonConfig> actions = [];
     if (_currentExpenseId != null) {
       if (_isDraftExpense()) {
@@ -992,7 +1044,8 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
           : _clusterNameToId[clusterName];
 
       // Process each expense detail
-      for (final detail in _expenseDetails) {
+      for (var i = 0; i < _expenseDetails.length; i++) {
+        final detail = _expenseDetails[i];
         if (detail.expenseType == null) continue;
 
         final double? amount =
@@ -1002,10 +1055,6 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
         // Get expense type ID
         final expenseTypeId = _expenseTypeNameToId[detail.expenseType!] ??
             3; // Default to miscellaneous
-
-        // Prepare attachments - backend will populate FilePath after upload
-        // We'll pass empty attachments array and let backend handle file upload
-        List<ExpenseAttachment>? attachments = [];
 
         // Format date as ISO 8601: 2025-10-16T00:00:00
         final dateFormatted =
@@ -1036,7 +1085,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
           employeeName: submit
               ? employeeName
               : null, // Only set employee name for submitted expenses
-          attachments: attachments,
+          attachments: i == 0
+              ? List<ExpenseAttachment>.from(_serverAttachments)
+              : null,
         );
 
         // Debug logging
@@ -1377,6 +1428,218 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
       cityId: apiItem.cityId,
       customerId: apiItem.customerId,
       clusterId: null, // Not available in API response
+    );
+  }
+
+  void _removeServerAttachment(ExpenseAttachment a) {
+    setState(() {
+      _serverAttachments.removeWhere((x) =>
+          x.filePath == a.filePath && x.fileName == a.fileName);
+    });
+  }
+
+  /// Saved files + choose file; outside field [IgnorePointer] so view/delete/tap work in read-only mode.
+  Widget _buildReceiptAttachmentsBlock(int i, ExpenseDetail detail) {
+    if (widget.viewOnly && i > 0) {
+      return const SizedBox.shrink();
+    }
+
+    final bool showServerRow = i == 0 && _currentExpenseId != null;
+    final bool showChooseFile = !widget.viewOnly;
+
+    return _Labeled(
+      label: 'Receipt & attachments (optional)',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showServerRow) ...[
+            if (_serverAttachments.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'No saved attachments on file.',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                  ),
+                ),
+              )
+            else
+              ..._serverAttachments.map(
+                (a) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _buildServerAttachmentTile(
+                    a,
+                    showDelete: showChooseFile,
+                    onDelete: showChooseFile ? () => _removeServerAttachment(a) : null,
+                  ),
+                ),
+              ),
+          ],
+          if (showChooseFile) ...[
+            if (showServerRow && _serverAttachments.isNotEmpty)
+              const SizedBox(height: 4),
+            InkWell(
+              onTap: () => _pickReceiptFile(i),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.black.withOpacity(.10)),
+                  borderRadius: BorderRadius.circular(16),
+                  color: const Color(0xFFF5F6F8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.add_photo_alternate_outlined, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        detail.receiptFile?.name ?? 'Choose file (add receipt)',
+                        style: TextStyle(
+                          color: detail.receiptFile != null
+                              ? Colors.black
+                              : Colors.black54,
+                          fontWeight: detail.receiptFile != null
+                              ? FontWeight.w500
+                              : FontWeight.w400,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (detail.receiptFile != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Text(
+                          _getFileTypeLabel(detail.receiptFile!.extension),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () =>
+                            setState(() => detail.receiptFile = null),
+                        child: const Icon(Icons.close, size: 18),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  IconData _attachmentFileIcon(String fileType) {
+    final type = fileType.toLowerCase();
+    if (type.contains('image') ||
+        type.contains('jpg') ||
+        type.contains('jpeg') ||
+        type.contains('png') ||
+        type.contains('gif')) {
+      return Icons.image_outlined;
+    }
+    if (type.contains('pdf')) return Icons.picture_as_pdf_outlined;
+    if (type.contains('doc') || type.contains('word')) {
+      return Icons.description_outlined;
+    }
+    return Icons.attach_file;
+  }
+
+  Widget _buildServerAttachmentTile(
+    ExpenseAttachment attachment, {
+    bool showDelete = false,
+    VoidCallback? onDelete,
+  }) {
+    const Color tealGreen = Color(0xFF4db1b3);
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => AttachmentViewerScreen.openAttachment(
+                    context, attachment),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: tealGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          _attachmentFileIcon(attachment.fileType),
+                          color: tealGreen,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              attachment.fileName,
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: Colors.grey.shade900,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              attachment.fileType.isNotEmpty
+                                  ? 'Tap to view • ${attachment.fileType.toUpperCase()}'
+                                  : 'Tap to view',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.visibility_outlined,
+                          size: 22, color: tealGreen),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (showDelete && onDelete != null)
+              IconButton(
+                tooltip: 'Remove attachment',
+                onPressed: onDelete,
+                icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

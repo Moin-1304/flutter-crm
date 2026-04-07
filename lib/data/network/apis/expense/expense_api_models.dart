@@ -152,11 +152,12 @@ class ExpenseDetailResponse {
   factory ExpenseDetailResponse.fromJson(Map<String, dynamic> json) {
     // Handle attachments - can be null, empty array, or array with items
     List<ExpenseAttachment> attachmentsList = [];
-    if (json['attachments'] != null) {
-      if (json['attachments'] is List) {
-        attachmentsList = (json['attachments'] as List<dynamic>)
-            .map((item) => ExpenseAttachment.fromJson(item as Map<String, dynamic>))
-            .toList();
+    final dynamic rawAtt = json['attachments'] ?? json['Attachments'];
+    if (rawAtt is List) {
+      for (final item in rawAtt) {
+        if (item is Map<String, dynamic>) {
+          attachmentsList.add(ExpenseAttachment.fromJson(item));
+        }
       }
     }
     
@@ -385,11 +386,21 @@ class ExpenseGetResponse {
       clusterNames: json['clusterNames'],
       isGeneric: json['isGeneric'] ?? 0,
       employeeName: json['employeeName'],
-      attachments: (json['attachments'] as List<dynamic>?)
-          ?.map((item) => ExpenseAttachment.fromJson(item))
-          .toList(),
+      attachments: _parseExpenseAttachmentList(
+          json['attachments'] ?? json['Attachments']),
     );
   }
+}
+
+List<ExpenseAttachment>? _parseExpenseAttachmentList(dynamic raw) {
+  if (raw is! List) return null;
+  final out = <ExpenseAttachment>[];
+  for (final item in raw) {
+    if (item is Map<String, dynamic>) {
+      out.add(ExpenseAttachment.fromJson(item));
+    }
+  }
+  return out.isEmpty ? null : out;
 }
 
 // File Upload API Response Models

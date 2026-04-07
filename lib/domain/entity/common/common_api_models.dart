@@ -1724,6 +1724,7 @@ class CommonDropdownItem {
   final int subType;
   final int isReceiptBatchRequired;
   final int displayOrder;
+  final bool bonusEnabled;
 
   CommonDropdownItem({
     required this.id,
@@ -1787,6 +1788,7 @@ class CommonDropdownItem {
     required this.subType,
     required this.isReceiptBatchRequired,
     required this.displayOrder,
+    this.bonusEnabled = false,
   });
 
   factory CommonDropdownItem.fromJson(Map<String, dynamic> json) {
@@ -1858,6 +1860,10 @@ class CommonDropdownItem {
       subType: json['subType'] ?? 0,
       isReceiptBatchRequired: json['isReceiptBatchRequired'] ?? 0,
       displayOrder: json['displayOrder'] ?? 0,
+      bonusEnabled: json['bonusEnabled'] == true ||
+          json['BonusEnabled'] == true ||
+          json['bonusEnabled'] == 1 ||
+          json['BonusEnabled'] == 1,
     );
   }
 }

@@ -821,6 +821,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                         }
                                       : null,
                                   onViewDetails: () => _showDcrDetails(item),
+                                  onViewFull: () => _openFullEntryView(item),
                                   onEdit: _isDcrEditable(item)
                                       ? () async {
                                           if (getIt.isRegistered<
@@ -2409,6 +2410,65 @@ class _DcrListScreenState extends State<DcrListScreen>
     return result;
   }
 
+  /// Open full DCR / expense entry screen (read-only; SE submitted DCR keeps Service Report editable).
+  Future<void> _openFullEntryView(UnifiedDcrItem item) async {
+    if (item.isDcr) {
+      if (item.id <= 0 || item.dcrId <= 0) {
+        if (!mounted) return;
+        ToastMessage.show(
+          context,
+          message: 'Cannot open record: missing id.',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      final bool serviceReportOnlyEdit = _isCurrentUserServiceEngineer() &&
+          !_isDcrEditable(item);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => DcrEntryScreen(
+            id: item.id.toString(),
+            dcrId: item.dcrId.toString(),
+            viewOnly: true,
+            allowServiceReportEditOnly: serviceReportOnlyEdit,
+          ),
+        ),
+      );
+    } else if (item.isExpense) {
+      // Draft / standalone expenses use dcrId 0; pass same string as Edit so GetExpense params match.
+      if (item.id <= 0) {
+        if (!mounted) return;
+        ToastMessage.show(
+          context,
+          message: 'Cannot open record: missing id.',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ExpenseEntryScreen(
+            id: item.id.toString(),
+            dcrId: item.dcrId.toString(),
+            viewOnly: true,
+          ),
+        ),
+      );
+    } else {
+      if (!mounted) return;
+      ToastMessage.show(
+        context,
+        message: 'Unsupported record type.',
+        type: ToastType.warning,
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
+    }
+    if (mounted) await _load();
+  }
+
   /// Show detailed popup for DCR or Expense item
   Future<void> _showDcrDetails(UnifiedDcrItem item) async {
     // For DCR items, fetch full details using Get API to get Service Report fields
@@ -2600,6 +2660,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                     children: [
                       if (_isDcrEditable(item)) ...[
                         Expanded(
+                          flex: 1,
                           child: FilledButton.icon(
                             onPressed: () async {
                               Navigator.of(context).pop();
@@ -2627,47 +2688,37 @@ class _DcrListScreenState extends State<DcrListScreen>
                               }
                             },
                             icon: const Icon(Icons.edit_outlined, size: 18),
-                            label: const Text('Edit'),
+                            label: const Text('Edit', maxLines: 1),
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF4db1b3),
                               foregroundColor: Colors.white,
                               minimumSize: const Size.fromHeight(44),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 18, vertical: 12),
+                                  horizontal: 12, vertical: 12),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14)),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                       ],
-                      // View for submitted DCRs; allow editing/creating Service Report and saving (drafts use Edit)
-                      if (item.isDcr &&
-                          _isCurrentUserServiceEngineer() &&
-                          !_isDcrEditable(item)) ...[
+                      // Full-screen View beside Deviation (same behavior as list "View" / _openFullEntryView)
+                      if (item.isDcr && !_isDcrSentBack(item)) ...[
                         Expanded(
+                          flex: 1,
                           child: OutlinedButton.icon(
-                            onPressed: () {
+                            onPressed: () async {
                               Navigator.of(context).pop();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => DcrEntryScreen(
-                                    id: item.id.toString(),
-                                    dcrId: item.dcrId.toString(),
-                                    viewOnly: true,
-                                    allowServiceReportEditOnly: true,
-                                  ),
-                                ),
-                              );
+                              await _openFullEntryView(item);
                             },
                             icon: const Icon(Icons.visibility_outlined,
                                 size: 18, color: Color(0xFF4db1b3)),
-                            label: const Text('View'),
+                            label: const Text('View', maxLines: 1),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF4db1b3),
                               minimumSize: const Size.fromHeight(44),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 18, vertical: 12),
+                                  horizontal: 10, vertical: 12),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14)),
                               side: const BorderSide(
@@ -2675,10 +2726,9 @@ class _DcrListScreenState extends State<DcrListScreen>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                      ],
-                      if (item.isDcr && !_isDcrSentBack(item))
+                        const SizedBox(width: 8),
                         Expanded(
+                          flex: 2,
                           child: Builder(
                             builder: (context) {
                               final bool showFilled = !_isDcrEditable(item);
@@ -2695,17 +2745,26 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   ),
                                 );
                               };
+                              final deviationLabel = FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Deviation',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                ),
+                              );
                               if (showFilled) {
                                 return FilledButton.icon(
                                   onPressed: onPressed,
                                   icon: const Icon(Icons.alt_route, size: 18),
-                                  label: const Text('Deviation'),
+                                  label: deviationLabel,
                                   style: FilledButton.styleFrom(
                                     backgroundColor: const Color(0xFF4db1b3),
                                     foregroundColor: Colors.white,
                                     minimumSize: const Size.fromHeight(44),
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 18, vertical: 12),
+                                        horizontal: 10, vertical: 12),
                                     shape: RoundedRectangleBorder(
                                         borderRadius:
                                             BorderRadius.circular(14)),
@@ -2716,12 +2775,12 @@ class _DcrListScreenState extends State<DcrListScreen>
                                 onPressed: onPressed,
                                 icon: const Icon(Icons.alt_route,
                                     size: 18, color: Color(0xFF4db1b3)),
-                                label: const Text('Deviation'),
+                                label: deviationLabel,
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: const Color(0xFF4db1b3),
                                   minimumSize: const Size.fromHeight(44),
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 18, vertical: 12),
+                                      horizontal: 10, vertical: 12),
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14)),
                                   side: const BorderSide(
@@ -2731,6 +2790,31 @@ class _DcrListScreenState extends State<DcrListScreen>
                             },
                           ),
                         ),
+                      ],
+                      // Full-screen View for expenses (read-only entry screen)
+                      if (item.isExpense) ...[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              await _openFullEntryView(item);
+                            },
+                            icon: const Icon(Icons.visibility_outlined,
+                                size: 18, color: Color(0xFF4db1b3)),
+                            label: const Text('View'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF4db1b3),
+                              minimumSize: const Size.fromHeight(44),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              side: const BorderSide(
+                                  color: Color(0xFF4db1b3), width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -3643,6 +3727,7 @@ class _UnifiedItemCard extends StatelessWidget {
     this.onCreateDeviation,
     this.onEdit,
     this.onViewDetails,
+    this.onViewFull,
     this.isEditable = true,
     this.currentPosition,
     this.geoFenceRadiusMeters,
@@ -3652,6 +3737,7 @@ class _UnifiedItemCard extends StatelessWidget {
   final VoidCallback? onCreateDeviation;
   final VoidCallback? onEdit;
   final VoidCallback? onViewDetails;
+  final VoidCallback? onViewFull;
   final bool isEditable;
   final Position? currentPosition;
   final double? geoFenceRadiusMeters;
@@ -3730,18 +3816,30 @@ class _UnifiedItemCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // View Button - Right side (visual only, card is clickable)
-                if (onViewDetails != null)
-                  Container(
-                    width: isTablet ? 36 : 32,
-                    height: isTablet ? 36 : 32,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                if (onViewFull != null)
+                  TextButton.icon(
+                    onPressed: onViewFull,
+                    icon: Icon(
+                      Icons.visibility_outlined,
+                      size: isTablet ? 16 : 14,
+                      color: const Color(0xFF4db1b3),
                     ),
-                    child: Icon(Icons.visibility_outlined,
-                        size: isTablet ? 16 : 14, color: Colors.grey.shade700),
+                    label: Text(
+                      'View',
+                      style: GoogleFonts.inter(
+                        fontSize: isTablet ? 12 : 11,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF4db1b3),
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isTablet ? 8 : 6,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                   ),
               ],
             ),

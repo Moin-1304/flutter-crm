@@ -718,7 +718,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         _loadedIssueIsDraft = _isDraftIssue(apiIssue);
         if (_loadedIssueIsDraft) {
           print(
-              '   📋 Issue is DRAFT - first submit will use NEW payload (Id: null, No: "[NEW]", IsEdit: false)');
+              '   📋 Issue is DRAFT - first submit will use NEW payload (Id: null, No: "[NEW]", IsEdit: null)');
           await _loadWorkflowData(useCreateUrl: true);
         }
         print('   ✅ Stored: Issue ID ${apiIssue.id}, No: ${apiIssue.no}');
@@ -3636,12 +3636,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
 
     // Draft first-time submit: issue was saved as draft but never submitted.
-    // Send as CREATE (Id: null, No: "[NEW]", IsEdit: false, no detail ids) - same as fresh new form.
+    // Send as CREATE (Id: null, No: "[NEW]", IsEdit: null, no detail ids) - same as fresh new form.
     // Only use EDIT mode (Id, IsEdit: true, detail ids) when issue was already submitted.
     final bool isDraftFirstSubmit = _isEditMode && _loadedIssueIsDraft;
     if (isDraftFirstSubmit) {
       print(
-          '📋 Submitting DRAFT as NEW (first-time submit) - Id: null, No: "[NEW]", IsEdit: false');
+          '📋 Submitting DRAFT as NEW (first-time submit) - Id: null, No: "[NEW]", IsEdit: null');
     }
 
     // Build details list
@@ -3956,7 +3956,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       modifiedBy: modifiedBy,
       modifiedDate: null,
       isWorkOrder: null,
-      isEdit: isDraftFirstSubmit ? false : (_isEditMode ? true : null),
+      isEdit: (_isEditMode && !isDraftFirstSubmit) ? true : null,
       confirmStockValueChange:
           isDraftFirstSubmit ? null : (_isEditMode ? true : null),
       astDocMode: null,

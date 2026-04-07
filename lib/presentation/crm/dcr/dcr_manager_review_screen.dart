@@ -15,6 +15,8 @@ import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart';
 import 'package:boilerplate/presentation/crm/dcr/dcr_map_view_screen.dart';
 import 'package:boilerplate/presentation/crm/dcr/medical_rep_map_date_range_dialog.dart';
+import 'package:boilerplate/presentation/crm/dcr/dcr_entry_screen.dart';
+import 'package:boilerplate/presentation/crm/expenses/expense_entry_screen.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -808,6 +810,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                           }
                         },
                         onViewDetails: () => _showDcrDetails(item),
+                        onViewFull: () => _openFullEntryView(item),
                       ),
                     ),
                 ],
@@ -1091,6 +1094,61 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
   int? _statusIdFromText(String? text) => text == null ? null : _statusNameToId[text];
 
+  /// Full-screen read-only DCR or expense (same entry screens as My DCR / expense).
+  Future<void> _openFullEntryView(UnifiedDcrItem item) async {
+    if (item.isDcr) {
+      if (item.id <= 0 || item.dcrId <= 0) {
+        if (!mounted) return;
+        ToastMessage.show(
+          context,
+          message: 'Cannot open record: missing id.',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => DcrEntryScreen(
+            id: item.id.toString(),
+            dcrId: item.dcrId.toString(),
+            viewOnly: true,
+          ),
+        ),
+      );
+    } else if (item.isExpense) {
+      if (item.id <= 0) {
+        if (!mounted) return;
+        ToastMessage.show(
+          context,
+          message: 'Cannot open record: missing id.',
+          type: ToastType.error,
+          icon: Icons.error_outline,
+        );
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ExpenseEntryScreen(
+            id: item.id.toString(),
+            dcrId: item.dcrId.toString(),
+            viewOnly: true,
+          ),
+        ),
+      );
+    } else {
+      if (!mounted) return;
+      ToastMessage.show(
+        context,
+        message: 'Unsupported record type.',
+        type: ToastType.warning,
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
+    }
+    if (mounted) await _load();
+  }
+
   void _showDcrDetails(UnifiedDcrItem item) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -1144,6 +1202,40 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
           _DetailRow('Remarks', item.remarks, isMultiline: true),
         ],
       ];
+    }
+
+    Widget buildDetailsFooter(BuildContext ctx) {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          MediaQuery.of(ctx).padding.bottom + 16,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey.shade300)),
+        ),
+        child: OutlinedButton.icon(
+          onPressed: () {
+            Navigator.of(ctx).pop();
+            Future.microtask(() {
+              if (mounted) _openFullEntryView(item);
+            });
+          },
+          icon: const Icon(Icons.visibility_outlined, size: 20),
+          label: Text(item.isDcr ? 'View DCR' : 'View expense'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF4db1b3),
+            side: const BorderSide(color: Color(0xFF4db1b3), width: 1.5),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+      );
     }
 
     Widget buildPanelContent(BuildContext ctx) {
@@ -1262,6 +1354,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                     ),
                   ),
                 ),
+              buildDetailsFooter(ctx),
             ],
           ),
         ),
@@ -1282,6 +1375,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     } else {
       showModalBottomSheet(
         context: context,
+        useRootNavigator: true,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (ctx) => buildPanelContent(ctx),
@@ -2623,6 +2717,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
     required this.isSelected,
     required this.onSelectionChanged,
     required this.onViewDetails,
+    required this.onViewFull,
     this.showCheckbox = true,
     this.isEnabled = true, // Default to enabled
   });
@@ -2631,6 +2726,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
   final bool isSelected;
   final ValueChanged<bool> onSelectionChanged;
   final VoidCallback onViewDetails;
+  final VoidCallback onViewFull;
   final bool showCheckbox;
   final bool isEnabled; // Whether the item can be selected
 
@@ -2719,18 +2815,30 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // View Button - Right side (visual only, card is clickable)
-                if (onViewDetails != null)
-                  Container(
-                    width: isTablet ? 36 : 32,
-                    height: isTablet ? 36 : 32,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey.shade300, width: 1),
-                    ),
-                    child: Icon(Icons.visibility_outlined, size: isTablet ? 16 : 14, color: Colors.grey.shade700),
+                TextButton.icon(
+                  onPressed: onViewFull,
+                  icon: Icon(
+                    Icons.visibility_outlined,
+                    size: isTablet ? 16 : 14,
+                    color: const Color(0xFF4db1b3),
                   ),
+                  label: Text(
+                    'View',
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 12 : 11,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF4db1b3),
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 8 : 6,
+                      vertical: 4,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
