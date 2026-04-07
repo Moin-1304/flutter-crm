@@ -20,9 +20,7 @@ import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/t
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:boilerplate/presentation/common/map_picker_screen.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
@@ -4650,66 +4648,21 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                       ?.copyWith(color: Colors.grey.shade700),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          final LatLng center = _position != null
-                              ? LatLng(
-                                  _position!.latitude, _position!.longitude)
-                              : const LatLng(6.927079, 79.861244);
-                          final LatLng? picked =
-                              await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => MapPickerScreen(
-                                initial: center,
-                                title: 'Pick DCR Location',
-                                limitTo1KmDefault: true,
-                              ),
-                            ),
-                          );
-                          if (picked != null && mounted) {
-                            setState(() {
-                              _position = Position(
-                                latitude: picked.latitude,
-                                longitude: picked.longitude,
-                                timestamp: DateTime.now(),
-                                accuracy: 0,
-                                altitude: 0,
-                                heading: 0,
-                                speed: 0,
-                                speedAccuracy: 0,
-                                altitudeAccuracy: 0,
-                                headingAccuracy: 0,
-                              );
-                            });
-                          }
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: tealGreen,
-                          side: BorderSide(color: tealGreen, width: 1.5),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: const Text('Pick on map'),
-                      ),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await _initLocation();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: tealGreen,
+                      side: BorderSide(color: tealGreen, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () async {
-                          await _initLocation();
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: tealGreen,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: const Text('Use current'),
-                      ),
-                    ),
-                  ],
+                    child: const Text('Use current'),
+                  ),
                 ),
               ],
             );
@@ -4728,34 +4681,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: () async {
-                    final LatLng center = _position != null
-                        ? LatLng(_position!.latitude, _position!.longitude)
-                        : const LatLng(6.927079, 79.861244);
-                    final LatLng? picked = await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => MapPickerScreen(
-                          initial: center,
-                          title: 'Pick DCR Location',
-                          limitTo1KmDefault: true,
-                        ),
-                      ),
-                    );
-                    if (picked != null && mounted) {
-                      setState(() {
-                        _position = Position(
-                          latitude: picked.latitude,
-                          longitude: picked.longitude,
-                          timestamp: DateTime.now(),
-                          accuracy: 0,
-                          altitude: 0,
-                          heading: 0,
-                          speed: 0,
-                          speedAccuracy: 0,
-                          altitudeAccuracy: 0,
-                          headingAccuracy: 0,
-                        );
-                      });
-                    }
+                    await _initLocation();
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: tealGreen,
@@ -4764,18 +4690,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                         vertical: 12, horizontal: 18),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text('Pick on map'),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () async {
-                    await _initLocation();
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: tealGreen,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 12, horizontal: 18),
                   ),
                   child: const Text('Use current'),
                 ),
