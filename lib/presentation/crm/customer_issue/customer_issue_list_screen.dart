@@ -2288,6 +2288,8 @@ class _ColumnFilterPopup extends StatefulWidget {
 
 class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
   late ColumnFilterState _localState;
+  late TextEditingController _condition1ValueController;
+  late TextEditingController _condition2ValueController;
 
   @override
   void initState() {
@@ -2298,6 +2300,18 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
       ..logicalOperator = widget.filterState.logicalOperator
       ..condition2Operator = widget.filterState.condition2Operator
       ..condition2Value = widget.filterState.condition2Value;
+
+    _condition1ValueController =
+        TextEditingController(text: _localState.condition1Value);
+    _condition2ValueController =
+        TextEditingController(text: _localState.condition2Value);
+  }
+
+  @override
+  void dispose() {
+    _condition1ValueController.dispose();
+    _condition2ValueController.dispose();
+    super.dispose();
   }
 
   @override
@@ -2347,7 +2361,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                 // Condition 1
                 _buildConditionRow(
                   operator: _localState.condition1Operator,
-                  value: _localState.condition1Value,
+                  controller: _condition1ValueController,
                   onOperatorChanged: (op) {
                     setState(() {
                       _localState.condition1Operator = op;
@@ -2407,7 +2421,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                 const SizedBox(height: 12),
                 _buildConditionRow(
                   operator: _localState.condition2Operator,
-                  value: _localState.condition2Value,
+                  controller: _condition2ValueController,
                   onOperatorChanged: (op) {
                     setState(() {
                       _localState.condition2Operator = op;
@@ -2493,7 +2507,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
 
   Widget _buildConditionRow({
     required String operator,
-    required String value,
+    required TextEditingController controller,
     required ValueChanged<String> onOperatorChanged,
     required ValueChanged<String> onValueChanged,
   }) {
@@ -2551,6 +2565,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
               Expanded(
                 flex: 1,
                 child: TextField(
+                  controller: controller,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(4),

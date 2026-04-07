@@ -19,6 +19,7 @@ import 'package:boilerplate/presentation/crm/dcr/dcr_entry_screen.dart';
 import 'package:boilerplate/presentation/crm/expenses/expense_entry_screen.dart';
 
 const String kFilterClearToken = '__CLEAR__';
+enum _DateFilterMode { day, range }
 
 /// DCR Manager Review screen for managers to review and approve/reject DCRs
 class DcrManagerReviewScreen extends StatefulWidget {
@@ -30,10 +31,13 @@ class DcrManagerReviewScreen extends StatefulWidget {
 
 // Expose state for parent to call reload
 class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with SingleTickerProviderStateMixin {
-  // Initialize to first day of current month for month-wise filtering
-  DateTime _date = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  // Date filter defaults to current day records
+  _DateFilterMode _dateFilterMode = _DateFilterMode.day;
+  DateTime _selectedDay = DateTime.now();
+  DateTimeRange _selectedRange =
+      DateTimeRange(start: DateTime.now(), end: DateTime.now());
   String? _selectedEmployee;
-  String? _status;
+  String? _status = 'Submitted';
   List<UnifiedDcrItem> _unifiedItems = const [];
   final Set<String> _selectedItems = <String>{};
   bool _isLoading = false;
@@ -132,9 +136,16 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         return;
       }
 
-      // Calculate first and last day of the selected month
-      final DateTime start = DateTime(_date.year, _date.month, 1); // First day of month
-      final DateTime end = DateTime(_date.year, _date.month + 1, 0); // Last day of month
+      final DateTime start;
+      final DateTime end;
+      if (_dateFilterMode == _DateFilterMode.day) {
+        final d = _dayOnly(_selectedDay);
+        start = d;
+        end = d;
+      } else {
+        start = _dayOnly(_selectedRange.start);
+        end = _dayOnly(_selectedRange.end);
+      }
       final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
 
       if (dcrRepo == null) {
@@ -975,10 +986,12 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     }
     
     setState(() {
-      _status = null;
+      _status = 'Submitted';
       _selectedEmployee = managerEmployeeName; // Set to logged-in employee (manager) instead of null
-      final now = DateTime.now();
-      _date = DateTime(now.year, now.month, 1); // Reset to first day of current month
+      final DateTime now = _dayOnly(DateTime.now());
+      _dateFilterMode = _DateFilterMode.day;
+      _selectedDay = now;
+      _selectedRange = DateTimeRange(start: now, end: now);
     });
     await _load();
     _showToast(
@@ -990,8 +1003,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
   // Check if any filters are active
   bool _hasActiveFilters() {
-    final DateTime now = DateTime.now();
-    final bool isDateFiltered = !(_date.year == now.year && _date.month == now.month);
+    final bool isDateFiltered = !_isDefaultDateFilter();
     return _status != null || _selectedEmployee != null || isDateFiltered;
   }
 
@@ -1075,6 +1087,9 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         
         if (statuses.isNotEmpty) {
           _statusOptions = statuses.toList();
+          if (!_statusOptions.any((s) => s.toLowerCase() == 'pending')) {
+            _statusOptions.insert(0, 'Pending');
+          }
           for (final item in items) {
             final String key = item.text.trim();
             if (key.isNotEmpty) _statusNameToId[key] = item.id;
@@ -1473,14 +1488,38 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     }
   }
 
-  static String _formatDate(DateTime d) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${months[d.month - 1]} ${d.year}'; // Month and year only
+  DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _isDefaultDateFilter() {
+    final DateTime today = _dayOnly(DateTime.now());
+    if (_dateFilterMode == _DateFilterMode.day) {
+      return _dayOnly(_selectedDay) == today;
+    }
+    return _dayOnly(_selectedRange.start) == today &&
+        _dayOnly(_selectedRange.end) == today;
   }
 
-  static bool _isToday(DateTime d) {
+  String _formatDateRange(DateTimeRange r) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    String fmt(DateTime d) =>
+        '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
+    return '${fmt(r.start)} - ${fmt(r.end)}';
+  }
+
+  String _formatSingleDay(DateTime d) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final dd = d.day.toString().padLeft(2, '0');
+    return '$dd ${months[d.month - 1]} ${d.year}';
+  }
+
+  String _formatDate(DateTime d) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${months[d.month - 1]} ${d.year}';
+  }
+
+  bool _isToday(DateTime d) {
     final DateTime now = DateTime.now();
-    return now.year == d.year && now.month == d.month; // Check month only
+    return now.year == d.year && now.month == d.month && now.day == d.day;
   }
 
   // Show month/year picker
@@ -1703,7 +1742,14 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       // Manager review shows only DCR items
       final bool byTransactionType = item.isDcr;
       final statusChip = _getStatusChipForItem(item);
-      final byStatus = _status == null || statusChip.text == _status;
+      final byStatus = _status == null
+          ? true
+          : _status!.toLowerCase() == 'pending'
+              ? statusChip.text == 'Pending' ||
+                  statusChip.text == 'Submitted' ||
+                  statusChip.text == 'Draft' ||
+                  statusChip.text == 'Sent Back'
+              : statusChip.text == _status;
       if (!byStatus && _status != null) {
         print('DcrManagerReviewScreen: Filtered out item - statusChip.text: "${statusChip.text}", _status: "$_status", item.statusText: "${item.statusText}"');
       }
@@ -1720,8 +1766,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     int count = 0;
     if (_status != null) count++;
     if (_selectedEmployee != null) count++;
-    // Count date if not today
-    if (!_isToday(_date)) count++;
+    if (!_isDefaultDateFilter()) count++;
     return count;
   }
 
@@ -1800,8 +1845,10 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
   /// Shows date range popup for map (within current filter month). Returns selected range or null if cancelled.
   Future<({DateTime from, DateTime to})?> _showMapDateRangeDialog() async {
-    final DateTime monthStart = DateTime(_date.year, _date.month, 1);
-    final DateTime monthEnd = DateTime(_date.year, _date.month + 1, 0);
+    final DateTime monthBasis =
+        _dateFilterMode == _DateFilterMode.day ? _selectedDay : _selectedRange.start;
+    final DateTime monthStart = DateTime(monthBasis.year, monthBasis.month, 1);
+    final DateTime monthEnd = DateTime(monthBasis.year, monthBasis.month + 1, 0);
     const Color tealGreen = Color(0xFF4db1b3);
     final result = await showDialog<({DateTime from, DateTime to})>(
       context: context,
@@ -2146,7 +2193,9 @@ extension _FilterModal on DcrManagerReviewScreenState {
     // Temp selections that live during modal lifetime
     String? _tempStatus = _status;
     String? _tempEmployee = _selectedEmployee;
-    DateTime _tempDate = _date;
+    _DateFilterMode _tempMode = _dateFilterMode;
+    DateTime _tempDay = _selectedDay;
+    DateTimeRange _tempRange = _selectedRange;
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
@@ -2255,17 +2304,134 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.grey.shade200,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(10),
+                                          onTap: () {
+                                            setModalState(() {
+                                              _tempMode = _DateFilterMode.day;
+                                              _tempDay = _dayOnly(_tempDay);
+                                              _tempRange = DateTimeRange(
+                                                start: _tempDay,
+                                                end: _tempDay,
+                                              );
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tempMode == _DateFilterMode.day
+                                                  ? Colors.white
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                'One day',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _tempMode == _DateFilterMode.day
+                                                      ? Colors.grey[900]
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(10),
+                                          onTap: () {
+                                            setModalState(() {
+                                              _tempMode = _DateFilterMode.range;
+                                              _tempRange = DateTimeRange(
+                                                start: _dayOnly(_tempRange.start),
+                                                end: _dayOnly(_tempRange.end),
+                                              );
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 10),
+                                            decoration: BoxDecoration(
+                                              color: _tempMode == _DateFilterMode.range
+                                                  ? Colors.white
+                                                  : Colors.transparent,
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                'Date range',
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _tempMode == _DateFilterMode.range
+                                                      ? Colors.grey[900]
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
                                 _EnhancedDateSelector(
-                                  label: DcrManagerReviewScreenState._formatDate(_tempDate),
-                                  isActive: !DcrManagerReviewScreenState._isToday(_tempDate),
+                                  label: _tempMode == _DateFilterMode.day
+                                      ? _formatSingleDay(_tempDay)
+                                      : _formatDateRange(_tempRange),
+                                  isActive: _tempMode == _DateFilterMode.day
+                                      ? _dayOnly(_tempDay) != _dayOnly(DateTime.now())
+                                      : !(_dayOnly(_tempRange.start) ==
+                                              _dayOnly(DateTime.now()) &&
+                                          _dayOnly(_tempRange.end) ==
+                                              _dayOnly(DateTime.now())),
                                   onTap: () async {
-                                    // Show month/year picker
-                                    final DateTime? picked = await _showMonthYearPicker(context, _tempDate, tealGreen);
-                                    if (picked != null) {
-                                      setModalState(() {
-                                        // Set to first day of selected month
-                                        _tempDate = DateTime(picked.year, picked.month, 1);
-                                      });
+                                    if (_tempMode == _DateFilterMode.day) {
+                                      final DateTime? picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: _dayOnly(_tempDay),
+                                        firstDate: DateTime(2000, 1, 1),
+                                        lastDate: DateTime.now(),
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() {
+                                          _tempDay = _dayOnly(picked);
+                                          _tempRange =
+                                              DateTimeRange(start: _tempDay, end: _tempDay);
+                                        });
+                                      }
+                                    } else {
+                                      final DateTimeRange? picked = await showDateRangePicker(
+                                        context: context,
+                                        firstDate: DateTime(2000, 1, 1),
+                                        lastDate: DateTime.now(),
+                                        initialDateRange: _tempRange,
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() {
+                                          _tempRange = DateTimeRange(
+                                            start: _dayOnly(picked.start),
+                                            end: _dayOnly(picked.end),
+                                          );
+                                        });
+                                      }
                                     }
                                   },
                                 ),
@@ -2287,11 +2453,11 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                   builder: (_) {
                                     _pendingFilterApply = () {
                                       if (!mounted) return;
-                                      this.setState(() {
-                                        _status = _tempStatus;
-                                        _selectedEmployee = _tempEmployee;
-                                        _date = _tempDate;
-                                      });
+                                      _status = _tempStatus;
+                                      _selectedEmployee = _tempEmployee;
+                                      _dateFilterMode = _tempMode;
+                                      _selectedDay = _tempDay;
+                                      _selectedRange = _tempRange;
                                     };
                                     return const SizedBox.shrink();
                                   },

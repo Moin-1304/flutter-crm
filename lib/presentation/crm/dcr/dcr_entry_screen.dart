@@ -4873,6 +4873,15 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final DateTime today = DateTime.now();
+    final DateTime todayDateOnly = DateTime(today.year, today.month, today.day);
+    final DateTime firstAllowedDate = DateTime(2020);
+    final DateTime safeInitialDate = initialDate.isAfter(todayDateOnly)
+        ? todayDateOnly
+        : initialDate.isBefore(firstAllowedDate)
+            ? firstAllowedDate
+            : initialDate;
+
     return TextFormField(
       readOnly: true,
       decoration: InputDecoration(
@@ -4881,9 +4890,9 @@ class _DateField extends StatelessWidget {
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
-          initialDate: initialDate,
-          firstDate: DateTime(2020),
-          lastDate: DateTime(2030),
+          initialDate: safeInitialDate,
+          firstDate: firstAllowedDate,
+          lastDate: todayDateOnly,
           builder: (context, child) {
             final ThemeData base = Theme.of(context);
             return Theme(
