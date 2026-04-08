@@ -263,6 +263,10 @@ class _DeviationListScreenState extends State<DeviationListScreen>
   Future<void> refreshData() async {
     print(
         'DeviationListScreen: Refreshing data after returning from deviation entry...');
+    // Re-validate immediately after deviation submit/update for non-service engineers.
+    if (!_isCurrentUserServiceEngineer()) {
+      await _validateUserOnScreenOpen();
+    }
     // Add a small delay to ensure the deviation entry screen has completed its save operation
     await Future.delayed(const Duration(milliseconds: 500));
     await _loadDeviations();
@@ -870,19 +874,15 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                           child: FilledButton.icon(
                             onPressed: () async {
                               Navigator.of(context).pop();
-                              final result = await Navigator.of(context).push(
+                              await Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => DeviationEntryScreen(
                                       deviationId: data.id),
                                 ),
                               );
-                              // Always refresh to ensure list is up to date
-                              if (result == true) {
-                                await _loadDeviations();
-                              } else {
-                                // Also refresh even if no explicit result
-                                await _loadDeviations();
-                              }
+                              // Always refresh to ensure list is up to date.
+                              // For non-SE users this also revalidates create permission.
+                              await refreshData();
                             },
                             icon: const Icon(Icons.edit_outlined, size: 18),
                             label: const Text('Edit'),

@@ -7,6 +7,7 @@ import 'package:boilerplate/domain/repository/deviation/deviation_repository.dar
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1218,6 +1219,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                 useRootNavigator: true,
                 duration: const Duration(seconds: 3),
               );
+
+              await _revalidateUserAfterDeviationSubmit();
               
               // Navigate back with success indicator
               Navigator.of(context).pop(true);
@@ -1265,6 +1268,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
                 useRootNavigator: true,
                 duration: const Duration(seconds: 3),
               );
+
+              await _revalidateUserAfterDeviationSubmit();
               
               // Navigate back with success indicator for new deviation
               Navigator.of(context).pop(true);
@@ -1296,6 +1301,25 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _revalidateUserAfterDeviationSubmit() async {
+    // Service Engineers intentionally bypass validate-user checks.
+    if (_isServiceEngineer) return;
+    if (!getIt.isRegistered<UserValidationStore>()) return;
+
+    try {
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
+      final int? employeeId = userStore?.userDetail?.employeeId;
+      if (employeeId != null && employeeId > 0) {
+        await getIt<UserValidationStore>().validateUser(employeeId);
+      }
+    } catch (e) {
+      // Do not block successful save/update flow if revalidation fails.
+      print('DeviationEntryScreen: validateUser refresh failed after submit: $e');
     }
   }
 
