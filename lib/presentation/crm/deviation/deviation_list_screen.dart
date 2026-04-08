@@ -136,15 +136,16 @@ class _DeviationListScreenState extends State<DeviationListScreen>
     try {
       if (getIt.isRegistered<UserValidationStore>()) {
         final validationStore = getIt<UserValidationStore>();
-        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-        final user = await sharedPrefHelper.getUser();
-        if (user != null && (user.userId != null || user.id != null)) {
-          final userId = user.userId ?? user.id;
+        final userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? employeeId = userStore?.userDetail?.employeeId;
+        if (employeeId != null && employeeId > 0) {
           print(
-              '📱 [DeviationListScreen] Validating user on screen open - userId: $userId');
-          await validationStore.validateUser(userId!);
+              '📱 [DeviationListScreen] Validating user on screen open - employeeId as userId: $employeeId');
+          await validationStore.validateUser(employeeId);
         } else {
-          print('⚠️ [DeviationListScreen] User not available for validation');
+          print('⚠️ [DeviationListScreen] Employee ID not available for validation');
         }
       }
     } catch (e) {

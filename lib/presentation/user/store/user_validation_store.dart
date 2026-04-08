@@ -22,6 +22,7 @@ class UserValidationStore extends ChangeNotifier {
   bool get canUpdateTourPlan => _isUserValid == true;
   bool get canCreateDcr => _isUserValid == true;
   bool get canUpdateDcr => _isUserValid == true;
+  bool get canCreateExpense => _isUserValid == true;
   bool get canCreateDeviation => _isUserValid == true;
 
   /// Validate user by calling the API
@@ -49,7 +50,7 @@ class UserValidationStore extends ChangeNotifier {
         print(
             '✅ [UserValidationStore] Validation result: isValid = ${response.isValid}');
         print(
-            '   Button states: canCreateTourPlan=$canCreateTourPlan, canUpdateTourPlan=$canUpdateTourPlan, canCreateDcr=$canCreateDcr, canUpdateDcr=$canUpdateDcr, canCreateDeviation=$canCreateDeviation');
+            '   Button states: canCreateTourPlan=$canCreateTourPlan, canUpdateTourPlan=$canUpdateTourPlan, canCreateDcr=$canCreateDcr, canUpdateDcr=$canUpdateDcr, canCreateExpense=$canCreateExpense, canCreateDeviation=$canCreateDeviation');
       } else {
         _isUserValid = false;
         _errorMessage = 'DCR Repository not available';

@@ -175,9 +175,12 @@ class _DashboardShellState extends State<DashboardShell>
       try {
         if (getIt.isRegistered<UserValidationStore>()) {
           final validationStore = getIt<UserValidationStore>();
-          final userId =
-              _userStore.currentUser!.userId ?? _userStore.currentUser!.id;
-          await validationStore.validateUser(userId);
+          final int? employeeId = _userDetailStore.userDetail?.employeeId;
+          if (employeeId != null && employeeId > 0) {
+            await validationStore.validateUser(employeeId);
+          } else {
+            print('User validation skipped: employeeId not available');
+          }
           print('User validation result: ${validationStore.isUserValid}');
         }
       } catch (e) {

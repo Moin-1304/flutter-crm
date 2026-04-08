@@ -11,7 +11,6 @@ import 'package:boilerplate/presentation/crm/tour_plan/mock/mock_tour_plan.dart'
 import 'package:boilerplate/presentation/crm/tour_plan/store/tour_plan_store.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
-import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart' as login;
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -116,15 +115,16 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     try {
       if (getIt.isRegistered<UserValidationStore>()) {
         final validationStore = getIt<UserValidationStore>();
-        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-        final user = await sharedPrefHelper.getUser();
-        if (user != null && (user.userId != null || user.id != null)) {
-          final userId = user.userId ?? user.id;
+        final userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? employeeId = userStore?.userDetail?.employeeId;
+        if (employeeId != null && employeeId > 0) {
           print(
-              '📱 [TourPlanScreen] Validating user on screen open - userId: $userId');
-          await validationStore.validateUser(userId!);
+              '📱 [TourPlanScreen] Validating user on screen open - employeeId as userId: $employeeId');
+          await validationStore.validateUser(employeeId);
         } else {
-          print('⚠️ [TourPlanScreen] User not available for validation');
+          print('⚠️ [TourPlanScreen] Employee ID not available for validation');
         }
       }
     } catch (e) {
@@ -3336,7 +3336,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: Wrap(
-                    spacing: 8,
+                    spacing: isTablet ? 8 : 6,
                     runSpacing: 8,
                     alignment: WrapAlignment.end,
                     children: [
@@ -3405,7 +3405,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                   backgroundColor: tealGreen,
                                   foregroundColor: Colors.white,
                                   padding: EdgeInsets.symmetric(
-                                    horizontal: isTablet ? 20 : 16,
+                                    horizontal: isTablet ? 20 : 10,
                                     vertical: isTablet ? 12 : 10,
                                   ),
                                   shape: RoundedRectangleBorder(
@@ -3433,7 +3433,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             backgroundColor: tealGreen,
                             foregroundColor: Colors.white,
                             padding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 20 : 16,
+                              horizontal: isTablet ? 20 : 10,
                               vertical: isTablet ? 12 : 10,
                             ),
                             shape: RoundedRectangleBorder(
@@ -3443,32 +3443,68 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                         ),
                       // Create DCR button
                       if (_canCreateDcrFromTourPlan(statusItem))
-                        FilledButton.icon(
-                          onPressed: () {
-                            Navigator.of(sheetContext).pop();
-                            _createDcrFromTourPlan(fullItem!);
-                          },
-                          icon: Icon(Icons.description_outlined,
-                              size: isTablet ? 18 : 16),
-                          label: Text(
-                            'Create DCR',
-                            style: GoogleFonts.inter(
-                              fontSize: isTablet ? 14 : 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: tealGreen,
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 20 : 16,
-                              vertical: isTablet ? 12 : 10,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
+                        getIt.isRegistered<UserValidationStore>()
+                            ? ListenableBuilder(
+                                listenable: getIt<UserValidationStore>(),
+                                builder: (context, _) {
+                                  final validationStore =
+                                      getIt<UserValidationStore>();
+                                  final isEnabled =
+                                      _isCurrentUserServiceEngineer() ||
+                                          validationStore.canCreateDcr;
+                                  return FilledButton.icon(
+                                    onPressed: isEnabled
+                                        ? () {
+                                            Navigator.of(sheetContext).pop();
+                                            _createDcrFromTourPlan(fullItem!);
+                                          }
+                                        : null,
+                                    icon: Icon(Icons.description_outlined,
+                                        size: isTablet ? 18 : 16),
+                                    label: Text(
+                                      'Create DCR',
+                                      style: GoogleFonts.inter(
+                                        fontSize: isTablet ? 14 : 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: tealGreen,
+                                      foregroundColor: Colors.white,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isTablet ? 20 : 10,
+                                        vertical: isTablet ? 12 : 10,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              )
+                            : FilledButton.icon(
+                                onPressed: null,
+                                icon: Icon(Icons.description_outlined,
+                                    size: isTablet ? 18 : 16),
+                                label: Text(
+                                  'Create DCR',
+                                  style: GoogleFonts.inter(
+                                    fontSize: isTablet ? 14 : 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: tealGreen,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isTablet ? 20 : 10,
+                                    vertical: isTablet ? 12 : 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
                       // Delete button
                       if (_canDeleteTourPlan(statusItem))
                         OutlinedButton.icon(
@@ -3489,7 +3525,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Colors.red),
                             padding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 20 : 16,
+                              horizontal: isTablet ? 20 : 10,
                               vertical: isTablet ? 12 : 10,
                             ),
                             shape: RoundedRectangleBorder(
@@ -3517,7 +3553,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             backgroundColor: tealGreen,
                             foregroundColor: Colors.white,
                             padding: EdgeInsets.symmetric(
-                              horizontal: isTablet ? 20 : 16,
+                              horizontal: isTablet ? 20 : 10,
                               vertical: isTablet ? 12 : 10,
                             ),
                             shape: RoundedRectangleBorder(

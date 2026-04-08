@@ -19,7 +19,6 @@ import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
-import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
@@ -185,15 +184,16 @@ class _DcrListScreenState extends State<DcrListScreen>
     try {
       if (getIt.isRegistered<UserValidationStore>()) {
         final validationStore = getIt<UserValidationStore>();
-        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-        final user = await sharedPrefHelper.getUser();
-        if (user != null && (user.userId != null || user.id != null)) {
-          final userId = user.userId ?? user.id;
+        final userStore = getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>()
+            : null;
+        final int? employeeId = userStore?.userDetail?.employeeId;
+        if (employeeId != null && employeeId > 0) {
           print(
-              '📱 [DcrListScreen] Validating user on screen open - userId: $userId');
-          await validationStore.validateUser(userId!);
+              '📱 [DcrListScreen] Validating user on screen open - employeeId as userId: $employeeId');
+          await validationStore.validateUser(employeeId);
         } else {
-          print('⚠️ [DcrListScreen] User not available for validation');
+          print('⚠️ [DcrListScreen] Employee ID not available for validation');
         }
       }
     } catch (e) {
@@ -805,7 +805,11 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   geoFenceRadiusMeters: _geoFenceRadiusMeters,
                                   isEditable: _isDcrEditable(item),
                                   onCreateDeviation: item.isDcr &&
-                                          !_isDcrSentBack(item)
+                                          !_isDcrSentBack(item) &&
+                                          (!getIt.isRegistered<
+                                                  UserValidationStore>() ||
+                                              getIt<UserValidationStore>()
+                                                  .canCreateDeviation)
                                       ? () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
@@ -1001,6 +1005,7 @@ class _DcrListScreenState extends State<DcrListScreen>
               // Service Engineers: always allow New DCR; others: use validate-user API
               final canCreateDcr = _isCurrentUserServiceEngineer() ||
                   validationStore.canCreateDcr;
+              final canCreateExpense = validationStore.canCreateExpense;
 
               return Row(
                 children: [
@@ -1030,15 +1035,18 @@ class _DcrListScreenState extends State<DcrListScreen>
                       label: 'New Expense',
                       color: tealGreen,
                       isMobile: isMobile,
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => const ExpenseEntryScreen()),
-                        );
-                        if (context.mounted) {
-                          await _load();
-                        }
-                      },
+                      onTap: canCreateExpense
+                          ? () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ExpenseEntryScreen()),
+                              );
+                              if (context.mounted) {
+                                await _load();
+                              }
+                            }
+                          : null,
                     ),
                   ),
                 ],
@@ -1063,15 +1071,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                   label: 'New Expense',
                   color: tealGreen,
                   isMobile: isMobile,
-                  onTap: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const ExpenseEntryScreen()),
-                    );
-                    if (context.mounted) {
-                      await _load();
-                    }
-                  },
+                  onTap: null, // Disabled if validation store not available
                 ),
               ),
             ],
