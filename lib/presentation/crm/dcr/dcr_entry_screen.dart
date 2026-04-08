@@ -559,8 +559,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           : null;
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
+        final int employeeId = userStore?.userDetail?.employeeId ?? 0;
         final List<CommonDropdownItem> items = await repo
-            .getReportingManagerList(id: userStore?.userDetail?.id ?? 0);
+            .getReportingManagerList(id: employeeId);
         if (items.isNotEmpty) {
           setState(() {
             _managerOptions = items
