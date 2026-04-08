@@ -809,7 +809,8 @@ class _DcrListScreenState extends State<DcrListScreen>
                                           (!getIt.isRegistered<
                                                   UserValidationStore>() ||
                                               getIt<UserValidationStore>()
-                                                  .canCreateDeviation)
+                                                  .canCreateDeviation ||
+                                              _isCurrentUserServiceEngineer())
                                       ? () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
@@ -1005,7 +1006,9 @@ class _DcrListScreenState extends State<DcrListScreen>
               // Service Engineers: always allow New DCR; others: use validate-user API
               final canCreateDcr = _isCurrentUserServiceEngineer() ||
                   validationStore.canCreateDcr;
-              final canCreateExpense = validationStore.canCreateExpense;
+              // Service Engineers: skip validate-user for expense too
+              final canCreateExpense = _isCurrentUserServiceEngineer() ||
+                  validationStore.canCreateExpense;
 
               return Row(
                 children: [
