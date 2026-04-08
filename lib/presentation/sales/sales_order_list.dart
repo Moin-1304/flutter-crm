@@ -10,6 +10,8 @@ import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/core/widgets/app_dropdowns.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_action_button.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_record_pill.dart';
 
 class SaleOrderListScreen extends StatefulWidget {
   const SaleOrderListScreen({super.key});
@@ -1171,8 +1173,12 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
               Expanded(
                 child: SizedBox(
                   height: buttonHeight,
-                  child: FilledButton.icon(
-                    onPressed: () async {
+                  child: CrmActionButton(
+                    icon: Icons.add,
+                    label: 'New SO',
+                    color: tealGreen,
+                    isMobile: isMobile,
+                    onTap: () async {
                       final result = await Navigator.pushNamed(
                         context,
                         Routes.saleCreate,
@@ -1182,61 +1188,18 @@ class _SaleOrderListScreenState extends State<SaleOrderListScreen>
                         _loadSalesOrders(refresh: true);
                       }
                     },
-                    icon: const Icon(Icons.add, size: 18),
-                    // text lenght is cutting need fix it
-                    label: Text(
-                      'New SO',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.0,
-                      ),
-                    ),
-
-                    style: FilledButton.styleFrom(
-                      backgroundColor: tealGreen,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
                   ),
                 ),
               ),
 
               const SizedBox(width: 12),
               Expanded(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.format_list_bulleted_outlined,
-                        size: 18,
-                        color: Colors.black54,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _apiOrders.isEmpty
-                            ? 'No records'
-                            : '${_apiOrders.length} ${_apiOrders.length == 1 ? 'record' : 'records'}',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          height: 1.2,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: CrmRecordPill(
+                  text: _apiOrders.isEmpty
+                      ? 'No records'
+                      : '${_apiOrders.length} ${_apiOrders.length == 1 ? 'record' : 'records'}',
+                  color: const Color(0xFF4db1b3),
+                  isMobile: isMobile,
                 ),
               ),
             ],

@@ -22,6 +22,7 @@ import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_action_button.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -1089,45 +1090,12 @@ class _DcrListScreenState extends State<DcrListScreen>
     required bool isMobile,
     required VoidCallback? onTap,
   }) {
-    final isEnabled = onTap != null;
-    return Container(
-      height: isMobile ? 44 : 48,
-      decoration: BoxDecoration(
-        color: isEnabled ? color : Colors.grey,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: isEnabled
-            ? [
-                BoxShadow(
-                  color: color.withOpacity(0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.white, size: isMobile ? 18 : 20),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: isMobile ? 14 : 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return CrmActionButton(
+      icon: icon,
+      label: label,
+      color: color,
+      isMobile: isMobile,
+      onTap: onTap,
     );
   }
 

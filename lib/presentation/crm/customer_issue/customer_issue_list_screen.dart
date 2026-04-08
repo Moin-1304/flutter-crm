@@ -8,6 +8,8 @@ import 'package:boilerplate/domain/entity/item_issue/item_issue_api_models.dart'
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_action_button.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_record_pill.dart';
 
 class CustomerIssueListScreen extends StatefulWidget {
   const CustomerIssueListScreen({super.key});
@@ -605,13 +607,20 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: Row(
-                    children: [
-                      // Hide Edit button if status is Approved
-                      if (issue.status.toLowerCase() != 'approved') ...[
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: () async {
+                  child: Builder(
+                    builder: (context) {
+                      final bool isMobileButtons = !isTabletPanel;
+                      return Row(
+                        children: [
+                          // Hide Edit button if status is Approved
+                          if (issue.status.toLowerCase() != 'approved') ...[
+                            Expanded(
+                              child: CrmActionButton(
+                                icon: Icons.edit_outlined,
+                                label: 'Edit',
+                                color: const Color(0xFF4db1b3),
+                                isMobile: isMobileButtons,
+                                onTap: () async {
                               Navigator.of(context).pop();
                               // Get full API item data for editing
                               final apiItem = _apiItemsById[issue.id];
@@ -649,25 +658,18 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                               if (result == true) {
                                 setState(() {}); // Refresh list
                               }
-                            },
-                            icon: const Icon(Icons.edit_outlined, size: 18),
-                            label: const Text('Edit'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF4db1b3),
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(44),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 18, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14)),
+                                },
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () {
+                            const SizedBox(width: 10),
+                          ],
+                          Expanded(
+                            child: CrmActionButton(
+                              icon: Icons.visibility_outlined,
+                              label: 'View',
+                              color: const Color(0xFF4db1b3),
+                              isMobile: isMobileButtons,
+                              onTap: () {
                             Navigator.of(context).pop();
                             // Get full API item data for viewing
                             final apiItem = _apiItemsById[issue.id];
@@ -681,21 +683,12 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                 ),
                               ),
                             );
-                          },
-                          icon: const Icon(Icons.visibility_outlined, size: 18),
-                          label: const Text('View'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF4db1b3),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(44),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 18, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
+                              },
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),
@@ -1324,44 +1317,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     final bool isMobile = !isTablet;
     final int recordCount = _filteredIssues.length;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 18,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: tealGreen.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: tealGreen.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.max,
-        children: [
-          Icon(
-            Icons.format_list_bulleted_outlined,
-            color: tealGreen,
-            size: 18,
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              '$recordCount ${recordCount == 1 ? 'record' : 'records'}',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: tealGreen,
-                letterSpacing: -0.1,
-              ),
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
+    return CrmRecordPill(
+      text: '$recordCount ${recordCount == 1 ? 'record' : 'records'}',
+      color: tealGreen,
+      isMobile: isMobile,
     );
   }
 
@@ -1380,8 +1339,12 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
               children: [
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () async {
+                  child: CrmActionButton(
+                    icon: Icons.add,
+                    label: 'Customer Issue',
+                    color: tealGreen,
+                    isMobile: isMobile,
+                    onTap: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => CustomerIssueEntryScreen(),
@@ -1391,26 +1354,6 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                         await _loadItemIssues(refresh: true);
                       }
                     },
-                    icon: const Icon(Icons.add, size: 18),
-                    label: Text(
-                      'Customer Issue',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: tealGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 2,
-                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1426,8 +1369,12 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
             return Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () async {
+                  child: CrmActionButton(
+                    icon: Icons.add,
+                    label: 'Customer Issue',
+                    color: tealGreen,
+                    isMobile: isMobile,
+                    onTap: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => CustomerIssueEntryScreen(),
@@ -1437,26 +1384,6 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                         await _loadItemIssues(refresh: true);
                       }
                     },
-                    icon: const Icon(Icons.add, size: 18),
-                    label: Text(
-                      'Customer Issue',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: tealGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 2,
-                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

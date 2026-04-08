@@ -20,6 +20,8 @@ import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dar
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/presentation/crm/tour_plan/tour_plan_manager_review_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_action_button.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_record_pill.dart';
 import 'dart:async';
 
 import '../../data/network/apis/user/lib/domain/entity/tour_plan/calendar_view_data.dart';
@@ -469,7 +471,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             // New Plan Button - 50% width
                             Expanded(
                               child: SizedBox(
-                                height: actionHeight,
+                                height: isTablet ? 48 : 44,
                                 child: getIt.isRegistered<UserValidationStore>()
                                     ? ListenableBuilder(
                                         listenable:
@@ -477,20 +479,25 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                         builder: (context, _) {
                                           final validationStore =
                                               getIt<UserValidationStore>();
-                                          // Service Engineers: always allow; others: use validate-user API
                                           final isEnabled =
                                               _isCurrentUserServiceEngineer() ||
-                                                  validationStore.canCreateTourPlan;
-                                          return FilledButton.icon(
-                                            onPressed: isEnabled
+                                                  validationStore
+                                                      .canCreateTourPlan;
+                                          return CrmActionButton(
+                                            icon: Icons.add_rounded,
+                                            label: 'New Plan',
+                                            color: tealGreen,
+                                            isMobile: !isTablet,
+                                            onTap: isEnabled
                                                 ? () async {
                                                     final result =
                                                         await Navigator.of(
                                                                 context)
                                                             .push(
                                                       MaterialPageRoute(
-                                                          builder: (_) =>
-                                                              const NewTourPlanScreen()),
+                                                        builder: (_) =>
+                                                            const NewTourPlanScreen(),
+                                                      ),
                                                     );
                                                     if (result == true &&
                                                         mounted) {
@@ -498,73 +505,26 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                                     }
                                                   }
                                                 : null,
-                                            icon: Icon(Icons.add_rounded,
-                                                size: isTablet ? 20 : 18),
-                                            label: Text(
-                                              'New Plan',
-                                              style: GoogleFonts.inter(
-                                                fontSize: isTablet ? 16 : 15,
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 0.3,
-                                              ),
-                                            ),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: isEnabled
-                                                  ? tealGreen
-                                                  : Colors.grey,
-                                              foregroundColor: Colors.white,
-                                              disabledBackgroundColor:
-                                                  Colors.grey.shade300,
-                                              disabledForegroundColor:
-                                                  Colors.grey.shade600,
-                                              elevation: isEnabled ? 4 : 0,
-                                              shadowColor: isEnabled
-                                                  ? tealGreen.withOpacity(0.4)
-                                                  : Colors.transparent,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                              ),
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: isTablet ? 20 : 16,
-                                              ),
-                                              minimumSize:
-                                                  Size.fromHeight(actionHeight),
-                                            ),
                                           );
                                         },
                                       )
-                                    : FilledButton.icon(
-                                        onPressed: () async {
+                                    : CrmActionButton(
+                                        icon: Icons.add_rounded,
+                                        label: 'New Plan',
+                                        color: tealGreen,
+                                        isMobile: !isTablet,
+                                        onTap: () async {
                                           final result =
                                               await Navigator.of(context).push(
                                             MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const NewTourPlanScreen()),
+                                              builder: (_) =>
+                                                  const NewTourPlanScreen(),
+                                            ),
                                           );
                                           if (result == true && mounted) {
                                             await _refreshAllWithLoader();
                                           }
                                         },
-                                        icon: Icon(Icons.add_rounded,
-                                            size: isTablet ? 20 : 18),
-                                        label: Text(
-                                          'New Plan',
-                                          style: GoogleFonts.inter(
-                                            fontSize: isTablet ? 16 : 15,
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 0.3,
-                                          ),
-                                        ),
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: tealGreen,
-                                          foregroundColor: Colors.white,
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: isTablet ? 20 : 16,
-                                          ),
-                                          minimumSize:
-                                              Size.fromHeight(actionHeight),
-                                        ),
                                       ),
                               ),
                             ),
@@ -573,45 +533,13 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                             // Filter Count Display - 50% width
                             Expanded(
                               child: SizedBox(
-                                height: actionHeight,
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isTablet ? 16 : 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: tealGreen.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: tealGreen.withOpacity(0.2),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.format_list_bulleted_outlined,
-                                        color: tealGreen,
-                                        size: isTablet ? 18 : 16,
-                                      ),
-                                      SizedBox(width: isTablet ? 8 : 6),
-                                      Flexible(
-                                        child: Text(
-                                          _hasActiveFilters()
-                                              ? '${_getFilteredRecordCount()} records'
-                                              : 'No filters',
-                                          style: GoogleFonts.inter(
-                                            fontSize: isTablet ? 14 : 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: tealGreen,
-                                            letterSpacing: -0.1,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                height: isTablet ? 48 : 44,
+                                child: CrmRecordPill(
+                                  text: _hasActiveFilters()
+                                      ? '${_getFilteredRecordCount()} records'
+                                      : 'No filters',
+                                  color: tealGreen,
+                                  isMobile: !isTablet,
                                 ),
                               ),
                             ),

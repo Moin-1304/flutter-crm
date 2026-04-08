@@ -11,6 +11,8 @@ import 'package:boilerplate/di/service_locator.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_action_button.dart';
+import 'package:boilerplate/presentation/crm/widgets/crm_record_pill.dart';
 
 import '../../user/store/user_store.dart';
 import '../../user/store/user_validation_store.dart';
@@ -1187,165 +1189,80 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                 // New Deviation Button
                                 Expanded(
                                   flex: 1,
-                                  child: SizedBox(
-                                    height: actionHeight,
-                                    child: getIt
-                                            .isRegistered<UserValidationStore>()
-                                        ? ListenableBuilder(
-                                            listenable:
-                                                getIt<UserValidationStore>(),
-                                            builder: (context, _) {
-                                              final validationStore =
-                                                  getIt<UserValidationStore>();
-                                              // Service Engineers: always allow; others: use validate-user API
-                                              final isEnabled =
-                                                  _isCurrentUserServiceEngineer() ||
-                                                      validationStore
-                                                          .canCreateDeviation;
-                                              return FilledButton.icon(
-                                                onPressed: isEnabled
-                                                    ? () async {
-                                                        _dismissKeyboard();
-                                                        final result =
-                                                            await Navigator.of(
-                                                                    context)
-                                                                .push(
-                                                          MaterialPageRoute(
-                                                              builder: (_) =>
-                                                                  const DeviationEntryScreen()),
-                                                        );
-                                                        if (result == true) {
-                                                          await refreshData();
-                                                        } else {
-                                                          await refreshData();
-                                                        }
+                                  child: getIt
+                                          .isRegistered<UserValidationStore>()
+                                      ? ListenableBuilder(
+                                          listenable:
+                                              getIt<UserValidationStore>(),
+                                          builder: (context, _) {
+                                            final validationStore =
+                                                getIt<UserValidationStore>();
+                                            // Service Engineers: always allow; others: use validate-user API
+                                            final isEnabled =
+                                                _isCurrentUserServiceEngineer() ||
+                                                    validationStore
+                                                        .canCreateDeviation;
+                                            return CrmActionButton(
+                                              icon: Icons.add,
+                                              label: 'New Deviation',
+                                              color: tealGreen,
+                                              isMobile: isMobile,
+                                              onTap: isEnabled
+                                                  ? () async {
+                                                      _dismissKeyboard();
+                                                      final result =
+                                                          await Navigator.of(
+                                                                  context)
+                                                              .push(
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              const DeviationEntryScreen(),
+                                                        ),
+                                                      );
+                                                      if (result == true) {
+                                                        await refreshData();
+                                                      } else {
+                                                        await refreshData();
                                                       }
-                                                    : null,
-                                                icon: const Icon(Icons.add,
-                                                    size: 20),
-                                                label: const Text(
-                                                  'New Deviation',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  softWrap: false,
-                                                ),
-                                                style: FilledButton.styleFrom(
-                                                  backgroundColor: isEnabled
-                                                      ? tealGreen
-                                                      : Colors.grey,
-                                                  foregroundColor: Colors.white,
-                                                  disabledBackgroundColor:
-                                                      Colors.grey.shade300,
-                                                  disabledForegroundColor:
-                                                      Colors.grey.shade600,
-                                                  padding: EdgeInsets.symmetric(
-                                                    horizontal:
-                                                        isTablet ? 20 : 16,
-                                                  ),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            14),
-                                                  ),
-                                                  elevation: isEnabled ? 2 : 0,
-                                                  minimumSize: Size.fromHeight(
-                                                      actionHeight),
-                                                ),
-                                              );
-                                            },
-                                          )
-                                        : FilledButton.icon(
-                                            onPressed: () async {
-                                              _dismissKeyboard();
-                                              final result =
-                                                  await Navigator.of(context)
-                                                      .push(
-                                                MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        const DeviationEntryScreen()),
-                                              );
-                                              if (result == true) {
-                                                await refreshData();
-                                              } else {
-                                                await refreshData();
-                                              }
-                                            },
-                                            icon:
-                                                const Icon(Icons.add, size: 20),
-                                            label: const Text(
-                                              'New Deviation',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              softWrap: false,
-                                            ),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: tealGreen,
-                                              foregroundColor: Colors.white,
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: isTablet ? 20 : 16,
+                                                    }
+                                                  : null,
+                                            );
+                                          },
+                                        )
+                                      : CrmActionButton(
+                                          icon: Icons.add,
+                                          label: 'New Deviation',
+                                          color: tealGreen,
+                                          isMobile: isMobile,
+                                          onTap: () async {
+                                            _dismissKeyboard();
+                                            final result =
+                                                await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const DeviationEntryScreen(),
                                               ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                              ),
-                                              elevation: 2,
-                                              minimumSize:
-                                                  Size.fromHeight(actionHeight),
-                                            ),
-                                          ),
-                                  ),
+                                            );
+                                            if (result == true) {
+                                              await refreshData();
+                                            } else {
+                                              await refreshData();
+                                            }
+                                          },
+                                        ),
                                 ),
                                 SizedBox(width: isTablet ? 12 : 10),
                                 // Filter Count Display
                                 Expanded(
                                   flex: 1,
-                                  child: SizedBox(
-                                    height: actionHeight,
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isTablet ? 16 : 14,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: tealGreen.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: tealGreen.withOpacity(0.2),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.format_list_bulleted_outlined,
-                                            color: tealGreen,
-                                            size: isTablet ? 18 : 16,
-                                          ),
-                                          SizedBox(width: isTablet ? 8 : 6),
-                                          Flexible(
-                                            child: Text(
-                                              _filteredDeviations.isEmpty
-                                                  ? 'No records'
-                                                  : _filteredDeviations
-                                                              .length ==
-                                                          1
-                                                      ? '1 record'
-                                                      : '${_filteredDeviations.length} records',
-                                              style: GoogleFonts.inter(
-                                                fontSize: isTablet ? 14 : 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: tealGreen,
-                                                letterSpacing: -0.1,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                  child: CrmRecordPill(
+                                    text: _filteredDeviations.isEmpty
+                                        ? 'No records'
+                                        : _filteredDeviations.length == 1
+                                            ? '1 record'
+                                            : '${_filteredDeviations.length} records',
+                                    color: tealGreen,
+                                    isMobile: isMobile,
                                   ),
                                 ),
                               ],
