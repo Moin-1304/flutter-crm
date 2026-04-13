@@ -695,8 +695,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           final customer =
               Customers.firstWhere((c) => c.code == _selectedCustomerCode);
           _customerSearchController.text = customer.name;
+          _isBonusEnabled = customer.bonusEnabled;
           print(
-              '✅ Updated customer search controller with name: ${customer.name}');
+              '✅ Updated customer search controller with name: ${customer.name}, bonusEnabled: $_isBonusEnabled');
         } catch (e) {
           print(
               '⚠️ Customer not found in list for code: $_selectedCustomerCode');
@@ -756,6 +757,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
 
     print('   Total parsed items: ${_items.length}');
+
+    // After parsing items, trigger bonus and discount calculation for each to populate calculated fields
+    for (final item in _items) {
+      final itemId = int.tryParse(item.product.id) ?? 0;
+      if (itemId > 0) {
+        // Run in background without awaiting to keep UI responsive
+        _calculateAndApplyBonusForItem(item, itemId);
+        _calculateAndApplyDiscountForItem(item, itemId);
+      }
+    }
 
     // If no items found, create a default empty item (will be populated from API when user searches)
     if (_items.isEmpty) {
@@ -981,7 +992,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
 
     // Use item description from data
-    final itemDescription = itemData['itemText']?.toString() ??
+    final itemDescription = itemData['ItemText']?.toString() ??
+        itemData['itemText']?.toString() ??
         itemData['itemName']?.toString() ??
         itemData['itemDescription']?.toString() ??
         itemData['description']?.toString() ??
@@ -990,8 +1002,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // Safely parse rate - handle null and type conversion
     double rate = 0.0;
     try {
-      final rateValue =
-          itemData['rate'] ?? itemData['unitPrice'] ?? itemData['price'] ?? 0.0;
+      final rateValue = itemData['UnitPrice'] ??
+          itemData['unitPrice'] ??
+          itemData['rate'] ??
+          itemData['Rate'] ??
+          itemData['price'] ??
+          0.0;
       if (rateValue is num) {
         rate = rateValue.toDouble();
       } else if (rateValue is String) {
@@ -1055,12 +1071,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     // Create default product from item data (no mock data, always use API data)
     // Ensure all required fields have safe defaults to prevent constructor errors
-    // Get item ID - use 'item' field (product/item ID) first, then fallback to 'id' (contract item ID)
+    // Get item ID - prioritize item/Item field (product/item ID) first, then fallback to id/Id (contract item ID)
     final itemIdValue = itemData['item'] ??
+        itemData['Item'] ??
         itemData['itemId'] ??
+        itemData['ItemId'] ??
         itemData['id'] ??
-        itemData['Id'] ??
-        itemData['ItemId'];
+        itemData['Id'];
     final itemIdStr = (itemIdValue?.toString() ?? '0').trim();
 
     final itemName =

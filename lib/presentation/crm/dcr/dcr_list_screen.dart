@@ -173,7 +173,6 @@ class _DcrListScreenState extends State<DcrListScreen>
       _getEmployeeList();
     }
     _getDcrDetailStatusList(); // Load status list for filter
-    _initLocation();
     _startAutoRefresh();
 
     // Validate user when screen opens
@@ -749,26 +748,24 @@ class _DcrListScreenState extends State<DcrListScreen>
         RefreshIndicator(
           onRefresh: _refreshData,
           color: tealGreen,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return ListView(
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                shrinkWrap: false,
-                padding: EdgeInsets.fromLTRB(
-                  isMobile ? 12 : 16,
-                  isMobile ? 8 : 12, // reduce top gap
-                  isMobile ? 12 : 16,
-                  isMobile ? 12 : 16,
-                ),
-                children: [
-                  // Header Section
-                  _buildHeader(isMobile, isTablet, tealGreen),
-                  SizedBox(height: isMobile ? 12 : 14),
+          child: ListView(
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            shrinkWrap: false,
+            padding: EdgeInsets.fromLTRB(
+              isMobile ? 12 : 16,
+              isMobile ? 12 : 16, // slightly increased top padding
+              isMobile ? 12 : 16,
+              isMobile ? 12 : 16,
+            ),
+            children: [
+              // Header Section
+              _buildHeader(isMobile, isTablet, tealGreen),
+              SizedBox(height: isMobile ? 12 : 14),
 
-                  // Action Buttons Section
-                  _buildActionButtonsSection(isMobile, isTablet, tealGreen),
+              // Action Buttons Section
+              _buildActionButtonsSection(isMobile, isTablet, tealGreen),
                   SizedBox(height: isMobile ? 12 : 14),
 
                   // Summary Cards Section
@@ -880,9 +877,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                   ],
                   const SizedBox(height: 16),
                 ],
-              );
-            },
-          ),
+              ),
         ),
 
         // Filter Modal

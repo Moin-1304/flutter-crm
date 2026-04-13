@@ -120,11 +120,13 @@ class _LoginScreenState extends State<LoginScreen> {
     final double horizontalPadding = isDesktop ? 72 : 48;
     final double verticalPadding = isDesktop ? 56 : 40;
     final double contentSpacing = isDesktop ? 40 : 32;
-    final double maxFormWidth = isDesktop ? 560 : 500;
-    final double targetHeight = (screenSize.height * (isDesktop ? 0.66 : 0.6))
-        .clamp(isDesktop ? 540.0 : 480.0, screenSize.height * 0.85);
+    // Wider form on tablets so the panel does not feel tiny on iPad.
+    final double maxFormWidth = isDesktop ? 620 : 540;
+    // Taller card on tablet so the login column has room for hero + fields without clipping.
+    final double targetHeight = (screenSize.height * (isDesktop ? 0.72 : 0.68))
+        .clamp(isDesktop ? 560.0 : 520.0, screenSize.height * 0.88);
     final double maxContentWidth =
-        (screenSize.width - (horizontalPadding * 2)).clamp(0.0, isDesktop ? 1260.0 : 1080.0).toDouble();
+        (screenSize.width - (horizontalPadding * 2)).clamp(0.0, isDesktop ? 1320.0 : 1140.0).toDouble();
 
     return SafeArea(
       child: Container(
@@ -184,10 +186,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       SizedBox(width: contentSpacing),
                       Expanded(
                         flex: 50,
-                        child: Align(
-                          alignment: Alignment.center,
+                        child: Center(
                           child: ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: maxFormWidth),
+                            constraints: BoxConstraints(
+                              maxWidth: maxFormWidth,
+                              maxHeight: targetHeight,
+                            ),
                             child: _buildLoginForm(
                               isCompact,
                               isTabletLayout: true,
@@ -311,18 +315,21 @@ class _LoginScreenState extends State<LoginScreen> {
             final bool compact = isCompact || ultraCompact;
 
             final double horizontalPadding = ultraCompact ? 16 : (isCompact ? 20 : 28);
-            final double verticalPadding = ultraCompact ? 18 : (isCompact ? 24 : 36);
-            final double brandSpacing = ultraCompact ? 20 : (isCompact ? 28 : 44);
+            final double verticalPadding = ultraCompact ? 12 : (isCompact ? 16 : 24); // Reduced from 18, 24, 36
+            final double brandSpacing = ultraCompact ? 16 : (isCompact ? 22 : 32); // Reduced from 20, 28, 44
             final double fieldSpacing = ultraCompact ? 12 : (isCompact ? 16 : 20);
             final double rowSpacing = ultraCompact ? 10 : (isCompact ? 12 : 16);
-            final double buttonSpacing = ultraCompact ? 20 : (isCompact ? 26 : 36);
+            final double buttonSpacing = ultraCompact ? 18 : (isCompact ? 24 : 30); // Reduced from 20, 26, 36
             final double buttonHeight = ultraCompact ? 44 : (isCompact ? 48 : 56);
 
             final double heroSpacing = showTabletHero ? 18 : 10;
+            // Tablet hero + fields can exceed a fixed card height; always allow scroll there.
+            final bool allowScroll =
+                isTabletLayout || availableHeight < 480;
 
             return SingleChildScrollView(
               primary: false,
-              physics: availableHeight < 480
+              physics: allowScroll
                   ? const BouncingScrollPhysics()
                   : const NeverScrollableScrollPhysics(),
               child: ConstrainedBox(
@@ -334,24 +341,43 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center, // Center vertically
+                    mainAxisSize: MainAxisSize.max, // Take up full height to allow centering
                     children: [
                       if (showTabletHero) ...[
-                        Text(
-                          'Welcome back 👋',
-                          style: TextStyle(
-                            fontSize: isTabletLayout ? 32 : 30,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.grey[900],
-                            letterSpacing: -1,
-                          ),
+                        // Theme uses Inter globally; emoji do not render (tofu / "?"). Use Material icon.
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Welcome back',
+                                style: TextStyle(
+                                  fontSize: isTabletLayout ? 36 : 30,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.grey[900],
+                                  letterSpacing: -1,
+                                  height: 1.15,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 10),
+                              child: Icon(
+                                Icons.waving_hand,
+                                size: isTabletLayout ? 34 : 28,
+                                color: tealGreen,
+                                semanticLabel: 'Wave',
+                              ),
+                            ),
+                          ],
                         ),
                         SizedBox(height: heroSpacing),
                         Text(
                           'Sign in to review daily calls, approve expenses and stay in sync with your field team.',
                           style: TextStyle(
-                            fontSize: 15,
-                            height: 1.4,
+                            fontSize: isTabletLayout ? 16 : 15,
+                            height: 1.45,
                             color: Colors.grey[600],
                             fontWeight: FontWeight.w500,
                           ),

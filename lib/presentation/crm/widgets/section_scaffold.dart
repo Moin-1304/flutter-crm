@@ -24,55 +24,55 @@ class CRMSectionScaffold extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.white,
         floatingActionButton: fab,
-        body: CustomScrollView(
-          slivers: [
-            SliverAppBar(
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              pinned: true,
-              floating: false,
-              centerTitle: false,
-              leading: leading,
-              title: showTitle 
-                  ? Text(
-                      title,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
-                    )
-                  : null,
-              toolbarHeight: (showTitle || leading != null) ? 72 : 0,
-              collapsedHeight: (showTitle || leading != null) ? 72 : 0,
-              // Remove gradient background; keep solid white like Tour Plan
-              flexibleSpace: null,
-              actions: showTitle ? actions : null,
-              bottom: TabBar(
-                isScrollable: false,
-                // Match Tour Plan teal theme
-                indicatorColor: const Color(0xFF4db1b3),
-                indicatorWeight: 3,
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: const Color(0xFF4db1b3),
-                unselectedLabelColor: Colors.grey[600],
-                labelStyle: GoogleFonts.inter(
-                  fontSize: isTablet ? 16 : 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverAppBar(
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                pinned: true,
+                floating: false,
+                centerTitle: false,
+                leading: leading,
+                title: showTitle 
+                    ? Text(
+                        title,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      )
+                    : null,
+                toolbarHeight: (showTitle || leading != null) ? 72 : 0,
+                collapsedHeight: (showTitle || leading != null) ? 72 : 0,
+                // Remove gradient background; keep solid white like Tour Plan
+                flexibleSpace: null,
+                actions: showTitle ? actions : null,
+                bottom: TabBar(
+                  isScrollable: false,
+                  // Match Tour Plan teal theme
+                  indicatorColor: const Color(0xFF4db1b3),
+                  indicatorWeight: 3,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelColor: const Color(0xFF4db1b3),
+                  unselectedLabelColor: Colors.grey[600],
+                  labelStyle: GoogleFonts.inter(
+                    fontSize: isTablet ? 16 : 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                  unselectedLabelStyle: GoogleFonts.inter(
+                    fontSize: isTablet ? 16 : 15,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                  ),
+                  tabs: tabs,
                 ),
-                unselectedLabelStyle: GoogleFonts.inter(
-                  fontSize: isTablet ? 16 : 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                ),
-                tabs: tabs,
               ),
-            ),
-            SliverFillRemaining(
-              child: TabBarView(children: tabViews),
-            ),
-          ],
+            ];
+          },
+          body: TabBarView(children: tabViews),
         ),
       ),
     );

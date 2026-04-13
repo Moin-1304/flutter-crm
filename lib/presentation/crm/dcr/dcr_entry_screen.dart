@@ -26,6 +26,7 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/rendering.dart';
+import 'location_picker_map_screen.dart';
 
 /// Max value for 32-bit signed int (backend UIN type). Max digits = 10.
 const int _kUinMaxInt = 2147483647;
@@ -227,6 +228,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   String? _purpose;
   bool _atLocation = true; // mock geo indicator
   bool _coVisit = false; // Co Visit checkbox
+  bool _isManager = false; // Manager role flag
+  bool _isNewDcr = false; // Flag for new DCR form
   // Co-visit manager selection
   String? _selectedManager;
   List<String> _managerOptions = [];
@@ -386,16 +389,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final String? serviceArea = userStore?.userDetail?.serviceArea;
     _isServiceEngineer =
         serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    final bool isManager = roleCategory == 1 || roleCategory == 2;
-    final bool isCreatingNew = widget.dcrId == null && widget.id == null;
+    _isManager = roleCategory == 1 || roleCategory == 2;
+    _isNewDcr = widget.dcrId == null && widget.id == null;
 
     int initialTabCount;
-    if (isManager && isCreatingNew) {
+    if (_isManager && _isNewDcr) {
       initialTabCount = 1; // Only Create DCR
     } else if (_isServiceEngineer) {
       initialTabCount =
           2; // Create DCR + Service Report (no Customer tab ever for SE)
-    } else if (!isCreatingNew) {
+    } else if (!_isNewDcr) {
       initialTabCount =
           1; // Updating DCR: only Create DCR (no Customer tab for anyone)
     } else {
@@ -494,7 +497,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         Future.wait([
           _loadClusterList(),
           _loadProductsList(),
-          _initLocation(),
           _loadCountries(),
           _loadCustomerTypes(),
           _loadMedicalRepDropdowns(),
@@ -515,7 +517,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         _loadClusterList(),
         _loadTypeOfWorkList(),
         _loadProductsList(),
-        _initLocation(),
         _loadCountries(),
         _loadCustomerTypes(),
         _loadMedicalRepDropdowns(),
@@ -690,20 +691,51 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   Future<void> _initLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        if (mounted) {
+          ToastMessage.show(context, message: 'Location services are disabled.', type: ToastType.error);
+        }
+        return;
+      }
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ToastMessage.show(context, message: 'Location permission denied.', type: ToastType.error);
+          }
+          return;
+        }
       }
-      if (permission == LocationPermission.deniedForever) return;
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ToastMessage.show(context, message: 'Location permission is permanently denied.', type: ToastType.error);
+        }
+        return;
+      }
+      
+      // Show a temporary loading indicator while fetching position
       final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.best);
+      
       if (!mounted) return;
-      setState(() {
-        _position = pos;
-      });
-    } catch (_) {}
+
+      // Open Map Picker Screen to confirm location
+      final confirmedPos = await Navigator.of(context).push<Position>(
+        MaterialPageRoute(
+          builder: (context) => LocationPickerMapScreen(initialPosition: pos),
+        ),
+      );
+
+      if (confirmedPos != null && mounted) {
+        setState(() {
+          _position = confirmedPos;
+        });
+        ToastMessage.show(context, message: 'Location updated successfully.', type: ToastType.success);
+      }
+    } catch (e) {
+      print('DcrEntryScreen: Error initializing location: $e');
+    }
   }
 
   Future<void> _loadClusterList() async {
@@ -2932,63 +2964,65 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
-      // 13. Co-Visit
-      Row(
-        children: [
-          Checkbox(
-            value: _coVisit,
-            onChanged: (value) {
-              setState(() {
-                _coVisit = value ?? false;
-                if (!_coVisit) {
-                  _selectedManager = null;
-                  _managerErrorText = null;
-                } else {
-                  _loadManagerList();
-                }
-              });
-            },
-            activeColor: const Color(0xFF4db1b3),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Co-Visit',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[900],
+      // 13. Co-Visit (Not shown to managers in new DCR form)
+      if (!(_isManager && _isNewDcr)) ...[
+        Row(
+          children: [
+            Checkbox(
+              value: _coVisit,
+              onChanged: (value) {
+                setState(() {
+                  _coVisit = value ?? false;
+                  if (!_coVisit) {
+                    _selectedManager = null;
+                    _managerErrorText = null;
+                  } else {
+                    _loadManagerList();
+                  }
+                });
+              },
+              activeColor: const Color(0xFF4db1b3),
             ),
+            const SizedBox(width: 8),
+            Text(
+              'Co-Visit',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey[900],
+              ),
+            ),
+          ],
+        ),
+        // Manager selection (shown when co-visit is checked)
+        if (_coVisit) ...[
+          const SizedBox(height: 16),
+          _LabeledField(
+            label: 'Select Manager',
+            required: true,
+            errorText: _managerErrorText,
+            child: _isLoadingManagers
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                : SearchableDropdown(
+                    options: _managerOptions,
+                    value: _selectedManager,
+                    hintText: '-- Select Manager --',
+                    searchHintText: 'Search manager...',
+                    hasError: _managerErrorText != null,
+                    onChanged: (v) {
+                      setState(() {
+                        _selectedManager = v;
+                        _managerErrorText = null;
+                      });
+                    },
+                  ),
           ),
         ],
-      ),
-      // Manager selection (shown when co-visit is checked)
-      if (_coVisit) ...[
-        const SizedBox(height: 16),
-        _LabeledField(
-          label: 'Select Manager',
-          required: true,
-          errorText: _managerErrorText,
-          child: _isLoadingManagers
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              : SearchableDropdown(
-                  options: _managerOptions,
-                  value: _selectedManager,
-                  hintText: '-- Select Manager --',
-                  searchHintText: 'Search manager...',
-                  hasError: _managerErrorText != null,
-                  onChanged: (v) {
-                    setState(() {
-                      _selectedManager = v;
-                      _managerErrorText = null;
-                    });
-                  },
-                ),
-        ),
       ],
       const SizedBox(height: 20),
       // Location picker
