@@ -79,6 +79,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   bool _isLoadingEmployees = false;
   bool _isManagerOrFieldManager = false;
   bool _isServiceEngineer = false;
+  bool _isPocRep = false;
 
   // Dynamic calls list
   final List<_CallData> _calls = <_CallData>[
@@ -167,6 +168,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         serviceArea.toLowerCase() == 'serviceeng purposevisit' ||
         serviceArea.toLowerCase().contains('service engineer');
     final int? roleCategory = userStore?.userDetail?.roleCategory;
+    final int? repType = userStore?.userDetail?.repType;
+    _isPocRep = (repType == 3 && roleCategory == 3);
 
     if (roleCategory != null) {
       // RoleCategory 1 or 2 = Manager/Field Manager/Coordinator
@@ -174,7 +177,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       _isManagerOrFieldManager = roleCategory == 1 || roleCategory == 2;
 
       print(
-          'NewTourPlanScreen: [Employee] RoleCategory: $roleCategory, Is Manager/Field Manager: $_isManagerOrFieldManager');
+          'NewTourPlanScreen: [Employee] RoleCategory: $roleCategory, RepType: $repType, Is Manager/Field Manager: $_isManagerOrFieldManager, Is POC Rep: $_isPocRep');
 
       if (!_isManagerOrFieldManager) {
         // For representatives (RoleCategory 3), set current employee as selected (read-only)
@@ -1010,6 +1013,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         ),
       ),
     );
+    final bool allCallsCustomerOptional = _calls.isNotEmpty &&
+        _calls.every(_isCustomerOptionalPurposeForCall);
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -1143,7 +1148,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                             const SizedBox(height: 12),
                             _Labeled(
                               label: 'Cluster/city',
-                              required: true,
+                              required: !allCallsCustomerOptional,
                               errorText: _clusterError,
                               child: _MultiSelectDropdown(
                                 options: _clusters,
@@ -1155,7 +1160,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 emptyMessage: _isLoadingClusters
                                     ? 'Loading clusters...'
                                     : 'No clusters found',
-                                isEnabled: !_isViewOnlyMode,
+                                isEnabled: !_isViewOnlyMode &&
+                                    !allCallsCustomerOptional,
                                 onBeforeOpen: _isViewOnlyMode ? null : () => _ensureClustersLoaded(),
                                 onChanged: _isViewOnlyMode
                                     ? (_) {} // No-op function for view-only mode
@@ -1177,7 +1183,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                             const SizedBox(height: 12),
                             _Labeled(
                               label: 'Customer Type',
-                              required: true,
+                              required: !allCallsCustomerOptional,
                               errorText: _customerTypeError,
                               child: _SingleSelectDropdown(
                                 options: _customerTypeOptions,
@@ -1186,7 +1192,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? 'Loading customer types...'
                                     : 'Select customer type',
                                 isLoading: _isLoadingCustomerType,
-                                isEnabled: !_isViewOnlyMode,
+                                isEnabled: !_isViewOnlyMode &&
+                                    !allCallsCustomerOptional,
                                 onChanged: _isViewOnlyMode
                                     ? (_) {} // No-op function for view-only mode
                                     : (v) {
@@ -1219,21 +1226,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 purposeOptions: _purposeOptions,
                                 productOptions: _productOptions,
                                 isViewOnly: _isViewOnlyMode,
-                                isCustomerEnabled: !(_isServiceEngineer &&
-                                    ((_calls[i].purpose ?? '')
-                                            .trim()
-                                            .toLowerCase() ==
-                                        'available')),
-                                isCustomerRequired: !(_isServiceEngineer &&
-                                    ((_calls[i].purpose ?? '')
-                                            .trim()
-                                            .toLowerCase() ==
-                                        'available')),
+                                isCustomerEnabled:
+                                    !_isCustomerOptionalPurposeForCall(_calls[i]),
+                                isCustomerRequired:
+                                    !_isCustomerOptionalPurposeForCall(_calls[i]),
+                                isProductsRequired:
+                                    _isProductsMandatoryForCall(_calls[i]),
                                 customerError: i < _callErrors.length
                                     ? _callErrors[i].customerError
                                     : null,
                                 purposeError: i < _callErrors.length
                                     ? _callErrors[i].purposeError
+                                    : null,
+                                productsError: i < _callErrors.length
+                                    ? _callErrors[i].productsError
                                     : null,
                                 onCustomersChanged: _isViewOnlyMode
                                     ? null
@@ -1251,21 +1257,33 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? null
                                     : (purpose) => setState(() {
                                         _calls[i].purpose = purpose;
-                                        final bool isAvailable = _isServiceEngineer &&
-                                            (purpose ?? '')
-                                                .trim()
-                                                .toLowerCase() ==
-                                            'available';
-                                        if (isAvailable) {
+                                        final bool isCustomerOptional =
+                                            _isCustomerOptionalPurposeForCall(
+                                                _calls[i]);
+                                        if (isCustomerOptional) {
                                           _calls[i].customers = <String>{};
+                                        }
+                                        final bool allOptionalNow =
+                                            _calls.isNotEmpty &&
+                                                _calls.every(
+                                                    _isCustomerOptionalPurposeForCall);
+                                        if (allOptionalNow) {
+                                          _selectedClusters = <String>{};
+                                          _selectedCustomerType = null;
+                                          _clusterError = null;
+                                          _customerTypeError = null;
                                         }
                                         if (_callErrors.length > i) {
                                           final List<_CallValidationState> updated =
                                               _cloneCallErrors();
-                                          if (isAvailable) {
+                                          if (isCustomerOptional) {
                                             updated[i].customerError = null;
                                           }
                                           updated[i].purposeError = null;
+                                          if (!_isProductsMandatoryForCall(
+                                              _calls[i])) {
+                                            updated[i].productsError = null;
+                                          }
                                           _callErrors = updated;
                                         }
                                       }),
@@ -1273,6 +1291,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? null
                                     : (products) => setState(() {
                                         _calls[i].products = products;
+                                        if (_callErrors.length > i) {
+                                          final List<_CallValidationState> updated =
+                                              _cloneCallErrors();
+                                          updated[i].productsError = null;
+                                          _callErrors = updated;
+                                        }
                                       }),
                                 onToggleExpand: _isViewOnlyMode
                                     ? null
@@ -1389,20 +1413,24 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       final DateTime selectedPlanDate = _tourPlanDate;
       final String planDateStr =
           selectedPlanDate.toIso8601String().split('T').first;
+      final DateTime today = DateTime.now();
+      final String todayDateStr = today.toIso8601String().split('T').first;
 
       // Resolve selected cluster ID (first selected if multiple)
       final int resolvedClusterId = _selectedClusters.isEmpty
           ? 0
           : (_clusterNameToId[_selectedClusters.first] ?? 0);
 
+      final bool allCallsCustomerOptional = _calls.isNotEmpty &&
+          _calls.every(_isCustomerOptionalPurposeForCall);
+
       // Enforce: for each selected cluster/city, at least one customer must be selected
       // (Skip this enforcement when Service Engineer marks purpose as "Available".)
-      if (_selectedClusters.isNotEmpty) {
+      if (_selectedClusters.isNotEmpty && !allCallsCustomerOptional) {
         String norm(String s) => s.toLowerCase().trim();
 
         bool isCallCustomerOptional(_CallData call) {
-          final purposeLower = (call.purpose ?? '').trim().toLowerCase();
-          return _isServiceEngineer && purposeLower == 'available';
+          return _isCustomerOptionalPurposeForCall(call);
         }
 
         final requiredCalls =
@@ -1457,16 +1485,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           ? clusterIdsArray 
           : (resolvedClusterId > 0 ? [resolvedClusterId] : []);
 
-      String clusterNameFromId(int id) {
-        return _clusterNameToId.entries
-                .firstWhere(
-                  (e) => e.value == id,
-                  orElse: () => const MapEntry<String, int>('', 0),
-                )
-                .key
-            .trim();
-      }
-
       // Create one detail entry for each selected customer (per call)
       int detailIndex = 0;
       for (int callIndex = 0; callIndex < _calls.length; callIndex++) {
@@ -1488,55 +1506,43 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           }
         }
 
-        final bool isAvailablePurposeForServiceEngineer =
-            _isServiceEngineer &&
-                ((call.purpose ?? '').trim().toLowerCase() == 'available');
+        final bool isCustomerOptionalPurpose =
+            _isCustomerOptionalPurposeForCall(call);
+        final bool isPocWarrantyPurpose = _isProductsMandatoryForCall(call);
 
-        if (isAvailablePurposeForServiceEngineer) {
-          for (final int clusterId in effectiveClusterIds) {
-            final String clusterName = clusterNameFromId(clusterId);
+        if (isCustomerOptionalPurpose) {
+          // Available/Warranty Services entry should not require/select customer or city.
+          final int existingDetailId =
+              (_fullTourPlanData?.tourPlanDetails != null &&
+                      _fullTourPlanData!.tourPlanDetails!.length > detailIndex)
+                  ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
+                  : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
+                          widget.tourPlanToEdit!.tourPlanDetails!.length >
+                              detailIndex)
+                      ? widget.tourPlanToEdit!.tourPlanDetails![detailIndex].id
+                      : 0);
 
-            // If editing, map existing detail id from fetched item by index
-            final int existingDetailId =
-                (_fullTourPlanData?.tourPlanDetails != null &&
-                        _fullTourPlanData!.tourPlanDetails!.length >
-                            detailIndex)
-                    ? (_fullTourPlanData!.tourPlanDetails![detailIndex].id)
-                    : ((widget.tourPlanToEdit?.tourPlanDetails != null &&
-                            widget.tourPlanToEdit!.tourPlanDetails!.length >
-                                detailIndex)
-                        ? widget
-                            .tourPlanToEdit!.tourPlanDetails![detailIndex].id
-                        : 0);
-
-            final List<Map<String, dynamic>> customersArray =
-                <Map<String, dynamic>>[
-              {
-                'CustomerId': null,
-                'ClusterId': clusterId,
-              }
-            ];
-
-            details.add({
-              'Id': existingDetailId,
-              'PlanDate': '${planDateStr}T06:30:00.000',
-              'TypeOfWorkId': typeOfWorkId,
-              'ClusterId': clusterId,
-              'CustomerId': null,
-              'Status': 1,
-              'Remarks': call.remarksCtrl.text.trim(),
-              'Location': clusterName.isNotEmpty ? clusterName : '',
-              'Latitude': null,
-              'Longitude': null,
-              'SamplesToDistribute': call.samplesCtrl.text.trim(),
-              'ProductsToDiscuss': '',
-              'ClusterNames': clusterName.isNotEmpty ? clusterName : null,
-              'Customers': customersArray,
-              'ProductsToBeDiscussed': productsToBeDiscussedArray,
-              'MappedInstruments': [],
-            });
-            detailIndex++;
-          }
+          details.add({
+            'Id': existingDetailId,
+            'PlanDate': '${planDateStr}T06:30:00.000',
+            'TypeOfWorkId': typeOfWorkId,
+            'ClusterId': 0,
+            'CustomerId': 0,
+            'Status': 1,
+            'Remarks': call.remarksCtrl.text.trim(),
+            'Location': ' - ',
+            'Latitude': null,
+            'Longitude': null,
+            'SamplesToDistribute': '',
+            'ProductsToDiscuss': '',
+            'ClusterNames': null,
+            'Customers': null,
+            'ProductsToBeDiscussed':
+                isPocWarrantyPurpose ? productsToBeDiscussedArray : [],
+            'MappedInstruments': [],
+            'CustomerType': null,
+          });
+          detailIndex++;
         } else {
           for (final customerName in call.customers) {
           final int customerId = _customerNameToId[customerName] ?? 0;
@@ -1629,10 +1635,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       final int userId = userStore.userDetail?.id ?? 0;
       final int sbuId = userStore.userDetail?.sbuId ?? 0;
 
-      final bool shouldSendNullCustomerForAvailable =
-          _isServiceEngineer &&
-              _calls.any((c) =>
-                  (c.purpose ?? '').trim().toLowerCase() == 'available');
+      final bool shouldSendAvailableHeaderDefaults = allCallsCustomerOptional;
 
       // For managers use selected reporting staff; otherwise use current user
       final int employeeId =
@@ -1681,12 +1684,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'Active': false,
         'UserId': userId,
         'EmployeeId': employeeId,
-        'Date': '${planDateStr}T06:30:00.000',
+        'Date': '${todayDateStr}T06:30:00.000',
         'Territory': "",
         'Cluster': "",
         'ClusterId': null,
         'TourPlanType':
-            tourPlanTypeArray.isNotEmpty ? tourPlanTypeArray.first : 'General',
+            shouldSendAvailableHeaderDefaults
+                ? (_isPocRep ? 'Warranty Services' : 'Available')
+                : (tourPlanTypeArray.isNotEmpty
+                    ? tourPlanTypeArray.first
+                    : 'General'),
         'Objective': null,
         'TourPlanStatus': 'Pending',
         'TourPlanHeaderStatus': null,
@@ -1704,14 +1711,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'EmployeeName': employeeName,
         'Designation': "",
         'StatusText': "",
-        'PlanDate': '0001-01-01T00:00:00.000',
-        'CustomerId': shouldSendNullCustomerForAvailable ? null : 0,
-        'CustomerName': shouldSendNullCustomerForAvailable ? null : "",
-        'Clusters': _selectedClusters.isNotEmpty ? _selectedClusters.join(', ') : "",
+        'PlanDate': '${planDateStr}T06:30:00.000',
+        'CustomerId': 0,
+        'CustomerName': "",
+        'Clusters': shouldSendAvailableHeaderDefaults
+            ? ""
+            : (_selectedClusters.isNotEmpty ? _selectedClusters.join(', ') : ""),
         'SamplesToDistribute':
-            aggregatedSamples.isNotEmpty ? aggregatedSamples : null,
+            shouldSendAvailableHeaderDefaults
+                ? null
+                : (aggregatedSamples.isNotEmpty ? aggregatedSamples : null),
         'ProductsToDiscuss':
-            aggregatedProducts.isNotEmpty ? aggregatedProducts : null,
+            shouldSendAvailableHeaderDefaults
+                ? null
+                : (aggregatedProducts.isNotEmpty ? aggregatedProducts : null),
         'Notes': null,
         'FromDeviation': null,
         'TotalCustomers': null,
@@ -1723,7 +1736,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'PlannedToday': null,
         'VisitedToday': null,
         'RepType': null,
-        'CustomerType': customerTypeId,
+        'CustomerType':
+            shouldSendAvailableHeaderDefaults ? null : customerTypeId,
       };
 
       // Print Request Data with full payload
@@ -2128,6 +2142,20 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       );
   }
 
+  bool _isCustomerOptionalPurposeForCall(_CallData call) {
+    final String purposeLower = (call.purpose ?? '').trim().toLowerCase();
+    final bool serviceEngineerAvailable =
+        _isServiceEngineer && purposeLower == 'available';
+    final bool pocRepWarranty =
+        _isPocRep && purposeLower == 'warranty services';
+    return serviceEngineerAvailable || pocRepWarranty;
+  }
+
+  bool _isProductsMandatoryForCall(_CallData call) {
+    final String purposeLower = (call.purpose ?? '').trim().toLowerCase();
+    return _isPocRep && purposeLower == 'warranty services';
+  }
+
   void _clearCallErrors() {
     _callErrors = List<_CallValidationState>.generate(
       _calls.length,
@@ -2236,14 +2264,18 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     }
 
-    if (_selectedClusters.isEmpty) {
+    final bool allCallsCustomerOptional = _calls.isNotEmpty &&
+        _calls.every(_isCustomerOptionalPurposeForCall);
+
+    if (_selectedClusters.isEmpty && !allCallsCustomerOptional) {
       clusterError = 'Please select at least one cluster/city';
       firstMessage ??= 'Select at least one cluster/city';
       isValid = false;
     }
 
     String? customerTypeError;
-    if (_selectedCustomerType == null || _selectedCustomerType!.isEmpty) {
+    if (!allCallsCustomerOptional &&
+        (_selectedCustomerType == null || _selectedCustomerType!.isEmpty)) {
       customerTypeError = 'Please select a customer type';
       firstMessage ??= 'Select a customer type';
       isValid = false;
@@ -2257,11 +2289,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         final call = _calls[i];
         final String callLabel = 'Call ${i + 1}';
 
-        final String callPurposeLower = (call.purpose ?? '').trim().toLowerCase();
-        final bool isAvailablePurposeForServiceEngineer =
-            _isServiceEngineer && callPurposeLower == 'available';
+        final bool isCustomerOptionalPurpose =
+            _isCustomerOptionalPurposeForCall(call);
 
-        if (!isAvailablePurposeForServiceEngineer && call.customers.isEmpty) {
+        if (!isCustomerOptionalPurpose && call.customers.isEmpty) {
           callErrors[i].customerError = 'Please select at least one customer';
           firstMessage ??= 'Select customer for $callLabel';
           isValid = false;
@@ -2271,6 +2302,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (purpose.isEmpty || purpose.toLowerCase() == 'loading...') {
           callErrors[i].purposeError = 'Please select purpose of visit';
           firstMessage ??= 'Select purpose for $callLabel';
+          isValid = false;
+        }
+
+        if (_isProductsMandatoryForCall(call) && call.products.isEmpty) {
+          callErrors[i].productsError =
+              'Please select at least one product';
+          firstMessage ??= 'Select product for $callLabel';
           isValid = false;
         }
       }
@@ -2496,7 +2534,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         String purposeText;
         final String serviceAreaTrimmed = (serviceArea ?? '').trim();
 
-        if (serviceAreaTrimmed == 'Service Engineer') {
+        if (_isPocRep) {
+          purposeText = 'PocRep-PurposeofVisit';
+        } else if (serviceAreaTrimmed == 'Service Engineer') {
           purposeText = 'ServiceEng PurposeVisit';
         } else {
           // All other users (Sales, Manager, Field Coordinator, empty, null, etc.)
@@ -2515,17 +2555,25 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             .map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim())
             .where((s) => s.isNotEmpty)
             .toSet();
-        if (works.isNotEmpty) {
+        final Set<String> filteredWorks = _isPocRep
+            ? works
+                .where(
+                    (w) => w.trim().toLowerCase() == 'warranty services')
+                .toSet()
+            : works;
+        if (filteredWorks.isNotEmpty) {
           if (mounted) {
             setState(() {
-              _purposeOptions = works.toList();
+              _purposeOptions = filteredWorks.toList();
               _typeOfWorkNameToId.clear();
               _typeOfWorkIdToName.clear();
               // map names to ids for submit
               for (final item in items) {
                 final String key =
                     (item.text.isNotEmpty ? item.text : item.typeText).trim();
-                if (key.isNotEmpty) {
+                if (key.isNotEmpty &&
+                    (!_isPocRep ||
+                        key.trim().toLowerCase() == 'warranty services')) {
                   _typeOfWorkNameToId[key] = item.id;
                   _typeOfWorkIdToName[item.id] =
                       key; // Reverse mapping for editing
@@ -3276,14 +3324,20 @@ class _CallData {
 }
 
 class _CallValidationState {
-  _CallValidationState({this.customerError, this.purposeError});
+  _CallValidationState({
+    this.customerError,
+    this.purposeError,
+    this.productsError,
+  });
   String? customerError;
   String? purposeError;
+  String? productsError;
 
   _CallValidationState copy() {
     return _CallValidationState(
       customerError: customerError,
       purposeError: purposeError,
+      productsError: productsError,
     );
   }
 }
@@ -3302,8 +3356,10 @@ class _CallCard extends StatelessWidget {
     this.isViewOnly = false,
     this.isCustomerEnabled = true,
     this.isCustomerRequired = true,
+    this.isProductsRequired = false,
     this.customerError,
     this.purposeError,
+    this.productsError,
     this.onCustomersChanged,
     this.onPurposeChanged,
     this.onProductsChanged,
@@ -3322,8 +3378,10 @@ class _CallCard extends StatelessWidget {
   final bool isViewOnly;
   final bool isCustomerEnabled;
   final bool isCustomerRequired;
+  final bool isProductsRequired;
   final String? customerError;
   final String? purposeError;
+  final String? productsError;
   final ValueChanged<Set<String>>? onCustomersChanged;
   final ValueChanged<String?>? onPurposeChanged;
   final ValueChanged<Set<String>>? onProductsChanged;
@@ -3469,6 +3527,8 @@ class _CallCard extends StatelessWidget {
               const SizedBox(height: 12),
               _Labeled(
                 label: 'Products to Discuss',
+                required: isProductsRequired,
+                errorText: productsError,
                 child: _MultiSelectDropdown(
                   options: productOptions,
                   selectedValues: data.products,

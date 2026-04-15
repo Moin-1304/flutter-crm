@@ -223,10 +223,18 @@ class TourPlanItem {
   });
 
   factory TourPlanItem.fromJson(Map<String, dynamic> json) {
+    DateTime safeDate(dynamic value, {DateTime? fallback}) {
+      if (value is String && value.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(value);
+        if (parsed != null) return parsed;
+      }
+      return fallback ?? DateTime(1, 1, 1);
+    }
+
     return TourPlanItem(
-      createdDate: DateTime.parse(json['createdDate'] ?? '0001-01-01T00:00:00'),
+      createdDate: safeDate(json['createdDate']),
       modifiedBy: json['modifiedBy'] ?? 0,
-      modifiedDate: json['modifiedDate'] != null ? DateTime.parse(json['modifiedDate']) : null,
+      modifiedDate: json['modifiedDate'] != null ? safeDate(json['modifiedDate']) : null,
       id: json['id'] ?? 0,
       tourPlanId: json['tourPlanId'] ?? 0,
       createdBy: json['createdBy'],
@@ -236,12 +244,12 @@ class TourPlanItem {
       month: json['month'] ?? 0,
       year: json['year'] ?? 0,
       statusId: json['statusId'] ?? 0,
-      submittedDate: json['submittedDate'] != null ? DateTime.parse(json['submittedDate']) : null,
+      submittedDate: json['submittedDate'] != null ? safeDate(json['submittedDate']) : null,
       remarks: json['remarks'],
       active: json['active'] ?? false,
       userId: json['userId'] ?? 0,
       employeeId: json['employeeId'] ?? 0,
-      date: json['date'] != null ? DateTime.parse(json['date']) : null,
+      date: json['date'] != null ? safeDate(json['date']) : null,
       territory: json['territory'],
       cluster: json['cluster'],
       clusterId: json['clusterId'],
@@ -255,11 +263,11 @@ class TourPlanItem {
               .map((e) => TourPlanDetail.fromJson(e))
               .toList()
           : null,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
-      submittedAt: json['submittedAt'] != null ? DateTime.parse(json['submittedAt']) : null,
-      approvedAt: json['approvedAt'] != null ? DateTime.parse(json['approvedAt']) : null,
-      rejectedAt: json['rejectedAt'] != null ? DateTime.parse(json['rejectedAt']) : null,
+      createdAt: json['createdAt'] != null ? safeDate(json['createdAt']) : null,
+      updatedAt: json['updatedAt'] != null ? safeDate(json['updatedAt']) : null,
+      submittedAt: json['submittedAt'] != null ? safeDate(json['submittedAt']) : null,
+      approvedAt: json['approvedAt'] != null ? safeDate(json['approvedAt']) : null,
+      rejectedAt: json['rejectedAt'] != null ? safeDate(json['rejectedAt']) : null,
       rejectionReason: json['rejectionReason'],
       managerComments: json['managerComments'],
       actionComments: json['actionComments'],
@@ -273,14 +281,16 @@ class TourPlanItem {
       employeeName: json['employeeName'],
       designation: json['designation'],
       statusText: json['statusText'],
-      planDate: DateTime.parse(json['planDate'] ?? '0001-01-01T00:00:00'),
+      planDate: safeDate(json['planDate']),
       customerId: json['customerId'] ?? 0,
       customerName: json['customerName'],
       clusters: json['clusters'],
       samplesToDistribute: json['samplesToDistribute'],
       productsToDiscuss: json['productsToDiscuss'],
       notes: json['notes'],
-      fromDeviation: json['fromDeviation'] ?? 0,
+      fromDeviation: (json['fromDeviation'] is num)
+          ? (json['fromDeviation'] as num).toInt()
+          : 0,
     );
   }
   @override
@@ -353,9 +363,17 @@ class TourPlanDetail {
   });
 
   factory TourPlanDetail.fromJson(Map<String, dynamic> json) {
+    DateTime safeDate(dynamic value) {
+      if (value is String && value.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(value);
+        if (parsed != null) return parsed;
+      }
+      return DateTime(1, 1, 1);
+    }
+
     return TourPlanDetail(
       id: json['id'] ?? 0,
-      planDate: DateTime.parse(json['planDate']),
+      planDate: safeDate(json['planDate']),
       typeOfWorkId: json['typeOfWorkId'] ?? 0,
       clusterId: json['clusterId'] ?? 0,
       customerId: json['customerId'] ?? 0,

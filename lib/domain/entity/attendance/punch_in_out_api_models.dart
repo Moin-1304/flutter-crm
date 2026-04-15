@@ -9,6 +9,7 @@ class PunchInOutSaveRequest {
   final int bizUnit;
   final double? kilometerIn;
   final double? kilometerOut;
+  final double? privateKilometers;
 
   PunchInOutSaveRequest({
     required this.id,
@@ -21,6 +22,7 @@ class PunchInOutSaveRequest {
     required this.bizUnit,
     this.kilometerIn,
     this.kilometerOut,
+    this.privateKilometers,
   });
 
   Map<String, dynamic> toJson() {
@@ -35,6 +37,7 @@ class PunchInOutSaveRequest {
       'BizUnit': bizUnit,
       'KilometerIn': kilometerIn,
       'KilometerOut': kilometerOut,
+      'PrivateKilometers': privateKilometers,
     };
   }
 }

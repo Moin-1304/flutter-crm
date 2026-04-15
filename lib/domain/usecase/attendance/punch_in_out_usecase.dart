@@ -1,6 +1,7 @@
 import '../../entity/attendance/punch_in_out_api_models.dart';
 import '../../repository/attendance/punch_in_out_repository.dart';
 import '../../../core/domain/usecase/use_case_result.dart';
+import 'package:intl/intl.dart';
 
 class PunchInOutUseCase {
   final PunchInOutRepository _punchInOutRepository;
@@ -19,6 +20,7 @@ class PunchInOutUseCase {
     required bool isPunchIn, // true for punch in, false for punch out
     double? kilometerIn,  // Vehicle mileage at punch in (required when isPunchIn is true)
     double? kilometerOut, // Vehicle mileage at punch out (required when isPunchIn is false)
+    double? privateKilometers, // Personal travel distance entered during punch out
   }) async {
     try {
       final request = PunchInOutSaveRequest(
@@ -32,6 +34,7 @@ class PunchInOutUseCase {
         bizUnit: bizUnit,
         kilometerIn: isPunchIn ? kilometerIn : null,
         kilometerOut: isPunchIn ? null : kilometerOut,
+        privateKilometers: isPunchIn ? 0 : privateKilometers,
       );
 
       final response = await _punchInOutRepository.savePunchInOut(request);
@@ -47,8 +50,8 @@ class PunchInOutUseCase {
     String? logDate, // If null, uses today's date
   }) async {
     try {
-      final today = DateTime.now().toUtc();
-      final dateStr = logDate ?? today.toIso8601String();
+      // API expects date-only value for reliable day-wise filtering.
+      final dateStr = logDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
       
       final request = PunchInOutListRequest(
         pageNumber: 0,

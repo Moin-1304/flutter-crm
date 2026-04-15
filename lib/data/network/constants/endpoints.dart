@@ -169,7 +169,7 @@ class Endpoints {
   // Uses same IP/port as main API but with /erpweb/api instead of /erpapi/api
   static String get fileDownloadBaseUrl {
     // Extract base from main API URL and replace erpapi with erpweb
-    return baseUrl.replaceAll('/erpapi/api', '/erpwebtest/api');
+    return baseUrl.replaceAll('/erpapi/api', '/erpweb/api');
   }
 
   static String fileDownload(String path, String name) {
@@ -201,7 +201,7 @@ class Endpoints {
   // Base URL for file uploads (erpweb instead of erpapi)
   static String get fileUploadBaseUrl {
     // Extract base from main API URL and replace erpapi with erpweb
-    return baseUrl.replaceAll('/erpapi/api', '/erpwebtest/api');
+    return baseUrl.replaceAll('/erpapi/api', '/erpweb/api');
   }
 
   // Option 1: File Upload API (Recommended)

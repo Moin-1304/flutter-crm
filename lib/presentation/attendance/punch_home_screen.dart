@@ -1251,13 +1251,15 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 
 
 
-  /// Shows a dialog to enter vehicle mileage (Kilometer In or Kilometer Out).
-  /// Returns the entered value, or null if user cancelled.
-  Future<double?> _showKilometerDialog(BuildContext context, {required bool isPunchIn}) async {
-    final controller = TextEditingController();
+  /// Shows a dialog to enter mileage values.
+  /// For punch in: requires Kilometer In only.
+  /// For punch out: requires Kilometer Out and Private KM.
+  Future<_PunchMileageInput?> _showKilometerDialog(BuildContext context, {required bool isPunchIn}) async {
+    final kilometerController = TextEditingController();
+    final privateKmController = TextEditingController(text: '0');
     final key = GlobalKey<FormState>();
     final Color accentColor = isPunchIn ? const Color(0xFF2ECC71) : const Color(0xFFE74C3C);
-    return showDialog<double?>(
+    return showDialog<_PunchMileageInput?>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black54,
@@ -1317,7 +1319,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                   ),
                   const SizedBox(height: 24),
                   TextFormField(
-                    controller: controller,
+                    controller: kilometerController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     autofocus: true,
                     style: TextStyle(
@@ -1361,12 +1363,61 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       return null;
                     },
                   ),
+                  if (!isPunchIn) ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: privateKmController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[900],
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Private KM',
+                        hintText: 'e.g. 10.0',
+                        hintStyle: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w500),
+                        prefixText: 'km  ',
+                        prefixStyle: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: tealGreen,
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: tealGreen, width: 2),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFFE74C3C)),
+                        ),
+                      ),
+                      validator: (v) {
+                        if (isPunchIn) return null;
+                        if (v == null || v.trim().isEmpty) return 'Please enter Private KM';
+                        final n = double.tryParse(v.trim());
+                        if (n == null || n < 0) return 'Enter a valid number (≥ 0)';
+                        return null;
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => Navigator.of(ctx).pop<double?>(null),
+                          onPressed: () => Navigator.of(ctx).pop<_PunchMileageInput?>(null),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.grey[700],
                             side: BorderSide(color: Colors.grey[400]!),
@@ -1383,8 +1434,16 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                         child: FilledButton(
                           onPressed: () {
                             if (key.currentState?.validate() ?? false) {
-                              final n = double.tryParse(controller.text.trim());
-                              Navigator.of(ctx).pop<double?>(n);
+                              final kilometerValue = double.tryParse(kilometerController.text.trim());
+                              final privateKmValue = !isPunchIn
+                                  ? double.tryParse(privateKmController.text.trim())
+                                  : 0.0;
+                              Navigator.of(ctx).pop<_PunchMileageInput?>(
+                                _PunchMileageInput(
+                                  kilometer: kilometerValue,
+                                  privateKilometers: privateKmValue,
+                                ),
+                              );
                             }
                           },
                           style: FilledButton.styleFrom(
@@ -1441,16 +1500,18 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       final isPunchIn = !_punchedIn;
       
       // Show dialog to enter vehicle mileage (Kilometer In for punch in, Kilometer Out for punch out)
-      final double? kilometerValue = await _showKilometerDialog(context, isPunchIn: isPunchIn);
-      if (kilometerValue == null && !mounted) {
+      final _PunchMileageInput? mileageInput =
+          await _showKilometerDialog(context, isPunchIn: isPunchIn);
+      if (mileageInput == null && !mounted) {
         setState(() => _isLoading = false);
         return;
       }
       // User cancelled dialog (null and no validation error)
-      if (kilometerValue == null) {
+      if (mileageInput == null || mileageInput.kilometer == null) {
         setState(() => _isLoading = false);
         return;
       }
+      final double kilometerValue = mileageInput.kilometer!;
       
       // Get sbuId from userDetail (preferred) or fallback to user.sbuId or default to 1
       // Priority: primarySBUId > userDetail.sbuId > user.sbuId > 1
@@ -1469,6 +1530,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         isPunchIn: isPunchIn,
         kilometerIn: isPunchIn ? kilometerValue : null,
         kilometerOut: isPunchIn ? null : kilometerValue,
+        privateKilometers: isPunchIn ? 0 : mileageInput.privateKilometers,
       );
 
       if (result.isSuccess) {
@@ -1594,7 +1656,8 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
   Future<void> _refreshAll({bool withLocation = false}) async {
     await _loadTodayPunchRecords();
     if (withLocation) {
-      await _loadLocation();
+      // Do not block pull-to-refresh on GPS/network geocoding delays.
+      _loadLocation();
     }
     if (_isManagerUser()) {
       _loadPlannedVsVisitedSummary();
@@ -1866,8 +1929,12 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 
   Future<void> _loadLocation() async {
     try {
-      final Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-      final List<geocoding.Placemark> marks = await geocoding.placemarkFromCoordinates(pos.latitude, pos.longitude);
+      final Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      ).timeout(const Duration(seconds: 10));
+      final List<geocoding.Placemark> marks =
+          await geocoding.placemarkFromCoordinates(pos.latitude, pos.longitude)
+              .timeout(const Duration(seconds: 8));
       final geocoding.Placemark? m = marks.isNotEmpty ? marks.first : null;
       final String? addr = m == null ? null : [m.name, m.street, m.locality].where((e) => (e ?? '').trim().isNotEmpty).join(', ');
       setState(() {
@@ -1885,7 +1952,13 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
           ),
         );
       }
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      // Keep UI responsive even when location services are slow/unavailable.
+      setState(() {
+        _address = _address ?? 'Location unavailable';
+      });
+    }
   }
 
   Future<bool> _ensureLocationPermissions() async {
@@ -1965,4 +2038,14 @@ class _LogEntry {
   final _LogType type;
   final DateTime time;
   final double? kilometer;
+}
+
+class _PunchMileageInput {
+  const _PunchMileageInput({
+    required this.kilometer,
+    required this.privateKilometers,
+  });
+
+  final double? kilometer;
+  final double? privateKilometers;
 }
