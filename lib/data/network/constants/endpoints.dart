@@ -234,4 +234,10 @@ class Endpoints {
   static String get materialBonusList => "$baseUrl/Material/BonusList";
   static String get materialSlabList => "$baseUrl/Material/SlabList";
   static String get materialDiscountList => "$baseUrl/Material/DiscountList";
+  static String get salesOrderBonusApprovalList =>
+      "$baseUrl/SalesOrderItemApproval/List";
+  static String get salesOrderBonusApprove =>
+      "$baseUrl/SalesOrderItemApproval/Approve";
+  static String get salesOrderBonusApprovedList =>
+      "$baseUrl/SalesOrderItemApproval/ApprovedList";
 }

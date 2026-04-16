@@ -67,4 +67,28 @@ abstract class SalesRepository {
 
   Future<void> transactionCancelSalesOrder(
       SalesOrderTransactionCancelRequest request);
+
+  Future<SalesOrderBonusApprovalResponse> getBonusApprovalList({
+    required int userId,
+    required int pageNumber,
+    required int pageSize,
+    int? bizUnit,
+    int? sbuId,
+  });
+
+  Future<SalesOrderBonusApprovalResponse> getBonusApprovedList({
+    required int userId,
+    required int pageNumber,
+    required int pageSize,
+    int? bizUnit,
+    int? sbuId,
+  });
+
+  Future<void> submitBonusApprovalAction({
+    required int createdBy,
+    required int userId,
+    required int bizunit,
+    required int sbuId,
+    required List<SalesOrderBonusApprovalItem> selectedItems,
+  });
 }

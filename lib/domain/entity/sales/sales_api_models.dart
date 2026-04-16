@@ -1427,3 +1427,278 @@ class SalesOrderTransactionCancelRequest {
     };
   }
 }
+
+class SalesOrderBonusApprovalListRequest {
+  final String? searchText;
+  final int sortOrder;
+  final int sortDir;
+  final int pageNumber;
+  final int pageSize;
+  final String? fromDate;
+  final String? toDate;
+  final String? filterExpression;
+  final int userId;
+  final String? sortExpression;
+  final int? id;
+  final int? menuId;
+  final String? commandText;
+  final String? pageName;
+  final int? sbuId;
+  final int? bizUnit;
+  final String? fieldName;
+  final String? sortField;
+  final String? url;
+  final String? sono;
+  final int? itemId;
+
+  SalesOrderBonusApprovalListRequest({
+    this.searchText,
+    this.sortOrder = 0,
+    this.sortDir = 1,
+    this.pageNumber = 1,
+    this.pageSize = 15,
+    this.fromDate,
+    this.toDate,
+    this.filterExpression,
+    required this.userId,
+    this.sortExpression,
+    this.id,
+    this.menuId,
+    this.commandText,
+    this.pageName,
+    this.sbuId,
+    this.bizUnit,
+    this.fieldName,
+    this.sortField,
+    this.url,
+    this.sono,
+    this.itemId,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'SearchText': searchText,
+        'SortOrder': sortOrder,
+        'SortDir': sortDir,
+        'PageNumber': pageNumber,
+        'PageSize': pageSize,
+        'FromDate': fromDate,
+        'ToDate': toDate,
+        'FilterExpression': filterExpression,
+        'UserId': userId,
+        'SortExpression': sortExpression,
+        'Id': id,
+        'MenuId': menuId,
+        'CommandText': commandText,
+        'PageName': pageName,
+        'SbuId': sbuId,
+        'BizUnit': bizUnit,
+        'FieldName': fieldName,
+        'SortField': sortField,
+        'Url': url,
+        'SONO': sono,
+        'ItemId': itemId,
+      };
+}
+
+class SalesOrderBonusApprovalResponse {
+  final List<SalesOrderBonusApprovalItem> items;
+  final int? totalRecords;
+  final int? filteredRecords;
+
+  SalesOrderBonusApprovalResponse({
+    required this.items,
+    this.totalRecords,
+    this.filteredRecords,
+  });
+
+  factory SalesOrderBonusApprovalResponse.fromJson(Map<String, dynamic> json) {
+    return SalesOrderBonusApprovalResponse(
+      items: (json['items'] as List<dynamic>? ?? [])
+          .map((e) => SalesOrderBonusApprovalItem.fromJson(
+              Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      totalRecords: json['totalRecords'] as int?,
+      filteredRecords: json['filteredRecords'] as int?,
+    );
+  }
+}
+
+class SalesOrderBonusApprovalItem {
+  final int id;
+  final String saleOrderNo;
+  final int detailId;
+  final String? date;
+  final String? divisionText;
+  final int item;
+  final String itemCode;
+  final String itemName;
+  final String customerName;
+  final int customer;
+  final double quantityOrdered;
+  final double quantityApproved;
+  final double bonusQuantity;
+  final double additionalQuantity;
+  final double additionalQuantityApproved;
+  final double rate;
+  final double netAmount;
+  final String? distributorName;
+  final String? salesRepName;
+  final String? approvedBy;
+  final String? approvedDate;
+  final bool isSelected;
+
+  SalesOrderBonusApprovalItem({
+    required this.id,
+    required this.saleOrderNo,
+    required this.detailId,
+    required this.date,
+    required this.divisionText,
+    required this.item,
+    required this.itemCode,
+    required this.itemName,
+    required this.customerName,
+    required this.customer,
+    required this.quantityOrdered,
+    required this.quantityApproved,
+    required this.bonusQuantity,
+    required this.additionalQuantity,
+    required this.additionalQuantityApproved,
+    required this.rate,
+    required this.netAmount,
+    this.distributorName,
+    this.salesRepName,
+    this.approvedBy,
+    this.approvedDate,
+    this.isSelected = false,
+  });
+
+  factory SalesOrderBonusApprovalItem.fromJson(Map<String, dynamic> json) {
+    double toDoubleSafe(dynamic value) =>
+        value == null ? 0 : (value as num).toDouble();
+
+    return SalesOrderBonusApprovalItem(
+      id: (json['id'] ?? json['Id'] ?? 0) as int,
+      saleOrderNo:
+          (json['saleOrderNo'] ?? json['SaleOrderNo'] ?? '') as String,
+      detailId: (json['detailId'] ?? json['DetailId'] ?? 0) as int,
+      date: (json['date'] ?? json['Date'])?.toString(),
+      divisionText:
+          (json['divisionText'] ?? json['DivisionText'])?.toString(),
+      item: (json['item'] ?? json['Item'] ?? 0) as int,
+      itemCode: (json['itemCode'] ?? json['ItemCode'] ?? '') as String,
+      itemName: (json['itemName'] ?? json['ItemName'] ?? '') as String,
+      customerName:
+          (json['customerName'] ?? json['CustomerName'] ?? '') as String,
+      customer: (json['customer'] ?? json['Customer'] ?? 0) as int,
+      quantityOrdered:
+          toDoubleSafe(json['quantityOrdered'] ?? json['QuantityOrdered']),
+      quantityApproved:
+          toDoubleSafe(json['quantityApproved'] ?? json['QuantityApproved']),
+      bonusQuantity:
+          toDoubleSafe(json['bonusQuantity'] ?? json['BonusQuantity']),
+      additionalQuantity:
+          toDoubleSafe(json['additionalQuantity'] ?? json['AdditionalQuantity']),
+      additionalQuantityApproved: toDoubleSafe(
+          json['additionalQuantityApproved'] ??
+              json['AdditionalQuantityApproved']),
+      rate: toDoubleSafe(json['rate'] ?? json['Rate']),
+      netAmount: toDoubleSafe(json['netAmount'] ?? json['NetAmount']),
+      distributorName:
+          (json['distributorName'] ?? json['DistributorName'])?.toString(),
+      salesRepName: (json['salesRepName'] ?? json['SalesRepName'])?.toString(),
+      approvedBy: (json['approvedBy'] ?? json['ApprovedBy'])?.toString(),
+      approvedDate:
+          (json['approvedDate'] ?? json['ApprovedDateTime'] ?? json['ApprovedDate'])
+              ?.toString(),
+      isSelected: (json['isSelected'] ?? json['IsSelected'] ?? false) == true,
+    );
+  }
+
+  SalesOrderBonusApprovalItem copyWith({
+    double? additionalQuantityApproved,
+    bool? isSelected,
+  }) {
+    return SalesOrderBonusApprovalItem(
+      id: id,
+      saleOrderNo: saleOrderNo,
+      detailId: detailId,
+      date: date,
+      divisionText: divisionText,
+      item: item,
+      itemCode: itemCode,
+      itemName: itemName,
+      customerName: customerName,
+      customer: customer,
+      quantityOrdered: quantityOrdered,
+      quantityApproved: quantityApproved,
+      bonusQuantity: bonusQuantity,
+      additionalQuantity: additionalQuantity,
+      additionalQuantityApproved:
+          additionalQuantityApproved ?? this.additionalQuantityApproved,
+      rate: rate,
+      netAmount: netAmount,
+      distributorName: distributorName,
+      salesRepName: salesRepName,
+      approvedBy: approvedBy,
+      approvedDate: approvedDate,
+      isSelected: isSelected ?? this.isSelected,
+    );
+  }
+
+  Map<String, dynamic> toApprovalJson() => {
+        'Id': id,
+        'SaleOrderNo': saleOrderNo,
+        'DetailId': detailId,
+        'Date': date,
+        'DivisionText': divisionText,
+        'Item': item,
+        'ItemCode': itemCode,
+        'ItemName': itemName,
+        'CustomerName': customerName,
+        'Customer': customer,
+        'QuantityOrdered': quantityOrdered,
+        'QuantityApproved': quantityApproved,
+        'BonusQuantity': bonusQuantity,
+        'AdditionalQuantity': additionalQuantity,
+        'AdditionalQuantityApproved': additionalQuantityApproved,
+        'Rate': rate,
+        'NetAmount': netAmount,
+        'IsSelected': isSelected,
+        'DistributorName': distributorName,
+        'SalesRepName': salesRepName,
+      };
+}
+
+class SalesOrderBonusApprovalActionRequest {
+  final int createdBy;
+  final String createdDate;
+  final int sbuId;
+  final int userId;
+  final int bizunit;
+  final List<SalesOrderBonusApprovalItem> selectedItems;
+
+  SalesOrderBonusApprovalActionRequest({
+    required this.createdBy,
+    required this.createdDate,
+    required this.sbuId,
+    required this.userId,
+    required this.bizunit,
+    required this.selectedItems,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'Id': null,
+        'CreatedBy': createdBy,
+        'CreatedDate': createdDate,
+        'ModifiedBy': null,
+        'ModifiedDate': null,
+        'IsActive': true,
+        'SbuId': sbuId,
+        'Status': 0,
+        'UserId': userId,
+        'MenuId': null,
+        'Url': null,
+        'Bizunit': bizunit,
+        'SelectedItems': selectedItems.map((e) => e.toApprovalJson()).toList(),
+      };
+}

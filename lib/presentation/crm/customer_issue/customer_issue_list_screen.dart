@@ -260,7 +260,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _loadError = 'Failed to load customer issues: ${e.toString()}';
+          _loadError = 'Failed to load sample issues: ${e.toString()}';
         });
       }
     }
@@ -547,7 +547,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                         children: [
                           Expanded(
                             child: Text(
-                              'Customer Issue Details',
+                              'Sample Issue Details',
                               style: GoogleFonts.inter(
                                 fontWeight: FontWeight.w700,
                                 color: Colors.grey[900],
@@ -1221,7 +1221,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Customer Issues',
+                  'Sample Issues',
                   style: GoogleFonts.inter(
                     fontSize: isTablet ? 20 : 18,
                     fontWeight: FontWeight.normal,
@@ -1231,7 +1231,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                 ),
                 SizedBox(height: isTablet ? 6 : 4),
                 Text(
-                  'View and manage customer issues',
+                  'View and manage sample issues',
                   style: GoogleFonts.inter(
                     fontSize: isTablet ? 13 : 12,
                     fontWeight: FontWeight.w500,
@@ -1341,7 +1341,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                   width: double.infinity,
                   child: CrmActionButton(
                     icon: Icons.add,
-                    label: 'Customer Issue',
+                    label: 'Sample Issue',
                     color: tealGreen,
                     isMobile: isMobile,
                     onTap: () async {
@@ -1371,7 +1371,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                 Expanded(
                   child: CrmActionButton(
                     icon: Icons.add,
-                    label: 'Customer Issue',
+                    label: 'Sample Issue',
                     color: tealGreen,
                     isMobile: isMobile,
                     onTap: () async {
@@ -1464,7 +1464,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                         size: 64, color: Colors.red.shade400),
                                     const SizedBox(height: 16),
                                     Text(
-                                      'Failed to load customer issues',
+                                      'Failed to load sample issues',
                                       style: GoogleFonts.inter(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w500,
@@ -1508,7 +1508,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                                             color: Colors.grey.shade400),
                                         const SizedBox(height: 16),
                                         Text(
-                                          'No customer issues found',
+                                          'No sample issues found',
                                           style: GoogleFonts.inter(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w500,

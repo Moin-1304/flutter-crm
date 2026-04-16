@@ -17,6 +17,7 @@ import '../tour_plan/tour_plan_screen.dart';
 import 'package:boilerplate/presentation/crm/crm_shell.dart';
 import '../crm/customer_issue/customer_issue_list_screen.dart';
 import '../sales/sales_order_list.dart';
+import '../sales/sales_bonus_approval_screen.dart';
 
 class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key});
@@ -90,6 +91,11 @@ class _DashboardShellState extends State<DashboardShell>
       print('  Stack trace: $stackTrace');
     }
 
+    try {
+      pages.add(SalesBonusApprovalScreen(key: UniqueKey()));
+    } catch (e) {
+      print('  ❌ Error adding SalesBonusApprovalScreen: $e');
+    }
     print('🏁 [DashboardShell] Final pages count: ${pages.length}');
     print(
         '🏁 [DashboardShell] Pages: ${pages.map((p) => p.runtimeType.toString()).toList()}');
@@ -193,6 +199,19 @@ class _DashboardShellState extends State<DashboardShell>
     print('Navigation selected: $i, Total pages: ${_pages.length}');
     print(
         'Pages list: ${_pages.map((p) => p.runtimeType.toString()).toList()}');
+
+    // Hot reload can keep old state where _pages was initialized before
+    // Bonus Approval page was added. Open it directly as a safe fallback.
+    if (i == 6 && i >= _pages.length) {
+      Navigator.of(context).maybePop();
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const SalesBonusApprovalScreen(),
+        ),
+      );
+      return;
+    }
+
     if (_selected != i) {
       // Ensure index is within bounds
       if (i >= 0 && i < _pages.length) {
@@ -314,7 +333,7 @@ class _DashboardShellState extends State<DashboardShell>
       NavigationDestination(
         icon: Icon(Icons.error_outline),
         selectedIcon: Icon(Icons.error),
-        label: 'Customer Issue',
+        label: 'Sample Issue',
       ),
     ];
 
@@ -688,7 +707,7 @@ class _SideMenu extends StatelessWidget {
                   _ModernDrawerItem(
                     icon: Icons.error_outline,
                     selectedIcon: Icons.error,
-                    label: 'Customer Issue',
+                    label: 'Sample Issue',
                     selected: selected == 4,
                     onTap: () => onSelect(4),
                     isTablet: isTablet,
@@ -700,18 +719,34 @@ class _SideMenu extends StatelessWidget {
                       final isSalesRep =
                           userDetailStore.userDetail?.roleCategory == 3 &&
                               userDetailStore.userDetail?.repType == 1;
-                      if (!isSalesRep) return const SizedBox.shrink();
+                      final isManager =
+                          (userDetailStore.userDetail?.roleCategory) != 3;
+                      if (!isSalesRep && !isManager) {
+                        return const SizedBox.shrink();
+                      }
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _ModernDrawerItem(
-                            icon: Icons.sell_outlined,
-                            selectedIcon: Icons.sell,
-                            label: 'Sales',
-                            selected: selected == 5,
-                            onTap: () => onSelect(5),
-                            isTablet: isTablet,
-                          ),
+                          if (isSalesRep)
+                            _ModernDrawerItem(
+                              icon: Icons.sell_outlined,
+                              selectedIcon: Icons.sell,
+                              label: 'Sales',
+                              selected: selected == 5,
+                              onTap: () => onSelect(5),
+                              isTablet: isTablet,
+                            ),
+                          if (isManager) ...[
+                            if (isSalesRep) SizedBox(height: isTablet ? 8 : 6),
+                            _ModernDrawerItem(
+                              icon: Icons.card_giftcard_outlined,
+                              selectedIcon: Icons.card_giftcard,
+                              label: 'Bonus Approval',
+                              selected: selected == 6,
+                              onTap: () => onSelect(6),
+                              isTablet: isTablet,
+                            ),
+                          ],
                         ],
                       );
                     },

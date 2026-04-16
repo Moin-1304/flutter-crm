@@ -751,7 +751,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
         ToastMessage.show(
           context,
-          message: 'Failed to load customer issue: ${e.toString()}',
+          message: 'Failed to load sample issue: ${e.toString()}',
           type: ToastType.error,
         );
       }
@@ -1168,8 +1168,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       appBar: AppBar(
         title: Text(
           _isViewMode
-              ? 'View Customer Issue'
-              : (_isEditMode ? 'Edit Customer Issue' : 'New Customer Issue'),
+              ? 'View Sample Issue'
+              : (_isEditMode ? 'Edit Sample Issue' : 'New Sample Issue'),
           style: GoogleFonts.inter(
             fontSize: isTablet ? 20 : 18,
             fontWeight: FontWeight.w700,
@@ -1222,10 +1222,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   const SizedBox(width: 8),
                   Text(
                     _isViewMode
-                        ? 'Customer Issue > View'
+                        ? 'Sample Issue > View'
                         : (_isEditMode
-                            ? 'Customer Issue > Edit'
-                            : 'Customer Issue > New'),
+                            ? 'Sample Issue > Edit'
+                            : 'Sample Issue > New'),
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       color: Colors.grey.shade600,
@@ -1277,7 +1277,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // Customer Issue Details Section
+                              // Sample Issue Details Section
                               _buildDetailsCard(context, isTablet),
                               const SizedBox(height: 32),
                               // Add to List Section
@@ -1308,7 +1308,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       children: [
         // Simple text header (no card, no collapsible)
         Text(
-          'Customer Issue Details',
+          'Sample Issue Details',
           style: GoogleFonts.inter(
             fontSize: isTablet ? 18 : 16,
             fontWeight: FontWeight.w600,
@@ -3175,7 +3175,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Customer Issue submitted successfully',
+          message: 'Sample Issue submitted successfully',
           type: ToastType.success,
         );
         Navigator.of(context).pop(true);
@@ -3184,7 +3184,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print('❌ Exception caught during submit: ' + e.toString());
       print('Stacktrace:');
       print(stack);
-      String detailedMessage = 'Failed to submit customer issue';
+      String detailedMessage = 'Failed to submit sample issue';
 
       // Try to extract user-friendly error message from server response
       try {
@@ -4151,13 +4151,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Customer Issue saved successfully',
+          message: 'Sample Issue saved successfully',
           type: ToastType.success,
         );
         Navigator.of(context).pop(true); // Return true to indicate success
       }
     } catch (e) {
-      String errorMessage = 'Failed to save customer issue';
+      String errorMessage = 'Failed to save sample issue';
 
       // Try to extract user-friendly error message
       if (e is DioException && e.response != null) {
@@ -4235,7 +4235,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Customer Issue submitted successfully',
+          message: 'Sample Issue submitted successfully',
           type: ToastType.success,
         );
         Navigator.of(context).pop(true); // Return true to indicate success
@@ -4259,7 +4259,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Failed to submit customer issue: $detailedMessage',
+          message: 'Failed to submit sample issue: $detailedMessage',
           type: ToastType.error,
         );
       }
@@ -4603,7 +4603,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
       final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
       // For CustomerId, we'll use a default value for now (can be updated later if needed)
-      // In a real scenario, this might come from the customer issue context
+      // In a real scenario, this might come from the sample issue context
       final customerId =
           0; // Default value, can be updated based on business logic
 
@@ -4620,7 +4620,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
       // Print Batch No API Request Parameters
       print('═══════════════════════════════════════════════════════════');
-      print('📦 BATCH NO API REQUEST (Customer Issue - Add Item)');
+      print('📦 BATCH NO API REQUEST (Sample Issue - Add Item)');
       print('═══════════════════════════════════════════════════════════');
       print('API Endpoint: POST ${Endpoints.commonGetAutoBigInt}');
       print('Request Parameters:');

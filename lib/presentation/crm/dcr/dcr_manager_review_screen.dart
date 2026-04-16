@@ -419,6 +419,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     final bool isTablet = MediaQuery.of(context).size.width > 800;
     const Color tealGreen = Color(0xFF4db1b3);
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7F7),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final bool isMobile = constraints.maxWidth < 600;
@@ -639,9 +640,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                                   foregroundColor: Colors.white,
                                   elevation: 4,
                                   shadowColor: tealGreen.withOpacity(0.4),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
+                                  shape: const StadiumBorder(),
                                   padding: EdgeInsets.symmetric(
                                     horizontal: isTablet ? 20 : 16,
                                   ),
@@ -660,10 +659,10 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
                                   horizontal: isTablet ? 16 : 14,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: tealGreen.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(14),
+                                  color: const Color(0xFFEAF7F7),
+                                  borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
-                                    color: tealGreen.withOpacity(0.2),
+                                    color: tealGreen.withOpacity(0.25),
                                     width: 1,
                                   ),
                                 ),
@@ -2916,18 +2915,24 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
       opacity: isEnabled ? 1.0 : 0.6, // Reduce opacity for approved/disabled items
       child: InkWell(
         onTap: onViewDetails,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: isSelected ? const Color(0xFF4db1b3) : Colors.black.withOpacity(.06),
               width: isSelected ? 2 : 1,
             ),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.03), blurRadius: 8, offset: const Offset(0, 2))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.05),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              )
+            ],
           ),
-          padding: EdgeInsets.all(isSmallMobile ? 10 : (isMobile ? 12 : 14)),
+          padding: EdgeInsets.all(isSmallMobile ? 12 : (isMobile ? 14 : 16)),
           margin: EdgeInsets.only(bottom: isMobile ? 8 : 10),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2974,8 +2979,8 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.inter(
-                      fontSize: isTablet ? 13 : 11,
-                      fontWeight: FontWeight.w700,
+                      fontSize: isTablet ? 15 : 14,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: -0.2,
                       color: Colors.black87,
                     ),
@@ -3021,7 +3026,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
                   child: Text(
                     item.employeeName.isNotEmpty ? item.employeeName : 'Unknown',
                     style: GoogleFonts.inter(
-                      fontSize: isTablet ? 11 : 10,
+                      fontSize: isTablet ? 12 : 11,
                       fontWeight: FontWeight.w500,
                       color: Colors.grey[700],
                     ),
@@ -3039,7 +3044,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
                 Text(
                   _formatItemDate(item),
                   style: GoogleFonts.inter(
-                    fontSize: isTablet ? 11 : 10,
+                    fontSize: isTablet ? 12 : 11,
                     fontWeight: FontWeight.w500,
                     color: Colors.grey[700],
                   ),
@@ -3060,7 +3065,7 @@ class _ManagerReviewUnifiedItemCard extends StatelessWidget {
                     Text(
                       _getDistanceText(item)!,
                       style: GoogleFonts.inter(
-                        fontSize: isTablet ? 11 : 10,
+                      fontSize: isTablet ? 12 : 11,
                         fontWeight: FontWeight.w500,
                         color: Colors.grey[600],
                       ),
@@ -3264,17 +3269,17 @@ class _BottomActionBar extends StatelessWidget {
         final bool isMobile = constraints.maxWidth < 600;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF7F7), // Light blue-green background
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 14,
+            offset: const Offset(0, -4),
           ),
         ],
         border: Border(
           top: BorderSide(
-            color: Colors.grey.withOpacity(0.2),
+            color: const Color(0xFF4db1b3).withOpacity(0.16),
             width: 1,
           ),
         ),
@@ -3729,39 +3734,27 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
+    final bool isPendingSubmitted = text.toLowerCase() == 'submitted';
+    final Color chipBg = isPendingSubmitted ? const Color(0xFFFFF7E0) : color.withOpacity(.12);
+    final Color chipBorder = isPendingSubmitted ? const Color(0xFFF4D88A) : color.withOpacity(.45);
+    final Color chipText = isPendingSubmitted ? const Color(0xFFC99700) : color;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 9, vertical: isMobile ? 3 : 4),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 11, vertical: isMobile ? 4 : 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(.5), width: 1),
+        color: chipBg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: chipBorder, width: 1),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: isMobile ? 4 : 5,
-            height: isMobile ? 4 : 5,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          SizedBox(width: isMobile ? 4 : 5),
-          Flexible(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontSize: isMobile ? 10 : 11,
-                letterSpacing: 0.1,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-        ],
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: chipText,
+          fontWeight: FontWeight.w600,
+          fontSize: isMobile ? 11 : 12,
+          letterSpacing: 0.1,
+        ),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
       ),
     );
   }
@@ -3806,27 +3799,21 @@ class _SectionCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: statusColor.withOpacity(.25), width: 2),
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: statusColor.withOpacity(0.30)),
+                  ),
+                  child: Text(
+                    actionText,
+                    style: GoogleFonts.inter(
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      actionText,
-                      style: GoogleFonts.inter(
-                        color: statusColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -3855,12 +3842,12 @@ class _ProximityDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color color = inRange ? const Color(0xFF2DBE64) : const Color(0xFFFFC54D);
     return Container(
-      width: 20,
-      height: 20,
+      width: 10,
+      height: 10,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        border: Border.all(color: color.withOpacity(.35), width: 3),
+        border: Border.all(color: color.withOpacity(.30), width: 1.5),
       ),
     );
   }

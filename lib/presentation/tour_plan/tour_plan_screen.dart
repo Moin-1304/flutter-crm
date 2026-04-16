@@ -2831,6 +2831,16 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     final statusColor = _getStatusColor(actualStatus);
     final statusBgColor = _getStatusBackgroundColor(actualStatus);
     
+    // Resolve effective customer id (detail-level takes priority over header-level).
+    int effectiveCustomerId = 0;
+    if (fullItem.tourPlanDetails != null && fullItem.tourPlanDetails!.isNotEmpty) {
+      effectiveCustomerId = fullItem.tourPlanDetails!.first.customerId;
+    }
+    if (effectiveCustomerId <= 0) {
+      effectiveCustomerId = fullItem.customerId;
+    }
+    final shouldShowCustomer = effectiveCustomerId > 0;
+
     // Extract customer name from tourPlanDetails[0].location (format: "CLUSTER - CUSTOMER - CODE")
     // Example: "ANGURUWELLA - Safeway Pharmaceuticals (Pvt) Ltd - P01304"
     String customerName = '';
@@ -2860,12 +2870,12 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       customerName = fullItem.customerName?.trim() ?? '';
     }
     // Last resort fallback
-    if (customerName.isEmpty && fullItem.customerId != null) {
-      customerName = 'Customer ${fullItem.customerId}';
+    if (customerName.isEmpty && shouldShowCustomer) {
+      customerName = 'Customer $effectiveCustomerId';
     }
     
-    final customerCode = fullItem.customerId != null
-        ? ' - P${fullItem.customerId.toString().padLeft(5, '0')}'
+    final customerCode = shouldShowCustomer
+        ? ' - P${effectiveCustomerId.toString().padLeft(5, '0')}'
         : '';
 
     Widget buildDetailPanel(BuildContext sheetContext, {bool inPushedRoute = false}) {
@@ -3171,8 +3181,9 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               ),
                               child: Column(
                                 children: [
-                                  _DetailRow(
-                                      'Customer', '$customerName$customerCode'),
+                                  if (shouldShowCustomer)
+                                    _DetailRow('Customer',
+                                        '$customerName$customerCode'),
                                   if (productsDisplay.isNotEmpty &&
                                       productsDisplay != 'N/A') ...[
                                     SizedBox(height: isTablet ? 6 : 4),

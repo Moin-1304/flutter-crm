@@ -437,6 +437,68 @@ class SalesApi {
     }
   }
 
+  Future<SalesOrderBonusApprovalResponse> getBonusApprovalList(
+    SalesOrderBonusApprovalListRequest request,
+  ) async {
+    try {
+      final response = await _dioClient.dio.post(
+        Endpoints.salesOrderBonusApprovalList,
+        data: request.toJson(),
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+      if (response.data == null) {
+        return SalesOrderBonusApprovalResponse(items: []);
+      }
+      if (response.data is Map<String, dynamic>) {
+        return SalesOrderBonusApprovalResponse.fromJson(response.data);
+      }
+      return SalesOrderBonusApprovalResponse(items: []);
+    } catch (e) {
+      throw Exception('Failed to fetch bonus approval list: ${e.toString()}');
+    }
+  }
+
+  Future<SalesOrderBonusApprovalResponse> getBonusApprovedList(
+    SalesOrderBonusApprovalListRequest request,
+  ) async {
+    try {
+      final response = await _dioClient.dio.post(
+        Endpoints.salesOrderBonusApprovedList,
+        data: request.toJson(),
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+      if (response.data == null) {
+        return SalesOrderBonusApprovalResponse(items: []);
+      }
+      if (response.data is Map<String, dynamic>) {
+        return SalesOrderBonusApprovalResponse.fromJson(response.data);
+      }
+      return SalesOrderBonusApprovalResponse(items: []);
+    } catch (e) {
+      throw Exception('Failed to fetch approved bonus list: ${e.toString()}');
+    }
+  }
+
+  Future<void> submitBonusApprovalAction(
+    SalesOrderBonusApprovalActionRequest request,
+  ) async {
+    try {
+      await _dioClient.dio.post(
+        Endpoints.salesOrderBonusApprove,
+        data: request.toJson(),
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+    } catch (e) {
+      throw Exception('Failed to submit bonus approval action: ${e.toString()}');
+    }
+  }
+
   List<FileUploadDetail> _parseFileUploadDetails(dynamic raw) {
     if (raw == null) return [];
     if (raw is List) {

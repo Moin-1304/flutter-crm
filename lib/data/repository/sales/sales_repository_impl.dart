@@ -261,4 +261,91 @@ class SalesRepositoryImpl implements SalesRepository {
       throw Exception('Failed to cancel sales order: ${e.toString()}');
     }
   }
+
+  @override
+  Future<SalesOrderBonusApprovalResponse> getBonusApprovalList({
+    required int userId,
+    required int pageNumber,
+    required int pageSize,
+    int? bizUnit,
+    int? sbuId,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        return await salesApi.getBonusApprovalList(
+          SalesOrderBonusApprovalListRequest(
+            userId: userId,
+            pageNumber: pageNumber,
+            pageSize: pageSize,
+            bizUnit: bizUnit,
+            sbuId: sbuId,
+            sortOrder: 0,
+            sortDir: 1,
+          ),
+        );
+      }
+      throw Exception('SalesApi not registered');
+    } catch (_) {
+      return SalesOrderBonusApprovalResponse(items: []);
+    }
+  }
+
+  @override
+  Future<SalesOrderBonusApprovalResponse> getBonusApprovedList({
+    required int userId,
+    required int pageNumber,
+    required int pageSize,
+    int? bizUnit,
+    int? sbuId,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        return await salesApi.getBonusApprovedList(
+          SalesOrderBonusApprovalListRequest(
+            userId: userId,
+            pageNumber: pageNumber,
+            pageSize: pageSize,
+            bizUnit: bizUnit,
+            sbuId: sbuId,
+            sortOrder: 0,
+            sortDir: 0,
+          ),
+        );
+      }
+      throw Exception('SalesApi not registered');
+    } catch (_) {
+      return SalesOrderBonusApprovalResponse(items: []);
+    }
+  }
+
+  @override
+  Future<void> submitBonusApprovalAction({
+    required int createdBy,
+    required int userId,
+    required int bizunit,
+    required int sbuId,
+    required List<SalesOrderBonusApprovalItem> selectedItems,
+  }) async {
+    try {
+      if (getIt.isRegistered<SalesApi>()) {
+        final salesApi = getIt<SalesApi>();
+        await salesApi.submitBonusApprovalAction(
+          SalesOrderBonusApprovalActionRequest(
+            createdBy: createdBy,
+            createdDate: DateTime.now().toString(),
+            sbuId: sbuId,
+            userId: userId,
+            bizunit: bizunit,
+            selectedItems: selectedItems,
+          ),
+        );
+        return;
+      }
+      throw Exception('SalesApi not registered');
+    } catch (e) {
+      throw Exception('Failed to submit bonus approval action: ${e.toString()}');
+    }
+  }
 }
