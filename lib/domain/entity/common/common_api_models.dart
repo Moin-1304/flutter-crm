@@ -1090,18 +1090,22 @@ class DivisionCategoryRequest {
 /// Can use either DivisionId or DistributerId
 class ItemDescriptionRequest {
   final int? divisionId;
+  final int? bizUnit;
+  final int? divisionGroup;
   final int? distributerId;
   final String? searchText;
 
   ItemDescriptionRequest({
     this.divisionId,
+    this.bizUnit,
+    this.divisionGroup,
     this.distributerId,
     this.searchText,
   });
 
   Map<String, dynamic> toJson() {
     return {
-      'SearchText': searchText ?? '%',
+      'SearchText': searchText,
       'Id': null,
       'TransactionId': null,
       'UserId': null,
@@ -1168,7 +1172,7 @@ class ItemDescriptionRequest {
       'DesignationCode': null,
       'DistrictId': null,
       'TownId': null,
-      'BizUnit': null,
+      'BizUnit': bizUnit,
       'ProcessId': null,
       'FieldName': null,
       'Sector': 0,
@@ -1184,7 +1188,7 @@ class ItemDescriptionRequest {
       'PageName': null,
       'Mode': null,
       'Division': divisionId,
-      'DivisionGroup': null,
+      'DivisionGroup': divisionGroup,
       'Role': null,
       'TypeId': null,
       'PageType': null,
@@ -1219,37 +1223,54 @@ class ItemDescriptionRequest {
 class BatchNoRequest {
   final int itemId;
   final int employeeId;
-  final String toDate; // Format: "yyyy-MM-dd"
+  final String toDate; // Format: "yyyy-MM-dd'T'HH:mm:ss.SSS"
   final int bizUnit;
-  final int module; // 6 for Customer Issue
-  final int customerId;
-  final int transactionType; // 14 for Customer Issue
+  final int module; // 13 for Sample Issue
+  final int transactionType; // 12 for Sample Issue
 
   BatchNoRequest({
     required this.itemId,
     required this.employeeId,
     required this.toDate,
     required this.bizUnit,
-    this.module = 6,
-    required this.customerId,
-    this.transactionType = 14,
+    this.module = 13,
+    this.transactionType = 12,
   });
 
   Map<String, dynamic> toJson() {
-    // Updated to match the new GetAutoBigInt endpoint payload structure
     return {
+      'SearchText': null,
       'Id': itemId,
+      'TransactionId': null,
+      'UserId': null,
       'CommandType': 332,
+      'CommandText': null,
+      'Value': null,
+      'CountryId': null,
+      'Key': null,
+      'Text': null,
+      'Type': null,
       'TaxFlag': 0,
+      'SubType': null,
+      'RoleMapList': null,
+      'CategoryId': null,
+      'ClusterId': null,
       'EmployeeId': employeeId,
+      'PageUrl': null,
       'IncludeCancelled': false,
+      'Program': null,
+      'Category': null,
+      'Status': null,
+      'FromDate': null,
       'ToDate': toDate,
       'BizUnit': bizUnit,
+      'ProcessId': null,
+      'FieldName': null,
       'Sector': 0,
+      'ConstantMasterParent': null,
+      'Vendor': null,
+      'ReceiveType': null,
       'Module': module,
-      'CustomerId': customerId,
-      'IsMaterialIssue': false,
-      'IsItemIssue': false,
       'TransactionType': transactionType,
     };
   }
@@ -1699,6 +1720,7 @@ class CommonDropdownItem {
   final String invoiceNo;
   final int invoiceId;
   final int saleInvoiceDetailId;
+  final int item;
   final int level;
   final int divisionGroupId;
   final String currencyText;
@@ -1763,6 +1785,7 @@ class CommonDropdownItem {
     required this.invoiceNo,
     required this.invoiceId,
     required this.saleInvoiceDetailId,
+    required this.item,
     required this.level,
     required this.divisionGroupId,
     required this.currencyText,
@@ -1793,19 +1816,21 @@ class CommonDropdownItem {
 
   factory CommonDropdownItem.fromJson(Map<String, dynamic> json) {
     return CommonDropdownItem(
-      id: json['id'] ?? 0,
-      text: json['text'] ?? '',
+      id: json['id'] ?? json['Id'] ?? 0,
+      text: json['text'] ?? json['Text'] ?? '',
       doubleTank: json['doubleTank'] ?? 0,
       virtual: json['virtual'] ?? 0,
       version: json['version'] ?? 0,
       compoundStartDate: json['compoundStartDate'] ?? '',
       compoundEndDate: json['compoundEndDate'] ?? '',
-      name: json['name'] ?? '',
+      name: json['name'] ?? json['Name'] ?? '',
       stock: json['stock'] ??
+          json['Stock'] ??
           json['quantityInStock'] ??
+          json['QuantityInStock'] ??
           0, // Support both 'stock' and 'quantityInStock'
       address: json['address'] ?? '',
-      uom: json['uom'] ?? 0,
+      uom: json['uom'] ?? json['UOM'] ?? json['Uom'] ?? 0,
       hasChild: json['hasChild'] ?? 0,
       hasInstrument: json['hasInstrument'] ?? 0,
       category: json['category'] ?? 0,
@@ -1817,7 +1842,7 @@ class CommonDropdownItem {
       account: json['account'] ?? 0,
       pageType: json['pageType'] ?? 0,
       no: json['no'] ?? '',
-      value: json['value'] ?? 0,
+      value: json['value'] ?? json['Value'] ?? 0,
       expiryDate: json['expiryDate'] ?? '',
       accountSubType: json['accountSubType'] ?? 0,
       totalAmount: json['totalAmount'] ?? 0,
@@ -1827,6 +1852,10 @@ class CommonDropdownItem {
           ? (json['rate'] is int
               ? json['rate'].toDouble()
               : (json['rate'] as num).toDouble())
+          : json['Rate'] != null
+              ? (json['Rate'] is int
+                  ? json['Rate'].toDouble()
+                  : (json['Rate'] as num).toDouble())
           : 0.0,
       typeText: json['typeText'] ?? '',
       currency: json['currency'] ?? 0,
@@ -1835,12 +1864,13 @@ class CommonDropdownItem {
       invoiceNo: json['invoiceNo'] ?? '',
       invoiceId: json['invoiceId'] ?? 0,
       saleInvoiceDetailId: json['saleInvoiceDetailId'] ?? 0,
+      item: json['Item'] ?? json['item'] ?? json['ProductId'] ?? json['productId'] ?? 0,
       level: json['level'] ?? 0,
-      divisionGroupId: json['divisionGroupId'] ?? 0,
+      divisionGroupId: json['divisionGroupId'] ?? json['DivisionGroupId'] ?? 0,
       currencyText: json['currencyText'] ?? '',
       decimalFormat: json['decimalFormat'] ?? '',
       rateFormat: json['rateFormat'] ?? '',
-      code: json['code'] ?? '',
+      code: json['code'] ?? json['Code'] ?? '',
       addressLine1: json['addressLine1'] ?? '',
       addressLine2: json['addressLine2'] ?? '',
       addressLine3: json['addressLine3'] ?? '',

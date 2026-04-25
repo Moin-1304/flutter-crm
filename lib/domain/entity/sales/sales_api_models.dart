@@ -1525,9 +1525,16 @@ class SalesOrderBonusApprovalResponse {
 
 class SalesOrderBonusApprovalItem {
   final int id;
+  final int? createdBy;
+  final int? status;
+  final int? company;
+  final int? bizunit;
+  final int? sbuId;
+  final int? rowNumber;
   final String saleOrderNo;
   final int detailId;
   final String? date;
+  final int? division;
   final String? divisionText;
   final int item;
   final String itemCode;
@@ -1541,6 +1548,19 @@ class SalesOrderBonusApprovalItem {
   final double additionalQuantityApproved;
   final double rate;
   final double netAmount;
+  final String? createdDate;
+  final int? userId;
+  final int? pageType;
+  final int? workflowFlag;
+  final int? workflowStatus;
+  final String? workflowComment;
+  final int? processId;
+  final dynamic actionValue;
+  final int? processActionId;
+  final String? processName;
+  final int? menuId;
+  final int? moduleId;
+  final int? refid;
   final String? distributorName;
   final String? salesRepName;
   final String? approvedBy;
@@ -1549,9 +1569,16 @@ class SalesOrderBonusApprovalItem {
 
   SalesOrderBonusApprovalItem({
     required this.id,
+    this.createdBy,
+    this.status,
+    this.company,
+    this.bizunit,
+    this.sbuId,
+    this.rowNumber,
     required this.saleOrderNo,
     required this.detailId,
     required this.date,
+    this.division,
     required this.divisionText,
     required this.item,
     required this.itemCode,
@@ -1565,6 +1592,19 @@ class SalesOrderBonusApprovalItem {
     required this.additionalQuantityApproved,
     required this.rate,
     required this.netAmount,
+    this.createdDate,
+    this.userId,
+    this.pageType,
+    this.workflowFlag,
+    this.workflowStatus,
+    this.workflowComment,
+    this.processId,
+    this.actionValue,
+    this.processActionId,
+    this.processName,
+    this.menuId,
+    this.moduleId,
+    this.refid,
     this.distributorName,
     this.salesRepName,
     this.approvedBy,
@@ -1578,10 +1618,17 @@ class SalesOrderBonusApprovalItem {
 
     return SalesOrderBonusApprovalItem(
       id: (json['id'] ?? json['Id'] ?? 0) as int,
+      createdBy: (json['createdBy'] ?? json['CreatedBy']) as int?,
+      status: (json['status'] ?? json['Status']) as int?,
+      company: (json['company'] ?? json['Company']) as int?,
+      bizunit: (json['bizunit'] ?? json['Bizunit']) as int?,
+      sbuId: (json['sbuId'] ?? json['SbuId']) as int?,
+      rowNumber: (json['rowNumber'] ?? json['RowNumber']) as int?,
       saleOrderNo:
           (json['saleOrderNo'] ?? json['SaleOrderNo'] ?? '') as String,
       detailId: (json['detailId'] ?? json['DetailId'] ?? 0) as int,
       date: (json['date'] ?? json['Date'])?.toString(),
+      division: (json['division'] ?? json['Division']) as int?,
       divisionText:
           (json['divisionText'] ?? json['DivisionText'])?.toString(),
       item: (json['item'] ?? json['Item'] ?? 0) as int,
@@ -1603,6 +1650,21 @@ class SalesOrderBonusApprovalItem {
               json['AdditionalQuantityApproved']),
       rate: toDoubleSafe(json['rate'] ?? json['Rate']),
       netAmount: toDoubleSafe(json['netAmount'] ?? json['NetAmount']),
+      createdDate: (json['createdDate'] ?? json['CreatedDate'])?.toString(),
+      userId: (json['userId'] ?? json['UserId']) as int?,
+      pageType: (json['pageType'] ?? json['PageType']) as int?,
+      workflowFlag: (json['workflowFlag'] ?? json['WorkflowFlag']) as int?,
+      workflowStatus: (json['workflowStatus'] ?? json['WorkflowStatus']) as int?,
+      workflowComment:
+          (json['workflowComment'] ?? json['WorkflowComment'])?.toString(),
+      processId: (json['processId'] ?? json['ProcessId']) as int?,
+      actionValue: json['actionValue'] ?? json['ActionValue'],
+      processActionId:
+          (json['processActionId'] ?? json['ProcessActionId']) as int?,
+      processName: (json['processName'] ?? json['ProcessName'])?.toString(),
+      menuId: (json['menuId'] ?? json['MenuId']) as int?,
+      moduleId: (json['moduleId'] ?? json['ModuleId']) as int?,
+      refid: (json['refid'] ?? json['Refid']) as int?,
       distributorName:
           (json['distributorName'] ?? json['DistributorName'])?.toString(),
       salesRepName: (json['salesRepName'] ?? json['SalesRepName'])?.toString(),
@@ -1620,9 +1682,16 @@ class SalesOrderBonusApprovalItem {
   }) {
     return SalesOrderBonusApprovalItem(
       id: id,
+      createdBy: createdBy,
+      status: status,
+      company: company,
+      bizunit: bizunit,
+      sbuId: sbuId,
+      rowNumber: rowNumber,
       saleOrderNo: saleOrderNo,
       detailId: detailId,
       date: date,
+      division: division,
       divisionText: divisionText,
       item: item,
       itemCode: itemCode,
@@ -1637,6 +1706,19 @@ class SalesOrderBonusApprovalItem {
           additionalQuantityApproved ?? this.additionalQuantityApproved,
       rate: rate,
       netAmount: netAmount,
+      createdDate: createdDate,
+      userId: userId,
+      pageType: pageType,
+      workflowFlag: workflowFlag,
+      workflowStatus: workflowStatus,
+      workflowComment: workflowComment,
+      processId: processId,
+      actionValue: actionValue,
+      processActionId: processActionId,
+      processName: processName,
+      menuId: menuId,
+      moduleId: moduleId,
+      refid: refid,
       distributorName: distributorName,
       salesRepName: salesRepName,
       approvedBy: approvedBy,
@@ -1647,9 +1729,16 @@ class SalesOrderBonusApprovalItem {
 
   Map<String, dynamic> toApprovalJson() => {
         'Id': id,
+        'CreatedBy': createdBy,
+        'Status': status ?? 0,
+        'Company': company,
+        'Bizunit': bizunit,
+        'SbuId': sbuId ?? 0,
+        'RowNumber': rowNumber ?? 0,
         'SaleOrderNo': saleOrderNo,
         'DetailId': detailId,
-        'Date': date,
+        'Date': SalesOrderBonusApprovalActionRequest._normalizeIsoDate(date),
+        'Division': division,
         'DivisionText': divisionText,
         'Item': item,
         'ItemCode': itemCode,
@@ -1663,9 +1752,28 @@ class SalesOrderBonusApprovalItem {
         'AdditionalQuantityApproved': additionalQuantityApproved,
         'Rate': rate,
         'NetAmount': netAmount,
-        'IsSelected': isSelected,
+        'CreatedDate':
+            SalesOrderBonusApprovalActionRequest._normalizeIsoDate(createdDate),
+        'UserId': userId,
+        'PageType': pageType,
+        'WorkflowFlag': workflowFlag,
+        'WorkflowStatus': workflowStatus,
+        'WorkflowComment': workflowComment,
+        'ProcessId': processId,
+        'ActionValue': actionValue,
+        'ProcessActionId': processActionId,
+        'ProcessName': processName,
+        'MenuId': menuId,
+        'ModuleId': moduleId,
+        'Refid': refid,
+        'IsSelected': false,
         'DistributorName': distributorName,
         'SalesRepName': salesRepName,
+        'ApprovedBy': approvedBy,
+        'ApprovedDate':
+            SalesOrderBonusApprovalActionRequest._normalizeIsoDate(approvedDate),
+        'ApprovedDateTime':
+            SalesOrderBonusApprovalActionRequest._normalizeIsoDate(approvedDate),
       };
 }
 
@@ -1689,7 +1797,7 @@ class SalesOrderBonusApprovalActionRequest {
   Map<String, dynamic> toJson() => {
         'Id': null,
         'CreatedBy': createdBy,
-        'CreatedDate': createdDate,
+        'CreatedDate': _normalizeIsoDate(createdDate),
         'ModifiedBy': null,
         'ModifiedDate': null,
         'IsActive': true,
@@ -1701,4 +1809,44 @@ class SalesOrderBonusApprovalActionRequest {
         'Bizunit': bizunit,
         'SelectedItems': selectedItems.map((e) => e.toApprovalJson()).toList(),
       };
+
+  /// Server is strict about date-time format for this endpoint.
+  /// Normalizes to `yyyy-MM-ddTHH:mm:ss.SSS` when possible.
+  static String? _normalizeIsoDate(dynamic input) {
+    if (input == null) return null;
+    final raw = input.toString().trim();
+    if (raw.isEmpty) return null;
+
+    // Replace space separator with 'T' (e.g. "2026-04-16 19:39:45.045068")
+    var s = raw.contains(' ') && !raw.contains('T') ? raw.replaceFirst(' ', 'T') : raw;
+
+    // If it has fractional seconds, trim to 3 digits.
+    final dot = s.indexOf('.');
+    if (dot != -1) {
+      final end = s.indexOf(RegExp(r'[Z\+\-]'), dot); // timezone or Z
+      final fracEnd = end == -1 ? s.length : end;
+      final frac = s.substring(dot + 1, fracEnd);
+      if (frac.length > 3) {
+        s = s.substring(0, dot + 1) + frac.substring(0, 3) + s.substring(fracEnd);
+      } else if (frac.length < 3) {
+        s = s.substring(0, dot + 1) + frac.padRight(3, '0') + s.substring(fracEnd);
+      }
+      return s;
+    }
+
+    // If it's an ISO timestamp without fractional seconds, add ".000".
+    if (s.contains('T') && RegExp(r'T\d{2}:\d{2}:\d{2}$').hasMatch(s)) {
+      return '$s.000';
+    }
+
+    // If it already includes time but no fraction (e.g. "...:00"), add ".000".
+    if (RegExp(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}').hasMatch(s)) {
+      return s.replaceFirstMapped(
+        RegExp(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?!\.)'),
+        (m) => '${m[1]}.000',
+      );
+    }
+
+    return s;
+  }
 }

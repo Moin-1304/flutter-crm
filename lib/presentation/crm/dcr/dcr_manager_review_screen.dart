@@ -49,8 +49,13 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
   final ScrollController _filterScrollController = ScrollController();
   final GlobalKey _statusFilterSectionKey = GlobalKey();
   final GlobalKey _employeeFilterSectionKey = GlobalKey();
-  // Temp apply hook for modal (commits temp selections before Apply Filters)
-  VoidCallback? _pendingFilterApply;
+  // Persistent modal temp state (prevents reset during rebuilds/IME changes).
+  String? _modalTempStatus;
+  String? _modalTempEmployee;
+  _DateFilterMode _modalTempMode = _DateFilterMode.day;
+  DateTime _modalTempDay = DateTime.now();
+  DateTimeRange _modalTempRange =
+      DateTimeRange(start: DateTime.now(), end: DateTime.now());
   
   void _scrollFilterSectionIntoView(GlobalKey key) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1836,6 +1841,12 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
 
   // Open/close modal hooks (same pattern as My DCR)
   void _openFilterModal() {
+    // Snapshot current filters once at modal-open time.
+    _modalTempStatus = _status;
+    _modalTempEmployee = _selectedEmployee;
+    _modalTempMode = _dateFilterMode;
+    _modalTempDay = _selectedDay;
+    _modalTempRange = _selectedRange;
     setState(() {
       _showFilterModal = true;
     });
@@ -2189,12 +2200,6 @@ class _VisitDateRangeWithinMonthDialogState extends State<_VisitDateRangeWithinM
 // ------- Filter Modal & Searchable Dropdown (ported from My DCR) -------
 extension _FilterModal on DcrManagerReviewScreenState {
   Widget _buildFilterModal(bool isMobile, bool isTablet, Color tealGreen) {
-    // Temp selections that live during modal lifetime
-    String? _tempStatus = _status;
-    String? _tempEmployee = _selectedEmployee;
-    _DateFilterMode _tempMode = _dateFilterMode;
-    DateTime _tempDay = _selectedDay;
-    DateTimeRange _tempRange = _selectedRange;
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
@@ -2285,9 +2290,10 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                   key: _statusFilterSectionKey,
                                   title: 'Status',
                                   icon: Icons.verified_outlined,
-                                  selectedValue: _tempStatus,
+                                  selectedValue: _modalTempStatus,
                                   options: _statusOptions,
-                                  onChanged: (v) => setModalState(() => _tempStatus = v),
+                                  onChanged: (v) =>
+                                      setModalState(() => _modalTempStatus = v),
                                   isTablet: isTablet,
                                   onExpanded: () => _scrollFilterSectionIntoView(_statusFilterSectionKey),
                                 ),
@@ -2320,18 +2326,18 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                           borderRadius: BorderRadius.circular(10),
                                           onTap: () {
                                             setModalState(() {
-                                              _tempMode = _DateFilterMode.day;
-                                              _tempDay = _dayOnly(_tempDay);
-                                              _tempRange = DateTimeRange(
-                                                start: _tempDay,
-                                                end: _tempDay,
+                                              _modalTempMode = _DateFilterMode.day;
+                                              _modalTempDay = _dayOnly(_modalTempDay);
+                                              _modalTempRange = DateTimeRange(
+                                                start: _modalTempDay,
+                                                end: _modalTempDay,
                                               );
                                             });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(vertical: 10),
                                             decoration: BoxDecoration(
-                                              color: _tempMode == _DateFilterMode.day
+                                              color: _modalTempMode == _DateFilterMode.day
                                                   ? Colors.white
                                                   : Colors.transparent,
                                               borderRadius: BorderRadius.circular(10),
@@ -2342,7 +2348,7 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                                 style: GoogleFonts.inter(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
-                                                  color: _tempMode == _DateFilterMode.day
+                                                  color: _modalTempMode == _DateFilterMode.day
                                                       ? Colors.grey[900]
                                                       : Colors.grey[600],
                                                 ),
@@ -2357,17 +2363,17 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                           borderRadius: BorderRadius.circular(10),
                                           onTap: () {
                                             setModalState(() {
-                                              _tempMode = _DateFilterMode.range;
-                                              _tempRange = DateTimeRange(
-                                                start: _dayOnly(_tempRange.start),
-                                                end: _dayOnly(_tempRange.end),
+                                              _modalTempMode = _DateFilterMode.range;
+                                              _modalTempRange = DateTimeRange(
+                                                start: _dayOnly(_modalTempRange.start),
+                                                end: _dayOnly(_modalTempRange.end),
                                               );
                                             });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(vertical: 10),
                                             decoration: BoxDecoration(
-                                              color: _tempMode == _DateFilterMode.range
+                                              color: _modalTempMode == _DateFilterMode.range
                                                   ? Colors.white
                                                   : Colors.transparent,
                                               borderRadius: BorderRadius.circular(10),
@@ -2378,7 +2384,7 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                                 style: GoogleFonts.inter(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
-                                                  color: _tempMode == _DateFilterMode.range
+                                                  color: _modalTempMode == _DateFilterMode.range
                                                       ? Colors.grey[900]
                                                       : Colors.grey[600],
                                                 ),
@@ -2392,28 +2398,29 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                 ),
                                 const SizedBox(height: 12),
                                 _EnhancedDateSelector(
-                                  label: _tempMode == _DateFilterMode.day
-                                      ? _formatSingleDay(_tempDay)
-                                      : _formatDateRange(_tempRange),
-                                  isActive: _tempMode == _DateFilterMode.day
-                                      ? _dayOnly(_tempDay) != _dayOnly(DateTime.now())
-                                      : !(_dayOnly(_tempRange.start) ==
+                                  label: _modalTempMode == _DateFilterMode.day
+                                      ? _formatSingleDay(_modalTempDay)
+                                      : _formatDateRange(_modalTempRange),
+                                  isActive: _modalTempMode == _DateFilterMode.day
+                                      ? _dayOnly(_modalTempDay) != _dayOnly(DateTime.now())
+                                      : !(_dayOnly(_modalTempRange.start) ==
                                               _dayOnly(DateTime.now()) &&
-                                          _dayOnly(_tempRange.end) ==
+                                          _dayOnly(_modalTempRange.end) ==
                                               _dayOnly(DateTime.now())),
                                   onTap: () async {
-                                    if (_tempMode == _DateFilterMode.day) {
+                                    if (_modalTempMode == _DateFilterMode.day) {
                                       final DateTime? picked = await showDatePicker(
                                         context: context,
-                                        initialDate: _dayOnly(_tempDay),
+                                        initialDate: _dayOnly(_modalTempDay),
                                         firstDate: DateTime(2000, 1, 1),
                                         lastDate: DateTime.now(),
                                       );
                                       if (picked != null) {
                                         setModalState(() {
-                                          _tempDay = _dayOnly(picked);
-                                          _tempRange =
-                                              DateTimeRange(start: _tempDay, end: _tempDay);
+                                          _modalTempDay = _dayOnly(picked);
+                                          _modalTempRange = DateTimeRange(
+                                              start: _modalTempDay,
+                                              end: _modalTempDay);
                                         });
                                       }
                                     } else {
@@ -2421,11 +2428,11 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                         context: context,
                                         firstDate: DateTime(2000, 1, 1),
                                         lastDate: DateTime.now(),
-                                        initialDateRange: _tempRange,
+                                        initialDateRange: _modalTempRange,
                                       );
                                       if (picked != null) {
                                         setModalState(() {
-                                          _tempRange = DateTimeRange(
+                                          _modalTempRange = DateTimeRange(
                                             start: _dayOnly(picked.start),
                                             end: _dayOnly(picked.end),
                                           );
@@ -2440,27 +2447,14 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                   key: _employeeFilterSectionKey,
                                   title: 'Employee',
                                   icon: Icons.badge_outlined,
-                                  selectedValue: _tempEmployee,
+                                  selectedValue: _modalTempEmployee,
                                   options: _employeeOptions,
-                                  onChanged: (v) => setModalState(() => _tempEmployee = v),
+                                  onChanged: (v) =>
+                                      setModalState(() => _modalTempEmployee = v),
                                   isTablet: isTablet,
                                   onExpanded: () => _scrollFilterSectionIntoView(_employeeFilterSectionKey),
                                 ),
                                 const SizedBox(height: 8),
-                                // Capture temps for Apply
-                                Builder(
-                                  builder: (_) {
-                                    _pendingFilterApply = () {
-                                      if (!mounted) return;
-                                      _status = _tempStatus;
-                                      _selectedEmployee = _tempEmployee;
-                                      _dateFilterMode = _tempMode;
-                                      _selectedDay = _tempDay;
-                                      _selectedRange = _tempRange;
-                                    };
-                                    return const SizedBox.shrink();
-                                  },
-                                ),
                               ],
                             ),
                           ),
@@ -2502,7 +2496,11 @@ extension _FilterModal on DcrManagerReviewScreenState {
                           Expanded(
                             child: FilledButton(
                               onPressed: () {
-                                _pendingFilterApply?.call();
+                                _status = _modalTempStatus;
+                                _selectedEmployee = _modalTempEmployee;
+                                _dateFilterMode = _modalTempMode;
+                                _selectedDay = _modalTempDay;
+                                _selectedRange = _modalTempRange;
                                 _applyFiltersFromModal();
                               },
                               style: FilledButton.styleFrom(
@@ -2667,6 +2665,14 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   @override
   Widget build(BuildContext context) {
     const Color primary = Color(0xFF4db1b3);
+    final double optionRowHeight = widget.isTablet ? 46 : 42;
+    final double optionSectionHeight = _filteredOptions.isEmpty
+        ? (widget.isTablet ? 72 : 64)
+        : (_filteredOptions.length * optionRowHeight)
+            .clamp(optionRowHeight * 2, widget.isTablet ? 260.0 : 220.0)
+            .toDouble();
+    final double dropdownMaxHeight =
+        (widget.isTablet ? 96 : 88) + optionSectionHeight;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2746,7 +2752,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               border: Border.all(color: primary.withOpacity(0.2), width: 1.5),
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4))],
             ),
-            constraints: BoxConstraints(maxHeight: widget.isTablet ? 400 : 350),
+            constraints: BoxConstraints(maxHeight: dropdownMaxHeight),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2814,6 +2820,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
+                          primary: false,
+                          physics: const ClampingScrollPhysics(),
                           padding: EdgeInsets.symmetric(
                             horizontal: widget.isTablet ? 12 : 10,
                             vertical: widget.isTablet ? 8 : 6,

@@ -125,8 +125,14 @@ class _DcrListScreenState extends State<DcrListScreen>
     'Expense'
   }; // Default: both selected
 
-  // Temp apply hook for modal (commits temp selections before Apply Filters)
-  VoidCallback? _pendingFilterApply;
+  // Persistent modal temp state (prevents reset while keyboard/animations rebuild UI).
+  String? _modalTempStatus;
+  String? _modalTempEmployee;
+  _DateFilterMode _modalTempMode = _DateFilterMode.day;
+  DateTime _modalTempDay = DateTime.now();
+  DateTimeRange _modalTempRange =
+      DateTimeRange(start: DateTime.now(), end: DateTime.now());
+  Set<String> _modalTempTransactionTypes = {'DCR', 'Expense'};
 
   void _scrollFilterSectionIntoView(GlobalKey key) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -217,7 +223,7 @@ class _DcrListScreenState extends State<DcrListScreen>
       _isAppInForeground = state == AppLifecycleState.resumed;
     });
 
-    if (_isAppInForeground) {
+    if (_isAppInForeground && _isRouteCurrentlyVisible()) {
       // App came to foreground, refresh data and restart timer
       _load();
       _startAutoRefresh();
@@ -227,7 +233,13 @@ class _DcrListScreenState extends State<DcrListScreen>
     }
   }
 
+  bool _isRouteCurrentlyVisible() {
+    final route = ModalRoute.of(context);
+    return route?.isCurrent ?? true;
+  }
+
   Future<void> _load() async {
+    if (!_isRouteCurrentlyVisible()) return;
     if (_isRefreshing) return; // Prevent multiple simultaneous refreshes
 
     setState(() {
@@ -360,7 +372,7 @@ class _DcrListScreenState extends State<DcrListScreen>
 
     // Refresh every 30 seconds when app is in foreground
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (_isAppInForeground && mounted) {
+      if (_isAppInForeground && mounted && _isRouteCurrentlyVisible()) {
         print('DCR List Screen: Auto-refreshing data...');
         _load();
       }
@@ -371,6 +383,32 @@ class _DcrListScreenState extends State<DcrListScreen>
   void _stopAutoRefresh() {
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = null;
+  }
+
+  /// Pause periodic list polling while user is inside view-only flows.
+  void _pauseAutoRefreshForView() {
+    _stopAutoRefresh();
+  }
+
+  /// Resume periodic list polling after view-only flows are closed.
+  void _resumeAutoRefreshAfterView() {
+    if (_isAppInForeground && mounted) {
+      _startAutoRefresh();
+    }
+  }
+
+  /// Open create/edit flows without background list polling noise.
+  Future<void> _openRouteWithRefreshPause(Future<void> Function() openRoute,
+      {bool reloadAfterReturn = true}) async {
+    _pauseAutoRefreshForView();
+    try {
+      await openRoute();
+    } finally {
+      _resumeAutoRefreshAfterView();
+    }
+    if (reloadAfterReturn && mounted) {
+      await _load();
+    }
   }
 
   /// Manual refresh method
@@ -546,14 +584,13 @@ class _DcrListScreenState extends State<DcrListScreen>
                               return FilledButton.icon(
                                 onPressed: isEnabled
                                     ? () async {
-                                        await Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const DcrEntryScreen()),
+                                        await _openRouteWithRefreshPause(
+                                          () => Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const DcrEntryScreen()),
+                                          ),
                                         );
-                                        if (context.mounted) {
-                                          await _load();
-                                        }
                                       }
                                     : null,
                                 icon: const Icon(Icons.add, size: 18),
@@ -580,13 +617,12 @@ class _DcrListScreenState extends State<DcrListScreen>
                           )
                         : FilledButton.icon(
                             onPressed: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) => const DcrEntryScreen()),
+                              await _openRouteWithRefreshPause(
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const DcrEntryScreen()),
+                                ),
                               );
-                              if (context.mounted) {
-                                await _load();
-                              }
                             },
                             icon: const Icon(Icons.add, size: 18),
                             label: Text(
@@ -645,14 +681,13 @@ class _DcrListScreenState extends State<DcrListScreen>
                               return FilledButton.icon(
                                 onPressed: isEnabled
                                     ? () async {
-                                        await Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const DcrEntryScreen()),
+                                        await _openRouteWithRefreshPause(
+                                          () => Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const DcrEntryScreen()),
+                                          ),
                                         );
-                                        if (context.mounted) {
-                                          await _load();
-                                        }
                                       }
                                     : null,
                                 icon: const Icon(Icons.add, size: 20),
@@ -679,13 +714,12 @@ class _DcrListScreenState extends State<DcrListScreen>
                           )
                         : FilledButton.icon(
                             onPressed: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) => const DcrEntryScreen()),
+                              await _openRouteWithRefreshPause(
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const DcrEntryScreen()),
+                                ),
                               );
-                              if (context.mounted) {
-                                await _load();
-                              }
                             },
                             icon: const Icon(Icons.add, size: 20),
                             label: Text(
@@ -1016,13 +1050,12 @@ class _DcrListScreenState extends State<DcrListScreen>
                       isMobile: isMobile,
                       onTap: canCreateDcr
                           ? () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) => const DcrEntryScreen()),
+                              await _openRouteWithRefreshPause(
+                                () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const DcrEntryScreen()),
+                                ),
                               );
-                              if (context.mounted) {
-                                await _load();
-                              }
                             }
                           : null,
                     ),
@@ -1252,14 +1285,6 @@ class _DcrListScreenState extends State<DcrListScreen>
 
   // Build Filter Modal
   Widget _buildFilterModal(bool isMobile, bool isTablet, Color tealGreen) {
-    // Temp selections that live for the lifetime of the modal (StatefulBuilder rebuilds won't reset these)
-    String? _tempStatus = _status;
-    String? _tempEmployee = _employee;
-    _DateFilterMode _tempMode = _dateFilterMode;
-    DateTime _tempDay = _selectedDay;
-    DateTimeRange _tempRange = _selectedRange;
-    // Keep transaction types local to the modal until Apply is pressed
-    final Set<String> _tempTransactionTypes = {..._selectedTransactionTypes};
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
@@ -1370,13 +1395,15 @@ class _DcrListScreenState extends State<DcrListScreen>
                                     Expanded(
                                       child: _buildCheckboxOption(
                                         'DCR',
-                                        _tempTransactionTypes.contains('DCR'),
+                                        _modalTempTransactionTypes.contains(
+                                            'DCR'),
                                         (value) {
                                           setModalState(() {
                                             if (value == true) {
-                                              _tempTransactionTypes.add('DCR');
+                                              _modalTempTransactionTypes
+                                                  .add('DCR');
                                             } else {
-                                              _tempTransactionTypes
+                                              _modalTempTransactionTypes
                                                   .remove('DCR');
                                             }
                                           });
@@ -1388,15 +1415,15 @@ class _DcrListScreenState extends State<DcrListScreen>
                                     Expanded(
                                       child: _buildCheckboxOption(
                                         'Expense',
-                                        _tempTransactionTypes
+                                        _modalTempTransactionTypes
                                             .contains('Expense'),
                                         (value) {
                                           setModalState(() {
                                             if (value == true) {
-                                              _tempTransactionTypes
+                                              _modalTempTransactionTypes
                                                   .add('Expense');
                                             } else {
-                                              _tempTransactionTypes
+                                              _modalTempTransactionTypes
                                                   .remove('Expense');
                                             }
                                           });
@@ -1413,11 +1440,11 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   key: _statusFilterSectionKey,
                                   title: 'Status',
                                   icon: Icons.verified_outlined,
-                                  selectedValue: _tempStatus,
+                                  selectedValue: _modalTempStatus,
                                   options: _statusOptions,
                                   onChanged: (value) {
                                     setModalState(() {
-                                      _tempStatus = value;
+                                      _modalTempStatus = value;
                                     });
                                   },
                                   isTablet: isTablet,
@@ -1457,18 +1484,20 @@ class _DcrListScreenState extends State<DcrListScreen>
                                               BorderRadius.circular(10),
                                           onTap: () {
                                             setModalState(() {
-                                              _tempMode = _DateFilterMode.day;
-                                              _tempDay = _dayOnly(_tempDay);
-                                              _tempRange = DateTimeRange(
-                                                  start: _tempDay,
-                                                  end: _tempDay);
+                                              _modalTempMode =
+                                                  _DateFilterMode.day;
+                                              _modalTempDay =
+                                                  _dayOnly(_modalTempDay);
+                                              _modalTempRange = DateTimeRange(
+                                                  start: _modalTempDay,
+                                                  end: _modalTempDay);
                                             });
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(
                                                 vertical: 10),
                                             decoration: BoxDecoration(
-                                              color: _tempMode ==
+                                              color: _modalTempMode ==
                                                       _DateFilterMode.day
                                                   ? Colors.white
                                                   : Colors.transparent,
@@ -1481,7 +1510,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                                 style: GoogleFonts.inter(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
-                                                  color: _tempMode ==
+                                                  color: _modalTempMode ==
                                                           _DateFilterMode.day
                                                       ? Colors.grey[900]
                                                       : Colors.grey[600],
@@ -1498,11 +1527,13 @@ class _DcrListScreenState extends State<DcrListScreen>
                                               BorderRadius.circular(10),
                                           onTap: () {
                                             setModalState(() {
-                                              _tempMode =
+                                              _modalTempMode =
                                                   _DateFilterMode.range;
-                                              final s = _dayOnly(_tempRange.start);
-                                              final e = _dayOnly(_tempRange.end);
-                                              _tempRange =
+                                              final s =
+                                                  _dayOnly(_modalTempRange.start);
+                                              final e =
+                                                  _dayOnly(_modalTempRange.end);
+                                              _modalTempRange =
                                                   DateTimeRange(start: s, end: e);
                                             });
                                           },
@@ -1510,7 +1541,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                             padding: const EdgeInsets.symmetric(
                                                 vertical: 10),
                                             decoration: BoxDecoration(
-                                              color: _tempMode ==
+                                              color: _modalTempMode ==
                                                       _DateFilterMode.range
                                                   ? Colors.white
                                                   : Colors.transparent,
@@ -1523,7 +1554,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                                 style: GoogleFonts.inter(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
-                                                  color: _tempMode ==
+                                                  color: _modalTempMode ==
                                                           _DateFilterMode.range
                                                       ? Colors.grey[900]
                                                       : Colors.grey[600],
@@ -1538,21 +1569,22 @@ class _DcrListScreenState extends State<DcrListScreen>
                                 ),
                                 const SizedBox(height: 12),
                                 _EnhancedDateSelector(
-                                  label: _tempMode == _DateFilterMode.day
-                                      ? _formatSingleDay(_tempDay)
-                                      : _formatDateRange(_tempRange),
-                                  isActive: _tempMode == _DateFilterMode.day
-                                      ? _dayOnly(_tempDay) != _dayOnly(DateTime.now())
-                                      : !(_dayOnly(_tempRange.start) ==
+                                  label: _modalTempMode == _DateFilterMode.day
+                                      ? _formatSingleDay(_modalTempDay)
+                                      : _formatDateRange(_modalTempRange),
+                                  isActive: _modalTempMode == _DateFilterMode.day
+                                      ? _dayOnly(_modalTempDay) !=
+                                          _dayOnly(DateTime.now())
+                                      : !(_dayOnly(_modalTempRange.start) ==
                                               _dayOnly(DateTime.now()) &&
-                                          _dayOnly(_tempRange.end) ==
+                                          _dayOnly(_modalTempRange.end) ==
                                               _dayOnly(DateTime.now())),
                                   onTap: () async {
-                                    if (_tempMode == _DateFilterMode.day) {
+                                    if (_modalTempMode == _DateFilterMode.day) {
                                       final DateTime? picked =
                                           await showDatePicker(
                                         context: context,
-                                        initialDate: _dayOnly(_tempDay),
+                                        initialDate: _dayOnly(_modalTempDay),
                                         firstDate: DateTime(2000, 1, 1),
                                         lastDate: DateTime.now()
                                             .add(const Duration(days: 365)),
@@ -1572,9 +1604,10 @@ class _DcrListScreenState extends State<DcrListScreen>
                                       );
                                       if (picked != null) {
                                         setModalState(() {
-                                          _tempDay = _dayOnly(picked);
-                                          _tempRange = DateTimeRange(
-                                              start: _tempDay, end: _tempDay);
+                                          _modalTempDay = _dayOnly(picked);
+                                          _modalTempRange = DateTimeRange(
+                                              start: _modalTempDay,
+                                              end: _modalTempDay);
                                         });
                                       }
                                     } else {
@@ -1584,7 +1617,7 @@ class _DcrListScreenState extends State<DcrListScreen>
                                         firstDate: DateTime(2000, 1, 1),
                                         lastDate: DateTime.now().add(
                                             const Duration(days: 365)),
-                                        initialDateRange: _tempRange,
+                                        initialDateRange: _modalTempRange,
                                         builder: (context, child) {
                                           final theme = Theme.of(context);
                                           return Theme(
@@ -1601,7 +1634,8 @@ class _DcrListScreenState extends State<DcrListScreen>
                                         },
                                       );
                                       if (picked != null) {
-                                        setModalState(() => _tempRange = picked);
+                                        setModalState(
+                                            () => _modalTempRange = picked);
                                       }
                                     }
                                   },
@@ -1620,11 +1654,11 @@ class _DcrListScreenState extends State<DcrListScreen>
                                         key: _employeeFilterSectionKey,
                                         title: 'Employee',
                                         icon: Icons.badge_outlined,
-                                        selectedValue: _tempEmployee,
+                                        selectedValue: _modalTempEmployee,
                                         options: _employeeOptions,
                                         onChanged: (value) {
                                           setModalState(() {
-                                            _tempEmployee = value;
+                                            _modalTempEmployee = value;
                                           });
                                         },
                                         isTablet: isTablet,
@@ -1636,24 +1670,6 @@ class _DcrListScreenState extends State<DcrListScreen>
                                   ),
 
                                 const SizedBox(height: 8),
-                                // Apply changes to outer state when pressing footer button
-                                // Footer handled below; values captured here
-                                Builder(builder: (_) {
-                                  // Attach a callback to store temps on widget tree for footer access
-                                  _pendingFilterApply = () {
-                                    setState(() {
-                                      _selectedTransactionTypes
-                                        ..clear()
-                                        ..addAll(_tempTransactionTypes);
-                                      _status = _tempStatus;
-                                      _employee = _tempEmployee;
-                                      _dateFilterMode = _tempMode;
-                                      _selectedDay = _tempDay;
-                                      _selectedRange = _tempRange;
-                                    });
-                                  };
-                                  return const SizedBox.shrink();
-                                }),
                               ],
                             ),
                           ),
@@ -1703,7 +1719,16 @@ class _DcrListScreenState extends State<DcrListScreen>
                             child: FilledButton(
                               onPressed: () {
                                 // Commit modal temps to outer state then apply
-                                _pendingFilterApply?.call();
+                                setState(() {
+                                  _selectedTransactionTypes
+                                    ..clear()
+                                    ..addAll(_modalTempTransactionTypes);
+                                  _status = _modalTempStatus;
+                                  _employee = _modalTempEmployee;
+                                  _dateFilterMode = _modalTempMode;
+                                  _selectedDay = _modalTempDay;
+                                  _selectedRange = _modalTempRange;
+                                });
                                 _applyFiltersFromModal();
                               },
                               style: FilledButton.styleFrom(
@@ -2378,61 +2403,65 @@ class _DcrListScreenState extends State<DcrListScreen>
 
   /// Open full DCR / expense entry screen (read-only; SE submitted DCR keeps Service Report editable).
   Future<void> _openFullEntryView(UnifiedDcrItem item) async {
-    if (item.isDcr) {
-      if (item.id <= 0 || item.dcrId <= 0) {
+    _pauseAutoRefreshForView();
+    try {
+      if (item.isDcr) {
+        if (item.id <= 0 || item.dcrId <= 0) {
+          if (!mounted) return;
+          ToastMessage.show(
+            context,
+            message: 'Cannot open record: missing id.',
+            type: ToastType.error,
+            icon: Icons.error_outline,
+          );
+          return;
+        }
+        final bool serviceReportOnlyEdit = _isCurrentUserServiceEngineer() &&
+            !_isDcrEditable(item);
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => DcrEntryScreen(
+              id: item.id.toString(),
+              dcrId: item.dcrId.toString(),
+              viewOnly: true,
+              allowServiceReportEditOnly: serviceReportOnlyEdit,
+            ),
+          ),
+        );
+      } else if (item.isExpense) {
+        // Draft / standalone expenses use dcrId 0; pass same string as Edit so GetExpense params match.
+        if (item.id <= 0) {
+          if (!mounted) return;
+          ToastMessage.show(
+            context,
+            message: 'Cannot open record: missing id.',
+            type: ToastType.error,
+            icon: Icons.error_outline,
+          );
+          return;
+        }
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ExpenseEntryScreen(
+              id: item.id.toString(),
+              dcrId: item.dcrId.toString(),
+              viewOnly: true,
+            ),
+          ),
+        );
+      } else {
         if (!mounted) return;
         ToastMessage.show(
           context,
-          message: 'Cannot open record: missing id.',
-          type: ToastType.error,
-          icon: Icons.error_outline,
+          message: 'Unsupported record type.',
+          type: ToastType.warning,
+          icon: Icons.warning_amber_rounded,
         );
         return;
       }
-      final bool serviceReportOnlyEdit = _isCurrentUserServiceEngineer() &&
-          !_isDcrEditable(item);
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => DcrEntryScreen(
-            id: item.id.toString(),
-            dcrId: item.dcrId.toString(),
-            viewOnly: true,
-            allowServiceReportEditOnly: serviceReportOnlyEdit,
-          ),
-        ),
-      );
-    } else if (item.isExpense) {
-      // Draft / standalone expenses use dcrId 0; pass same string as Edit so GetExpense params match.
-      if (item.id <= 0) {
-        if (!mounted) return;
-        ToastMessage.show(
-          context,
-          message: 'Cannot open record: missing id.',
-          type: ToastType.error,
-          icon: Icons.error_outline,
-        );
-        return;
-      }
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ExpenseEntryScreen(
-            id: item.id.toString(),
-            dcrId: item.dcrId.toString(),
-            viewOnly: true,
-          ),
-        ),
-      );
-    } else {
-      if (!mounted) return;
-      ToastMessage.show(
-        context,
-        message: 'Unsupported record type.',
-        type: ToastType.warning,
-        icon: Icons.warning_amber_rounded,
-      );
-      return;
+    } finally {
+      _resumeAutoRefreshAfterView();
     }
-    if (mounted) await _load();
   }
 
   /// Show detailed popup for DCR or Expense item
@@ -2444,33 +2473,23 @@ class _DcrListScreenState extends State<DcrListScreen>
       try {
         print(
             'Fetching DCR details using Get API - ID: ${item.id}, DCR ID: ${item.dcrId}');
-        final DcrRepository? dcrRepo =
-            getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
+        final int detailId = item.id;
+        final int dcrId = item.dcrId;
 
-        if (dcrRepo != null) {
-          final int detailId = item.id;
-          final int dcrId = item.dcrId;
+        // Single GET call only (avoid duplicate fetch via repository + direct API).
+        final dcrApi = getIt<DcrApi>();
+        final dcrGetResponse = await dcrApi.getDcrDetails(detailId, dcrId);
 
-          final dcrEntry = await dcrRepo.getById(detailId.toString(),
-              dcrId: dcrId.toString());
+        // Convert to UnifiedDcrItem
+        final fromGet = UnifiedDcrItem.fromDcrGetResponse(dcrGetResponse);
 
-          if (dcrEntry != null) {
-            // Fetch the full DCR response using the API directly
-            final dcrApi = getIt<DcrApi>();
-            final dcrGetResponse = await dcrApi.getDcrDetails(detailId, dcrId);
-
-            // Convert to UnifiedDcrItem
-            final fromGet = UnifiedDcrItem.fromDcrGetResponse(dcrGetResponse);
-
-            // Preserve the original list status text / id (e.g. "Missed")
-            displayItem = fromGet.copyWith(
-              statusText: item.statusText,
-              dcrStatusId: item.dcrStatusId,
-            );
-            print(
-                'Successfully fetched DCR details from Get API (status preserved as "${displayItem.statusText}")');
-          }
-        }
+        // Preserve the original list status text / id (e.g. "Missed")
+        displayItem = fromGet.copyWith(
+          statusText: item.statusText,
+          dcrStatusId: item.dcrStatusId,
+        );
+        print(
+            'Successfully fetched DCR details from Get API (status preserved as "${displayItem.statusText}")');
       } catch (e) {
         print('Error fetching DCR details from Get API: $e');
         // Fall back to using the item from list
@@ -2791,35 +2810,34 @@ class _DcrListScreenState extends State<DcrListScreen>
       );
     }
 
-    if (isTablet) {
-      Navigator.of(context, rootNavigator: true)
-          .push(
-        PageRouteBuilder<void>(
-          opaque: false,
-          barrierColor: Colors.black54,
-          barrierDismissible: true,
-          pageBuilder: (ctx, _, __) => Center(
-            child: Material(
-              color: Colors.transparent,
-              child: buildPanelContent(ctx),
+    _pauseAutoRefreshForView();
+    try {
+      if (isTablet) {
+        await Navigator.of(context, rootNavigator: true).push(
+          PageRouteBuilder<void>(
+            opaque: false,
+            barrierColor: Colors.black54,
+            barrierDismissible: true,
+            pageBuilder: (ctx, _, __) => Center(
+              child: Material(
+                color: Colors.transparent,
+                child: buildPanelContent(ctx),
+              ),
             ),
+            transitionsBuilder: (_, anim, __, child) =>
+                FadeTransition(opacity: anim, child: child),
           ),
-          transitionsBuilder: (_, anim, __, child) =>
-              FadeTransition(opacity: anim, child: child),
-        ),
-      )
-          .then((_) {
-        if (mounted) _load();
-      });
-    } else {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => buildPanelContent(ctx),
-      ).then((_) {
-        if (mounted) _load();
-      });
+        );
+      } else {
+        await showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (ctx) => buildPanelContent(ctx),
+        );
+      }
+    } finally {
+      _resumeAutoRefreshAfterView();
     }
   }
 
@@ -5053,6 +5071,13 @@ extension _Grouping on _DcrListScreenState {
 
   // Open filter modal
   void _openFilterModal() {
+    // Snapshot current filter state when modal opens.
+    _modalTempStatus = _status;
+    _modalTempEmployee = _employee;
+    _modalTempMode = _dateFilterMode;
+    _modalTempDay = _selectedDay;
+    _modalTempRange = _selectedRange;
+    _modalTempTransactionTypes = {..._selectedTransactionTypes};
     setState(() {
       _showFilterModal = true;
     });
@@ -5367,6 +5392,15 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
 
   @override
   Widget build(BuildContext context) {
+    final double optionRowHeight = widget.isTablet ? 46 : 42;
+    final double optionSectionHeight = _filteredOptions.isEmpty
+        ? (widget.isTablet ? 72 : 64)
+        : (_filteredOptions.length * optionRowHeight)
+            .clamp(optionRowHeight * 2, widget.isTablet ? 260.0 : 220.0)
+            .toDouble();
+    final double dropdownMaxHeight =
+        (widget.isTablet ? 96 : 88) + optionSectionHeight;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -5472,7 +5506,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               ],
             ),
             constraints: BoxConstraints(
-              maxHeight: widget.isTablet ? 400 : 350,
+              maxHeight: dropdownMaxHeight,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -5556,6 +5590,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
+                          primary: false,
+                          physics: const ClampingScrollPhysics(),
                           padding: EdgeInsets.symmetric(
                             horizontal: widget.isTablet ? 12 : 10,
                             vertical: widget.isTablet ? 8 : 6,

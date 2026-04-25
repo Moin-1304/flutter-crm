@@ -2,7 +2,7 @@ class Endpoints {
   Endpoints._();
 
   /// Default base URL (used when none is stored). Shown as suggestion on server setup.
-  static const String _defaultBaseUrl = "https://103.141.54.146:1443/erpapi/api";
+  static const String _defaultBaseUrl = "https://103.141.54.146:1443/erpuatapi/api";
 
   /// Suggested base URL for server setup screen (e.g. for existing users upgrading).
   static const String suggestedBaseUrl = _defaultBaseUrl;

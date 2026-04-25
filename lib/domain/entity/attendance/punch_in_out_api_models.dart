@@ -10,6 +10,11 @@ class PunchInOutSaveRequest {
   final double? kilometerIn;
   final double? kilometerOut;
   final double? privateKilometers;
+  final String userName;
+  final String sbuName;
+  final String? lastLoggedOutTime;
+  final List<LogDetail> logDetails;
+  final int isCheckout;
 
   PunchInOutSaveRequest({
     required this.id,
@@ -23,10 +28,15 @@ class PunchInOutSaveRequest {
     this.kilometerIn,
     this.kilometerOut,
     this.privateKilometers,
+    this.userName = '',
+    this.sbuName = '',
+    this.lastLoggedOutTime,
+    this.logDetails = const [],
+    this.isCheckout = 0,
   });
 
   Map<String, dynamic> toJson() {
-    return {
+    final data = {
       'Id': id,
       'CreatedBy': createdBy,
       'Status': status,
@@ -37,8 +47,16 @@ class PunchInOutSaveRequest {
       'BizUnit': bizUnit,
       'KilometerIn': kilometerIn,
       'KilometerOut': kilometerOut,
-      'PrivateKilometers': privateKilometers,
+      'UserName': userName,
+      'SbuName': sbuName,
+      'LastLoggedOutTime': lastLoggedOutTime,
+      'LogDetails': logDetails.map((item) => item.toRequestJson()).toList(),
+      'IsCheckout': isCheckout,
     };
+    if (privateKilometers != null) {
+      data['PrivateKilometers'] = privateKilometers;
+    }
+    return data;
   }
 }
 
@@ -131,6 +149,20 @@ class LogDetail {
       'kilometerOut': kilometerOut,
     };
   }
+
+  Map<String, dynamic> toRequestJson() {
+    return {
+      'Id': id,
+      'UserId': userId,
+      'SbuId': sbuId,
+      'CheckInStatus': checkInStatus,
+      'CheckOutStatus': checkOutStatus,
+      'KilometerIn': kilometerIn,
+      'KilometerOut': kilometerOut,
+      'CheckDateTime': checkDateTime.toIso8601String(),
+      'Activity': activity,
+    };
+  }
 }
 
 class PunchInOutResponse {
@@ -148,6 +180,8 @@ class PunchInOutResponse {
   final List<LogDetail> logDetails;
   final double? kilometerIn;
   final double? kilometerOut;
+  final double? privateKilometers;
+  final int? isCheckout;
 
   PunchInOutResponse({
     required this.id,
@@ -164,6 +198,8 @@ class PunchInOutResponse {
     required this.logDetails,
     this.kilometerIn,
     this.kilometerOut,
+    this.privateKilometers,
+    this.isCheckout,
   });
 
   factory PunchInOutResponse.fromJson(Map<String, dynamic> json) {
@@ -188,6 +224,8 @@ class PunchInOutResponse {
           .toList() ?? [],
       kilometerIn: LogDetail._parseDouble(json['kilometerIn'] ?? json['KilometerIn']),
       kilometerOut: LogDetail._parseDouble(json['kilometerOut'] ?? json['KilometerOut']),
+      privateKilometers: LogDetail._parseDouble(json['privateKilometers'] ?? json['PrivateKilometers']),
+      isCheckout: json['isCheckout'] ?? json['IsCheckout'],
     );
   }
 
@@ -205,6 +243,10 @@ class PunchInOutResponse {
       'sbuName': sbuName,
       'lastLoggedOutTime': lastLoggedOutTime?.toIso8601String(),
       'logDetails': logDetails.map((item) => item.toJson()).toList(),
+      'kilometerIn': kilometerIn,
+      'kilometerOut': kilometerOut,
+      'privateKilometers': privateKilometers,
+      'isCheckout': isCheckout,
     };
   }
 }

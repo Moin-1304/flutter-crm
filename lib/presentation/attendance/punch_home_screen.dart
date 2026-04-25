@@ -129,10 +129,8 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     
     // Try to load punch records immediately, and also listen for user details
     _loadTodayPunchRecords();
-    if (_isManagerUser()) {
-      _loadPlannedVsVisitedSummary();
-      _loadMonthlyStatusSummary();
-    }
+    _loadPlannedVsVisitedSummary();
+    _loadMonthlyStatusSummary();
     
     // Listen for user details changes to reload punch records when ready
     _userDetailStore.addListener(_onUserDetailsChanged);
@@ -157,22 +155,14 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       Future.microtask(() {
         if (mounted && _userDetailStore.userDetail?.employeeId == newEmployeeId && _currentEmployeeId == newEmployeeId) {
           _loadTodayPunchRecords();
-          if (_isManagerUser()) {
-            _loadPlannedVsVisitedSummary();
-            _loadMonthlyStatusSummary();
-          }
+          _loadPlannedVsVisitedSummary();
+          _loadMonthlyStatusSummary();
         }
       });
     } else {
       // User logged out - reset tracked employee ID
       _currentEmployeeId = null;
     }
-  }
-
-  /// Manager visibility rule used across CRM screens.
-  bool _isManagerUser() {
-    final roleCategory = _userDetailStore.userDetail?.roleCategory;
-    return roleCategory == 1 || roleCategory == 2;
   }
 
   @override
@@ -346,12 +336,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       const SizedBox(height: 16),
                       _buildPunchActivityCard(),
                       const SizedBox(height: 16),
-                      if (_isManagerUser()) ...[
-                        _buildPlannedVsVisitedSummaryCard(),
-                        const SizedBox(height: 16),
-                        _buildMonthlyStatusSummaryCard(),
-                        const SizedBox(height: 20),
-                      ],
+                      _buildPlannedVsVisitedSummaryCard(),
+                      const SizedBox(height: 16),
+                      _buildMonthlyStatusSummaryCard(),
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
@@ -1376,6 +1364,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       decoration: InputDecoration(
                         labelText: 'Private KM',
                         hintText: 'e.g. 10.0',
+                        helperText: 'Enter personal travel before checkout, if any',
                         hintStyle: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w500),
                         prefixText: 'km  ',
                         prefixStyle: TextStyle(
@@ -1404,7 +1393,6 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                         ),
                       ),
                       validator: (v) {
-                        if (isPunchIn) return null;
                         if (v == null || v.trim().isEmpty) return 'Please enter Private KM';
                         final n = double.tryParse(v.trim());
                         if (n == null || n < 0) return 'Enter a valid number (≥ 0)';
@@ -1435,9 +1423,9 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                           onPressed: () {
                             if (key.currentState?.validate() ?? false) {
                               final kilometerValue = double.tryParse(kilometerController.text.trim());
-                              final privateKmValue = !isPunchIn
-                                  ? double.tryParse(privateKmController.text.trim())
-                                  : 0.0;
+                              final privateKmValue = isPunchIn
+                                  ? null
+                                  : double.tryParse(privateKmController.text.trim());
                               Navigator.of(ctx).pop<_PunchMileageInput?>(
                                 _PunchMileageInput(
                                   kilometer: kilometerValue,
@@ -1528,9 +1516,11 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         status: 1, // Active status
         bizUnit: userDetail.sbuId > 0 ? userDetail.sbuId : 1,
         isPunchIn: isPunchIn,
+        userName: user.name,
+        sbuName: '',
         kilometerIn: isPunchIn ? kilometerValue : null,
         kilometerOut: isPunchIn ? null : kilometerValue,
-        privateKilometers: isPunchIn ? 0 : mileageInput.privateKilometers,
+        privateKilometers: isPunchIn ? null : mileageInput.privateKilometers,
       );
 
       if (result.isSuccess) {
@@ -1617,6 +1607,9 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         status: 1, // Active status
         bizUnit: 1, // Default business unit
         isPunchIn: false, // Punch out
+        userName: user.name,
+        sbuName: '',
+        privateKilometers: 0,
       );
 
       if (result.isSuccess) {
@@ -1659,10 +1652,8 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       // Do not block pull-to-refresh on GPS/network geocoding delays.
       _loadLocation();
     }
-    if (_isManagerUser()) {
-      _loadPlannedVsVisitedSummary();
-      _loadMonthlyStatusSummary();
-    }
+    _loadPlannedVsVisitedSummary();
+    _loadMonthlyStatusSummary();
     if (mounted) setState(() {});
   }
 
@@ -1670,15 +1661,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
   Future<void> _refreshSummaryData() async {
     if (!mounted) return;
     print('🔄 [PunchHomeScreen] Starting summary data refresh...');
-    if (!_isManagerUser()) {
-      return;
-    }
     final List<Future<void>> refreshTasks = [
       _loadMonthlyStatusSummary(),
+      _loadPlannedVsVisitedSummary(),
     ];
-    if (_isManagerUser()) {
-      refreshTasks.add(_loadPlannedVsVisitedSummary());
-    }
     await Future.wait(refreshTasks);
     if (mounted) {
       setState(() {});
@@ -1887,9 +1873,17 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
             final bool isInByActivity = act.contains('punch in') && !act.contains('punch out');
             final bool isOutByActivity = act.contains('punch out');
 
-            if (isInByActivity || log.checkInStatus == 1) {
+            final bool isInByFlags =
+                log.checkOutStatus != 1 &&
+                (log.checkInStatus == 1 ||
+                    ((log.kilometerIn ?? 0) > 0 && (log.kilometerOut ?? 0) == 0));
+            final bool isOutByFlags =
+                log.checkOutStatus == 1 ||
+                ((log.kilometerOut ?? 0) > 0 && !isInByActivity);
+
+            if (isInByActivity || isInByFlags) {
               _todayLog.add(_LogEntry(_LogType.inn, log.checkDateTime, kilometer: log.kilometerIn));
-            } else if (isOutByActivity || log.checkOutStatus == 1) {
+            } else if (isOutByActivity || isOutByFlags) {
               _todayLog.add(_LogEntry(_LogType.out, log.checkDateTime, kilometer: log.kilometerOut));
             }
           }
@@ -1907,8 +1901,16 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
               _punchedIn = false;
               _punchedInSince = null;
             } else {
-              // Fallback: CheckInStatus 0 = Check In, 1 = Check Out
-              if (latest.checkInStatus == 0) {
+              // Fallback: prefer explicit checkout flag, then infer check-in from
+              // checkInStatus/kilometer values observed in list responses.
+              if (latest.checkOutStatus == 1 ||
+                  ((latest.kilometerOut ?? 0) > 0 &&
+                      (latest.kilometerIn ?? 0) == 0)) {
+                _punchedIn = false;
+                _punchedInSince = null;
+              } else if (latest.checkInStatus == 1 ||
+                  ((latest.kilometerIn ?? 0) > 0 &&
+                      (latest.kilometerOut ?? 0) == 0)) {
                 _punchedIn = true;
                 _punchedInSince = latest.checkDateTime;
               } else {

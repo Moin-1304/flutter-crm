@@ -133,9 +133,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen>
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://$url';
     }
-    final baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
-    final apiBaseUrl =
-        baseUrl.contains('/erpapi') ? baseUrl : '$baseUrl/erpapi/api';
+    final apiBaseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
     setState(() => _isLoading = true);
     try {
@@ -257,7 +255,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen>
                                 ),
                               ),
                               suffixIcon: TextButton.icon(
-                                onPressed: _isLoading ? null : _pasteFromClipboard,
+                                onPressed:
+                                    _isLoading ? null : _pasteFromClipboard,
                                 icon: const Icon(
                                   Icons.content_paste_rounded,
                                   size: 18,
@@ -369,8 +368,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen>
                                   width: 24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
                                   ),
                                 )
                               : const Row(

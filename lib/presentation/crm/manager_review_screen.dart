@@ -48,70 +48,65 @@ class _ManagerReviewScreenState extends State<ManagerReviewScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Custom Tab Selector
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildTabButton(
-                          context: context,
-                          index: 0,
-                          icon: Icons.description_outlined,
-                          label: 'DCR',
-                          isSelected: _selectedIndex == 0,
-                          onTap: () => _onTabSelected(0),
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildTabButton(
-                          context: context,
-                          index: 1,
-                          icon: Icons.account_balance_wallet_outlined,
-                          label: 'Expense',
-                          isSelected: _selectedIndex == 1,
-                          onTap: () => _onTabSelected(1),
-                        ),
-                      ),
-                    ],
-                  ),
+    return Container(
+      color: Colors.grey[50],
+      child: Column(
+        children: [
+          // In-page header instead of nested Scaffold appBar to avoid
+          // overlap glitches on some tablets inside parent NestedScrollView.
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildTabButton(
+                      context: context,
+                      index: 0,
+                      icon: Icons.description_outlined,
+                      label: 'DCR',
+                      isSelected: _selectedIndex == 0,
+                      onTap: () => _onTabSelected(0),
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildTabButton(
+                      context: context,
+                      index: 1,
+                      icon: Icons.account_balance_wallet_outlined,
+                      label: 'Expense',
+                      isSelected: _selectedIndex == 1,
+                      onTap: () => _onTabSelected(1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          DcrManagerReviewScreen(key: _dcrScreenKey),
-          ExpenseManagerReviewScreen(key: _expenseScreenKey),
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                DcrManagerReviewScreen(key: _dcrScreenKey),
+                ExpenseManagerReviewScreen(key: _expenseScreenKey),
+              ],
+            ),
+          ),
         ],
       ),
     );

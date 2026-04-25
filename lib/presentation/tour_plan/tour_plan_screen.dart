@@ -64,6 +64,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
   // Employee options loaded from API
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = {};
+  final Map<String, String> _employeeNameToDesignation = {};
+  final Map<int, String> _employeeIdToDesignation = {};
+  final Map<int, String> _typeOfWorkIdToName = {};
+  final Set<int> _purposeLookupLoadedForIds = <int>{};
   // Auto-refresh support (reference: DCR list)
   Timer? _autoRefreshTimer;
   bool _isAppInForeground = true;
@@ -106,6 +110,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     _getTourPlanStatusList(); // Load status list for filter
     _loadMappedCustomersByEmployeeId(); // Load customer list using API
     _getEmployeeList(); // Load employee list for filter
+    _loadPurposeLookups();
     // Auto-refresh disabled - removed periodic API calls
 
     // Validate user when screen opens
@@ -1904,6 +1909,133 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     return userEmployeeId;
   }
 
+  Future<void> _loadPurposeLookups() async {
+    try {
+      if (!getIt.isRegistered<CommonRepository>()) return;
+      final commonRepo = getIt<CommonRepository>();
+      final Map<int, String> mergedMap = <int, String>{};
+
+      // 1) Generic type-of-work list
+      final typeItems = await commonRepo.getTypeOfWorkList();
+      for (final item in typeItems) {
+        final String label =
+            (item.text.isNotEmpty ? item.text : item.typeText).trim();
+        if (label.isNotEmpty) {
+          mergedMap[item.id] = label;
+        }
+      }
+
+      // 2) Purpose masters (independent of service area availability)
+      final int userId = _userDetailStore.userDetail?.id ?? 0;
+      if (userId > 0) {
+        const texts = <String>[
+          'Salesrep PurposeVisit',
+          'ServiceEng PurposeVisit',
+          'PocRep-PurposeofVisit',
+        ];
+        for (final text in texts) {
+          try {
+            final purposeItems =
+                await commonRepo.getPurposeOfVisitList(userId, text);
+            for (final item in purposeItems) {
+              final String label =
+                  (item.text.isNotEmpty ? item.text : item.typeText).trim();
+              if (label.isNotEmpty) {
+                mergedMap[item.id] = label;
+              }
+            }
+          } catch (_) {
+            // Keep best-effort behavior; continue with other lists.
+          }
+        }
+      }
+
+      if (!mounted || mergedMap.isEmpty) return;
+      setState(() {
+        _typeOfWorkIdToName.clear();
+        _typeOfWorkIdToName.addAll(mergedMap);
+      });
+      _purposeLookupLoadedForIds.add(userId);
+    } catch (e) {
+      print('TourPlanScreen: Error loading purpose/type maps: $e');
+    }
+  }
+
+  Future<void> _ensurePurposeLookupForUserId(int userId) async {
+    if (userId <= 0 || _purposeLookupLoadedForIds.contains(userId)) return;
+    if (!getIt.isRegistered<CommonRepository>()) return;
+
+    final commonRepo = getIt<CommonRepository>();
+    const texts = <String>[
+      'Salesrep PurposeVisit',
+      'ServiceEng PurposeVisit',
+      'PocRep-PurposeofVisit',
+    ];
+    final Map<int, String> mergedMap = <int, String>{};
+    for (final text in texts) {
+      try {
+        final items = await commonRepo.getPurposeOfVisitList(userId, text);
+        for (final item in items) {
+          final String label =
+              (item.text.isNotEmpty ? item.text : item.typeText).trim();
+          if (label.isNotEmpty) {
+            mergedMap[item.id] = label;
+          }
+        }
+      } catch (_) {
+        // Best effort only; continue.
+      }
+    }
+
+    _purposeLookupLoadedForIds.add(userId);
+    if (!mounted || mergedMap.isEmpty) return;
+    setState(() {
+      _typeOfWorkIdToName.addAll(mergedMap);
+    });
+  }
+
+  String? _resolvePurposeOfVisit(TourPlanItem item) {
+    final detail =
+        (item.tourPlanDetails != null && item.tourPlanDetails!.isNotEmpty)
+            ? item.tourPlanDetails!.first
+            : null;
+    if (detail != null) {
+      final String? mapped = _typeOfWorkIdToName[detail.typeOfWorkId];
+      if (mapped != null && mapped.isNotEmpty) return mapped;
+      final String? remarks = detail.remarks?.trim();
+      if (remarks != null && remarks.isNotEmpty) return remarks;
+      if (detail.typeOfWorkId > 0) {
+        return 'Type of Work ${detail.typeOfWorkId}';
+      }
+    }
+    final String? objective = item.objective?.trim();
+    if (objective != null && objective.isNotEmpty) return objective;
+    final String? planType = item.tourPlanType?.trim();
+    if (planType != null && planType.isNotEmpty && planType != 'TP') {
+      return planType;
+    }
+    return null;
+  }
+
+  String? _resolveDesignation(TourPlanItem item) {
+    final String? byEmployeeName = item.employeeName != null
+        ? _employeeNameToDesignation[item.employeeName!.trim()]
+        : null;
+    if (byEmployeeName != null && byEmployeeName.isNotEmpty) return byEmployeeName;
+    final String? byEmployeeId = _employeeIdToDesignation[item.employeeId];
+    if (byEmployeeId != null && byEmployeeId.isNotEmpty) return byEmployeeId;
+    final String? raw = item.designation?.trim();
+    if (raw != null &&
+        raw.isNotEmpty &&
+        raw.toLowerCase() != 'others new') {
+      return raw;
+    }
+    final String serviceArea = (_userDetailStore.userDetail?.serviceArea ?? '').trim();
+    if (serviceArea.isNotEmpty) return serviceArea;
+    return null;
+  }
+
+
   /// Load employee list summary data from API
   Future<void> _loadTourPlanEmployeeListSummary() async {
     try {
@@ -1992,6 +2124,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                       .trim();
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
+                if (item.designation.trim().isNotEmpty) {
+                  _employeeNameToDesignation[key] = item.designation.trim();
+                  _employeeIdToDesignation[item.id] = item.designation.trim();
+                }
                 // If this employee's id matches the employeeId used in API call, auto-select it
                 if (finalEmployeeId != null && item.id == finalEmployeeId) {
                   selectedEmployeeName = key;
@@ -2160,6 +2296,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
 
       print(
           'TourPlanScreen: Calendar item list data loaded successfully - ${_store.calendarItemListData.length} items');
+      _logLoadedAllTourPlans(_store.calendarItemListData);
 
       // Force UI update after data is loaded to refresh the list
       if (mounted) {
@@ -2172,6 +2309,29 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       print('TourPlanScreen: Stack trace: $stackTrace');
       print('TourPlanScreen: ========== END ERROR ==========');
     }
+  }
+
+  void _logLoadedAllTourPlans(List<TourPlanItem> items) {
+    print('TourPlanScreen: ====== ALL TOUR PLANS (${items.length}) ======');
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      final dateText = item.date?.toIso8601String() ?? '-';
+      final customerText = (item.customerName?.trim().isNotEmpty ?? false)
+          ? item.customerName!.trim()
+          : 'Customer ${item.customerId}';
+      final statusText = (item.tourPlanStatus?.trim().isNotEmpty ?? false)
+          ? item.tourPlanStatus!.trim()
+          : (item.statusText?.trim().isNotEmpty ?? false)
+              ? item.statusText!.trim()
+              : 'Status ${item.status}';
+      final employeeText = (item.employeeName?.trim().isNotEmpty ?? false)
+          ? item.employeeName!.trim()
+          : 'Employee ${item.employeeId}';
+
+      print(
+          'TourPlanScreen: [${i + 1}/${items.length}] id=${item.id}, date=$dateText, customer="$customerText", status="$statusText", employee="$employeeText"');
+    }
+    print('TourPlanScreen: ====== END ALL TOUR PLANS ======');
   }
 
   /// Approve a single tour plan entry
@@ -2742,6 +2902,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     }
 
     if (!mounted || fullItem == null) return;
+    await _ensurePurposeLookupForUserId(fullItem.employeeId);
 
     // Collect all clusters from tourPlanDetails
     Set<String> allClusters = <String>{};
@@ -2877,6 +3038,13 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     final customerCode = shouldShowCustomer
         ? ' - P${effectiveCustomerId.toString().padLeft(5, '0')}'
         : '';
+    final notesText = fullItem.notes?.trim() ?? '';
+    final remarksText = fullItem.remarks?.trim() ?? '';
+    final managerCommentsText = fullItem.managerComments?.trim() ?? '';
+    final hasNotes = notesText.isNotEmpty;
+    final hasRemarks = remarksText.isNotEmpty;
+    final hasManagerComments = managerCommentsText.isNotEmpty;
+    final hasAdditionalInfo = hasNotes || hasRemarks || hasManagerComments;
 
     Widget buildDetailPanel(BuildContext sheetContext, {bool inPushedRoute = false}) {
       final screenHeight = MediaQuery.of(sheetContext).size.height;
@@ -3009,7 +3177,10 @@ class _TourPlanScreenState extends State<TourPlanScreen>
               // Content
               Builder(
                 builder: (sheetContext) {
-                  final item = fullItem!; // Use non-nullable version
+                  final item = fullItem; // Use fetched detail item
+                  if (item == null) {
+                    return const SizedBox.shrink();
+                  }
                   // Get samples from tourPlanDetails first, then fallback to item level
                   final String? samplesToDistribute =
                       (item.tourPlanDetails != null &&
@@ -3024,6 +3195,8 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                   item.samplesToDistribute!.trim().isNotEmpty
                               ? item.samplesToDistribute!.trim()
                               : null);
+                  final String? employeeDesignation = _resolveDesignation(item);
+                  final String? purposeOfVisit = _resolvePurposeOfVisit(item);
 
                   final scrollChild = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3045,7 +3218,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               }
                               
                               if (item.employeeName != null ||
-                                  item.designation != null ||
+                                  employeeDesignation != null ||
                                   displayDateForCheck != null) {
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3071,13 +3244,12 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                   if (item.employeeName != null &&
                                       item.employeeName!.isNotEmpty)
                                     _DetailRow('Name', item.employeeName!),
-                                  if (item.designation != null &&
-                                      item.designation!.isNotEmpty) ...[
+                                  if (employeeDesignation != null &&
+                                      employeeDesignation.isNotEmpty) ...[
                                     if (item.employeeName != null &&
                                         item.employeeName!.isNotEmpty)
                                       SizedBox(height: isTablet ? 6 : 4),
-                                    _DetailRow(
-                                        'Designation', item.designation!),
+                                    _DetailRow('Designation', employeeDesignation),
                                   ],
                                   // Get the correct date - prefer tourPlanDetails[0].planDate, then item.planDate, then item.date
                                   Builder(
@@ -3102,8 +3274,8 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                           children: [
                                             if ((item.employeeName != null &&
                                                     item.employeeName!.isNotEmpty) ||
-                                                (item.designation != null &&
-                                                    item.designation!.isNotEmpty))
+                                                (employeeDesignation != null &&
+                                                    employeeDesignation.isNotEmpty))
                                               SizedBox(height: isTablet ? 6 : 4),
                                             _DetailRow(
                                                 'Date', _formatDate(displayDate)),
@@ -3162,7 +3334,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           if (customerName.isNotEmpty ||
                               productsDisplay.isNotEmpty ||
                               samplesToDistribute != null ||
-                              item.objective != null) ...[
+                              purposeOfVisit != null) ...[
                             Text(
                               'Visit Details',
                               style: GoogleFonts.inter(
@@ -3196,10 +3368,11 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                     _DetailRow('Samples to Distribute',
                                         samplesToDistribute),
                                   ],
-                                  if (item.objective != null &&
-                                      item.objective!.isNotEmpty) ...[
+                                  if (purposeOfVisit != null &&
+                                      purposeOfVisit.isNotEmpty) ...[
                                     SizedBox(height: isTablet ? 6 : 4),
-                                    _DetailRow('Objective', item.objective!),
+                                    _DetailRow(
+                                        'Purpose of Visit', purposeOfVisit),
                                   ],
                                   if (item.tourPlanType != null &&
                                       item.tourPlanType!.isNotEmpty) ...[
@@ -3213,9 +3386,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ],
 
                           // Additional Information
-                          if (item.notes != null ||
-                              item.remarks != null ||
-                              item.managerComments != null) ...[
+                          if (hasAdditionalInfo) ...[
                             Text(
                               'Additional Information',
                               style: GoogleFonts.inter(
@@ -3234,28 +3405,21 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               ),
                               child: Column(
                                 children: [
-                                  if (item.notes != null &&
-                                      item.notes!.isNotEmpty) ...[
-                                    _DetailRow('Notes', item.notes!,
+                                  if (hasNotes) ...[
+                                    _DetailRow('Notes', notesText,
                                         isMultiline: true),
                                   ],
-                                  if (item.remarks != null &&
-                                      item.remarks!.isNotEmpty) ...[
-                                    if (item.notes != null &&
-                                        item.notes!.isNotEmpty)
+                                  if (hasRemarks) ...[
+                                    if (hasNotes)
                                       SizedBox(height: isTablet ? 6 : 4),
-                                    _DetailRow('Remarks', item.remarks!,
+                                    _DetailRow('Remarks', remarksText,
                                         isMultiline: true),
                                   ],
-                                  if (item.managerComments != null &&
-                                      item.managerComments!.isNotEmpty) ...[
-                                    if ((item.notes != null &&
-                                            item.notes!.isNotEmpty) ||
-                                        (item.remarks != null &&
-                                            item.remarks!.isNotEmpty))
+                                  if (hasManagerComments) ...[
+                                    if (hasNotes || hasRemarks)
                                       SizedBox(height: isTablet ? 6 : 4),
                                     _DetailRow('Manager Comments',
-                                        item.managerComments!,
+                                        managerCommentsText,
                                         isMultiline: true),
                                   ],
                                 ],

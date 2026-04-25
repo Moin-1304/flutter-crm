@@ -63,6 +63,8 @@ enum Level {
 ///
 /// Inspired the okhttp-logging-interceptor and referred to pretty_dio_logger.
 class LoggingInterceptor extends Interceptor {
+  static const int _responsePayloadMaxChars = 500;
+
   /// Log Level
   final Level level;
 
@@ -110,16 +112,18 @@ class LoggingInterceptor extends Interceptor {
 
     final data = options.data;
     if (data != null) {
-      // logPrint('[DIO]dataType:${data.runtimeType}');
       if (data is Map) {
         if (compact) {
+          logPrint('<-- Request payload');
           logPrint('$data');
         } else {
-          _prettyPrintJson(data);
+          _prettyPrintJson(data, label: '<-- Request payload');
         }
       } else if (data is FormData) {
-        // NOT IMPLEMENT
+        logPrint('<-- Request payload');
+        logPrint('[FormData]');
       } else {
+        logPrint('<-- Request payload');
         logPrint(data.toString());
       }
     }
@@ -154,19 +158,11 @@ class LoggingInterceptor extends Interceptor {
       return handler.next(response);
     }
     final data = response.data;
-    if (data != null) {
-      // logPrint('[DIO]dataType:${data.runtimeType}');
-      if (data is Map) {
-        if (compact) {
-          logPrint('$data');
-        } else {
-          _prettyPrintJson(data);
-        }
-      } else if (data is List) {
-        // NOT IMPLEMENT
-      } else {
-        logPrint(data.toString());
-      }
+    if (_isEmptyPayload(data)) {
+      logPrint('<-- Response payload');
+      logPrint('[empty]');
+    } else {
+      _printTruncatedResponsePayload(data);
     }
 
     logPrint('[DIO]<-- END HTTP');
@@ -187,9 +183,40 @@ class LoggingInterceptor extends Interceptor {
     return handler.next(err);
   }
 
-  void _prettyPrintJson(Object input) {
+  void _prettyPrintJson(Object input, {required String label}) {
     final prettyString = encoder.convert(input);
-    logPrint('<-- Response payload');
+    logPrint(label);
     prettyString.split('\n').forEach((element) => logPrint(element));
+  }
+
+  bool _isEmptyPayload(dynamic data) {
+    if (data == null) return true;
+    if (data is String) return data.trim().isEmpty;
+    if (data is List || data is Map) return false;
+    return false;
+  }
+
+  void _printTruncatedResponsePayload(dynamic data) {
+    final payload = _stringifyPayload(data);
+    logPrint('<-- Response payload');
+    if (payload.length <= _responsePayloadMaxChars) {
+      logPrint(payload);
+      return;
+    }
+    logPrint(payload.substring(0, _responsePayloadMaxChars));
+    logPrint('[truncated ${payload.length - _responsePayloadMaxChars} chars]');
+  }
+
+  String _stringifyPayload(dynamic data) {
+    if (data is String) return data;
+    if (data is Map || data is List) {
+      if (compact) return data.toString();
+      try {
+        return encoder.convert(data);
+      } catch (_) {
+        return data.toString();
+      }
+    }
+    return data.toString();
   }
 }

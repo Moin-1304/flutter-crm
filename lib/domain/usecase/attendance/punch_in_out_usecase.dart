@@ -18,9 +18,13 @@ class PunchInOutUseCase {
     required int status,
     required int bizUnit,
     required bool isPunchIn, // true for punch in, false for punch out
+    String userName = '',
+    String sbuName = '',
+    String? lastLoggedOutTime,
+    List<LogDetail> logDetails = const [],
     double? kilometerIn,  // Vehicle mileage at punch in (required when isPunchIn is true)
     double? kilometerOut, // Vehicle mileage at punch out (required when isPunchIn is false)
-    double? privateKilometers, // Personal travel distance entered during punch out
+    double? privateKilometers, // Personal travel distance entered during work time
   }) async {
     try {
       final request = PunchInOutSaveRequest(
@@ -30,11 +34,16 @@ class PunchInOutUseCase {
         sbuId: sbuId,
         employeeId: employeeId,
         userId: userId,
-        checkInStatus: isPunchIn ? 1 : 0, // 0 = Check In, 1 = Check Out
+        checkInStatus: isPunchIn ? 1 : 0,
         bizUnit: bizUnit,
         kilometerIn: isPunchIn ? kilometerIn : null,
         kilometerOut: isPunchIn ? null : kilometerOut,
-        privateKilometers: isPunchIn ? 0 : privateKilometers,
+        privateKilometers: isPunchIn ? null : (privateKilometers ?? 0),
+        userName: userName,
+        sbuName: sbuName,
+        lastLoggedOutTime: lastLoggedOutTime,
+        logDetails: logDetails,
+        isCheckout: isPunchIn ? 0 : 1,
       );
 
       final response = await _punchInOutRepository.savePunchInOut(request);

@@ -443,17 +443,19 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
 
     print('DeviationEntryScreen: Setting tour plan from stored ID: $_storedTourPlanDetailId');
     print('DeviationEntryScreen: Available tour plan options: ${_tourPlanOptions.length}');
-    print('DeviationEntryScreen: Tour plan ID map: $_tourPlanNameToId');
+    print(
+        'DeviationEntryScreen: Tour plan ID map count: ${_tourPlanNameToId.length}');
 
     // Find tour plan by ID
     String? selectedOption;
     for (final entry in _tourPlanNameToId.entries) {
       if (entry.value == _storedTourPlanDetailId) {
         selectedOption = entry.key;
-        print('DeviationEntryScreen: Found tour plan by ID: $selectedOption');
         break;
       }
     }
+    print(
+        'DeviationEntryScreen: Found tour plan by ID: ${selectedOption != null}');
 
     if (selectedOption != null && mounted) {
       setState(() {
@@ -718,7 +720,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
       }
 
       print('DeviationEntryScreen: Selected cluster: $_selectedCluster');
-      print('DeviationEntryScreen: Cluster IDs: ${selectedClusterIds.map((c) => c.clusterId).toList()}');
+      print(
+          'DeviationEntryScreen: Selected cluster IDs count: ${selectedClusterIds.length}');
 
       // If no cluster is selected, clear customers
       if (selectedClusterIds.isEmpty) {

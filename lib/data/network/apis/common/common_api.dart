@@ -870,12 +870,16 @@ class CommonApi {
   /// Returns list of item descriptions based on selected Division ID or DistributerId
   Future<List<CommonDropdownItem>> getItemDescriptionList(
     int? divisionId, {
+    required int bizUnit,
+    int? divisionGroup,
     int? distributerId,
     String? searchText,
   }) async {
     try {
       final request = ItemDescriptionRequest(
         divisionId: divisionId,
+        bizUnit: bizUnit,
+        divisionGroup: divisionGroup,
         distributerId: distributerId,
         searchText: searchText,
       );
@@ -1009,9 +1013,8 @@ class CommonApi {
     required int employeeId,
     required String toDate,
     required int bizUnit,
-    required int customerId,
-    int module = 6,
-    int transactionType = 14,
+    int module = 13,
+    int transactionType = 12,
   }) async {
     try {
       final request = BatchNoRequest(
@@ -1020,7 +1023,6 @@ class CommonApi {
         toDate: toDate,
         bizUnit: bizUnit,
         module: module,
-        customerId: customerId,
         transactionType: transactionType,
       );
 
@@ -1031,9 +1033,9 @@ class CommonApi {
 
       print('\n');
       print('═══════════════════════════════════════════════════════════════');
-      print('🔵 BATCH NO API REQUEST (GetAutoBigInt)');
+      print('🔵 BATCH NO API REQUEST');
       print('═══════════════════════════════════════════════════════════════');
-      print('📡 Endpoint: POST ${Endpoints.commonGetAutoBigInt}');
+      print('📡 Endpoint: POST ${Endpoints.commonGetAuto}');
       print('📋 Request Headers:');
       print('   Content-Type: application/json');
       print('');
@@ -1047,13 +1049,12 @@ class CommonApi {
       print('   ToDate: ${requestJson['ToDate']}');
       print('   BizUnit: ${requestJson['BizUnit']}');
       print('   Module: ${requestJson['Module']}');
-      print('   CustomerId: ${requestJson['CustomerId']}');
       print('   TransactionType: ${requestJson['TransactionType']}');
       print('═══════════════════════════════════════════════════════════════');
       print('');
 
       final response = await _dioClient.dio.post(
-        Endpoints.commonGetAutoBigInt,
+        Endpoints.commonGetAuto,
         data: request.toJson(),
         options: Options(
           headers: {

@@ -5,6 +5,7 @@ import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/domain/entity/sales/sales_api_models.dart';
 import 'package:boilerplate/domain/repository/sales/sales_repository.dart';
+import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 
 class SalesBonusApprovalScreen extends StatefulWidget {
@@ -296,8 +297,10 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
   Future<void> _submit({required bool isReject}) async {
     final selected = _pendingItems.where((e) => _selectedIds.contains(e.id)).toList();
     if (selected.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one row.')),
+      ToastMessage.show(
+        context,
+        message: 'Please select at least one row.',
+        type: ToastType.warning,
       );
       return;
     }
@@ -320,8 +323,10 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isReject ? 'Rejected successfully.' : 'Approved successfully.')),
+      ToastMessage.show(
+        context,
+        message: isReject ? 'Rejected successfully.' : 'Approved successfully.',
+        type: ToastType.success,
       );
       _selectedIds.clear();
       await Future.wait([
@@ -330,8 +335,10 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
       ]);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed: $e')),
+      ToastMessage.show(
+        context,
+        message: 'Failed: $e',
+        type: ToastType.error,
       );
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -486,6 +493,9 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
     final bool hasSelection = _selectedIds.isNotEmpty;
     final visiblePending =
         _applyColumnFilters(_pendingItems, isApprovedList: false);
+    final bool hasRecords = visiblePending.isNotEmpty;
+    final bool allSelected =
+        hasRecords && _selectedIds.length == visiblePending.length;
 
     return Column(
       children: [
@@ -497,29 +507,23 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
                 child: Container(
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_tealGreen, _tealDark],
+                    color: hasRecords ? _tealGreen : const Color(0xFFE6EAF0),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: hasRecords
+                          ? _tealGreen.withOpacity(0.45)
+                          : const Color(0xFFD2D8E0),
                     ),
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _tealGreen.withOpacity(0.25),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
                   ),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: visiblePending.isEmpty
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: !hasRecords
                           ? null
                           : () {
                               setState(() {
-                                if (_selectedIds.length == visiblePending.length) {
+                                if (allSelected) {
                                   _selectedIds.clear();
                                 } else {
                                   _selectedIds
@@ -530,11 +534,15 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
                             },
                       child: Center(
                         child: Text(
-                          _selectedIds.length == visiblePending.length
+                          !hasRecords
+                              ? 'Select All'
+                              : allSelected
                               ? 'Unselect All'
                               : 'Select All',
                           style: GoogleFonts.inter(
-                            color: Colors.white,
+                            color: hasRecords
+                                ? Colors.white
+                                : const Color(0xFF8A94A6),
                             fontWeight: FontWeight.w700,
                             fontSize: 15,
                           ),
@@ -550,7 +558,7 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
                   height: 48,
                   decoration: BoxDecoration(
                     color: _lightTealBg,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: _tealGreen.withOpacity(0.25)),
                   ),
                   child: Center(
@@ -924,7 +932,7 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
             height: 48,
             decoration: BoxDecoration(
               color: _lightTealBg,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: _tealGreen.withOpacity(0.25)),
             ),
             child: Center(
@@ -1276,22 +1284,42 @@ class _SalesBonusApprovalScreenState extends State<SalesBonusApprovalScreen>
                                   borderRadius: BorderRadius.vertical(
                                       top: Radius.circular(20)),
                                 ),
-                                builder: (_) => _ColumnFilterPopupSimple(
-                                  filterState: fs,
-                                  operators: operators,
-                                  isDate: isDate,
-                                  onApply: () {
-                                    setState(() {});
-                                    setSheetState(() {});
-                                    Navigator.of(context).pop();
-                                  },
-                                  onClear: () {
-                                    fs.clear();
-                                    setState(() {});
-                                    setSheetState(() {});
-                                    Navigator.of(context).pop();
-                                  },
-                                ),
+                                builder: (dialogContext) {
+                                  final keyboardInset =
+                                      MediaQuery.of(dialogContext)
+                                          .viewInsets
+                                          .bottom;
+                                  final height =
+                                      MediaQuery.of(dialogContext).size.height;
+                                  return AnimatedPadding(
+                                    duration:
+                                        const Duration(milliseconds: 220),
+                                    curve: Curves.easeOut,
+                                    padding: EdgeInsets.only(bottom: keyboardInset),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxHeight:
+                                            height * (keyboardInset > 0 ? 0.78 : 0.7),
+                                      ),
+                                      child: _ColumnFilterPopupSimple(
+                                        filterState: fs,
+                                        operators: operators,
+                                        isDate: isDate,
+                                        onApply: () {
+                                          setState(() {});
+                                          setSheetState(() {});
+                                          Navigator.of(dialogContext).pop();
+                                        },
+                                        onClear: () {
+                                          fs.clear();
+                                          setState(() {});
+                                          setSheetState(() {});
+                                          Navigator.of(dialogContext).pop();
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
                             },
                           ),
@@ -1913,8 +1941,10 @@ class _ColumnFilterPopupSimpleState extends State<_ColumnFilterPopupSimple> {
   @override
   Widget build(BuildContext context) {
     const teal = Color(0xFF4DB1B3);
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final isMobile = mediaQuery.size.width < 600;
+    final screenWidth = mediaQuery.size.width;
+    final keyboardInset = mediaQuery.viewInsets.bottom;
     InputDecoration dec() => InputDecoration(
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(4),
@@ -1958,14 +1988,17 @@ class _ColumnFilterPopupSimpleState extends State<_ColumnFilterPopupSimple> {
           ),
           const Divider(height: 1),
           Flexible(
-            child: Container(
-              width: isMobile ? screenWidth - 32 : 320,
-              constraints: BoxConstraints(
-                maxWidth: isMobile ? screenWidth - 32 : 320,
-                maxHeight: MediaQuery.of(context).size.height * 0.7,
-              ),
-              padding: const EdgeInsets.all(16),
-              child: Column(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                width: isMobile ? screenWidth - 32 : 320,
+                constraints: BoxConstraints(
+                  maxWidth: isMobile ? screenWidth - 32 : 320,
+                  maxHeight:
+                      mediaQuery.size.height * (keyboardInset > 0 ? 0.78 : 0.7),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2133,6 +2166,7 @@ class _ColumnFilterPopupSimpleState extends State<_ColumnFilterPopupSimple> {
                   ),
                 ],
               ),
+              ),
             ),
           ),
         ],
@@ -2172,20 +2206,34 @@ class _FilterFieldCard extends StatelessWidget {
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          builder: (_) => _ColumnFilterPopupSimple(
-            filterState: state,
-            operators: operators,
-            isDate: isDate,
-            onApply: () {
-              onChanged();
-              Navigator.of(context).pop();
-            },
-            onClear: () {
-              state.clear();
-              onChanged();
-              Navigator.of(context).pop();
-            },
-          ),
+          builder: (dialogContext) {
+            final keyboardInset = MediaQuery.of(dialogContext).viewInsets.bottom;
+            final height = MediaQuery.of(dialogContext).size.height;
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: height * (keyboardInset > 0 ? 0.78 : 0.7),
+                ),
+                child: _ColumnFilterPopupSimple(
+                  filterState: state,
+                  operators: operators,
+                  isDate: isDate,
+                  onApply: () {
+                    onChanged();
+                    Navigator.of(dialogContext).pop();
+                  },
+                  onClear: () {
+                    state.clear();
+                    onChanged();
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+              ),
+            );
+          },
         );
       },
     );

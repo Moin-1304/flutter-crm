@@ -6015,6 +6015,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         ? _workflowActions.first.processActionId
         : _loadedOrderData?.processActionId;
 
+    // Set SaleOrderType based on role context to avoid null payloads.
+    // Client rule:
+    // if (IsDistributer == true || IsSalesRep == true) => 1, else => 0
+    final bool isDistributer =
+        _selectedDistributor != null && _selectedDistributor!.trim().isNotEmpty;
+    final bool isSalesRep =
+        _selectedSalesRep != null && _selectedSalesRep!.trim().isNotEmpty;
+    final int saleOrderType = (isDistributer || isSalesRep) ? 1 : 0;
+
     // Get dynamic userId from user (login user)
     final dynamicUserId = user.userId;
 
@@ -6043,6 +6052,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     print('Sales Rep ID: $salesRepId');
     print('SbuId / Bizunit (DistributorId): $finalSbuId');
     print('Distributor ID (DistributerForId): $distributorId');
+    print(
+        'SaleOrderType: $saleOrderType (IsDistributer: $isDistributer, IsSalesRep: $isSalesRep)');
     print('WorkflowFlag: $workflowFlag');
     print('ProcessId: $processId');
     print('ProcessActionId: $processActionId');
@@ -6115,6 +6126,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       vatRegistered: true, // Should be from customer data
       taxInclusive: false, // Should be from config
       distributerForId: distributorId, // Important: Pass selected DistributerId
+      saleOrderType: saleOrderType,
       isFullyUsed: _loadedOrderData?.isFullyUsed ??
           0, // Use from loaded data or default to 0
       hasEdit: _loadedOrderData?.hasEdit ??

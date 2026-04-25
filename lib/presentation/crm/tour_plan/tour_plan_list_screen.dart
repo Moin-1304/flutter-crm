@@ -1923,10 +1923,22 @@ class _SearchableListBottomSheetState extends State<_SearchableListBottomSheet> 
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final bool isTablet = mediaQuery.size.width >= 600;
+    final double optionRowHeight = isTablet ? 50 : 46;
+    final double optionSectionHeight = _filteredOptions.isEmpty
+        ? (isTablet ? 84 : 72)
+        : (_filteredOptions.length * optionRowHeight)
+            .clamp(optionRowHeight * 2, mediaQuery.size.height * 0.35)
+            .toDouble();
+    final double sheetMaxHeight = ((isTablet ? 210 : 190) + optionSectionHeight)
+        .clamp(isTablet ? 280.0 : 250.0, mediaQuery.size.height * 0.85)
+        .toDouble();
+
     return SafeArea(
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.5,
+          maxHeight: sheetMaxHeight,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

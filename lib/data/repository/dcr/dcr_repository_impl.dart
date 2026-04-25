@@ -280,12 +280,19 @@ class DcrRepositoryImpl implements DcrRepository {
           // Parse the ID to get both id and dcrId
           final intId = int.tryParse(id) ?? 0;
           final intDcrId = dcrId != null ? int.tryParse(dcrId) ?? intId : intId;
+          final bool hasExplicitDcrId =
+              dcrId != null && (int.tryParse(dcrId) ?? 0) > 0;
 
           // First try direct GET API call with provided dcrId
           try {
             final response = await dcrApi.getDcrDetails(intId, intDcrId);
             return _convertApiResponseToDcrEntry(response);
           } catch (e) {
+            // If caller already provided explicit dcrId, avoid list lookup to prevent
+            // extra list API calls while opening view-only DCR screens.
+            if (hasExplicitDcrId) {
+              return null;
+            }
             // Get the correct dcrId from List API with better parameters
             try {
               final listReq = DcrListRequest(
@@ -1072,6 +1079,15 @@ class DcrRepositoryImpl implements DcrRepository {
       }
     }
     final String? complaintRemarks = dcrDetail.complaintRemarks;
+    final List<CoVisitorDetail> effectiveCoVisitors =
+        dcrDetail.coVisitorDetails.isNotEmpty
+            ? dcrDetail.coVisitorDetails
+            : response.coVisitorDetails;
+    final bool hasCoVisit =
+        effectiveCoVisitors.isNotEmpty || response.coVisit == true;
+    final int? coVisitorId = effectiveCoVisitors.isNotEmpty
+        ? effectiveCoVisitors.first.coVisitorId
+        : null;
 
     return DcrEntry(
       id: response.id.toString(), // This is the DCR parent ID
@@ -1100,6 +1116,8 @@ class DcrRepositoryImpl implements DcrRepository {
       customerId: dcrDetail.customerId,
       detailId: validDetailId,
       clusterId: dcrDetail.clusterId,
+      coVisit: hasCoVisit,
+      coVisitorId: coVisitorId,
       // Service Engineer / Service Report fields
       mappedInstruments: mappedInstruments,
       complaint: complaint,

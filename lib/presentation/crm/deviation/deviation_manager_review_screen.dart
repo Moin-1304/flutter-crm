@@ -57,7 +57,8 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   bool _showFilterModal = false;
   AnimationController? _filterModalController;
   Animation<Offset>? _filterModalAnimation;
-  VoidCallback? _pendingFilterApply;
+  String? _modalTempEmployee;
+  String? _modalTempStatus;
   final ScrollController _filterScrollController = ScrollController();
   final GlobalKey _statusFilterSectionKey = GlobalKey();
   final GlobalKey _employeeFilterSectionKey = GlobalKey();
@@ -174,9 +175,11 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                 }
               }
             }
-            // Auto-select the employee if found (always select if id matches the employeeId used in API)
-            // Update even if _selectedEmployee is already set to ensure it's correct
-            if (selectedEmployeeName != null) {
+            // Auto-select default employee only when there is no active valid selection.
+            // This prevents overriding the employee chosen from the searchable filter.
+            final bool hasValidCurrentSelection = _selectedEmployee != null &&
+                _employeeOptions.contains(_selectedEmployee);
+            if (selectedEmployeeName != null && !hasValidCurrentSelection) {
               _selectedEmployee = selectedEmployeeName;
               print('DeviationManagerReviewScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
             }
@@ -373,6 +376,8 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   void _openFilterModal() {
     if (_filterModalController == null) return;
     setState(() {
+      _modalTempEmployee = _selectedEmployee;
+      _modalTempStatus = _selectedStatus;
       _showFilterModal = true;
     });
     _filterModalController!.forward();
@@ -391,7 +396,6 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   
   void _applyFiltersFromModal() {
     _closeFilterModal();
-    _pendingFilterApply?.call();
     _loadDeviations();
   }
 
@@ -1504,10 +1508,6 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   }
   
   Widget _buildFilterModal(bool isMobile, bool isTablet, Color tealGreen) {
-    // Temp selections that live during modal lifetime
-    String? _tempStatus = _selectedStatus;
-    String? _tempEmployee = _selectedEmployee;
-    
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
@@ -1595,9 +1595,9 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                   key: _statusFilterSectionKey,
                                   title: 'Status',
                                   icon: Icons.verified_outlined,
-                                  selectedValue: _tempStatus,
+                                  selectedValue: _modalTempStatus,
                                   options: _statusOptions,
-                                  onChanged: (v) => setModalState(() => _tempStatus = v),
+                                  onChanged: (v) => setModalState(() => _modalTempStatus = v),
                                   isTablet: isTablet,
                                   // Removed onExpanded to prevent layout conflicts during scrolling
                                 ),
@@ -1608,9 +1608,9 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                     key: _employeeFilterSectionKey,
                                     title: 'Employee',
                                     icon: Icons.person_outline,
-                                    selectedValue: _tempEmployee,
+                                    selectedValue: _modalTempEmployee,
                                     options: _employeeOptions,
-                                    onChanged: (v) => setModalState(() => _tempEmployee = v),
+                                    onChanged: (v) => setModalState(() => _modalTempEmployee = v),
                                     isTablet: isTablet,
                                     // Removed onExpanded to prevent layout conflicts during scrolling
                                   ),
@@ -1663,12 +1663,10 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                             flex: 2,
                             child: FilledButton(
                               onPressed: () {
-                                _pendingFilterApply = () {
-                                  setState(() {
-                                    _selectedStatus = _tempStatus;
-                                    _selectedEmployee = _tempEmployee;
-                                  });
-                                };
+                                setState(() {
+                                  _selectedStatus = _modalTempStatus;
+                                  _selectedEmployee = _modalTempEmployee;
+                                });
                                 _applyFiltersFromModal();
                               },
                               style: FilledButton.styleFrom(
@@ -2182,6 +2180,13 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   @override
   Widget build(BuildContext context) {
     final bool isTablet = widget.isTablet;
+    final double optionRowHeight = isTablet ? 46 : 42;
+    final double optionSectionHeight = _filteredOptions.isEmpty
+        ? (isTablet ? 72 : 64)
+        : (_filteredOptions.length * optionRowHeight)
+            .clamp(optionRowHeight * 2, isTablet ? 260.0 : 220.0)
+            .toDouble();
+    final double dropdownMaxHeight = (isTablet ? 96 : 88) + optionSectionHeight;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2292,7 +2297,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               ],
             ),
             constraints: BoxConstraints(
-              maxHeight: isTablet ? 400 : 350,
+              maxHeight: dropdownMaxHeight,
             ),
             child: Column(
               children: [
@@ -2379,6 +2384,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
+                          primary: false,
+                          physics: const ClampingScrollPhysics(),
                           padding: EdgeInsets.symmetric(
                             horizontal: isTablet ? 12 : 10,
                             vertical: isTablet ? 8 : 6,

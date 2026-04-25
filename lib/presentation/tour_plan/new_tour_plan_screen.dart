@@ -473,12 +473,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print('NewTourPlanScreen: API returned tour plan data');
         print('  - ID: ${apiTourPlan.id}');
         print('  - Customer: ${apiTourPlan.customerName}');
-        print('  - Products: ${apiTourPlan.productsToDiscuss}');
+        print(
+            '  - Products count: ${(apiTourPlan.productsToDiscuss ?? '').split(',').where((p) => p.trim().isNotEmpty).length}');
         print('  - Samples: ${apiTourPlan.samplesToDistribute}');
         print('  - Notes: ${apiTourPlan.notes}');
         print(
             '  - TourPlanDetails count: ${apiTourPlan.tourPlanDetails?.length ?? 0}');
-        print('  - Clusters: ${apiTourPlan.clusters}');
+        print(
+            '  - Clusters count: ${(apiTourPlan.clusters ?? '').split(',').where((c) => c.trim().isNotEmpty).length}');
         print('  - TourPlanType: ${apiTourPlan.tourPlanType}');
         print('  - PlanDate: ${apiTourPlan.planDate}');
 
@@ -558,7 +560,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   Future<void> _populateFormFromTourPlan(TourPlanItem tourPlan) async {
     print('NewTourPlanScreen: [Edit] Starting _populateFormFromTourPlan');
     print('  - TourPlan ID: ${tourPlan.id}');
-    print('  - TourPlan Header Clusters: ${tourPlan.clusters}');
+    print(
+        '  - TourPlan Header Clusters count: ${(tourPlan.clusters ?? '').split(',').where((c) => c.trim().isNotEmpty).length}');
     print('  - TourPlan Header Type: ${tourPlan.tourPlanType}');
     print('  - TourPlan Header Date: ${tourPlan.planDate}');
     print(
@@ -900,7 +903,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         // Resolve purpose of visit
         String? purposeValue = _typeOfWorkIdToName[detail.typeOfWorkId];
         if (purposeValue == null && detail.typeOfWorkId > 0) {
-          purposeValue = 'Loading...';
+          purposeValue = null;
           print('    ⚠️ Purpose ID ${detail.typeOfWorkId} not found in map');
         } else if (purposeValue != null) {
           print('    ✅ Resolved purpose: $purposeValue');
@@ -1305,8 +1308,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             _calls[i].isExpanded ?? true;
                                         _calls[i].isExpanded = !current;
                                       }),
-                                // Hide Remove button when updating/editing a tour plan or in view-only mode
-                                onRemove: (widget.tourPlanToEdit == null && !_isViewOnlyMode)
+                                // Allow removing calls while creating/editing.
+                                // Keep disabled only in view-only mode.
+                                onRemove: (!_isViewOnlyMode)
                                     ? () {
                                         if (_calls.length == 1) {
                                           _showSnack(
@@ -1749,7 +1753,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: Employee ID: $employeeId');
       print('NewTourPlanScreen: SBU ID: $sbuId');
       print('NewTourPlanScreen: Plan Date: $planDateStr');
-      print('NewTourPlanScreen: Selected Clusters: $_selectedClusters');
+      print(
+          'NewTourPlanScreen: Selected Clusters count: ${_selectedClusters.length}');
       print('NewTourPlanScreen: Cluster IDs Array: $clusterIdsArray');
       print('NewTourPlanScreen: Effective Cluster IDs: $effectiveClusterIds');
       print('NewTourPlanScreen: Number of Details to Create: ${details.length}');
@@ -1758,58 +1763,24 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: Customer Type ID: ${_selectedCustomerType != null ? _customerTypeNameToId[_selectedCustomerType!] : null}');
       print('NewTourPlanScreen: Number of Calls: ${_calls.length}');
 
-      for (int i = 0; i < _calls.length; i++) {
-        final call = _calls[i];
-        print('NewTourPlanScreen: Call ${i + 1}:');
-        print('  - Customers: ${call.customers}');
-        print('  - Purpose: ${call.purpose}');
-        print('  - Remarks: ${call.remarksCtrl.text.trim()}');
-        print('  - Products: ${call.products}');
-        print('  - Samples: ${call.samplesCtrl.text.trim()}');
-      }
+      print('NewTourPlanScreen: Call debug entries count: ${_calls.length}');
+      print(
+          'NewTourPlanScreen: Tour Plan Details debug entries count: ${details.length}');
 
-      print('NewTourPlanScreen: Tour Plan Details (${details.length} entries):');
-      for (int i = 0; i < details.length; i++) {
-        final detail = details[i];
-        print('NewTourPlanScreen:   Detail ${i + 1}:');
-        print('    - Id: ${detail['Id']}');
-        print('    - ClusterId: ${detail['ClusterId']}');
-        print('    - CustomerId: ${detail['CustomerId']}');
-        print('    - TypeOfWorkId: ${detail['TypeOfWorkId']}');
-        print('    - Location: ${detail['Location']}');
-        print('    - ClusterNames: ${detail['ClusterNames']}');
-        print('    - Customers Array: ${detail['Customers']}');
-      }
-
-      // Print full JSON payload - split into chunks to avoid truncation
+      // Print request summary only (avoid logging payload chunks in loop).
       print('NewTourPlanScreen: ========== FULL REQUEST BODY (JSON) ==========');
       try {
         final jsonString = const JsonEncoder.withIndent('  ').convert(body);
         print('NewTourPlanScreen: JSON Length: ${jsonString.length} characters');
-        // Split into chunks to ensure full output (Flutter print has limits ~1024 chars)
-        const int chunkSize = 1000; // Characters per chunk (safe limit)
-        int chunkNumber = 1;
-        for (int i = 0; i < jsonString.length; i += chunkSize) {
-          final end = (i + chunkSize < jsonString.length) ? i + chunkSize : jsonString.length;
-          print('NewTourPlanScreen: [Chunk $chunkNumber/${((jsonString.length / chunkSize).ceil())}]');
-          print(jsonString.substring(i, end));
-          chunkNumber++;
-        }
+        print(
+            'NewTourPlanScreen: JSON Chunk Count: ${(jsonString.length / 1000).ceil()}');
       } catch (e) {
         print('NewTourPlanScreen: Error formatting JSON: $e');
         print('NewTourPlanScreen: Stack trace: ${StackTrace.current}');
-        print('NewTourPlanScreen: Request Body (toString):');
-        // Also split toString output
         final bodyString = body.toString();
         print('NewTourPlanScreen: Body String Length: ${bodyString.length} characters');
-        const int chunkSize = 1000;
-        int chunkNumber = 1;
-        for (int i = 0; i < bodyString.length; i += chunkSize) {
-          final end = (i + chunkSize < bodyString.length) ? i + chunkSize : bodyString.length;
-          print('NewTourPlanScreen: [Chunk $chunkNumber/${((bodyString.length / chunkSize).ceil())}]');
-          print(bodyString.substring(i, end));
-          chunkNumber++;
-        }
+        print(
+            'NewTourPlanScreen: Body String Chunk Count: ${(bodyString.length / 1000).ceil()}');
       }
       print('NewTourPlanScreen: ========== END OF REQUEST BODY ==========');
       print('NewTourPlanScreen: ========== SENDING REQUEST ==========');
@@ -2299,7 +2270,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
 
         final String purpose = (call.purpose ?? '').trim();
-        if (purpose.isEmpty || purpose.toLowerCase() == 'loading...') {
+        if (purpose.isEmpty) {
           callErrors[i].purposeError = 'Please select purpose of visit';
           firstMessage ??= 'Select purpose for $callLabel';
           isValid = false;
@@ -2585,11 +2556,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                 print(
                     'NewTourPlanScreen: Resolving purpose names from typeOfWorkId');
                 print('  - Number of calls: ${_calls.length}');
-                print('  - typeOfWorkIdToName map: $_typeOfWorkIdToName');
+                print(
+                    '  - typeOfWorkIdToName map size: ${_typeOfWorkIdToName.length}');
 
                 for (final call in _calls) {
-                  if (call.purpose == 'Loading...') {
-                    print('  - Found call with Loading... purpose');
+                  if (call.purpose == null || call.purpose!.trim().isEmpty) {
+                    print('  - Found call with unresolved purpose');
                     // Find the corresponding typeOfWorkId from tourPlanDetails
                     // Use full tour plan data if available, otherwise fallback to widget data
                     final tourPlan = _fullTourPlanData ?? widget.tourPlanToEdit;

@@ -134,6 +134,8 @@ class DcrApiItem {
   final String transactionType;
   final int typeOfWorkId;
   final int isGeneric;
+  final bool coVisit;
+  final List<CoVisitorDetail> coVisitorDetails;
   final double? customerLatitude;
   final double? customerLongitude;
 
@@ -168,6 +170,8 @@ class DcrApiItem {
     required this.transactionType,
     required this.typeOfWorkId,
     required this.isGeneric,
+    this.coVisit = false,
+    this.coVisitorDetails = const [],
     this.customerLatitude,
     this.customerLongitude,
   });
@@ -208,6 +212,15 @@ class DcrApiItem {
       transactionType: json['transactionType'] ?? '',
       typeOfWorkId: json['typeOfWorkId'] ?? 0,
       isGeneric: json['isGeneric'] ?? 0,
+      coVisit: json['coVisit'] ?? false,
+      coVisitorDetails: ((json['coVisitorDetails'] ?? json['CoVisitorDetails'])
+                  as List<dynamic>?)
+              ?.map((item) => CoVisitorDetail.fromJson(
+                  item is Map<String, dynamic>
+                      ? item
+                      : Map<String, dynamic>.from(item as Map)))
+              .toList() ??
+          [],
       customerLatitude: (json['customerLatitude'] == null) ? null : (json['customerLatitude'] as num).toDouble(),
       customerLongitude: (json['customerLongitude'] == null) ? null : (json['customerLongitude'] as num).toDouble(),
     );
@@ -708,6 +721,19 @@ class CoVisitorDetail {
     this.coVisitorName,
   });
 
+  factory CoVisitorDetail.fromJson(Map<String, dynamic> json) {
+    return CoVisitorDetail(
+      id: json['id'] ?? json['Id'],
+      dcrDetailId: json['dcrDetailId'] ?? json['DcrDetailId'],
+      coVisitorId: (json['coVisitorId'] ?? json['CoVisitorId'] ?? 0) as int,
+      coordinatorId: (json['coordinatorId'] ?? json['CoordinatorId'] ?? 0) as int,
+      remarks: (json['remarks'] ?? json['Remarks'])?.toString(),
+      active: (json['active'] ?? json['Active'] ?? 1) as int,
+      slNo: json['slNo'] ?? json['SlNo'],
+      coVisitorName: (json['coVisitorName'] ?? json['CoVisitorName'])?.toString(),
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'Id': id,
@@ -1197,6 +1223,8 @@ class DcrGetResponse {
   final String transactionType;
   final int typeOfWorkId;
   final int isGeneric;
+  final bool coVisit;
+  final List<CoVisitorDetail> coVisitorDetails;
 
   DcrGetResponse({
     required this.id,
@@ -1229,6 +1257,8 @@ class DcrGetResponse {
     required this.transactionType,
     required this.typeOfWorkId,
     required this.isGeneric,
+    required this.coVisit,
+    required this.coVisitorDetails,
   });
 
   factory DcrGetResponse.fromJson(Map<String, dynamic> json) {
@@ -1270,6 +1300,14 @@ class DcrGetResponse {
       transactionType: json['transactionType'] ?? '',
       typeOfWorkId: json['typeOfWorkId'] ?? 0,
       isGeneric: json['isGeneric'] ?? 0,
+      coVisit: json['coVisit'] ?? false,
+      coVisitorDetails: (json['coVisitorDetails'] as List<dynamic>?)
+              ?.map((item) => CoVisitorDetail.fromJson(
+                  item is Map<String, dynamic>
+                      ? item
+                      : Map<String, dynamic>.from(item as Map)))
+              .toList() ??
+          [],
     );
   }
   Map<String, dynamic> toJson() {
@@ -1329,6 +1367,7 @@ class TourPlanDcrDetailGet {
   final String customerName;
   final String visitTime;
   final double visitDuration;
+  final List<CoVisitorDetail> coVisitorDetails;
   final double? customerLatitude;
   final double? customerLongitude;
   // Service Engineer specific fields (Service Report details)
@@ -1387,6 +1426,7 @@ class TourPlanDcrDetailGet {
     required this.customerName,
     required this.visitTime,
     required this.visitDuration,
+    required this.coVisitorDetails,
     this.customerLatitude,
     this.customerLongitude,
     // Service Engineer specific fields
@@ -1462,6 +1502,14 @@ class TourPlanDcrDetailGet {
       customerName: json['customerName'] ?? '',
       visitTime: json['visitTime'] ?? '',
       visitDuration: (json['visitDuration'] ?? 0).toDouble(),
+      coVisitorDetails: ((json['coVisitorDetails'] ?? json['CoVisitorDetails'])
+                  as List<dynamic>?)
+              ?.map((item) => CoVisitorDetail.fromJson(
+                  item is Map<String, dynamic>
+                      ? item
+                      : Map<String, dynamic>.from(item as Map)))
+              .toList() ??
+          [],
       customerLatitude: (json['customerLatitude'] == null) ? null : (json['customerLatitude'] as num).toDouble(),
       customerLongitude: (json['customerLongitude'] == null) ? null : (json['customerLongitude'] as num).toDouble(),
       // Service Engineer specific fields - extract from JSON if available

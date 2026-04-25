@@ -67,6 +67,8 @@ abstract class CommonRepository {
   });
   Future<List<CommonDropdownItem>> getItemDescriptionList(
     int? divisionId, {
+    required int bizUnit,
+    int? divisionGroup,
     int? distributerId,
     String? searchText,
   });
@@ -84,9 +86,8 @@ abstract class CommonRepository {
     required int employeeId,
     required String toDate,
     required int bizUnit,
-    required int customerId,
-    int module = 6,
-    int transactionType = 14,
+    int module = 13,
+    int transactionType = 12,
   });
   Future<List<CommonDropdownItem>> getReportingManagerList({
     required int id,

@@ -53,6 +53,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   // Employee options loaded from API (Manager's team employees)
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = {};
+  final Map<String, String> _employeeNameToDesignation = {};
+  final Map<int, String> _employeeIdToDesignation = {};
+  final Map<int, String> _typeOfWorkIdToName = {};
 
   // Selection state for bulk operations
   final Set<String> _selectedIds = <String>{};
@@ -67,6 +70,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   bool _showFilterModal = false;
   AnimationController? _filterModalController;
   Animation<double>? _filterModalAnimation;
+  String? _modalTempCustomer;
+  String? _modalTempStatus;
+  String? _modalTempEmployee;
   final ScrollController _filterScrollController = ScrollController();
   final GlobalKey _customerFilterSectionKey = GlobalKey();
   final GlobalKey _statusFilterSectionKey = GlobalKey();
@@ -97,6 +103,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     _getTourPlanStatusList();
     _loadMappedCustomersByEmployeeId(); // Load customer list using API
     _getEmployeeList(); // Load employee list for filter (Manager's team)
+    _loadPurposeOfVisitLookup();
     // Auto-refresh disabled - removed periodic API calls
   }
 
@@ -112,6 +119,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   void _openFilterModal() {
     if (_filterModalController == null) return;
     setState(() {
+      _modalTempCustomer = _customer;
+      _modalTempStatus = _status;
+      _modalTempEmployee = _employee;
       _showFilterModal = true;
     });
     _filterModalController!.forward();
@@ -1465,6 +1475,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   List<Widget> _buildTourPlanDetailContent(BuildContext ctx, TourPlanItem item, String customerName, String customerCode) {
     final isTablet = MediaQuery.of(ctx).size.width >= 600;
+    final String? employeeDesignation = _resolveEmployeeDesignation(item);
+    final String? purposeOfVisit = _resolvePurposeOfVisit(item);
     return [
                     // Employee Information
                     // Get the correct date to check if section should be shown
@@ -1481,7 +1493,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           displayDateForCheck = item.date;
                         }
                         
-                        if (item.employeeName != null || item.designation != null || displayDateForCheck != null) {
+                        if (item.employeeName != null || employeeDesignation != null || displayDateForCheck != null) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1505,9 +1517,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           children: [
                             if (item.employeeName != null && item.employeeName!.isNotEmpty)
                               _DetailRow('Name', item.employeeName!),
-                            if (item.designation != null && item.designation!.isNotEmpty) ...[
+                            if (employeeDesignation != null && employeeDesignation.isNotEmpty) ...[
                               if (item.employeeName != null && item.employeeName!.isNotEmpty) SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Designation', item.designation!),
+                              _DetailRow('Designation', employeeDesignation),
                             ],
                             // Get the correct date - prefer tourPlanDetails[0].planDate, then item.planDate, then item.date
                             Builder(
@@ -1530,7 +1542,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                 if (displayDate != null) {
                                   return Column(
                                     children: [
-                                      if ((item.employeeName != null && item.employeeName!.isNotEmpty) || (item.designation != null && item.designation!.isNotEmpty))
+                                      if ((item.employeeName != null && item.employeeName!.isNotEmpty) || (employeeDesignation != null && employeeDesignation.isNotEmpty))
                                         SizedBox(height: isTablet ? 6 : 4),
                                       _DetailRow('Date', _formatDate(displayDate)),
                                     ],
@@ -1586,7 +1598,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                     ],
                     
                     // Visit Details
-                    if (customerName.isNotEmpty || item.productsToDiscuss != null || item.samplesToDistribute != null || item.objective != null) ...[
+                    if (customerName.isNotEmpty || item.productsToDiscuss != null || item.samplesToDistribute != null || purposeOfVisit != null) ...[
                       Text(
                         'Visit Details',
                         style: GoogleFonts.inter(
@@ -1614,9 +1626,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                               SizedBox(height: isTablet ? 6 : 4),
                               _DetailRow('Samples to Distribute', item.samplesToDistribute!),
                             ],
-                            if (item.objective != null && item.objective!.isNotEmpty) ...[
+                            if (purposeOfVisit != null && purposeOfVisit.isNotEmpty) ...[
                               SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Objective', item.objective!),
+                              _DetailRow('Purpose of Visit', purposeOfVisit),
                             ],
                             if (item.tourPlanType != null && item.tourPlanType!.isNotEmpty) ...[
                               SizedBox(height: isTablet ? 6 : 4),
@@ -2852,14 +2864,21 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
               final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
+                if (item.designation.trim().isNotEmpty) {
+                  _employeeNameToDesignation[key] = item.designation.trim();
+                  _employeeIdToDesignation[item.id] = item.designation.trim();
+                }
                 // If this employee's id matches the employeeId used in API call, auto-select it
                 if (finalEmployeeId != null && item.id == finalEmployeeId) {
                   selectedEmployeeName = key;
                 }
               }
             }
-            // Auto-select the employee if found (always select if id matches the employeeId used in API)
-            if (selectedEmployeeName != null) {
+            // Auto-select default employee only when there is no active valid selection.
+            // This keeps searched selections from being reset to the default user.
+            final bool hasValidCurrentSelection =
+                _employee != null && _employeeOptions.contains(_employee);
+            if (selectedEmployeeName != null && !hasValidCurrentSelection) {
               _employee = selectedEmployeeName;
               print('TourPlanManagerReviewScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
             }
@@ -2946,6 +2965,81 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     
     final userEmployeeId = _userDetailStore.userDetail?.employeeId;
     return userEmployeeId ?? 0;
+  }
+
+  Future<void> _loadPurposeOfVisitLookup() async {
+    try {
+      final CommonRepository commonRepo = getIt<CommonRepository>();
+      final userDetail = _userDetailStore.userDetail;
+      final int userId = userDetail?.id ?? 0;
+      if (userId <= 0) return;
+
+      final String serviceArea = (userDetail?.serviceArea ?? '').trim();
+      final String purposeText = serviceArea == 'Service Engineer'
+          ? 'ServiceEng PurposeVisit'
+          : 'Salesrep PurposeVisit';
+
+      final List<CommonDropdownItem> items =
+          await commonRepo.getPurposeOfVisitList(userId, purposeText);
+      if (!mounted || items.isEmpty) return;
+
+      setState(() {
+        for (final item in items) {
+          final String label =
+              (item.text.isNotEmpty ? item.text : item.typeText).trim();
+          if (label.isNotEmpty) {
+            _typeOfWorkIdToName[item.id] = label;
+          }
+        }
+      });
+    } catch (e) {
+      print('TourPlanManagerReviewScreen: Error loading purpose map: $e');
+    }
+  }
+
+  String? _resolveEmployeeDesignation(TourPlanItem item) {
+    final String? mappedById = _employeeIdToDesignation[item.employeeId];
+    if (mappedById != null && mappedById.isNotEmpty) {
+      return mappedById;
+    }
+    final String? employeeName = item.employeeName?.trim();
+    if (employeeName != null && employeeName.isNotEmpty) {
+      final String? mappedDesignation = _employeeNameToDesignation[employeeName];
+      if (mappedDesignation != null && mappedDesignation.isNotEmpty) {
+        return mappedDesignation;
+      }
+    }
+    final String? itemDesignation = item.designation?.trim();
+    if (itemDesignation != null && itemDesignation.isNotEmpty) {
+      return itemDesignation;
+    }
+    return null;
+  }
+
+  String? _resolvePurposeOfVisit(TourPlanItem item) {
+    final TourPlanDetail? firstDetail =
+        (item.tourPlanDetails != null && item.tourPlanDetails!.isNotEmpty)
+            ? item.tourPlanDetails!.first
+            : null;
+
+    final String? mappedByType = firstDetail != null
+        ? _typeOfWorkIdToName[firstDetail.typeOfWorkId]
+        : null;
+    if (mappedByType != null && mappedByType.isNotEmpty) {
+      return mappedByType;
+    }
+
+    final String? objective = item.objective?.trim();
+    if (objective != null && objective.isNotEmpty) {
+      return objective;
+    }
+
+    final String? remarks = firstDetail?.remarks?.trim();
+    if (remarks != null && remarks.isNotEmpty) {
+      return remarks;
+    }
+
+    return null;
   }
 
   Color _getStatusColor(int status) {
@@ -3182,10 +3276,6 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   // Build Filter Modal (DCR style)
   Widget _buildFilterModal({required bool isMobile, required bool isTablet, required Color tealGreen}) {
-    String? _tempCustomer = _customer;
-    String? _tempStatus = _status;
-    String? _tempEmployee = _employee;
-    
     return GestureDetector(
       onTap: _closeFilterModal,
       child: Container(
@@ -3284,11 +3374,11 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                   key: _customerFilterSectionKey,
                                   title: 'Customer',
                                   icon: Icons.person_outline,
-                                  selectedValue: _tempCustomer,
+                                  selectedValue: _modalTempCustomer,
                                   options: _customerOptions,
                                   onChanged: (value) {
                                     setModalState(() {
-                                      _tempCustomer = value;
+                                      _modalTempCustomer = value;
                                     });
                                   },
                                   isTablet: isTablet,
@@ -3300,11 +3390,11 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                   key: _statusFilterSectionKey,
                                   title: 'Status',
                                   icon: Icons.verified_outlined,
-                                  selectedValue: _tempStatus,
+                                  selectedValue: _modalTempStatus,
                                   options: _statusOptions.isNotEmpty ? _statusOptions : const ['Draft', 'Pending', 'Approved', 'Rejected'],
                                   onChanged: (value) {
                                     setModalState(() {
-                                      _tempStatus = value;
+                                      _modalTempStatus = value;
                                     });
                                   },
                                   isTablet: isTablet,
@@ -3316,11 +3406,11 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                   key: _employeeFilterSectionKey,
                                   title: 'Employee',
                                   icon: Icons.badge_outlined,
-                                  selectedValue: _tempEmployee,
+                                  selectedValue: _modalTempEmployee,
                                   options: _employeeOptions,
                                   onChanged: (value) {
                                     setModalState(() {
-                                      _tempEmployee = value;
+                                      _modalTempEmployee = value;
                                     });
                                   },
                                   isTablet: isTablet,
@@ -3348,9 +3438,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                 child: OutlinedButton(
                                   onPressed: () {
                                     setModalState(() {
-                                      _tempCustomer = null;
-                                      _tempStatus = null;
-                                      _tempEmployee = null;
+                                      _modalTempCustomer = null;
+                                      _modalTempStatus = null;
+                                      _modalTempEmployee = null;
                                     });
                                     _clearAllFilters();
                                     _closeFilterModal();
@@ -3377,9 +3467,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                 child: FilledButton(
                                   onPressed: () {
                                     setState(() {
-                                      _customer = _tempCustomer;
-                                      _status = _tempStatus;
-                                      _employee = _tempEmployee;
+                                      _customer = _modalTempCustomer;
+                                      _status = _modalTempStatus;
+                                      _employee = _modalTempEmployee;
                                     });
                                     _applyFiltersFromModal();
                                   },
@@ -4133,6 +4223,15 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   
   @override
   Widget build(BuildContext context) {
+    final double optionRowHeight = widget.isTablet ? 46 : 42;
+    final double optionSectionHeight = _filteredOptions.isEmpty
+        ? (widget.isTablet ? 72 : 64)
+        : (_filteredOptions.length * optionRowHeight)
+            .clamp(optionRowHeight * 2, widget.isTablet ? 260.0 : 220.0)
+            .toDouble();
+    final double dropdownMaxHeight =
+        (widget.isTablet ? 96 : 88) + optionSectionHeight;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4244,7 +4343,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               ],
             ),
             constraints: BoxConstraints(
-              maxHeight: widget.isTablet ? 400 : 350,
+              maxHeight: dropdownMaxHeight,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

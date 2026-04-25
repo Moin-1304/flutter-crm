@@ -638,7 +638,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
         // Get selected customer ID - instruments are loaded based on selected customer
         int? customerId = _customerNameToId[_customer];
-        print('Customer id ---- $customerId');
+        print(
+            'DcrEntryScreen: [Instruments] Selected customerId present: ${customerId != null && customerId > 0}');
         if (customerId == null || customerId <= 0) {
           print(
               'DcrEntryScreen: [Instruments] customerId is null/0, skipping instruments load');
@@ -999,8 +1000,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ClusterIdModel(clusterId: clusterId),
       ];
 
-      print('DcrEntryScreen: [Customers] Selected cluster: $_cluster');
-      print('DcrEntryScreen: [Customers] Cluster ID: $clusterId');
+      print('DcrEntryScreen: [Customers] Selected cluster count: 1');
+      print('DcrEntryScreen: [Customers] Cluster IDs count: 1');
 
       // Use current date (yyyy-MM-dd)
       final String dateStr = _date.toIso8601String().split('T').first;
@@ -1033,10 +1034,9 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         date: dateStr,
       );
 
-      print('DcrEntryScreen: [Customers] Request body => ${req.toJson()}');
+      print('DcrEntryScreen: [Customers] Request clusterIds count: ${req.clusterIds?.length ?? 0}');
       final res = await repo.getMappedCustomersByEmployeeId(req);
-      print(
-          'DcrEntryScreen: [Customers] API returned ${res.customers.length} customers');
+      print('DcrEntryScreen: [Customers] API returned count: ${res.customers.length}');
 
       if (res.customers.isEmpty) {
         print(
@@ -1188,7 +1188,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     print('  - typeOfWorkId to resolve: $typeOfWorkId');
     print(
         '  - Source: ${widget.initialTypeOfWorkId == typeOfWorkId ? "initialTypeOfWorkId" : "loadedTypeOfWorkId (edit mode)"}');
-    print('  - typeOfWorkIdToName map: $_typeOfWorkIdToName');
+    print('  - typeOfWorkIdToName map size: ${_typeOfWorkIdToName.length}');
 
     // Get purpose name from reverse mapping
     final purposeName = _typeOfWorkIdToName[typeOfWorkId];
@@ -1227,10 +1227,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'DcrEntryScreen: ⚠ Could not find purpose name for typeOfWorkId: $typeOfWorkId');
       print(
           'DcrEntryScreen: Available IDs in map: ${_typeOfWorkIdToName.keys.toList()}');
-      // Log all available mappings for debugging
-      _typeOfWorkIdToName.forEach((id, name) {
-        print('DcrEntryScreen:   ID $id -> "$name"');
-      });
+      print(
+          'DcrEntryScreen: Available typeOfWork mappings count: ${_typeOfWorkIdToName.length}');
     }
   }
 
@@ -1313,14 +1311,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                 !_purposeOptions.contains(_purpose)) {
               // Try case-insensitive matching
               bool found = false;
+              String? matchedOption;
               for (final option in _purposeOptions) {
                 if (_purpose!.trim().toLowerCase() == option.toLowerCase()) {
                   _purpose = option; // Use exact match from API
                   found = true;
-                  print(
-                      'DcrEntryScreen: Matched purpose case-insensitively: "$option"');
+                  matchedOption = option;
                   break;
                 }
+              }
+              print(
+                  'DcrEntryScreen: Case-insensitive purpose match count: ${found ? 1 : 0}');
+              if (matchedOption != null) {
+                print('DcrEntryScreen: Matched option count: 1');
               }
               // If still not found, add it to options (fallback)
               if (!found) {
@@ -1880,7 +1883,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
           // Load customers for the selected cluster in edit mode
           if (_cluster != null && _cluster!.trim().isNotEmpty) {
-            print('DcrEntryScreen: Loading customers for cluster: $_cluster');
+            print('DcrEntryScreen: Loading customers for selected cluster count: 1');
             _loadMappedCustomers();
           }
 
@@ -1894,12 +1897,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           }
 
           // Log the form field values after setting them
-          print('Form fields set:');
-          print('  _cluster: $_cluster');
-          print('  _customer: $_customer');
-          print('  _purpose: $_purpose');
+          print('Form fields set (counts):');
+          print('  Cluster selected count: ${(_cluster?.trim().isNotEmpty ?? false) ? 1 : 0}');
+          print('  Customer selected count: ${(_customer?.trim().isNotEmpty ?? false) ? 1 : 0}');
+          print('  Purpose selected count: ${(_purpose?.trim().isNotEmpty ?? false) ? 1 : 0}');
           print('  _durationCtrl.text: ${_durationCtrl.text}');
-          print('  Selected products: $_selectedProducts');
+          print('  Selected products count: ${_selectedProducts.length}');
           print('  _samplesCtrl.text: ${_samplesCtrl.text}');
           print('  _discussionCtrl.text: ${_discussionCtrl.text}');
           print('  _date: $_date');
@@ -5123,11 +5126,13 @@ extension on _DcrEntryScreenState {
       print('  TypeOfWorkId from map: ${_typeOfWorkNameToId[_purpose]}');
       print('  InitialTypeOfWorkId: ${widget.initialTypeOfWorkId}');
       print('  Final typeOfWorkId: $typeOfWorkId');
-      print('  Cluster: $_cluster');
+      print(
+          '  Cluster selected count: ${(_cluster?.trim().isNotEmpty ?? false) ? 1 : 0}');
       print('  CityId from map: ${_clusterNameToId[_cluster]}');
       print('  InitialClusterId: ${widget.initialClusterId}');
       print('  Final cityId: $cityId');
-      print('  Customer: $_customer');
+      print(
+          '  Customer selected count: ${(_customer?.trim().isNotEmpty ?? false) ? 1 : 0}');
       print('  CustomerId from map: ${_customerNameToId[_customer]}');
       print('  InitialCustomerId: ${widget.initialCustomerId}');
       print('  Final customerId: $customerId');
@@ -5140,13 +5145,13 @@ extension on _DcrEntryScreenState {
         throw Exception('Please select a valid purpose of visit');
       }
       if (cityId == null) {
-        print('ERROR: No cityId found for cluster: $_cluster');
-        print('Available clusters in map: ${_clusterNameToId.keys.toList()}');
+        print('ERROR: No cityId found for selected cluster');
+        print('Available clusters in map count: ${_clusterNameToId.length}');
         throw Exception('Please select a valid cluster/locality');
       }
       if (_customerRequiredForSelectedVisitType && customerId == null) {
-        print('ERROR: No customerId found for customer: $_customer');
-        print('Available customers in map: ${_customerNameToId.keys.toList()}');
+        print('ERROR: No customerId found for selected customer');
+        print('Available customers in map count: ${_customerNameToId.length}');
         throw Exception('Please select a valid customer');
       }
 
@@ -5788,6 +5793,8 @@ class _MultiSelectDropdownState extends State<_MultiSelectDropdown> {
                                 }
 
                                 return ListView.separated(
+                                  primary: false,
+                                  physics: const ClampingScrollPhysics(),
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 12),
                                   itemCount: filtered.length,

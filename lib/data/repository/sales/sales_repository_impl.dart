@@ -310,7 +310,7 @@ class SalesRepositoryImpl implements SalesRepository {
             bizUnit: bizUnit,
             sbuId: sbuId,
             sortOrder: 0,
-            sortDir: 0,
+            sortDir: 1,
           ),
         );
       }

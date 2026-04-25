@@ -4789,6 +4789,13 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   @override
   Widget build(BuildContext context) {
     final bool isTablet = widget.isTablet;
+    final double optionRowHeight = isTablet ? 46 : 42;
+    final double optionSectionHeight = _filteredOptions.isEmpty
+        ? (isTablet ? 72 : 64)
+        : (_filteredOptions.length * optionRowHeight)
+            .clamp(optionRowHeight * 2, isTablet ? 260.0 : 220.0)
+            .toDouble();
+    final double dropdownMaxHeight = (isTablet ? 96 : 88) + optionSectionHeight;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4899,7 +4906,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
               ],
             ),
             constraints: BoxConstraints(
-              maxHeight: isTablet ? 400 : 350,
+              maxHeight: dropdownMaxHeight,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -4987,7 +4994,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
-                          shrinkWrap: true,
+                          primary: false,
+                          physics: const ClampingScrollPhysics(),
                           padding: EdgeInsets.symmetric(
                             horizontal: isTablet ? 12 : 10,
                             vertical: isTablet ? 8 : 6,

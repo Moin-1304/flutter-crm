@@ -1073,7 +1073,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
     }
     final RenderBox? button =
         buttonKey.currentContext?.findRenderObject() as RenderBox?;
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final mediaSize = MediaQuery.maybeOf(context)?.size;
+    final isMobile = (mediaSize?.width ?? 0) < 600;
 
     // On mobile, show as bottom sheet or centered dialog
     if (isMobile || button == null) {
@@ -1083,32 +1084,41 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (BuildContext dialogContext) {
+          final dialogSize = MediaQuery.maybeOf(dialogContext)?.size;
+          final keyboardInset =
+              MediaQuery.maybeOf(dialogContext)?.viewInsets.bottom ?? 0;
           return SafeArea(
-            child: Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.7,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: _ColumnFilterPopup(
-                filterState: _columnFilters[columnKey]!,
-                operators: _filterOperators,
-                onApply: () {
-                  setState(() {
-                    _columnFilters[columnKey]!.isActive = true;
-                    _invalidateFilterCache();
-                  });
-                  Navigator.of(dialogContext).pop();
-                },
-                onClear: () {
-                  setState(() {
-                    _columnFilters[columnKey]!.clear();
-                    _invalidateFilterCache();
-                  });
-                  Navigator.of(dialogContext).pop();
-                },
+            child: AnimatedPadding(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight:
+                      (dialogSize?.height ?? 800) * (keyboardInset > 0 ? 0.78 : 0.7),
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: _ColumnFilterPopup(
+                  filterState: _columnFilters[columnKey]!,
+                  operators: _filterOperators,
+                  onApply: () {
+                    setState(() {
+                      _columnFilters[columnKey]!.isActive = true;
+                      _invalidateFilterCache();
+                    });
+                    Navigator.of(dialogContext).pop();
+                  },
+                  onClear: () {
+                    setState(() {
+                      _columnFilters[columnKey]!.clear();
+                      _invalidateFilterCache();
+                    });
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
               ),
             ),
           );
@@ -1119,7 +1129,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
 
     final Offset buttonPosition = button.localToGlobal(Offset.zero);
     final Size buttonSize = button.size;
-    final Size screenSize = MediaQuery.of(context).size;
+    final Size screenSize = mediaSize ?? const Size(390, 844);
 
     setState(() {
       _activeFilterColumn = columnKey;
@@ -1221,7 +1231,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Sample Issues',
+                  'Sample Issue(Customer)',
                   style: GoogleFonts.inter(
                     fontSize: isTablet ? 20 : 18,
                     fontWeight: FontWeight.normal,
@@ -1341,7 +1351,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                   width: double.infinity,
                   child: CrmActionButton(
                     icon: Icons.add,
-                    label: 'Sample Issue',
+                    label: 'Sample Issue(Customer)',
                     color: tealGreen,
                     isMobile: isMobile,
                     onTap: () async {
@@ -1371,7 +1381,7 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                 Expanded(
                   child: CrmActionButton(
                     icon: Icons.add,
-                    label: 'Sample Issue',
+                    label: 'Sample Issue(Customer)',
                     color: tealGreen,
                     isMobile: isMobile,
                     onTap: () async {
@@ -1558,6 +1568,8 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
   // Build filter modal
   Widget _buildFilterModal(bool isTablet, Color tealGreen) {
     final bool isMobile = !isTablet;
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardInset = mediaQuery.viewInsets.bottom;
     // Temp selections that live during modal lifetime
     String? _tempStatus = _selectedStatus;
     String? _tempIssueNo = _selectedIssueNo;
@@ -1573,30 +1585,35 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
             onTap: () {},
             child: Align(
               alignment: Alignment.bottomCenter,
-              child: Container(
-                width: double.infinity,
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.only(bottom: keyboardInset),
+                child: Container(
+                  width: double.infinity,
+                  constraints: BoxConstraints(
+                    maxHeight: mediaQuery.size.height *
+                        (keyboardInset > 0 ? 0.85 : 0.6),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 20,
-                      offset: const Offset(0, -4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
                     ),
-                  ],
-                ),
-                child: StatefulBuilder(
-                  builder: (context, setModalState) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: StatefulBuilder(
+                    builder: (context, setModalState) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                         // Modal Header
                         Container(
                           padding: EdgeInsets.all(isMobile ? 16 : 20),
@@ -1810,9 +1827,10 @@ class _CustomerIssueListScreenState extends State<CustomerIssueListScreen>
                             ],
                           ),
                         ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -2244,8 +2262,10 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
   @override
   Widget build(BuildContext context) {
     const blueColor = Color(0xFF2196F3);
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final isMobile = mediaQuery.size.width < 600;
+    final screenWidth = mediaQuery.size.width;
+    final keyboardInset = mediaQuery.viewInsets.bottom;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2274,17 +2294,19 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
         const Divider(height: 1),
         // Content
         Flexible(
-          child: Container(
-            width: isMobile ? screenWidth - 32 : 320,
-            constraints: BoxConstraints(
-              maxWidth: isMobile ? screenWidth - 32 : 320,
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              width: isMobile ? screenWidth - 32 : 320,
+              constraints: BoxConstraints(
+                maxWidth: isMobile ? screenWidth - 32 : 320,
+                maxHeight: mediaQuery.size.height * (keyboardInset > 0 ? 0.78 : 0.7),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // Condition 1
                 _buildConditionRow(
                   operator: _localState.condition1Operator,
@@ -2424,7 +2446,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                     ),
                   ],
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

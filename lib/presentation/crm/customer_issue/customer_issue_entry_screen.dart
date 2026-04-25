@@ -413,7 +413,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (issueToList.length > 5) {
         print('  ... and ${issueToList.length - 5} more items');
       }
-      print('All IDs: ${issueToList.map((e) => e.id).toList()}');
+      print('All IDs count: ${issueToList.length}');
       print(
           'All Texts (first 10): ${issueToList.take(10).map((e) => e.text).toList()}');
       print('═══════════════════════════════════════════════════════════');
@@ -570,8 +570,24 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
     try {
       final commonRepository = getIt<CommonRepository>();
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) throw Exception('User not available');
+
+      final UserDetailStore? userStore =
+          getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final storeBizUnit = userStore?.userDetail?.sbuId;
+      final prefBizUnit = user.sbuId;
+      final bizUnit = (storeBizUnit != null && storeBizUnit > 0)
+          ? storeBizUnit
+          : (prefBizUnit > 0 ? prefBizUnit : 1);
+
       final itemDescriptionList = await commonRepository
-          .getItemDescriptionList(divisionItem.id)
+          .getItemDescriptionList(
+            divisionItem.id,
+            bizUnit: bizUnit,
+            divisionGroup: divisionItem.divisionGroupId,
+          )
           .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -615,6 +631,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       (item) => item.text == itemDescription,
       orElse: () => itemDescriptionList.first,
     );
+    final requestItemId = _getItemRequestId(itemItem);
 
     // Check if already loaded
     if (_itemToBatchNumbers.containsKey(itemDescription)) {
@@ -633,22 +650,25 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           ? getIt<UserDetailStore>()
           : null;
       final employeeId = userStore?.userDetail?.employeeId ?? 1;
-      final bizUnit = (userStore?.userDetail?.sbuId != null &&
-              userStore!.userDetail!.sbuId! > 0)
-          ? userStore.userDetail!.sbuId!
-          : ((user.sbuId != null && user.sbuId! > 0) ? user.sbuId! : 1);
+      final storeBizUnit = userStore?.userDetail?.sbuId;
+      final prefBizUnit = user.sbuId;
+      final bizUnit = (storeBizUnit != null && storeBizUnit > 0)
+          ? storeBizUnit
+          : (prefBizUnit > 0 ? prefBizUnit : 1);
 
-      final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final toDate = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(DateTime.now());
       final commonRepository = getIt<CommonRepository>();
       final batchNoList = await commonRepository
           .getBatchNoList(
-            itemId: itemItem.id,
+            itemId: requestItemId,
             employeeId: employeeId,
             toDate: toDate,
             bizUnit: bizUnit,
-            customerId: 0,
           )
           .timeout(const Duration(seconds: 30));
+
+      print(
+          'Batch lookup item mapping: optionId=${itemItem.id}, item=${itemItem.item}, value=${itemItem.value}, requestItemId=$requestItemId, text="${itemItem.text}"');
 
       if (mounted) {
         final batchNos = batchNoList.map((item) => item.text).toList();
@@ -883,14 +903,14 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       if (apiIssue.details != null && apiIssue.details is List) {
         final detailsList = apiIssue.details as List;
         print('📦 Parsing ${detailsList.length} item details...');
+        int parsedItemsCount = 0;
+        int parseErrorCount = 0;
+        int invalidDetailCount = 0;
 
         for (int i = 0; i < detailsList.length; i++) {
           final detailJson = detailsList[i];
-          print('   Processing detail $i...');
-          print('   Detail type: ${detailJson.runtimeType}');
 
           if (detailJson is Map<String, dynamic>) {
-            print('   Detail keys: ${detailJson.keys.toList()}');
             try {
               final itemDetail = ItemDetail();
 
@@ -900,18 +920,15 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   detailJson['itemCategoryText'] ??
                   detailJson['ItemCategoryText'] ??
                   '';
-              print('   Division Category: ${itemDetail.divisionCategory}');
 
               itemDetail.itemDescription = detailJson['itemText'] ??
                   detailJson['ItemText'] ??
                   detailJson['itemCode'] ??
                   detailJson['ItemCode'] ??
                   '';
-              print('   Item Description: ${itemDetail.itemDescription}');
 
               itemDetail.batchNo =
                   detailJson['batchNo'] ?? detailJson['BatchNo'] ?? '';
-              print('   Batch No: ${itemDetail.batchNo}');
 
               // Quantity fields
               final qtyInStock = detailJson['stock'] ??
@@ -924,7 +941,6 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   : (qtyInStock is int ? qtyInStock.toDouble() : 0.0);
               itemDetail.qtyInStockCtrl.text =
                   qtyInStockValue.toStringAsFixed(0);
-              print('   Qty In Stock: ${itemDetail.qtyInStockCtrl.text}');
 
               final qtyIssued = detailJson['quantityConsumed'] ??
                   detailJson['QuantityConsumed'] ??
@@ -933,7 +949,6 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   ? qtyIssued
                   : (qtyIssued is int ? qtyIssued.toDouble() : 0.0);
               itemDetail.qtyIssuedCtrl.text = qtyIssuedValue.toStringAsFixed(0);
-              print('   Qty Issued: ${itemDetail.qtyIssuedCtrl.text}');
 
               // UOM
               itemDetail.uomCtrl.text = detailJson['uomText'] ??
@@ -941,14 +956,12 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   detailJson['uomCode'] ??
                   detailJson['UomCode'] ??
                   '';
-              print('   UOM: ${itemDetail.uomCtrl.text}');
 
               // Rate
               final rate = detailJson['rate'] ?? detailJson['Rate'] ?? 0.0;
               final rateValue =
                   rate is double ? rate : (rate is int ? rate.toDouble() : 0.0);
               itemDetail.rateCtrl.text = rateValue.toStringAsFixed(2);
-              print('   Rate: ${itemDetail.rateCtrl.text}');
 
               // Amount
               final amount =
@@ -957,25 +970,21 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   ? amount
                   : (amount is int ? amount.toDouble() : 0.0);
               itemDetail.amountCtrl.text = amountValue.toStringAsFixed(2);
-              print('   Amount: ${itemDetail.amountCtrl.text}');
 
               // Remarks
               itemDetail.remarksCtrl.text =
                   detailJson['remarks'] ?? detailJson['Remarks'] ?? '';
-              print('   Remarks: ${itemDetail.remarksCtrl.text}');
 
               // Store batch ID if available (for later use in save)
               final batchId = detailJson['batchId'] ?? detailJson['BatchId'];
               if (batchId != null && batchId is int) {
                 itemDetail.batchId = batchId;
-                print('   Batch ID: ${itemDetail.batchId}');
               }
 
               // Store item ID if available (for later use in save - prevents lookup failures)
               final itemId = detailJson['item'] ?? detailJson['Item'];
               if (itemId != null && itemId is int && itemId > 0) {
                 itemDetail.itemId = itemId;
-                print('   Item ID: ${itemDetail.itemId}');
               }
 
               // Store detail row ID if available (required for edit/update - server uses it to update existing rows)
@@ -992,39 +1001,27 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                         : int.tryParse(detailRowId.toString()));
                 if (id != null && id > 0) {
                   itemDetail.detailId = id;
-                  print('   Detail ID: ${itemDetail.detailId}');
                 }
-              }
-              // Debug: log detail keys on first item so we can see what API returns
-              if (i == 0) {
-                print(
-                    '   [DEBUG] Detail keys from API: ${detailJson.keys.toList()}');
-                print(
-                    '   [DEBUG] id/Id/detailId/DetailId: ${detailJson['id']}/${detailJson['Id']}/${detailJson['detailId']}/${detailJson['DetailId']}');
               }
 
               _itemDetails.add(itemDetail);
-              print('✅ Added item ${i + 1}: ${itemDetail.itemDescription}');
-              print('   - Division: ${itemDetail.divisionCategory}');
-              print(
-                  '   - Batch: ${itemDetail.batchNo} (ID: ${itemDetail.batchId})');
-              print('   - Qty Issued: ${itemDetail.qtyIssuedCtrl.text}');
-              print('   - Rate: ${itemDetail.rateCtrl.text}');
-              print('   - Amount: ${itemDetail.amountCtrl.text}');
+              parsedItemsCount++;
 
               // Store item info for loading dropdown options after setState
               // We'll load these options after the setState completes
             } catch (e, stackTrace) {
               print('❌ Error parsing item detail $i: $e');
               print('   Stack trace: $stackTrace');
-              print('   Detail JSON keys: ${detailJson.keys.toList()}');
-              print('   Detail JSON: $detailJson');
+              parseErrorCount++;
             }
           } else {
             print(
                 '⚠️ Detail $i is not a Map, it is: ${detailJson.runtimeType}');
+            invalidDetailCount++;
           }
         }
+        print(
+            'Parsed item details summary: success=$parsedItemsCount, parseErrors=$parseErrorCount, invalidType=$invalidDetailCount');
 
         print('═══════════════════════════════════════════════════════════');
         if (_itemDetails.isNotEmpty) {
@@ -1167,9 +1164,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          _isViewMode
-              ? 'View Sample Issue'
-              : (_isEditMode ? 'Edit Sample Issue' : 'New Sample Issue'),
+          _isViewMode || _isEditMode
+              ? 'Sample Issue(Customer)'
+              : 'New Sample Issue(Customer)',
           style: GoogleFonts.inter(
             fontSize: isTablet ? 20 : 18,
             fontWeight: FontWeight.w700,
@@ -3457,6 +3454,24 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
   }
 
+  /// Item dropdowns can expose the backend item id in `item` or `value`
+  /// while `id` is only the option row id. Prefer the backend id for API calls.
+  int _getItemRequestId(CommonDropdownItem item) {
+    if (item.item > 0) return item.item;
+    if (item.value > 0) return item.value;
+    return item.id;
+  }
+
+  int _getItemRequestIdFromText(String? text, List<CommonDropdownItem> list) {
+    if (text == null || list.isEmpty) return 0;
+    try {
+      final item = list.firstWhere((item) => item.text == text);
+      return _getItemRequestId(item);
+    } catch (e) {
+      return 0;
+    }
+  }
+
   /// Get workflow process ID and action ID
   /// Returns true if the issue is in draft state (saved but never submitted).
   bool _isDraftIssue(ItemIssueApiItem issue) {
@@ -3607,8 +3622,6 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     final toStoreId = _getIdFromText(_toStore, _storeList);
     final issueToId = _getIdFromText(_issueTo, _issueToList);
     final issueAgainstId = _getIdFromText(_issueAgainst, _issueAgainstList);
-
-    // IssueAgainst needs to be sent as string (text value), not ID
     final issueAgainstValue = _issueAgainst;
 
     // Debug: Print ID mappings
@@ -3661,9 +3674,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
             '✅ Using stored item ID from API: $itemId for item: "${item.itemDescription}"');
       } else {
         // Fallback: lookup item ID from item description list
-        print('itemDescriptionList: $itemDescriptionList');
+        print('itemDescriptionList count: ${itemDescriptionList.length}');
         final itemDescriptionId =
-            _getIdFromText(item.itemDescription, itemDescriptionList);
+            _getItemRequestIdFromText(item.itemDescription, itemDescriptionList);
         print('itemDescriptionId: $itemDescriptionId');
         itemId = itemDescriptionId;
 
@@ -3679,6 +3692,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         itemDescriptionObj = itemDescriptionList.firstWhere(
           (obj) => obj.text == item.itemDescription,
         );
+        if (itemDescriptionObj != null) {
+          print(
+              'Save item mapping: optionId=${itemDescriptionObj.id}, item=${itemDescriptionObj.item}, value=${itemDescriptionObj.value}, requestItemId=${_getItemRequestId(itemDescriptionObj)}');
+        }
       } catch (e) {
         print(
             'Warning: Item description object not found for: ${item.itemDescription}');
@@ -3723,10 +3740,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                 batchId = batchObj.id;
               } catch (e3) {
                 print('⚠️ Batch matching failed for: "${item.batchNo}"');
-                print('Available batches for "${item.itemDescription}":');
-                for (var batch in batchList) {
-                  print('  - "${batch.text}" (ID: ${batch.id})');
-                }
+                print(
+                    'Available batches count for "${item.itemDescription}": ${batchList.length}');
                 // Try using _getIdFromText as fallback
                 batchId = _getIdFromText(item.batchNo, batchList);
                 if (batchId == 0) {
@@ -3902,14 +3917,11 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           'No items added. Please add at least one item before saving.');
     }
 
-    // Format date
-    // Use ISO 8601 format which is compatible with System.Text.Json in .NET
-    // Example: "2025-12-30T15:08:02.222"
-    final dateStr = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(_stDate);
+    // Save payload now expects space-separated datetime format.
+    final dateStr = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(_stDate);
 
-    // MenuId: 1554 for save API (as per list screen)
-    final menuId = 1554;
-    final moduleId = 6;
+    final menuId = 1589;
+    final moduleId = 8;
 
     // When editing an already-submitted issue: send Version, Status, WorkflowStatus from loaded issue.
     // When draft first submit: send as new (no version, status 0, workflowStatus 0).
@@ -3963,7 +3975,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       aptCode: null,
       isMultipleBatch: null,
       multiBatchGroup: null,
-      transactionType: 14,
+      transactionType: 12,
       isCancelled: null,
       workflowProcess: null,
       reference: _referenceCtrl.text.trim().isEmpty
@@ -3996,7 +4008,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       moduleId: moduleId,
       userId: userId,
       divisionGroup: null,
-      issueAgainst: issueAgainstValue, // Send as string text value
+      issueAgainst: issueAgainstValue,
       issueReceiptType: issueAgainstId,
       itemText: null,
     );
@@ -4380,6 +4392,10 @@ class _AddItemDialog extends StatefulWidget {
 class _AddItemDialogState extends State<_AddItemDialog> {
   final _formKey = GlobalKey<FormState>();
 
+  int _getItemRequestId(CommonDropdownItem item) {
+    return item.value > 0 ? item.value : item.id;
+  }
+
   // Form controllers
   String? _divisionCategory;
   String?
@@ -4466,9 +4482,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         // Debug: Print loaded options
         print(
             'Division/Category options loaded: ${_divisionCategoryOptions.length} items');
-        if (_divisionCategoryOptions.isNotEmpty) {
-          print('First option: ${_divisionCategoryOptions.first}');
-        }
+        print(
+            'Division/Category options count: ${_divisionCategoryOptions.length}');
       }
     } catch (e) {
       print('Error loading division/category: $e');
@@ -4507,8 +4522,31 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
     try {
       final commonRepository = getIt<CommonRepository>();
-      final itemDescriptionList =
-          await commonRepository.getItemDescriptionList(divisionId).timeout(
+      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+      final user = await sharedPrefHelper.getUser();
+      if (user == null) throw Exception('User not available');
+
+      final UserDetailStore? userStore =
+          getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final storeBizUnit = userStore?.userDetail?.sbuId;
+      final prefBizUnit = user.sbuId;
+      final bizUnit = (storeBizUnit != null && storeBizUnit > 0)
+          ? storeBizUnit
+          : (prefBizUnit > 0 ? prefBizUnit : 1);
+
+      final matchingDivisionItems =
+          _divisionCategoryList.where((item) => item.id == divisionId).toList();
+      final divisionGroup = matchingDivisionItems.isNotEmpty
+          ? matchingDivisionItems.first.divisionGroupId
+          : divisionId;
+
+      final itemDescriptionList = await commonRepository
+          .getItemDescriptionList(
+            divisionId,
+            bizUnit: bizUnit,
+            divisionGroup: divisionGroup,
+          )
+          .timeout(
         const Duration(seconds: 30),
         onTimeout: () {
           throw Exception('Request timeout: Failed to load item descriptions');
@@ -4582,10 +4620,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
 
       // Prefer UserDetailStore, fallback to SharedPreferences, then default to 1
       // If either value is 0, treat it as null and use default
-      int bizUnit = (bizUnitFromStore != null && bizUnitFromStore! > 0)
-          ? bizUnitFromStore!
-          : ((bizUnitFromPrefs != null && bizUnitFromPrefs! > 0)
-              ? bizUnitFromPrefs!
+      int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
+          ? bizUnitFromStore
+          : ((bizUnitFromPrefs > 0)
+              ? bizUnitFromPrefs
               : 1);
 
       // Log for debugging
@@ -4599,13 +4637,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
             'BizUnit is 0. UserDetailStore sbuId: $bizUnitFromStore, SharedPreferences sbuId: $bizUnitFromPrefs. Please ensure user details are loaded correctly.');
       }
 
-      // Get current date in yyyy-MM-dd format
-      final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-      // For CustomerId, we'll use a default value for now (can be updated later if needed)
-      // In a real scenario, this might come from the sample issue context
-      final customerId =
-          0; // Default value, can be updated based on business logic
+      // Batch lookup now expects the full datetime value.
+      final toDate = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(DateTime.now());
 
       // Create request object to get full JSON
       final batchNoRequest = BatchNoRequest(
@@ -4613,16 +4646,15 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         employeeId: employeeId,
         toDate: toDate,
         bizUnit: bizUnit,
-        module: 6,
-        customerId: customerId,
-        transactionType: 14,
+        module: 13,
+        transactionType: 12,
       );
 
       // Print Batch No API Request Parameters
       print('═══════════════════════════════════════════════════════════');
       print('📦 BATCH NO API REQUEST (Sample Issue - Add Item)');
       print('═══════════════════════════════════════════════════════════');
-      print('API Endpoint: POST ${Endpoints.commonGetAutoBigInt}');
+      print('API Endpoint: POST ${Endpoints.commonGetAuto}');
       print('Request Parameters:');
       print('  - CommandType: 332');
       print('  - Id (ItemId): $itemId');
@@ -4631,10 +4663,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
       print(
           '  - BizUnit: $bizUnit (${bizUnit == 0 ? "⚠️ WARNING: BizUnit is 0!" : "✓ Valid"})');
       print(
-          '    - BizUnit Source: ${bizUnitFromStore != null ? "UserDetailStore" : (bizUnitFromPrefs != null ? "SharedPreferences" : "Default (1)")}');
-      print('  - Module: 6');
-      print('  - CustomerId: $customerId');
-      print('  - TransactionType: 14');
+          '    - BizUnit Source: ${bizUnitFromStore != null ? "UserDetailStore" : (bizUnitFromPrefs > 0 ? "SharedPreferences" : "Default (1)")}');
+      print('  - Module: 13');
+      print('  - TransactionType: 12');
       print('');
       print('Full Request JSON:');
       print(batchNoRequest.toJson());
@@ -4647,7 +4678,6 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         employeeId: employeeId,
         toDate: toDate,
         bizUnit: bizUnit,
-        customerId: customerId,
       )
           .timeout(
         const Duration(seconds: 30),
@@ -4668,16 +4698,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         print('═══════════════════════════════════════════════════════════');
         print('Status: Success');
         print('Total Items: ${_batchNoOptions.length}');
-        if (_batchNoOptions.isNotEmpty) {
-          print('Batch Numbers:');
-          for (int i = 0; i < _batchNoOptions.length && i < 10; i++) {
-            print('  ${i + 1}. ${_batchNoOptions[i]}');
-          }
-          if (_batchNoOptions.length > 10) {
-            print('  ... and ${_batchNoOptions.length - 10} more');
-          }
-        } else {
+        if (_batchNoOptions.isEmpty) {
           print('⚠️  No batch numbers found');
+        } else {
+          print('Batch numbers loaded count: ${_batchNoOptions.length}');
         }
         print('═══════════════════════════════════════════════════════════');
       }
@@ -5223,9 +5247,13 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                               (item) => item.text == value,
                               orElse: () => _itemDescriptionList.first,
                             );
+                            final requestItemId =
+                                _getItemRequestId(selectedItem);
 
-                            if (selectedItem.id > 0) {
-                              _loadBatchNumbers(selectedItem.id);
+                            if (requestItemId > 0) {
+                              print(
+                                  'Main item selection mapping: optionId=${selectedItem.id}, item=${selectedItem.item}, value=${selectedItem.value}, requestItemId=$requestItemId');
+                              _loadBatchNumbers(requestItemId);
                             }
                           }
                         },

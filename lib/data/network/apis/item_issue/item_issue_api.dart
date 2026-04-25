@@ -77,31 +77,11 @@ class ItemIssueApi {
     }
   }
 
-  /// Recursively remove null values from map/list so server receives only defined fields.
-  /// Some .NET APIs fail on update when receiving explicit null for optional fields.
-  static Map<String, dynamic> _removeNulls(Map<String, dynamic> map) {
-    final result = <String, dynamic>{};
-    for (final e in map.entries) {
-      if (e.value == null) continue;
-      if (e.value is Map<String, dynamic>) {
-        result[e.key] = _removeNulls(e.value as Map<String, dynamic>);
-      } else if (e.value is List) {
-        result[e.key] = (e.value as List)
-            .map((item) =>
-                item is Map<String, dynamic> ? _removeNulls(item) : item)
-            .toList();
-      } else {
-        result[e.key] = e.value;
-      }
-    }
-    return result;
-  }
-
   /// Save ItemIssue
   Future<ItemIssueSaveResponse> saveItemIssue(
       ItemIssueSaveRequest request) async {
     try {
-      final payload = _removeNulls(request.toJson());
+      final payload = request.toJson();
       // Log request for debugging
       print('═══════════════════════════════════════════════════════════');
       print('📤 ItemIssue Save API Request');
@@ -172,12 +152,9 @@ class ItemIssueApi {
                 'Failed to save ItemIssue: Status ${e.response?.statusCode} - ${responseData?.toString() ?? "Unknown error"}';
           }
         }
-      } else if (e.requestOptions != null) {
+      } else {
         // Request was sent but no response received
         errorMessage = 'Failed to save ItemIssue: No response from server';
-      } else {
-        // Request setup error
-        errorMessage = 'Failed to save ItemIssue: ${e.message}';
       }
 
       throw Exception(errorMessage);

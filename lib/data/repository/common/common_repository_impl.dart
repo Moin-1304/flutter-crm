@@ -541,6 +541,8 @@ class CommonRepositoryImpl implements CommonRepository {
   @override
   Future<List<CommonDropdownItem>> getItemDescriptionList(
     int? divisionId, {
+    required int bizUnit,
+    int? divisionGroup,
     int? distributerId,
     String? searchText,
   }) async {
@@ -550,6 +552,8 @@ class CommonRepositoryImpl implements CommonRepository {
 
         final response = await commonApi.getItemDescriptionList(
           divisionId,
+          bizUnit: bizUnit,
+          divisionGroup: divisionGroup,
           distributerId: distributerId,
           searchText: searchText,
         );
@@ -569,9 +573,8 @@ class CommonRepositoryImpl implements CommonRepository {
     required int employeeId,
     required String toDate,
     required int bizUnit,
-    required int customerId,
-    int module = 6,
-    int transactionType = 14,
+    int module = 13,
+    int transactionType = 12,
   }) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
@@ -582,7 +585,6 @@ class CommonRepositoryImpl implements CommonRepository {
           employeeId: employeeId,
           toDate: toDate,
           bizUnit: bizUnit,
-          customerId: customerId,
           module: module,
           transactionType: transactionType,
         );
