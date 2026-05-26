@@ -1,0 +1,8 @@
+// Copy this file to GoogleMapsKey.xcconfig and set your Google Maps API key.
+// GoogleMapsKey.xcconfig is gitignored and will not be committed.
+//
+// Get an API key: https://console.cloud.google.com/
+// Enable "Maps SDK for iOS" for your project, then create an API key.
+// See MAPS_SETUP.md in the project root for full steps.
+
+GOOGLE_MAPS_API_KEY=

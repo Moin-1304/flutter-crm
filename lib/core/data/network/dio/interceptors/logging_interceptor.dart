@@ -63,7 +63,7 @@ enum Level {
 ///
 /// Inspired the okhttp-logging-interceptor and referred to pretty_dio_logger.
 class LoggingInterceptor extends Interceptor {
-  static const int _responsePayloadMaxChars = 500;
+  static const int _responsePayloadMaxChars = 3000;
 
   /// Log Level
   final Level level;

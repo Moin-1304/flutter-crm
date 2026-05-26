@@ -5,7 +5,8 @@ plugins {
 }
 
 def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
+// Read from android/local.properties (app's projectDir is android/app, so go up one level)
+def localPropertiesFile = file("${projectDir}/../local.properties")
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader ->
         localProperties.load(reader)
@@ -38,6 +39,14 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Inject Google Maps API key from local.properties (see MAPS_SETUP.md)
+        def mapsKey = localProperties.getProperty('GOOGLE_MAPS_API_KEY', '').trim()
+        if (mapsKey.isEmpty()) {
+            println "MAPS: GOOGLE_MAPS_API_KEY not set in android/local.properties - map will be blank"
+        } else {
+            println "MAPS: Using GOOGLE_MAPS_API_KEY from android/local.properties"
+        }
+        manifestPlaceholders = [GOOGLE_MAPS_API_KEY: mapsKey.isEmpty() ? 'YOUR_GOOGLE_MAPS_API_KEY' : mapsKey]
     }
 
     compileOptions {
