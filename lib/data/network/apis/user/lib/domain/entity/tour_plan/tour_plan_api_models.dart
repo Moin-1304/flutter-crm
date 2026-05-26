@@ -240,29 +240,32 @@ class TourPlanItem {
       createdBy: json['createdBy'],
       status: json['status'] ?? 0,
       sbuId: json['sbuId'] ?? 0,
-      employee: json['employee'] ?? 0,
+      employee: json['employee'] ?? json['Employee'] ?? 0,
       month: json['month'] ?? 0,
       year: json['year'] ?? 0,
       statusId: json['statusId'] ?? 0,
       submittedDate: json['submittedDate'] != null ? safeDate(json['submittedDate']) : null,
       remarks: json['remarks'],
-      active: json['active'] ?? false,
-      userId: json['userId'] ?? 0,
-      employeeId: json['employeeId'] ?? 0,
+      active: json['active'] ?? json['Active'] ?? false,
+      userId: json['userId'] ?? json['UserId'] ?? 0,
+      employeeId: json['employeeId'] ?? json['EmployeeId'] ?? 0,
       date: json['date'] != null ? safeDate(json['date']) : null,
       territory: json['territory'],
       cluster: json['cluster'],
       clusterId: json['clusterId'],
-      tourPlanType: json['tourPlanType'],
-      objective: json['objective'],
+      tourPlanType: json['tourPlanType'] ?? json['TourPlanType'],
+      objective: json['objective'] ?? json['Objective'],
       tourPlanStatus: json['tourPlanStatus'],
       tourPlanHeaderStatus: json['tourPlanHeaderStatus'],
-      summary: json['summary'],
-      tourPlanDetails: json['tourPlanDetails'] != null 
-          ? (json['tourPlanDetails'] as List)
-              .map((e) => TourPlanDetail.fromJson(e))
-              .toList()
-          : null,
+      summary: json['summary'] ?? json['Summary'],
+      tourPlanDetails: () {
+        final dynamic raw =
+            json['tourPlanDetails'] ?? json['TourPlanDetails'];
+        if (raw is! List) return null;
+        return raw
+            .map((e) => TourPlanDetail.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }(),
       createdAt: json['createdAt'] != null ? safeDate(json['createdAt']) : null,
       updatedAt: json['updatedAt'] != null ? safeDate(json['updatedAt']) : null,
       submittedAt: json['submittedAt'] != null ? safeDate(json['submittedAt']) : null,
@@ -278,8 +281,8 @@ class TourPlanItem {
           : null,
       bizunit: json['bizunit'] ?? 0,
       isSelected: json['isSelected'] ?? false,
-      employeeName: json['employeeName'],
-      designation: json['designation'],
+      employeeName: json['employeeName'] ?? json['EmployeeName'],
+      designation: json['designation'] ?? json['Designation'],
       statusText: json['statusText'],
       planDate: safeDate(json['planDate']),
       customerId: json['customerId'] ?? 0,
@@ -310,8 +313,8 @@ class ProductToBeDiscussed {
 
   factory ProductToBeDiscussed.fromJson(Map<String, dynamic> json) {
     return ProductToBeDiscussed(
-      productId: json['productId'] ?? 0,
-      productName: json['productName'] ?? '',
+      productId: json['productId'] ?? json['ProductId'] ?? 0,
+      productName: json['productName'] ?? json['ProductName'] ?? '',
     );
   }
 
@@ -327,6 +330,8 @@ class TourPlanDetail {
   final int id;
   final DateTime planDate;
   final int typeOfWorkId;
+  /// Display label from API when present (avoids ID-only resolution for managers).
+  final String? typeOfWorkText;
   final int clusterId;
   final int customerId;
   final int status;
@@ -346,6 +351,7 @@ class TourPlanDetail {
     required this.id,
     required this.planDate,
     required this.typeOfWorkId,
+    this.typeOfWorkText,
     required this.clusterId,
     required this.customerId,
     required this.status,
@@ -371,10 +377,21 @@ class TourPlanDetail {
       return DateTime(1, 1, 1);
     }
 
+    String? readPurposeText() {
+      final dynamic v = json['typeOfWorkText'] ??
+          json['TypeOfWorkText'] ??
+          json['purposeOfVisit'] ??
+          json['PurposeOfVisit'];
+      if (v == null) return null;
+      final String s = v.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
     return TourPlanDetail(
-      id: json['id'] ?? 0,
-      planDate: safeDate(json['planDate']),
-      typeOfWorkId: json['typeOfWorkId'] ?? 0,
+      id: json['id'] ?? json['Id'] ?? 0,
+      planDate: safeDate(json['planDate'] ?? json['PlanDate']),
+      typeOfWorkId: json['typeOfWorkId'] ?? json['TypeOfWorkId'] ?? 0,
+      typeOfWorkText: readPurposeText(),
       clusterId: json['clusterId'] ?? 0,
       customerId: json['customerId'] ?? 0,
       status: json['status'] ?? 0,
@@ -382,14 +399,14 @@ class TourPlanDetail {
       location: json['location'],
       latitude: (json['latitude'] ?? 0).toDouble(),
       longitude: (json['longitude'] ?? 0).toDouble(),
-      samplesToDistribute: json['samplesToDistribute'],
-      productsToDiscuss: json['productsToDiscuss'],
+      samplesToDistribute: json['samplesToDistribute'] ?? json['SamplesToDistribute'],
+      productsToDiscuss: json['productsToDiscuss'] ?? json['ProductsToDiscuss'],
       clusterNames: json['clusterNames'],
       customers: (json['customers'] as List?)
           ?.map((e) => Customer.fromJson(e))
           .toList() ?? [],
       customerType: json['customerType'],
-      productsToBeDiscussed: (json['productsToBeDiscussed'] as List?)
+      productsToBeDiscussed: ((json['productsToBeDiscussed'] ?? json['ProductsToBeDiscussed']) as List?)
           ?.map((e) => ProductToBeDiscussed.fromJson(e))
           .toList(),
       mappedInstruments: json['mappedInstruments'] as List?,
@@ -550,11 +567,19 @@ class TourPlanGetSummaryResponse {
   });
 
   factory TourPlanGetSummaryResponse.fromJson(Map<String, dynamic> json) {
+    int pick(String camel, String pascal) {
+      final dynamic v = json[camel] ?? json[pascal];
+      if (v == null) return 0;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString()) ?? 0;
+    }
+
     return TourPlanGetSummaryResponse(
-      planedDays: json['planedDays'] ?? 0,
-      approvedDays: json['approvedDays'] ?? 0,
-      pendingDays: json['pendingDays'] ?? 0,
-      sentBackDays: json['sentBackDays'] ?? 0,
+      planedDays: pick('planedDays', 'PlanedDays'),
+      approvedDays: pick('approvedDays', 'ApprovedDays'),
+      pendingDays: pick('pendingDays', 'PendingDays'),
+      sentBackDays: pick('sentBackDays', 'SentBackDays'),
     );
   }
 }
@@ -902,6 +927,7 @@ class GetMappedCustomersByEmployeeIdRequest {
   final List<ClusterIdModel>? clusterIds;
   final int? selectedEmployeeId;
   final String? date; // ISO date string or null
+  final String? planDate; // ISO local date-time string or null
   final int? customerTypeId;
 
   GetMappedCustomersByEmployeeIdRequest({
@@ -930,6 +956,7 @@ class GetMappedCustomersByEmployeeIdRequest {
     this.clusterIds,
     this.selectedEmployeeId,
     this.date,
+    this.planDate,
     this.customerTypeId,
   });
 
@@ -960,6 +987,7 @@ class GetMappedCustomersByEmployeeIdRequest {
       'ClusterIds': clusterIds?.map((e) => e.toJson()).toList(),
       'SelectedEmployeeId': selectedEmployeeId,
       'Date': date,
+      'PlanDate': planDate,
       'CustomerTypeId': customerTypeId,
     };
   }
@@ -979,6 +1007,7 @@ class MappedCustomer {
   final String? address;
   final String? contactNumber;
   final String? email;
+  final bool isSelected;
 
   MappedCustomer({
     required this.customerId,
@@ -993,6 +1022,7 @@ class MappedCustomer {
     this.address,
     this.contactNumber,
     this.email,
+    this.isSelected = false,
   });
 
   factory MappedCustomer.fromJson(Map<String, dynamic> json) {
@@ -1018,6 +1048,10 @@ class MappedCustomer {
       address: json['address'] ?? json['Address'],
       contactNumber: json['contactNumber'] ?? json['ContactNumber'] ?? json['phone'],
       email: json['email'] ?? json['Email'],
+      isSelected: json['isSelected'] == true ||
+          json['IsSelected'] == true ||
+          json['isSelected'] == 1 ||
+          json['IsSelected'] == 1,
     );
   }
 

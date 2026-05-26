@@ -15,6 +15,7 @@ class CommonGetAutoRequest {
   final String? searchText;
   final int? item;
   final int? pageType;
+  final String? planDate;
 
   CommonGetAutoRequest({
     required this.commandType,
@@ -32,6 +33,7 @@ class CommonGetAutoRequest {
     this.searchText,
     this.item,
     this.pageType,
+    this.planDate,
   });
 
   Map<String, dynamic> toJson() {
@@ -53,6 +55,7 @@ class CommonGetAutoRequest {
     if (searchText != null) data['SearchText'] = searchText;
     if (item != null) data['Item'] = item;
     if (pageType != null) data['PageType'] = pageType;
+    if (planDate != null) data['PlanDate'] = planDate;
 
     return data;
   }
@@ -1747,6 +1750,7 @@ class CommonDropdownItem {
   final int isReceiptBatchRequired;
   final int displayOrder;
   final bool bonusEnabled;
+  final bool isSelected;
 
   CommonDropdownItem({
     required this.id,
@@ -1812,6 +1816,7 @@ class CommonDropdownItem {
     required this.isReceiptBatchRequired,
     required this.displayOrder,
     this.bonusEnabled = false,
+    this.isSelected = false,
   });
 
   factory CommonDropdownItem.fromJson(Map<String, dynamic> json) {
@@ -1894,6 +1899,10 @@ class CommonDropdownItem {
           json['BonusEnabled'] == true ||
           json['bonusEnabled'] == 1 ||
           json['BonusEnabled'] == 1,
+      isSelected: json['isSelected'] == true ||
+          json['IsSelected'] == true ||
+          json['isSelected'] == 1 ||
+          json['IsSelected'] == 1,
     );
   }
 }

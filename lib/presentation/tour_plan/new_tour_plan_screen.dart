@@ -1092,6 +1092,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                         options: _employeeOptions,
                                         value: _selectedReportingStaff,
                                         hintText: 'Select Reporting Staff',
+                                        enableSearch: true,
                                         onChanged: (v) {
                                           setState(() {
                                             _selectedReportingStaff = v;
@@ -1414,11 +1415,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       final store = getIt<TourPlanStore>();
       final userStore = getIt<UserDetailStore>();
-      final DateTime selectedPlanDate = _tourPlanDate;
+      final DateTime selectedPlanDate = _toLocalMidnight(_tourPlanDate);
       final String planDateStr =
-          selectedPlanDate.toIso8601String().split('T').first;
+          '${selectedPlanDate.year.toString().padLeft(4, '0')}-${selectedPlanDate.month.toString().padLeft(2, '0')}-${selectedPlanDate.day.toString().padLeft(2, '0')}';
+      final String planDateTimeStr = _formatApiDateTime(selectedPlanDate);
       final DateTime today = DateTime.now();
-      final String todayDateStr = today.toIso8601String().split('T').first;
+      final String todayDateTimeStr = _formatApiDateTime(_toLocalMidnight(today));
 
       // Resolve selected cluster ID (first selected if multiple)
       final int resolvedClusterId = _selectedClusters.isEmpty
@@ -1528,7 +1530,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
           details.add({
             'Id': existingDetailId,
-            'PlanDate': '${planDateStr}T06:30:00.000',
+            'PlanDate': planDateTimeStr,
             'TypeOfWorkId': typeOfWorkId,
             'ClusterId': 0,
             'CustomerId': 0,
@@ -1592,7 +1594,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
           details.add({
             'Id': existingDetailId,
-            'PlanDate': '${planDateStr}T06:30:00.000',
+            'PlanDate': planDateTimeStr,
             'TypeOfWorkId': typeOfWorkId,
             'ClusterId': clusterId,
             'CustomerId': customerId,
@@ -1688,7 +1690,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'Active': false,
         'UserId': userId,
         'EmployeeId': employeeId,
-        'Date': '${todayDateStr}T06:30:00.000',
+        'Date': todayDateTimeStr,
         'Territory': "",
         'Cluster': "",
         'ClusterId': null,
@@ -1715,7 +1717,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         'EmployeeName': employeeName,
         'Designation': "",
         'StatusText': "",
-        'PlanDate': '${planDateStr}T06:30:00.000',
+        'PlanDate': planDateTimeStr,
         'CustomerId': 0,
         'CustomerName': "",
         'Clusters': shouldSendAvailableHeaderDefaults
@@ -2090,6 +2092,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     return '${d.day.toString().padLeft(2, '0')}-${months[d.month - 1]}-${d.year}';
   }
 
+  DateTime _toLocalMidnight(DateTime date) {
+    final DateTime localDate = date.toLocal();
+    return DateTime(localDate.year, localDate.month, localDate.day);
+  }
+
+  String _formatApiDateTime(DateTime dateTime) {
+    final String y = dateTime.year.toString().padLeft(4, '0');
+    final String m = dateTime.month.toString().padLeft(2, '0');
+    final String d = dateTime.day.toString().padLeft(2, '0');
+    final String hh = dateTime.hour.toString().padLeft(2, '0');
+    final String mm = dateTime.minute.toString().padLeft(2, '0');
+    final String ss = dateTime.second.toString().padLeft(2, '0');
+    final String ms = dateTime.millisecond.toString().padLeft(3, '0');
+    return '$y-$m-${d}T$hh:$mm:$ss.$ms';
+  }
+
   void _showSnack(String message, {Color backgroundColor = Colors.orange}) {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -2385,10 +2403,17 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
       // At this point, employeeIdNullable is guaranteed to be non-null
       final int employeeId = employeeIdNullable!;
+      final String planDateTimeStr =
+          _formatApiDateTime(_toLocalMidnight(_tourPlanDate));
       final List<CommonDropdownItem> items = await repo
-          .getClusterList(countryId, employeeId)
+          .getClusterList(countryId, employeeId, planDate: planDateTimeStr)
           .timeout(const Duration(seconds: 15));
       final Set<String> clusters = items
+          .map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim())
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      final Set<String> preselectedClusters = items
+          .where((e) => e.isSelected)
           .map((e) => (e.text.isNotEmpty ? e.text : e.cityName).trim())
           .where((s) => s.isNotEmpty)
           .toSet();
@@ -2401,6 +2426,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             } else {
               _clusters = {..._clusters, ...clusters}.toList();
             }
+            _selectedClusters = {..._selectedClusters, ...preselectedClusters};
+            _clusterError = null;
             for (final item in items) {
               final String key =
                   (item.text.isNotEmpty ? item.text : item.cityName).trim();
@@ -2415,6 +2442,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           } else {
             _clusters = {..._clusters, ...clusters}.toList();
           }
+          _selectedClusters = {..._selectedClusters, ...preselectedClusters};
           for (final item in items) {
             final String key =
                 (item.text.isNotEmpty ? item.text : item.cityName).trim();
@@ -2522,10 +2550,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         print(
             'NewTourPlanScreen: [PurposeOfVisit] API returned ${items.length} items');
 
-        final works = items
-            .map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim())
-            .where((s) => s.isNotEmpty)
-            .toSet();
+        final Map<String, String> normalizedPurposeToDisplay =
+            <String, String>{};
+        for (final e in items) {
+          final String raw = (e.text.isNotEmpty ? e.text : e.typeText).trim();
+          if (raw.isEmpty) continue;
+          normalizedPurposeToDisplay.putIfAbsent(raw.toLowerCase(), () => raw);
+        }
+        final Set<String> works = normalizedPurposeToDisplay.values.toSet();
         final Set<String> filteredWorks = _isPocRep
             ? works
                 .where(
@@ -2535,7 +2567,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (filteredWorks.isNotEmpty) {
           if (mounted) {
             setState(() {
-              _purposeOptions = filteredWorks.toList();
+              final List<String> dedupedPurposeOptions = filteredWorks.toList()
+                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+              _purposeOptions = dedupedPurposeOptions;
               _typeOfWorkNameToId.clear();
               _typeOfWorkIdToName.clear();
               // map names to ids for submit
@@ -2805,17 +2839,23 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             setState(() {
               _customerTypeOptions.clear();
               _customerTypeNameToId.clear();
-              
+              final Set<String> seenCustomerTypes = <String>{};
+
               for (final item in items) {
                 final String typeName =
                     (item.text.isNotEmpty ? item.text : item.name).trim();
-                if (typeName.isNotEmpty) {
-                    _customerTypeOptions.add(typeName);
-                    _customerTypeNameToId[typeName] = item.id;
-                    print(
-                        'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
+                final String normalizedTypeName = typeName.toLowerCase();
+                if (typeName.isNotEmpty &&
+                    !seenCustomerTypes.contains(normalizedTypeName)) {
+                  seenCustomerTypes.add(normalizedTypeName);
+                  _customerTypeOptions.add(typeName);
+                  _customerTypeNameToId[typeName] = item.id;
+                  print(
+                      'NewTourPlanScreen: [CustomerType] Added: "$typeName" -> ${item.id}');
                 }
               }
+              _customerTypeOptions
+                  .sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
             });
           }
           print(
@@ -2935,8 +2975,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
       }
 
-      // If no clusters are selected OR no customer type is selected, clear all customers
-      if (selectedClusterIds.isEmpty || customerTypeId == null) {
+      // Cluster selection is mandatory for mapped customer API.
+      // CustomerTypeId can be sent as 0 when user has not chosen a specific type.
+      if (selectedClusterIds.isEmpty) {
         print(
             'NewTourPlanScreen: [Customers] Cluster or CustomerType not selected - clearing customers');
         print(
@@ -2962,8 +3003,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         return;
       }
 
-      // Use current plan date (yyyy-MM-dd)
-      final String dateStr = _tourPlanDate.toIso8601String().split('T').first;
+      final DateTime localPlanDate = _toLocalMidnight(_tourPlanDate);
+      final String dateStr =
+          '${localPlanDate.year.toString().padLeft(4, '0')}-${localPlanDate.month.toString().padLeft(2, '0')}-${localPlanDate.day.toString().padLeft(2, '0')}';
+      final String planDateTimeStr = _formatApiDateTime(localPlanDate);
 
       final req = GetMappedCustomersByEmployeeIdRequest(
         searchText: null,
@@ -2991,7 +3034,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         clusterIds: selectedClusterIds,
         selectedEmployeeId: selectedEmployeeIdForRequest,
         date: dateStr,
-        customerTypeId: customerTypeId,
+        planDate: planDateTimeStr,
+        customerTypeId: customerTypeId ?? 0,
       );
       print('NewTourPlanScreen: [Customers] Request body => ${req.toJson()}');
       final res = await repo
@@ -3038,10 +3082,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           _customerIdToName.clear();
           _customerNameToClusterName.clear();
 
+          final Set<String> preselectedCustomers = <String>{};
+
           // Store customers and update cluster mapping from API response
           final Set<String> clusterNamesFromApi = {};
           for (final mc in res.customers) {
             _customerOptions.add(mc.customerName);
+            if (mc.isSelected) {
+              preselectedCustomers.add(mc.customerName);
+            }
             _customerNameToId[mc.customerName] = mc.customerId;
             _customerIdToName[mc.customerId] = mc.customerName;
             // Cluster/city label for this customer:
@@ -3180,6 +3229,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                     .toSet();
               }
             }
+          }
+          if (widget.tourPlanToEdit == null &&
+              preselectedCustomers.isNotEmpty &&
+              _calls.isNotEmpty) {
+            _calls.first.customers = {
+              ..._calls.first.customers,
+              ...preselectedCustomers
+            };
           }
           _syncCallErrorsLength();
           _updateAutoSelectedClusters();
@@ -4223,13 +4280,15 @@ class _SingleSelectDropdown extends StatefulWidget {
       required this.onChanged,
       this.hintText,
       this.isLoading = false,
-      this.isEnabled = true});
+      this.isEnabled = true,
+      this.enableSearch = false});
   final List<String> options;
   final String? value;
   final ValueChanged<String?> onChanged;
   final String? hintText;
   final bool isLoading;
   final bool isEnabled;
+  final bool? enableSearch;
 
   @override
   State<_SingleSelectDropdown> createState() => _SingleSelectDropdownState();
@@ -4238,6 +4297,8 @@ class _SingleSelectDropdown extends StatefulWidget {
 class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
   final LayerLink _link = LayerLink();
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode();
+  final TextEditingController _searchCtrl = TextEditingController();
   OverlayEntry? _entry;
   String? _value;
 
@@ -4245,6 +4306,8 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
   void dispose() {
     _removeOverlay();
     _focusNode.dispose();
+    _searchFocusNode.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -4254,6 +4317,7 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
     _value = widget.value;
     // Prevent the field from requesting focus to avoid keyboard
     _focusNode.canRequestFocus = false;
+    _searchCtrl.addListener(_onSearchChanged);
   }
 
   @override
@@ -4262,6 +4326,25 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
     if (widget.value != _value) {
       _value = widget.value;
     }
+    final bool enableSearch = widget.enableSearch ?? false;
+    final bool oldEnableSearch = oldWidget.enableSearch ?? false;
+    if (!enableSearch && oldEnableSearch) {
+      _searchCtrl.clear();
+    }
+  }
+
+  void _onSearchChanged() {
+    if (_entry != null) {
+      _entry!.markNeedsBuild();
+    }
+  }
+
+  List<String> _filteredOptions() {
+    final query = _searchCtrl.text.trim().toLowerCase();
+    if (query.isEmpty) return widget.options;
+    return widget.options
+        .where((option) => option.toLowerCase().contains(query))
+        .toList();
   }
 
   @override
@@ -4346,7 +4429,6 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
     final Size size = box.size;
     _entry = OverlayEntry(
       builder: (context) {
-        final theme = Theme.of(context);
         return Stack(
           children: [
             Positioned.fill(
@@ -4374,87 +4456,125 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
                   ),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 320),
-                    child: widget.options.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  size: 20,
-                                  color: Colors.grey.shade600,
+                    child: Builder(builder: (context) {
+                      final filteredOptions = _filteredOptions();
+                      final showSearch =
+                          (widget.enableSearch ?? false) &&
+                              widget.options.isNotEmpty;
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (showSearch)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                              child: TextFormField(
+                                controller: _searchCtrl,
+                                focusNode: _searchFocusNode,
+                                textInputAction: TextInputAction.search,
+                                decoration: InputDecoration(
+                                  hintText: 'Search...',
+                                  prefixIcon: const Icon(Icons.search),
+                                  suffixIcon: _searchCtrl.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear),
+                                          onPressed: _searchCtrl.clear,
+                                        )
+                                      : null,
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'No data found',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 12),
-                            itemCount: widget.options.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 6),
-                            itemBuilder: (context, i) {
-                              final opt = widget.options[i];
-                              final selected = opt == _value;
-                              return InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  _value = opt;
-                                  widget.onChanged(opt);
-                                  setState(() {});
-                                  _removeOverlay();
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 12),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 20,
-                                        height: 20,
-                                        decoration: BoxDecoration(
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                          border: Border.all(
-                                            color: selected
-                                                ? const Color(0xFF4db1b3)
-                                                : Colors.black.withOpacity(.35),
-                                            width: 1.4,
-                                          ),
-                                          color: selected
-                                              ? const Color(0xFF4db1b3)
-                                              : Colors.transparent,
+                          Expanded(
+                            child: filteredOptions.isEmpty
+                                ? Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: 20,
+                                          color: Colors.grey.shade600,
                                         ),
-                                        child: selected
-                                            ? const Icon(Icons.check,
-                                                size: 16, color: Colors.white)
-                                            : null,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          opt,
-                                          style: GoogleFonts.inter(
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          widget.options.isEmpty
+                                              ? 'No data found'
+                                              : 'No matching results',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
                                             fontSize: 14,
-                                            fontWeight: FontWeight.w500,
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 12),
+                                    itemCount: filteredOptions.length,
+                                    separatorBuilder: (_, __) =>
+                                        const SizedBox(height: 6),
+                                    itemBuilder: (context, i) {
+                                      final opt = filteredOptions[i];
+                                      final selected = opt == _value;
+                                      return InkWell(
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () {
+                                          _value = opt;
+                                          widget.onChanged(opt);
+                                          setState(() {});
+                                          _removeOverlay();
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 12),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 20,
+                                                height: 20,
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                    color: selected
+                                                        ? const Color(
+                                                            0xFF4db1b3)
+                                                        : Colors.black
+                                                            .withOpacity(.35),
+                                                    width: 1.4,
+                                                  ),
+                                                  color: selected
+                                                      ? const Color(0xFF4db1b3)
+                                                      : Colors.transparent,
+                                                ),
+                                                child: selected
+                                                    ? const Icon(Icons.check,
+                                                        size: 16,
+                                                        color: Colors.white)
+                                                    : null,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  opt,
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                ),
-                              );
-                            },
                           ),
+                        ],
+                      );
+                    }),
                   ),
                 ),
               ),
@@ -4482,6 +4602,8 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
       _sharedOpenOverlays.remove(_entry);
       _entry = null;
     }
+    _searchCtrl.clear();
+    _searchFocusNode.unfocus();
     _focusNode.unfocus();
   }
 }

@@ -284,6 +284,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     });
   }
 
+  // Sample Issue(Customer) flow should not expose store selectors in UI.
+  bool get _hideStoreFields => true;
+
   @override
   void dispose() {
     _referenceCtrl.dispose();
@@ -1571,7 +1574,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        _LabeledField(
+                        if (!_hideStoreFields) ...[
+                          _LabeledField(
                           label: 'From Store',
                           required: true,
                           errorText: _fromStoreError,
@@ -1636,9 +1640,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                                         _handleFromStoreChange(value);
                                       },
                                     ),
-                        ),
-                        const SizedBox(height: 20),
-                        _LabeledField(
+                          ),
+                          const SizedBox(height: 20),
+                          _LabeledField(
                           label: 'To Store',
                           required: true,
                           errorText: _toStoreError,
@@ -1703,8 +1707,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                                         _handleToStoreChange(value);
                                       },
                                     ),
-                        ),
-                        const SizedBox(height: 20),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
                         _LabeledField(
                           label: 'Reference / Remarks',
                           hintText:
@@ -1996,8 +2001,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                                 },
                               ),
                   ),
-                  const SizedBox(height: 20),
-                  _LabeledField(
+                  if (!_hideStoreFields) ...[
+                    const SizedBox(height: 20),
+                    _LabeledField(
                     label: 'From Store',
                     required: true,
                     errorText: _fromStoreError,
@@ -2060,9 +2066,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                                   _handleFromStoreChange(value);
                                 },
                               ),
-                  ),
-                  const SizedBox(height: 20),
-                  _LabeledField(
+                    ),
+                    const SizedBox(height: 20),
+                    _LabeledField(
                     label: 'To Store',
                     required: true,
                     errorText: _toStoreError,
@@ -2125,8 +2131,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                                   _handleToStoreChange(value);
                                 },
                               ),
-                  ),
-                  const SizedBox(height: 20),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                   _LabeledField(
                     label: 'Reference / Remarks',
                     hintText: 'Optional: PO number, ticket ID, or remarks',
@@ -4037,12 +4044,14 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       missingFields.add('Issue To');
     }
 
-    if (_fromStore == null) {
-      missingFields.add('From Store');
-    }
+    if (!_hideStoreFields) {
+      if (_fromStore == null) {
+        missingFields.add('From Store');
+      }
 
-    if (_toStore == null) {
-      missingFields.add('To Store');
+      if (_toStore == null) {
+        missingFields.add('To Store');
+      }
     }
 
     // Convert _itemDetails to _items for validation
@@ -4100,7 +4109,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
 
     // Validate store same check
-    if (_fromStore != null && _toStore != null && _fromStore == _toStore) {
+    if (!_hideStoreFields &&
+        _fromStore != null &&
+        _toStore != null &&
+        _fromStore == _toStore) {
       _showStoreSameDialog();
       setState(() {
         _fromStoreError = 'From Store and To Store cannot be same';
@@ -4121,7 +4133,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
 
     // Validate store same check
-    if (_fromStore != null && _toStore != null && _fromStore == _toStore) {
+    if (!_hideStoreFields &&
+        _fromStore != null &&
+        _toStore != null &&
+        _fromStore == _toStore) {
       _showStoreSameDialog();
       setState(() {
         _fromStoreError = 'From Store and To Store cannot be same';
@@ -4301,28 +4316,30 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       isValid = false;
     }
 
-    if (_fromStore == null) {
-      setState(() {
-        _fromStoreError = 'This field is required';
-      });
-      isValid = false;
-    }
+    if (!_hideStoreFields) {
+      if (_fromStore == null) {
+        setState(() {
+          _fromStoreError = 'This field is required';
+        });
+        isValid = false;
+      }
 
-    if (_toStore == null) {
-      setState(() {
-        _toStoreError = 'This field is required';
-      });
-      isValid = false;
-    }
+      if (_toStore == null) {
+        setState(() {
+          _toStoreError = 'This field is required';
+        });
+        isValid = false;
+      }
 
-    // Validate that From Store and To Store are not the same
-    if (_fromStore != null && _toStore != null && _fromStore == _toStore) {
-      _showStoreSameDialog();
-      setState(() {
-        _fromStoreError = 'From Store and To Store cannot be same';
-        _toStoreError = 'From Store and To Store cannot be same';
-      });
-      isValid = false;
+      // Validate that From Store and To Store are not the same
+      if (_fromStore != null && _toStore != null && _fromStore == _toStore) {
+        _showStoreSameDialog();
+        setState(() {
+          _fromStoreError = 'From Store and To Store cannot be same';
+          _toStoreError = 'From Store and To Store cannot be same';
+        });
+        isValid = false;
+      }
     }
 
     if (_items.isEmpty) {

@@ -1995,43 +1995,47 @@ class _TourPlanScreenState extends State<TourPlanScreen>
   }
 
   String? _resolvePurposeOfVisit(TourPlanItem item) {
-    final detail =
-        (item.tourPlanDetails != null && item.tourPlanDetails!.isNotEmpty)
-            ? item.tourPlanDetails!.first
-            : null;
-    if (detail != null) {
-      final String? mapped = _typeOfWorkIdToName[detail.typeOfWorkId];
-      if (mapped != null && mapped.isNotEmpty) return mapped;
-      final String? remarks = detail.remarks?.trim();
-      if (remarks != null && remarks.isNotEmpty) return remarks;
-      if (detail.typeOfWorkId > 0) {
-        return 'Type of Work ${detail.typeOfWorkId}';
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details != null) {
+      for (final TourPlanDetail d in details) {
+        if (d.typeOfWorkId > 0) {
+          final String? mapped = _typeOfWorkIdToName[d.typeOfWorkId];
+          if (mapped != null && mapped.isNotEmpty) return mapped;
+          return 'Purpose (ID ${d.typeOfWorkId})';
+        }
       }
     }
     final String? objective = item.objective?.trim();
     if (objective != null && objective.isNotEmpty) return objective;
     final String? planType = item.tourPlanType?.trim();
-    if (planType != null && planType.isNotEmpty && planType != 'TP') {
+    if (planType != null &&
+        planType.isNotEmpty &&
+        planType.toUpperCase() != 'TP') {
       return planType;
     }
     return null;
   }
 
   String? _resolveDesignation(TourPlanItem item) {
+    final String? fromItem = item.designation?.trim();
+    if (fromItem != null && fromItem.isNotEmpty) return fromItem;
+
     final String? byEmployeeName = item.employeeName != null
         ? _employeeNameToDesignation[item.employeeName!.trim()]
         : null;
-    if (byEmployeeName != null && byEmployeeName.isNotEmpty) return byEmployeeName;
-    final String? byEmployeeId = _employeeIdToDesignation[item.employeeId];
-    if (byEmployeeId != null && byEmployeeId.isNotEmpty) return byEmployeeId;
-    final String? raw = item.designation?.trim();
-    if (raw != null &&
-        raw.isNotEmpty &&
-        raw.toLowerCase() != 'others new') {
-      return raw;
+    if (byEmployeeName != null && byEmployeeName.trim().isNotEmpty) {
+      return byEmployeeName.trim();
     }
-    final String serviceArea = (_userDetailStore.userDetail?.serviceArea ?? '').trim();
+
+    final String? byEmployeeId = _employeeIdToDesignation[item.employeeId];
+    if (byEmployeeId != null && byEmployeeId.trim().isNotEmpty) {
+      return byEmployeeId.trim();
+    }
+
+    final String serviceArea =
+        (_userDetailStore.userDetail?.serviceArea ?? '').trim();
     if (serviceArea.isNotEmpty) return serviceArea;
+
     return null;
   }
 
@@ -2123,10 +2127,14 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                   (item.employeeName.isNotEmpty ? item.employeeName : item.text)
                       .trim();
               if (key.isNotEmpty) {
+                print(
+                    'TourPlanScreen: [EmployeeList API] id=${item.id}, name="$key", designationRaw="${item.designation}"');
                 _employeeNameToId[key] = item.id;
                 if (item.designation.trim().isNotEmpty) {
                   _employeeNameToDesignation[key] = item.designation.trim();
                   _employeeIdToDesignation[item.id] = item.designation.trim();
+                  print(
+                      'TourPlanScreen: [EmployeeList Map] id=${item.id}, name="$key", designationMapped="${item.designation.trim()}"');
                 }
                 // If this employee's id matches the employeeId used in API call, auto-select it
                 if (finalEmployeeId != null && item.id == finalEmployeeId) {
@@ -2923,9 +2931,28 @@ class _TourPlanScreenState extends State<TourPlanScreen>
         }
       }
     }
-    final clustersDisplay = allClusters.isNotEmpty
+    final String? clustersDisplay = allClusters.isNotEmpty
         ? allClusters.join(', ')
-        : (fullItem.cluster ?? 'N/A');
+        : (fullItem.cluster != null && fullItem.cluster!.trim().isNotEmpty
+            ? fullItem.cluster!.trim()
+            : null);
+
+    String? detailLocationLine;
+    if (fullItem.tourPlanDetails != null) {
+      for (final TourPlanDetail detail in fullItem.tourPlanDetails!) {
+        final String loc = (detail.location ?? '').trim();
+        if (loc.isNotEmpty && loc != '-') {
+          detailLocationLine = loc;
+          break;
+        }
+      }
+    }
+    final bool hasTerritoryLine = fullItem.territory != null &&
+        fullItem.territory!.trim().isNotEmpty;
+    final bool showLocationDetailsPanel =
+        (clustersDisplay != null && clustersDisplay.isNotEmpty) ||
+            detailLocationLine != null ||
+            hasTerritoryLine;
 
     // Collect all products from productsToBeDiscussed arrays
     List<String> allProducts = <String>[];
@@ -3197,6 +3224,15 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               : null);
                   final String? employeeDesignation = _resolveDesignation(item);
                   final String? purposeOfVisit = _resolvePurposeOfVisit(item);
+                  final bool showVisitDetailsPanel = shouldShowCustomer ||
+                      (productsDisplay.isNotEmpty &&
+                          productsDisplay != 'N/A') ||
+                      (samplesToDistribute != null &&
+                          samplesToDistribute.isNotEmpty) ||
+                      (purposeOfVisit != null &&
+                          purposeOfVisit.trim().isNotEmpty) ||
+                      (item.tourPlanType != null &&
+                          item.tourPlanType!.trim().isNotEmpty);
 
                   final scrollChild = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3297,8 +3333,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ),
 
                           // Location Details
-                          if (clustersDisplay.isNotEmpty &&
-                              clustersDisplay != 'N/A') ...[
+                          if (showLocationDetailsPanel) ...[
                             Text(
                               'Location Details',
                               style: GoogleFonts.inter(
@@ -3317,12 +3352,23 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                               ),
                               child: Column(
                                 children: [
-                                  _DetailRow(
-                                      'Clusters/Cities', clustersDisplay),
-                                  if (item.territory != null &&
-                                      item.territory!.isNotEmpty) ...[
-                                    SizedBox(height: isTablet ? 6 : 4),
-                                    _DetailRow('Territory', item.territory!),
+                                  if (clustersDisplay != null &&
+                                      clustersDisplay.isNotEmpty)
+                                    _DetailRow(
+                                        'Clusters/Cities', clustersDisplay),
+                                  if (detailLocationLine != null) ...[
+                                    if (clustersDisplay != null &&
+                                        clustersDisplay.isNotEmpty)
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow('Location', detailLocationLine),
+                                  ],
+                                  if (hasTerritoryLine) ...[
+                                    if ((clustersDisplay != null &&
+                                            clustersDisplay.isNotEmpty) ||
+                                        detailLocationLine != null)
+                                      SizedBox(height: isTablet ? 6 : 4),
+                                    _DetailRow(
+                                        'Territory', item.territory!.trim()),
                                   ],
                                 ],
                               ),
@@ -3331,10 +3377,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                           ],
 
                           // Visit Details
-                          if (customerName.isNotEmpty ||
-                              productsDisplay.isNotEmpty ||
-                              samplesToDistribute != null ||
-                              purposeOfVisit != null) ...[
+                          if (showVisitDetailsPanel) ...[
                             Text(
                               'Visit Details',
                               style: GoogleFonts.inter(

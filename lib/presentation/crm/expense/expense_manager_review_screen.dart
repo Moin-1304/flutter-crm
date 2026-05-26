@@ -3525,6 +3525,23 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
     _filteredOptions = widget.options;
     _searchController.addListener(_onSearchChanged);
   }
+
+  @override
+  void didUpdateWidget(covariant _SearchableFilterDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.options != widget.options) {
+      _applyFilter();
+    }
+  }
+
+  void _applyFilter() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredOptions = query.isEmpty
+          ? List<String>.from(widget.options)
+          : widget.options.where((o) => o.toLowerCase().contains(query)).toList();
+    });
+  }
   
   @override
   void dispose() {
@@ -3534,11 +3551,7 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
   }
   
   void _onSearchChanged() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      // Filter options including special options like "All Staff" and "Select All"
-      _filteredOptions = widget.options.where((o) => o.toLowerCase().contains(query)).toList();
-    });
+    _applyFilter();
   }
   
   void _toggleExpanded() {
@@ -3715,6 +3728,8 @@ class _SearchableFilterDropdownState extends State<_SearchableFilterDropdown> {
                           ),
                         )
                       : ListView.separated(
+                          primary: false,
+                          physics: const ClampingScrollPhysics(),
                           padding: EdgeInsets.symmetric(
                             horizontal: widget.isTablet ? 12 : 10,
                             vertical: widget.isTablet ? 8 : 6,

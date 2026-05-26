@@ -68,12 +68,17 @@ class CommonRepositoryImpl implements CommonRepository {
 
   @override
   Future<List<CommonDropdownItem>> getClusterList(
-      int countryId, int employeeId) async {
+      int countryId, int employeeId,
+      {String? planDate}) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
         final commonApi = getIt<CommonApi>();
 
-        final response = await commonApi.getClusterList(countryId, employeeId);
+        final response = await commonApi.getClusterList(
+          countryId,
+          employeeId,
+          planDate: planDate,
+        );
         return response;
       }
     } catch (e) {

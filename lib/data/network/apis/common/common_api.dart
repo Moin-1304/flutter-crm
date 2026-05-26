@@ -85,11 +85,13 @@ class CommonApi {
 
   /// Get Cluster List (CommandType: 279)
   Future<List<CommonDropdownItem>> getClusterList(
-      int countryId, int employeeId) async {
+      int countryId, int employeeId,
+      {String? planDate}) async {
     final request = CommonGetAutoRequest(
       commandType: 279,
       countryId: countryId,
       employeeId: employeeId,
+      planDate: planDate,
     );
     return getAuto(request);
   }

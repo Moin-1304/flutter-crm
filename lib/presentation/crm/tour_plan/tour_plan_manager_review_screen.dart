@@ -31,6 +31,12 @@ class TourPlanManagerReviewScreen extends StatefulWidget {
 }
 
 class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  /// Load all variants when resolving manager detail — IDs may belong to any list.
+  static const List<String> _allPurposeVisitApiTexts = <String>[
+    'Salesrep PurposeVisit',
+    'ServiceEng PurposeVisit',
+    'PocRep-PurposeofVisit',
+  ];
   String? _customer;
   String? _employee;
   String? _status; // Draft/Pending/Approved/Rejected
@@ -56,6 +62,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   final Map<String, String> _employeeNameToDesignation = {};
   final Map<int, String> _employeeIdToDesignation = {};
   final Map<int, String> _typeOfWorkIdToName = {};
+  /// Keys: `"userId::Salesrep PurposeVisit|..."` so we cache per API text set, not only user id.
+  final Set<String> _purposeLookupLoadedKeys = <String>{};
+  bool _genericTypeOfWorkListMerged = false;
 
   // Selection state for bulk operations
   final Set<String> _selectedIds = <String>{};
@@ -103,7 +112,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     _getTourPlanStatusList();
     _loadMappedCustomersByEmployeeId(); // Load customer list using API
     _getEmployeeList(); // Load employee list for filter (Manager's team)
-    _loadPurposeOfVisitLookup();
+    _primePurposeLookupForLoggedInUser();
     // Auto-refresh disabled - removed periodic API calls
   }
 
@@ -526,10 +535,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           },
                         ),
                         const SizedBox(height: 12),
-                        // Calendar with API loading indicator
-                        Observer(
-                  builder: (_) {
-                    return Card(
+                        // Calendar with API loading indicator (Observer inside reads MobX store)
+                        Card(
                       color: Colors.white,
                       margin: EdgeInsets.zero,
                       surfaceTintColor: Colors.transparent,
@@ -617,9 +624,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           ),
                         ],
                       ),
-                    );
-                  },
-                ),
+                    ),
                         const SizedBox(height: 12),
                         // Selected day plans from API (Calendar Item List Data)
                         Observer(builder: (_) {
@@ -904,7 +909,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     final customerName = item.customerName ?? 'Customer ${item.customerId}';
     
     return InkWell(
-      onTap: () => _viewPlanDetails(item),
+      onTap: () {
+        _viewPlanDetails(item);
+      },
       borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: EdgeInsets.only(bottom: isTablet ? 12 : 10),
@@ -1199,47 +1206,106 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     );
   }
 
+  /// Full row from calendar [/List] often omits `tourPlanDetails` and SE header fields — fetch like [NewTourPlanScreen].
+  Future<TourPlanItem> _loadTourPlanHeaderForDetailsSheet(TourPlanItem listItem) async {
+    if (!getIt.isRegistered<TourPlanRepository>()) return listItem;
+    try {
+      int effectiveTourPlanId =
+          listItem.tourPlanId > 0 ? listItem.tourPlanId : listItem.id;
+      final int effectiveId = listItem.id;
+      // Do not pass the manager's UserId — backend filters by TourPlanId/Id; wrong UserId often returns empty.
+      final TourPlanGetResponse response = await getIt<TourPlanRepository>()
+          .getTourPlanDetails(
+            tourPlanId: effectiveTourPlanId,
+            id: effectiveId,
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.items.isEmpty) return listItem;
+      return response.items.first;
+    } catch (e) {
+      print(
+          'TourPlanManagerReviewScreen: getTourPlanDetails failed, using list row: $e');
+      return listItem;
+    }
+  }
+
+  /// CommandType 280 — global type/work IDs (matches [TourPlanScreen] hydration).
+  Future<void> _ensureGenericTypeOfWorkListMerged() async {
+    if (_genericTypeOfWorkListMerged) return;
+    if (!getIt.isRegistered<CommonRepository>()) return;
+    try {
+      final List<CommonDropdownItem> items =
+          await getIt<CommonRepository>().getTypeOfWorkList();
+      final Map<int, String> extra = <int, String>{};
+      for (final CommonDropdownItem dropdownItem in items) {
+        final String label =
+            (dropdownItem.text.isNotEmpty ? dropdownItem.text : dropdownItem.typeText)
+                .trim();
+        if (label.isNotEmpty) {
+          extra.putIfAbsent(dropdownItem.id, () => label);
+        }
+      }
+      if (!mounted || extra.isEmpty) return;
+      _genericTypeOfWorkListMerged = true;
+      setState(() {
+        for (final MapEntry<int, String> e in extra.entries) {
+          _typeOfWorkIdToName.putIfAbsent(e.key, () => e.value);
+        }
+      });
+    } catch (e) {
+      print('TourPlanManagerReviewScreen: getTypeOfWorkList merge failed: $e');
+    }
+  }
+
   /// View detailed information for a tour plan
-  void _viewPlanDetails(TourPlanItem item) {
+  Future<void> _viewPlanDetails(TourPlanItem item) async {
+    final TourPlanItem sheetItem = await _loadTourPlanHeaderForDetailsSheet(item);
+    await _ensureGenericTypeOfWorkListMerged();
+
+    final List<String> purposeTexts =
+        _purposeOrderedTextsForDetailLookup(sheetItem);
+    for (final int uid in _purposeLookupCandidateUserIds(sheetItem)) {
+      await _ensureMergedPurposeLookup(uid, purposeTexts);
+    }
+    if (!mounted) return;
+
     final isTablet = MediaQuery.sizeOf(context).width >= 600;
-    final statusText = _getStatusDisplayText(item);
-    final statusColor = _getStatusColor(item.status);
-    final statusBgColor = _getStatusBackgroundColor(item.status);
-    
+    final int statusCode = _resolveStatusCode(sheetItem, fallbackItem: item);
+    final statusText = _getStatusDisplayText(sheetItem, fallbackItem: item);
+    final statusColor = _getStatusColor(statusCode);
+    final statusBgColor = _getStatusBackgroundColor(statusCode);
+
+    final int effectiveCustomerId = _effectiveTourPlanCustomerId(sheetItem);
+    final bool showCustomerRow = effectiveCustomerId > 0;
+
     // Extract customer name from tourPlanDetails[0].location (format: "CLUSTER - CUSTOMER - CODE")
-    // Example: "ANGURUWELLA - Safeway Pharmaceuticals (Pvt) Ltd - P01304"
     String customerName = '';
-    if (item.tourPlanDetails != null &&
-        item.tourPlanDetails!.isNotEmpty) {
-      final detail = item.tourPlanDetails!.first;
+    if (sheetItem.tourPlanDetails != null &&
+        sheetItem.tourPlanDetails!.isNotEmpty) {
+      final detail = sheetItem.tourPlanDetails!.first;
       if (detail.location != null && detail.location!.contains('-')) {
         final parts = detail.location!.split('-');
         if (parts.length >= 2) {
-          // Customer name is typically the second part (index 1)
-          // But we need to handle cases where customer name itself contains dashes
-          // So we take everything between first and last part
           if (parts.length == 3) {
             customerName = parts[1].trim();
           } else if (parts.length > 3) {
-            // Customer name contains dashes, join all middle parts
             customerName = parts.sublist(1, parts.length - 1).join('-').trim();
           } else {
             customerName = parts[1].trim();
           }
-          print('TourPlanManagerReviewScreen: Extracted customer from location: $customerName');
         }
       }
     }
-    // Fallback to header-level customerName
     if (customerName.isEmpty) {
-      customerName = item.customerName?.trim() ?? '';
+      customerName = sheetItem.customerName?.trim() ?? '';
     }
-    // Last resort fallback
-    if (customerName.isEmpty && item.customerId != null) {
-      customerName = 'Customer ${item.customerId}';
+    if (customerName.isEmpty && showCustomerRow) {
+      customerName = 'Customer $effectiveCustomerId';
     }
-    
-    final customerCode = item.customerId != null ? ' - P${item.customerId.toString().padLeft(5, '0')}' : '';
+
+    final customerCode = showCustomerRow
+        ? ' - P${effectiveCustomerId.toString().padLeft(5, '0')}'
+        : '';
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
@@ -1373,7 +1439,13 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                     padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).padding.bottom + 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _buildTourPlanDetailContent(ctx, item, customerName, customerCode),
+                      children: _buildTourPlanDetailContent(
+                        ctx,
+                        sheetItem,
+                        customerName,
+                        customerCode,
+                        showCustomerRow,
+                      ),
                     ),
                   ),
                 )
@@ -1385,7 +1457,13 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
-                      children: _buildTourPlanDetailContent(ctx, item, customerName, customerCode),
+                      children: _buildTourPlanDetailContent(
+                        ctx,
+                        sheetItem,
+                        customerName,
+                        customerCode,
+                        showCustomerRow,
+                      ),
                     ),
                   ),
                 ),
@@ -1397,11 +1475,14 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (_shouldShowDeleteButton(item)) ...[
+                      if (_shouldShowDeleteButton(
+                        sheetItem,
+                        fallbackItem: item,
+                      )) ...[
                         OutlinedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            _deleteTourPlan(item);
+                            _deleteTourPlan(sheetItem);
                           },
                           icon: const Icon(Icons.delete_outlined, size: 18),
                           label: const Text('Delete'),
@@ -1416,7 +1497,10 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                         const SizedBox(width: 12),
                       ],
                       // Modify Button
-                      if (_shouldShowModifyButton(item))
+                      if (_shouldShowModifyButton(
+                        sheetItem,
+                        fallbackItem: item,
+                      ))
                         OutlinedButton.icon(
                         onPressed: () async {
                           Navigator.of(context).pop(); // Close bottom sheet
@@ -1425,7 +1509,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           // NewTourPlanScreen handles fetching full details in its initState
                           await Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => NewTourPlanScreen(tourPlanToEdit: item),
+                              builder: (_) =>
+                                  NewTourPlanScreen(tourPlanToEdit: sheetItem),
                             ),
                           );
                           
@@ -1473,10 +1558,36 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     }
   }
 
-  List<Widget> _buildTourPlanDetailContent(BuildContext ctx, TourPlanItem item, String customerName, String customerCode) {
+  List<Widget> _buildTourPlanDetailContent(
+    BuildContext ctx,
+    TourPlanItem item,
+    String customerName,
+    String customerCode, [
+    bool? showCustomerRowOverride,
+  ]) {
+    final bool showCustomerRow = showCustomerRowOverride ??
+        (_effectiveTourPlanCustomerId(item) > 0);
     final isTablet = MediaQuery.of(ctx).size.width >= 600;
     final String? employeeDesignation = _resolveEmployeeDesignation(item);
     final String? purposeOfVisit = _resolvePurposeOfVisit(item);
+    final String productsToDiscuss = _productsToDiscussDisplay(item);
+    final String samplesToDistribute = _samplesToDistributeDisplay(item);
+    final String planType = (item.tourPlanType ?? '').trim();
+    final bool hasProducts = productsToDiscuss.isNotEmpty;
+    final bool hasSamples = samplesToDistribute.isNotEmpty;
+    final bool hasPlanType = planType.isNotEmpty;
+    final bool hasPurpose =
+        purposeOfVisit != null && purposeOfVisit.trim().isNotEmpty;
+    final bool seAvailHeader = _planSignalsSuggestServiceEngineer(item);
+    final bool hasDetailRows =
+        item.tourPlanDetails != null && item.tourPlanDetails!.isNotEmpty;
+    final bool showVisitSection = showCustomerRow ||
+        hasProducts ||
+        hasSamples ||
+        hasPurpose ||
+        hasPlanType ||
+        seAvailHeader ||
+        hasDetailRows;
     return [
                     // Employee Information
                     // Get the correct date to check if section should be shown
@@ -1562,8 +1673,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                       },
                     ),
                     
-                    // Location Details
-                    if (item.cluster != null || item.clusters != null || item.territory != null) ...[
+                    // Location Details (only when there is real content)
+                    if (_hasTourPlanLocationContent(item)) ...[
                       Text(
                         'Location Details',
                         style: GoogleFonts.inter(
@@ -1581,24 +1692,15 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
-                          children: [
-                            if (item.clusters != null && item.clusters!.isNotEmpty) ...[
-                              _DetailRow('Clusters', item.clusters!),
-                            ] else if (item.cluster != null && item.cluster!.isNotEmpty) ...[
-                              _DetailRow('Cluster', item.cluster!),
-                            ],
-                            if (item.territory != null && item.territory!.isNotEmpty) ...[
-                              if (item.cluster != null || item.clusters != null) SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Territory', item.territory!),
-                            ],
-                          ],
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _buildTourPlanLocationRows(item, isTablet),
                         ),
                       ),
                       SizedBox(height: isTablet ? 12 : 10),
                     ],
-                    
+
                     // Visit Details
-                    if (customerName.isNotEmpty || item.productsToDiscuss != null || item.samplesToDistribute != null || purposeOfVisit != null) ...[
+                    if (showVisitSection) ...[
                       Text(
                         'Visit Details',
                         style: GoogleFonts.inter(
@@ -1617,31 +1719,52 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                         ),
                         child: Column(
                           children: [
-                            _DetailRow('Customer', '$customerName$customerCode'),
-                            if (item.productsToDiscuss != null && item.productsToDiscuss!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Products to Discuss', item.productsToDiscuss!),
+                            if (showCustomerRow &&
+                                customerName.trim().isNotEmpty) ...[
+                              _DetailRow(
+                                  'Customer', '$customerName$customerCode'),
                             ],
-                            if (item.samplesToDistribute != null && item.samplesToDistribute!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Samples to Distribute', item.samplesToDistribute!),
+                            if (hasProducts) ...[
+                              if (showCustomerRow &&
+                                  customerName.trim().isNotEmpty)
+                                SizedBox(height: isTablet ? 6 : 4),
+                              _DetailRow(
+                                  'Products to Discuss', productsToDiscuss),
                             ],
-                            if (purposeOfVisit != null && purposeOfVisit.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
+                            if (hasSamples) ...[
+                              if ((showCustomerRow &&
+                                      customerName.trim().isNotEmpty) ||
+                                  hasProducts)
+                                SizedBox(height: isTablet ? 6 : 4),
+                              _DetailRow(
+                                  'Samples to Distribute',
+                                  samplesToDistribute),
+                            ],
+                            if (hasPurpose) ...[
+                              if ((showCustomerRow &&
+                                      customerName.trim().isNotEmpty) ||
+                                  hasProducts ||
+                                  hasSamples)
+                                SizedBox(height: isTablet ? 6 : 4),
                               _DetailRow('Purpose of Visit', purposeOfVisit),
                             ],
-                            if (item.tourPlanType != null && item.tourPlanType!.isNotEmpty) ...[
-                              SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Plan Type', item.tourPlanType!),
+                            if (hasPlanType) ...[
+                              if ((showCustomerRow &&
+                                      customerName.trim().isNotEmpty) ||
+                                  hasProducts ||
+                                  hasSamples ||
+                                  hasPurpose)
+                                SizedBox(height: isTablet ? 6 : 4),
+                              _DetailRow('Plan Type', planType),
                             ],
                           ],
                         ),
                       ),
                       SizedBox(height: isTablet ? 12 : 10),
                     ],
-                    
+
                     // Additional Information
-                    if (item.notes != null || item.remarks != null || item.managerComments != null) ...[
+                    if (_hasTourPlanAdditionalInfo(item)) ...[
                       Text(
                         'Additional Information',
                         style: GoogleFonts.inter(
@@ -1660,17 +1783,29 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                         ),
                         child: Column(
                           children: [
-                            if (item.notes != null && item.notes!.isNotEmpty) ...[
-                              _DetailRow('Notes', item.notes!, isMultiline: true),
+                            if (item.notes != null &&
+                                item.notes!.trim().isNotEmpty) ...[
+                              _DetailRow('Notes', item.notes!.trim(),
+                                  isMultiline: true),
                             ],
-                            if (item.remarks != null && item.remarks!.isNotEmpty) ...[
-                              if (item.notes != null && item.notes!.isNotEmpty) SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Remarks', item.remarks!, isMultiline: true),
-                            ],
-                            if (item.managerComments != null && item.managerComments!.isNotEmpty) ...[
-                              if ((item.notes != null && item.notes!.isNotEmpty) || (item.remarks != null && item.remarks!.isNotEmpty))
+                            if (item.remarks != null &&
+                                item.remarks!.trim().isNotEmpty) ...[
+                              if (item.notes != null &&
+                                  item.notes!.trim().isNotEmpty)
                                 SizedBox(height: isTablet ? 6 : 4),
-                              _DetailRow('Manager Comments', item.managerComments!, isMultiline: true),
+                              _DetailRow('Remarks', item.remarks!.trim(),
+                                  isMultiline: true),
+                            ],
+                            if (item.managerComments != null &&
+                                item.managerComments!.trim().isNotEmpty) ...[
+                              if ((item.notes != null &&
+                                      item.notes!.trim().isNotEmpty) ||
+                                  (item.remarks != null &&
+                                      item.remarks!.trim().isNotEmpty))
+                                SizedBox(height: isTablet ? 6 : 4),
+                              _DetailRow('Manager Comments',
+                                  item.managerComments!.trim(),
+                                  isMultiline: true),
                             ],
                           ],
                         ),
@@ -1763,10 +1898,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   /// Delete button should only be visible when status is "Pending" (status == 1 or 2)
   /// Hide delete button if status is rejected (status == 3 or statusId == 3)
   /// If roleCategoryId === 3, only show delete for pending tour plans
-  bool _shouldShowDeleteButton(TourPlanItem item) {
-    // Status IDs: 5=Approved, 4=Sent Back, 3=Rejected, 2=Submitted, 1=Pending, 0=Draft
-    // Get the actual status (check status first, fallback to statusId if status is 0)
-    final int actualStatus = item.status != 0 ? item.status : item.statusId;
+  bool _shouldShowDeleteButton(TourPlanItem item, {TourPlanItem? fallbackItem}) {
+    final int actualStatus = _resolveStatusCode(item, fallbackItem: fallbackItem);
     
     // Hide delete button if status is rejected (status == 3)
     if (actualStatus == 3) return false;
@@ -1789,9 +1922,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   /// Check if modify button should be shown for a tour plan item
   /// Show only for managers (roleCategory == 1) and on approved plans (status == 5)
   /// Hide modify button if status is rejected (status == 3 or statusId == 3)
-  bool _shouldShowModifyButton(TourPlanItem item) {
-    // Get the actual status (check status first, fallback to statusId if status is 0)
-    final int actualStatus = item.status != 0 ? item.status : item.statusId;
+  bool _shouldShowModifyButton(TourPlanItem item, {TourPlanItem? fallbackItem}) {
+    final int actualStatus = _resolveStatusCode(item, fallbackItem: fallbackItem);
     
     // Hide modify button if status is rejected (status == 3)
     if (actualStatus == 3) return false;
@@ -2865,8 +2997,12 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
                 if (item.designation.trim().isNotEmpty) {
-                  _employeeNameToDesignation[key] = item.designation.trim();
-                  _employeeIdToDesignation[item.id] = item.designation.trim();
+                  final String des = item.designation.trim();
+                  _employeeNameToDesignation[key] = des;
+                  _employeeIdToDesignation[item.id] = des;
+                  if (item.value > 0) {
+                    _employeeIdToDesignation[item.value] = des;
+                  }
                 }
                 // If this employee's id matches the employeeId used in API call, auto-select it
                 if (finalEmployeeId != null && item.id == finalEmployeeId) {
@@ -2967,66 +3103,382 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     return userEmployeeId ?? 0;
   }
 
-  Future<void> _loadPurposeOfVisitLookup() async {
+  Future<void> _primePurposeLookupForLoggedInUser() async {
+    final int id = _userDetailStore.userDetail?.id ?? 0;
+    await _ensureMergedPurposeLookup(id, _purposeVisitTextsForLoggedInUser());
+  }
+
+  /// CommandType 337 [UserId]: prefer plan header ids; [NewTourPlanScreen] also passes selected employee id for staff plans.
+  int _purposeUserIdForPlan(TourPlanItem item) {
+    if (item.userId > 0) return item.userId;
+    final int? cb = item.createdBy;
+    if (cb != null && cb > 0) return cb;
+    for (final TourPlanItem other in _store.calendarItemListData) {
+      if (other.userId <= 0) continue;
+      if (item.employeeId > 0 && other.employeeId == item.employeeId) {
+        return other.userId;
+      }
+      if (item.employee > 0 && other.employee == item.employee) {
+        return other.userId;
+      }
+    }
+    return 0;
+  }
+
+  /// Purpose dropdown lists are scoped per login; try plan owner, then employee ids (matches create-tour-plan behaviour).
+  List<int> _purposeLookupCandidateUserIds(TourPlanItem item) {
+    final List<int> ids = <int>[];
+    void add(int id) {
+      if (id > 0 && !ids.contains(id)) ids.add(id);
+    }
+
+    add(_purposeUserIdForPlan(item));
+    add(item.employeeId);
+    add(item.employee);
+    return ids;
+  }
+
+  List<String> _purposeVisitTextsForLoggedInUser() {
+    final ud = _userDetailStore.userDetail;
+    if (ud == null) return ['Salesrep PurposeVisit'];
+    final int repType = ud.repType ?? 0;
+    final int roleCategory = ud.roleCategory;
+    if (repType == 3 && roleCategory == 3) {
+      return ['PocRep-PurposeofVisit'];
+    }
+    if (ud.serviceArea.trim().toLowerCase() == 'service engineer') {
+      return ['ServiceEng PurposeVisit'];
+    }
+    return ['Salesrep PurposeVisit'];
+  }
+
+  /// Prefer team dropdown maps; ignore placeholder header designations ("Others New").
+  String _designationHintForPurposeRouting(TourPlanItem item) {
+    final String? fromMaps = _designationFromEmployeeDropdownMaps(item);
+    if (fromMaps != null && fromMaps.isNotEmpty) return fromMaps;
+
+    final String? fromHeader =
+        _pickResolvedDesignation(item.designation?.trim());
+    if (fromHeader != null) return fromHeader;
+
+    if (_planSignalsSuggestServiceEngineer(item)) {
+      switch ((item.tourPlanType ?? '').trim().toLowerCase()) {
+        case 'warranty services':
+          return 'POC Representative';
+        default:
+          return 'Service Engineer';
+      }
+    }
+
+    return '';
+  }
+
+  /// Same routing as [NewTourPlanScreen] purpose dropdown (which API text to query first).
+  List<String> _purposeVisitTextsForPlan(TourPlanItem item) {
+    final String des = _designationHintForPurposeRouting(item).toLowerCase();
+    if (des.contains('service engineer') || des.contains('service eng')) {
+      return ['ServiceEng PurposeVisit'];
+    }
+    if (des.contains('poc')) {
+      return ['PocRep-PurposeofVisit'];
+    }
+    return ['Salesrep PurposeVisit'];
+  }
+
+  /// Primary purpose list(s) first, then remaining APIs so [typeOfWorkId] resolves regardless of role list.
+  List<String> _purposeOrderedTextsForDetailLookup(TourPlanItem item) {
+    final List<String> primary = _purposeVisitTextsForPlan(item);
+    final List<String> rest = _allPurposeVisitApiTexts
+        .where((String t) => !primary.contains(t))
+        .toList();
+    return <String>[...primary, ...rest];
+  }
+
+  /// Purpose labels: fetch lists for [lookupUserId] (app user id) and given API text keys.
+  Future<void> _ensureMergedPurposeLookup(
+    int lookupUserId,
+    List<String> texts,
+  ) async {
+    if (lookupUserId <= 0 || !getIt.isRegistered<CommonRepository>()) return;
+    final String cacheKey = '$lookupUserId::${texts.join('|')}';
+    if (_purposeLookupLoadedKeys.contains(cacheKey)) return;
+
     try {
       final CommonRepository commonRepo = getIt<CommonRepository>();
-      final userDetail = _userDetailStore.userDetail;
-      final int userId = userDetail?.id ?? 0;
-      if (userId <= 0) return;
-
-      final String serviceArea = (userDetail?.serviceArea ?? '').trim();
-      final String purposeText = serviceArea == 'Service Engineer'
-          ? 'ServiceEng PurposeVisit'
-          : 'Salesrep PurposeVisit';
-
-      final List<CommonDropdownItem> items =
-          await commonRepo.getPurposeOfVisitList(userId, purposeText);
-      if (!mounted || items.isEmpty) return;
-
-      setState(() {
-        for (final item in items) {
-          final String label =
-              (item.text.isNotEmpty ? item.text : item.typeText).trim();
-          if (label.isNotEmpty) {
-            _typeOfWorkIdToName[item.id] = label;
+      final Map<int, String> merged = <int, String>{};
+      for (final text in texts) {
+        try {
+          final List<CommonDropdownItem> items =
+              await commonRepo.getPurposeOfVisitList(lookupUserId, text);
+          for (final dropdownItem in items) {
+            final String label =
+                (dropdownItem.text.isNotEmpty ? dropdownItem.text : dropdownItem.typeText)
+                    .trim();
+            if (label.isNotEmpty) {
+              merged.putIfAbsent(dropdownItem.id, () => label);
+            }
           }
+        } catch (_) {
+          // Best effort per list type.
         }
+      }
+      if (!mounted || merged.isEmpty) return;
+      _purposeLookupLoadedKeys.add(cacheKey);
+      setState(() {
+        _typeOfWorkIdToName.addAll(merged);
       });
     } catch (e) {
-      print('TourPlanManagerReviewScreen: Error loading purpose map: $e');
+      print('TourPlanManagerReviewScreen: Error loading merged purpose map: $e');
     }
   }
 
-  String? _resolveEmployeeDesignation(TourPlanItem item) {
-    final String? mappedById = _employeeIdToDesignation[item.employeeId];
-    if (mappedById != null && mappedById.isNotEmpty) {
-      return mappedById;
+  int _effectiveTourPlanCustomerId(TourPlanItem item) {
+    if (item.tourPlanDetails != null && item.tourPlanDetails!.isNotEmpty) {
+      final int id = item.tourPlanDetails!.first.customerId;
+      if (id > 0) return id;
     }
-    final String? employeeName = item.employeeName?.trim();
-    if (employeeName != null && employeeName.isNotEmpty) {
-      final String? mappedDesignation = _employeeNameToDesignation[employeeName];
-      if (mappedDesignation != null && mappedDesignation.isNotEmpty) {
-        return mappedDesignation;
+    return item.customerId > 0 ? item.customerId : 0;
+  }
+
+  bool _hasTourPlanLocationContent(TourPlanItem item) {
+    bool ne(String? s) => s != null && s.trim().isNotEmpty;
+    if (ne(item.clusters) || ne(item.cluster) || ne(item.territory)) return true;
+    final details = item.tourPlanDetails;
+    if (details == null) return false;
+    for (final TourPlanDetail d in details) {
+      if (ne(d.clusterNames)) return true;
+      final String loc = (d.location ?? '').trim();
+      if (loc.isNotEmpty && loc != '-') return true;
+    }
+    return false;
+  }
+
+  List<Widget> _buildTourPlanLocationRows(
+      TourPlanItem item, bool isTablet) {
+    final List<Widget> rows = <Widget>[];
+    void addGap() {
+      if (rows.isNotEmpty) {
+        rows.add(SizedBox(height: isTablet ? 6 : 4));
       }
     }
-    final String? itemDesignation = item.designation?.trim();
-    if (itemDesignation != null && itemDesignation.isNotEmpty) {
-      return itemDesignation;
+
+    if (item.clusters != null && item.clusters!.trim().isNotEmpty) {
+      rows.add(_DetailRow('Clusters', item.clusters!.trim()));
+    } else if (item.cluster != null && item.cluster!.trim().isNotEmpty) {
+      rows.add(_DetailRow('Cluster', item.cluster!.trim()));
+    }
+
+    final details = item.tourPlanDetails;
+    if (details != null) {
+      for (final TourPlanDetail d in details) {
+        final String cn = (d.clusterNames ?? '').trim();
+        if (cn.isNotEmpty) {
+          addGap();
+          rows.add(_DetailRow('Clusters/Cities', cn));
+          break;
+        }
+      }
+      if (rows.isEmpty) {
+        for (final TourPlanDetail d in details) {
+          final String loc = (d.location ?? '').trim();
+          if (loc.isNotEmpty && loc != '-') {
+            rows.add(_DetailRow('Location', loc));
+            break;
+          }
+        }
+      }
+    }
+
+    if (item.territory != null && item.territory!.trim().isNotEmpty) {
+      addGap();
+      rows.add(_DetailRow('Territory', item.territory!.trim()));
+    }
+    return rows;
+  }
+
+  bool _hasTourPlanAdditionalInfo(TourPlanItem item) {
+    bool ne(String? s) => s != null && s.trim().isNotEmpty;
+    return ne(item.notes) || ne(item.remarks) || ne(item.managerComments);
+  }
+
+  static String _normalizeEmployeeNameKey(String raw) {
+    return raw.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  }
+
+  /// HR / list APIs sometimes return placeholder designations (e.g. "Others New").
+  bool _looksLikePlaceholderDesignation(String raw) {
+    final String t =
+        raw.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    return t == 'others new' ||
+        t == 'other new' ||
+        t == 'othersnew' ||
+        t == 'others' ||
+        t == 'new' ||
+        t == 'n/a' ||
+        t == '-' ||
+        t == 'na';
+  }
+
+  String? _pickResolvedDesignation(String? candidate) {
+    if (candidate == null) return null;
+    final String t = candidate.trim();
+    if (t.isEmpty) return null;
+    if (_looksLikePlaceholderDesignation(t)) return null;
+    return t;
+  }
+
+  String? _designationFromEmployeeDropdownMaps(TourPlanItem item) {
+    final String? employeeName = item.employeeName?.trim();
+    if (employeeName != null && employeeName.isNotEmpty) {
+      final String? direct = _pickResolvedDesignation(
+          _employeeNameToDesignation[employeeName]);
+      if (direct != null) return direct;
+      final String want = _normalizeEmployeeNameKey(employeeName);
+      for (final MapEntry<String, String> e
+          in _employeeNameToDesignation.entries) {
+        if (_normalizeEmployeeNameKey(e.key) == want) {
+          final String? v = _pickResolvedDesignation(e.value);
+          if (v != null) return v;
+        }
+      }
+    }
+
+    final int idKey =
+        item.employeeId > 0 ? item.employeeId : (item.employee > 0 ? item.employee : 0);
+    if (idKey > 0) {
+      final String? mappedById =
+          _pickResolvedDesignation(_employeeIdToDesignation[idKey]);
+      if (mappedById != null) return mappedById;
     }
     return null;
   }
 
-  String? _resolvePurposeOfVisit(TourPlanItem item) {
-    final TourPlanDetail? firstDetail =
-        (item.tourPlanDetails != null && item.tourPlanDetails!.isNotEmpty)
-            ? item.tourPlanDetails!.first
-            : null;
+  bool _anyTourPlanDetailHasProducts(TourPlanItem item) {
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details == null) return false;
+    for (final TourPlanDetail x in details) {
+      if ((x.productsToDiscuss ?? '').trim().isNotEmpty) return true;
+      if (x.productsToBeDiscussed != null &&
+          x.productsToBeDiscussed!.isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-    final String? mappedByType = firstDetail != null
-        ? _typeOfWorkIdToName[firstDetail.typeOfWorkId]
-        : null;
-    if (mappedByType != null && mappedByType.isNotEmpty) {
-      return mappedByType;
+  bool _anyTourPlanDetailHasSamples(TourPlanItem item) {
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details == null) return false;
+    return details.any(
+      (TourPlanDetail x) => (x.samplesToDistribute ?? '').trim().isNotEmpty,
+    );
+  }
+
+  String _productsToDiscussDisplay(TourPlanItem item) {
+    final String header = (item.productsToDiscuss ?? '').trim();
+    if (header.isNotEmpty) return header;
+
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details == null || details.isEmpty) return '';
+    final Set<String> fromDetails = <String>{};
+    final Set<String> namesFromApi = <String>{};
+    int productCount = 0;
+    for (final TourPlanDetail d in details) {
+      final String text = (d.productsToDiscuss ?? '').trim();
+      if (text.isNotEmpty) {
+        fromDetails.add(text);
+      }
+      if (d.productsToBeDiscussed != null && d.productsToBeDiscussed!.isNotEmpty) {
+        productCount += d.productsToBeDiscussed!.length;
+        for (final ProductToBeDiscussed p in d.productsToBeDiscussed!) {
+          final String n = p.productName.trim();
+          if (n.isNotEmpty) {
+            namesFromApi.add(n);
+          }
+        }
+      }
+    }
+    if (namesFromApi.isNotEmpty) return namesFromApi.join(', ');
+    if (fromDetails.isNotEmpty) return fromDetails.join(', ');
+    if (productCount > 0) return '$productCount product(s)';
+    return '';
+  }
+
+  String _samplesToDistributeDisplay(TourPlanItem item) {
+    final String header = (item.samplesToDistribute ?? '').trim();
+    if (header.isNotEmpty) return header;
+
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details == null || details.isEmpty) return '';
+    final Set<String> fromDetails = <String>{};
+    for (final TourPlanDetail d in details) {
+      final String text = (d.samplesToDistribute ?? '').trim();
+      if (text.isNotEmpty) {
+        fromDetails.add(text);
+      }
+    }
+    if (fromDetails.isNotEmpty) return fromDetails.join(', ');
+    return '';
+  }
+
+  /// SE optional-customer rows / POC warranty headers — does not rely on [UserDetail.serviceArea].
+  bool _planSignalsSuggestServiceEngineer(TourPlanItem item) {
+    final String tt = (item.tourPlanType ?? '').trim().toLowerCase();
+    if (tt == 'available' || tt == 'warranty services') return true;
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details == null || details.isEmpty) return false;
+    bool optionalCustomerDetail(TourPlanDetail d) {
+      if (d.customerId > 0) return false;
+      final String collapsed =
+          (d.location ?? '').replaceAll(RegExp(r'\s+'), '');
+      return collapsed.isEmpty ||
+          collapsed == '-' ||
+          collapsed == '–' ||
+          collapsed == '—';
+    }
+    return details.any(
+      (TourPlanDetail d) => optionalCustomerDetail(d) && d.typeOfWorkId > 0,
+    );
+  }
+
+  String? _resolveEmployeeDesignation(TourPlanItem item) {
+    final String? fromMaps = _designationFromEmployeeDropdownMaps(item);
+    if (fromMaps != null) return fromMaps;
+
+    final String? fromItem = _pickResolvedDesignation(item.designation?.trim());
+
+    if (fromItem != null) return fromItem;
+
+    if (!_planSignalsSuggestServiceEngineer(item)) return null;
+
+    switch ((item.tourPlanType ?? '').trim().toLowerCase()) {
+      case 'warranty services':
+        return 'POC Representative';
+      default:
+        return 'Service Engineer';
+    }
+  }
+
+  String? _resolvePurposeOfVisit(TourPlanItem item) {
+    final List<TourPlanDetail>? details = item.tourPlanDetails;
+    if (details != null) {
+      for (final TourPlanDetail d in details) {
+        final String? fromApi = d.typeOfWorkText?.trim();
+        if (fromApi != null && fromApi.isNotEmpty) return fromApi;
+      }
+      for (final TourPlanDetail d in details) {
+        if (d.typeOfWorkId > 0) {
+          final String? mapped = _typeOfWorkIdToName[d.typeOfWorkId];
+          if (mapped != null && mapped.isNotEmpty) return mapped;
+        }
+      }
+    }
+
+    final String? tpEarly = item.tourPlanType?.trim();
+    if (tpEarly != null && tpEarly.isNotEmpty) {
+      final String tl = tpEarly.toLowerCase();
+      if (tl == 'available') return 'Available';
+      if (tl == 'warranty services') return 'Warranty Services';
     }
 
     final String? objective = item.objective?.trim();
@@ -3034,9 +3486,22 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       return objective;
     }
 
-    final String? remarks = firstDetail?.remarks?.trim();
-    if (remarks != null && remarks.isNotEmpty) {
-      return remarks;
+    final String? summary = item.summary?.trim();
+    if (summary != null && summary.isNotEmpty) {
+      return summary;
+    }
+
+    final String? planType = item.tourPlanType?.trim();
+    if (planType != null &&
+        planType.isNotEmpty &&
+        planType.toUpperCase() != 'TP') {
+      return planType;
+    }
+
+    if (_planSignalsSuggestServiceEngineer(item)) {
+      final String tt = (item.tourPlanType ?? '').trim().toLowerCase();
+      if (tt == 'warranty services') return 'Warranty Services';
+      return 'Available';
     }
 
     return null;
@@ -3075,8 +3540,21 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     }
   }
 
-  /// Get status display text from item, using tourPlanStatus field or deriving from status field
-  String _getStatusDisplayText(TourPlanItem item) {
+  int _resolveStatusCode(TourPlanItem item, {TourPlanItem? fallbackItem}) {
+    final List<int> candidates = <int>[
+      item.status,
+      item.statusId,
+      if (fallbackItem != null) fallbackItem.status,
+      if (fallbackItem != null) fallbackItem.statusId,
+    ];
+    for (final int code in candidates) {
+      if (code >= 1 && code <= 5) return code;
+    }
+    return 0;
+  }
+
+  /// Get status display text from item, using tourPlanStatus field or deriving from status code.
+  String _getStatusDisplayText(TourPlanItem item, {TourPlanItem? fallbackItem}) {
     // First try tourPlanStatus field (this is the actual status text from API)
     if (item.tourPlanStatus != null && item.tourPlanStatus!.trim().isNotEmpty) {
       return item.tourPlanStatus!.trim();
@@ -3087,9 +3565,19 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       return item.statusText!.trim();
     }
     
-    // Derive from status field (primary status value)
+    if (fallbackItem != null) {
+      if (fallbackItem.tourPlanStatus != null &&
+          fallbackItem.tourPlanStatus!.trim().isNotEmpty) {
+        return fallbackItem.tourPlanStatus!.trim();
+      }
+      if (fallbackItem.statusText != null &&
+          fallbackItem.statusText!.trim().isNotEmpty) {
+        return fallbackItem.statusText!.trim();
+      }
+    }
+
     // Status IDs: 5=Approved, 4=Sent Back, 3=Rejected, 2=Submitted, 1=Pending, 0=Draft
-    final statusId = item.status != 0 ? item.status : item.statusId;
+    final statusId = _resolveStatusCode(item, fallbackItem: fallbackItem);
     
     switch (statusId) {
       case 5:

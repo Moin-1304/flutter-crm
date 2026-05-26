@@ -4542,6 +4542,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           'DistributerId': null,
           'BizUnit': userSbuId,
           'SubType': 0,
+          'IsFromDCR': 1,
         };
         payload = Map.fromEntries(
           pharmacyRaw.entries.where((e) => e.value != null),

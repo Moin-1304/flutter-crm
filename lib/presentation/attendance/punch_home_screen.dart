@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
@@ -28,10 +29,7 @@ class PunchHomeScreen extends StatefulWidget {
   // Static method to refresh summary data (Monthly Status and Planned vs Visited)
   static Future<void> refreshSummaryData() async {
     if (_currentInstance != null && _currentInstance!.mounted) {
-      print('🔄 [PunchHomeScreen] Refreshing summary data...');
       await _currentInstance!._refreshSummaryData();
-    } else {
-      print('⚠️ [PunchHomeScreen] Cannot refresh: instance is null or not mounted');
     }
   }
 
@@ -749,8 +747,8 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                               const SizedBox(height: 4),
                               Text(
                                 entry.type == _LogType.inn
-                                    ? 'Km In: ${entry.kilometer!.toStringAsFixed(1)}'
-                                    : 'Km Out: ${entry.kilometer!.toStringAsFixed(1)}',
+                                    ? 'Km In: ${_formatKilometer(entry.kilometer!)}'
+                                    : 'Km Out: ${_formatKilometer(entry.kilometer!)}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey[600],
@@ -1309,6 +1307,11 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                   TextFormField(
                     controller: kilometerController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,2}$'),
+                      ),
+                    ],
                     autofocus: true,
                     style: TextStyle(
                       fontSize: 16,
@@ -1356,6 +1359,11 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                     TextFormField(
                       controller: privateKmController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: <TextInputFormatter>[
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d{0,2}$'),
+                        ),
+                      ],
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -1652,30 +1660,30 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       // Do not block pull-to-refresh on GPS/network geocoding delays.
       _loadLocation();
     }
-    _loadPlannedVsVisitedSummary();
-    _loadMonthlyStatusSummary();
+    await Future.wait([
+      _loadPlannedVsVisitedSummary(force: true),
+      _loadMonthlyStatusSummary(force: true),
+    ]);
     if (mounted) setState(() {});
   }
 
   /// Refresh only summary data (Monthly Status and Planned vs Visited)
   Future<void> _refreshSummaryData() async {
     if (!mounted) return;
-    print('🔄 [PunchHomeScreen] Starting summary data refresh...');
     final List<Future<void>> refreshTasks = [
-      _loadMonthlyStatusSummary(),
-      _loadPlannedVsVisitedSummary(),
+      _loadMonthlyStatusSummary(force: true),
+      _loadPlannedVsVisitedSummary(force: true),
     ];
     await Future.wait(refreshTasks);
     if (mounted) {
       setState(() {});
-      print('✅ [PunchHomeScreen] Summary data refresh completed');
     }
   }
 
   /// Load Planned vs Visited Summary from TourPlanDashboard API
-  Future<void> _loadPlannedVsVisitedSummary() async {
-    if (_isLoadingPlannedVsVisited) return;
-    
+  Future<void> _loadPlannedVsVisitedSummary({bool force = false}) async {
+    if (!force && _isLoadingPlannedVsVisited) return;
+
     setState(() {
       _isLoadingPlannedVsVisited = true;
     });
@@ -1724,7 +1732,6 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         });
       }
     } catch (e) {
-      print('Error loading planned vs visited summary: $e');
       if (mounted) {
         setState(() {
           _isLoadingPlannedVsVisited = false;
@@ -1734,9 +1741,9 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
   }
 
   /// Load Monthly Status Summary
-  Future<void> _loadMonthlyStatusSummary() async {
-    if (_isLoadingMonthlyStatus) return;
-    
+  Future<void> _loadMonthlyStatusSummary({bool force = false}) async {
+    if (!force && _isLoadingMonthlyStatus) return;
+
     setState(() {
       _isLoadingMonthlyStatus = true;
     });
@@ -1751,33 +1758,35 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       }
 
       final now = DateTime.now();
-      final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-      final user = await sharedPrefHelper.getUser();
-      
-      if (user == null) {
-        setState(() {
-          _isLoadingMonthlyStatus = false;
-        });
-        return;
-      }
+      final ud = userDetail!;
+
+      final prefsUser = await getIt<SharedPreferenceHelper>().getUser();
+
+      // Backend uses different keys per endpoint: TourPlanDashboard `UserId` = employee id,
+      // while GetSummary `UserId` matches the logged-in app user (`User.id` from login — not employeeId).
+      // Using employeeId for GetSummary returns all zeros from the API.
+      final int summaryUserId = (prefsUser != null && prefsUser.id > 0)
+          ? prefsUser.id
+          : (ud.userId ?? ud.employeeId);
+      final int bizunit = ud.sbuId > 0 ? ud.sbuId : 1;
 
       // Get tour plan summary using API
       final tourPlanRepo = getIt<TourPlanRepository>();
       final request = TourPlanGetSummaryRequest(
         month: now.month,
         year: now.year,
-        userId: user.id,
-        bizunit: user.sbuId > 0 ? user.sbuId : 1,
+        userId: summaryUserId,
+        bizunit: bizunit,
       );
 
       final summary = await tourPlanRepo.getTourPlanSummary(request);
-      
+
       // Get tour plan entries to calculate leaveDays, notEnteredDays, and rejectedDays
       final plannedEntries = await tourPlanRepo.listMonth(
         month: now,
-        employeeId: userDetail!.employeeId.toString(),
+        employeeId: ud.employeeId.toString(),
       );
-      
+
       // Calculate additional status counts from entries
       int notEntered = 0;
       int rejected = 0;
@@ -1800,7 +1809,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       
       // Verify employeeId still matches before setting values
       final currentUserDetail = _userDetailStore.userDetail;
-      if (mounted && currentUserDetail?.employeeId == userDetail.employeeId && _currentEmployeeId == userDetail.employeeId) {
+      if (mounted && currentUserDetail?.employeeId == ud.employeeId && _currentEmployeeId == ud.employeeId) {
         setState(() {
           _plannedDays = summary.planedDays;
           _approvedDays = summary.approvedDays;
@@ -1817,7 +1826,6 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         });
       }
     } catch (e) {
-      print('Error loading monthly status summary: $e');
       if (mounted) {
         setState(() {
           _isLoadingMonthlyStatus = false;
@@ -2003,6 +2011,13 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     final int hour = d.hour % 12 == 0 ? 12 : d.hour % 12;
     final String ampm = d.hour >= 12 ? 'PM' : 'AM';
     return '${hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  static String _formatKilometer(double value) {
+    final String formatted = value.toStringAsFixed(2);
+    if (formatted.endsWith('00')) return value.toStringAsFixed(0);
+    if (formatted.endsWith('0')) return formatted.substring(0, formatted.length - 1);
+    return formatted;
   }
 
   static String _weekday(int w) => const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][w - 1];

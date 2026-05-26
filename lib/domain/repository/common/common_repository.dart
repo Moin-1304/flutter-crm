@@ -6,7 +6,8 @@ abstract class CommonRepository {
   Future<List<CommonDropdownItem>> getTourPlanEmployeeList();
   Future<List<CommonDropdownItem>> getEmployeesReportingTo(int id);
   Future<List<CommonDropdownItem>> getClusterList(
-      int countryId, int employeeId);
+      int countryId, int employeeId,
+      {String? planDate});
   Future<List<CommonDropdownItem>> getTypeOfWorkList();
   Future<List<CommonDropdownItem>> getTourPlanStatusList();
   Future<List<CommonDropdownItem>> getExpenseTypeList();
