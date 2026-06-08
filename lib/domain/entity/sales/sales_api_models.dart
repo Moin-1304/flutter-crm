@@ -1152,6 +1152,8 @@ class SalesOrderSaveRequest {
   final bool? isBonusSO;
   final String? soType;
   final bool? isSalesRepEdit;
+  /// True when logged-in employee is a Sales Rep (RepType == 1).
+  final bool? isSalesRep;
   final bool? vatRegistered;
   final bool? taxInclusive;
   final bool? bonusEnabled;
@@ -1250,6 +1252,7 @@ class SalesOrderSaveRequest {
     this.isBonusSO,
     this.soType,
     this.isSalesRepEdit,
+    this.isSalesRep,
     this.vatRegistered,
     this.taxInclusive,
     this.bonusEnabled,
@@ -1372,6 +1375,7 @@ class SalesOrderSaveRequest {
       'IsBonusSO': isBonusSO ?? false, // Default to false if null
       'SOType': soType,
       'IsSalesRepEdit': isSalesRepEdit,
+      'IsSalesRep': isSalesRep ?? false,
       'VatRegistered': vatRegistered ?? false, // Default to false if null
       'TaxInclusive': taxInclusive ?? false, // Default to false if null
       'BonusEnabled': bonusEnabled ?? false, // Default to false if null

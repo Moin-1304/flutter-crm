@@ -26,7 +26,7 @@ if (flutterVersionName == null) {
 android {
     compileSdkVersion flutter.compileSdkVersion
     namespace "com.iotecksolutions.todoapp"
-    ndkVersion "27.0.12077973"
+    ndkVersion "28.2.13676358"
     lintOptions {
         disable 'InvalidPackage'
     }

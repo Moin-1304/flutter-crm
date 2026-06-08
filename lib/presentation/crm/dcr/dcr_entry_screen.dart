@@ -257,6 +257,17 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   int?
       _loadedTypeOfWorkId; // Store typeOfWorkId from loaded DCR entry for editing
 
+  /// CommandType 337 [Text] values merged for ID/name lookup (incl. tour plan prefill).
+  static const String _dcrPocRepTypeOfVisitText = 'DCR-PocRepType';
+  static const String _tourPlanPocRepPurposeOfVisitText = 'PocRep-PurposeofVisit';
+
+  static const List<String> _allPurposeVisitApiTexts = <String>[
+    'Salesrep PurposeVisit',
+    'ServiceEng PurposeVisit',
+    _dcrPocRepTypeOfVisitText,
+    _tourPlanPocRepPurposeOfVisitText,
+  ];
+
   final TextEditingController _durationCtrl = TextEditingController();
   final TextEditingController _samplesCtrl = TextEditingController();
   final TextEditingController _discussionCtrl = TextEditingController();
@@ -1180,175 +1191,200 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     }
   }
 
-  /// Resolve purpose from typeOfWorkId (extracted as separate method for reusability)
-  void _resolvePurposeFromTypeOfWorkId(int typeOfWorkId) {
-    print(
-        'DcrEntryScreen: Resolving purpose from typeOfWorkId (same as tour plan form)');
+  /// Resolve purpose name from typeOfWorkId.
+  ///
+  /// IMPORTANT: This returns the resolved name only. Applying it to UI state must
+  /// be done by the caller in a single `setState` to avoid nested `setState`
+  /// calls (which can prevent the dropdown value/options from updating reliably).
+  String? _purposeNameForTypeOfWorkId(int typeOfWorkId) {
+    print('DcrEntryScreen: Resolving purpose name from typeOfWorkId');
     print('  - Current purpose: "$_purpose"');
     print('  - typeOfWorkId to resolve: $typeOfWorkId');
     print(
         '  - Source: ${widget.initialTypeOfWorkId == typeOfWorkId ? "initialTypeOfWorkId" : "loadedTypeOfWorkId (edit mode)"}');
     print('  - typeOfWorkIdToName map size: ${_typeOfWorkIdToName.length}');
 
-    // Get purpose name from reverse mapping
     final purposeName = _typeOfWorkIdToName[typeOfWorkId];
-    if (purposeName != null && purposeName.isNotEmpty) {
-      setState(() {
-        // ALWAYS set purpose from API value (ensures it's always correct)
-        final previousPurpose = _purpose;
-        _purpose = purposeName;
-
-        // Increment version to force dropdown rebuild
-        _purposeVersion++;
-
-        // Ensure purpose is in options list
-        if (!_purposeOptions.contains(purposeName)) {
-          _purposeOptions = {..._purposeOptions, purposeName}.toList();
-        }
-
-        // Update the name-to-ID map with correct ID
-        _typeOfWorkNameToId[purposeName] = typeOfWorkId;
-
-        if (previousPurpose != purposeName) {
-          print(
-              'DcrEntryScreen: ✓ Updated purpose from "$previousPurpose" to "$purposeName" (ID: $typeOfWorkId)');
-        } else {
-          print(
-              'DcrEntryScreen: ✓ Purpose already correct: "$purposeName" (ID: $typeOfWorkId)');
-        }
-        print('DcrEntryScreen: Purpose set to: "$_purpose"');
-        print(
-            'DcrEntryScreen: Purpose in options: ${_purposeOptions.contains(purposeName)}');
-        print(
-            'DcrEntryScreen: Purpose version incremented to: $_purposeVersion');
-      });
-    } else {
+    if (purposeName == null || purposeName.trim().isEmpty) {
       print(
           'DcrEntryScreen: ⚠ Could not find purpose name for typeOfWorkId: $typeOfWorkId');
       print(
           'DcrEntryScreen: Available IDs in map: ${_typeOfWorkIdToName.keys.toList()}');
       print(
           'DcrEntryScreen: Available typeOfWork mappings count: ${_typeOfWorkIdToName.length}');
+      return null;
+    }
+    return purposeName.trim();
+  }
+
+  bool _isPocRepUser(UserDetailStore? userStore) {
+    final ud = userStore?.userDetail;
+    return (ud?.repType ?? 0) == 3 && (ud?.roleCategory ?? 0) == 3;
+  }
+
+  /// Dropdown list API [Text] for DCR Type of Visit (CommandType 337).
+  List<String> _purposeVisitTextsForLoggedInUser(UserDetailStore? userStore) {
+    final ud = userStore?.userDetail;
+    if (ud == null) return const ['Salesrep PurposeVisit'];
+    if (_isPocRepUser(userStore)) {
+      return const [_dcrPocRepTypeOfVisitText];
+    }
+    if (ud.serviceArea.trim().toLowerCase() == 'service engineer') {
+      return const ['ServiceEng PurposeVisit'];
+    }
+    return const ['Salesrep PurposeVisit'];
+  }
+
+  void _mergeTypeOfWorkDropdownItem(CommonDropdownItem item) {
+    final String key =
+        (item.text.isNotEmpty ? item.text : item.typeText).trim();
+    if (key.isNotEmpty) {
+      _typeOfWorkNameToId[key] = item.id;
+      _typeOfWorkIdToName[item.id] = key;
     }
   }
 
+  /// Labels shown in the Type of Visit dropdown (role-scoped; POC Rep uses DCR-PocRepType).
+  Set<String> _purposeLabelsForDropdownItems(List<CommonDropdownItem> items) {
+    final Map<String, String> normalized = <String, String>{};
+    for (final item in items) {
+      final String raw =
+          (item.text.isNotEmpty ? item.text : item.typeText).trim();
+      if (raw.isEmpty) continue;
+      normalized.putIfAbsent(raw.toLowerCase(), () => raw);
+    }
+    return normalized.values.toSet();
+  }
+
+  /// Loads purpose/type-of-work lists the same way as [TourPlanScreen._loadPurposeLookups]:
+  /// merge generic + all purpose API texts for ID resolution; show role-primary list in dropdown.
   Future<void> _loadTypeOfWorkList() async {
     try {
-      if (getIt.isRegistered<CommonRepository>()) {
-        final repo = getIt<CommonRepository>();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-            ? getIt<UserDetailStore>()
-            : null;
+      if (!getIt.isRegistered<CommonRepository>()) return;
+      final repo = getIt<CommonRepository>();
+      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>()
+          : null;
 
-        // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
-        int retry = 0;
-        while (userStore?.isUserLoaded != true && retry < 20) {
-          await Future.delayed(const Duration(milliseconds: 300));
-          retry++;
+      // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
+      int retry = 0;
+      while (userStore?.isUserLoaded != true && retry < 20) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        retry++;
+        print(
+            'DcrEntryScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
+      }
+
+      final int? userId = userStore?.userDetail?.id;
+      final String? serviceArea = userStore?.userDetail?.serviceArea;
+      final bool isPocRep = _isPocRepUser(userStore);
+
+      print(
+          'DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea", isPocRep: $isPocRep');
+
+      if (userId == null || userId <= 0) {
+        print('DcrEntryScreen: [PurposeOfVisit] userId invalid, skipping');
+        return;
+      }
+
+      // 1) Generic type-of-work list (TourPlanScreen merges this first)
+      try {
+        final typeItems = await repo.getTypeOfWorkList();
+        for (final item in typeItems) {
+          _mergeTypeOfWorkDropdownItem(item);
+        }
+        print(
+            'DcrEntryScreen: [PurposeOfVisit] getTypeOfWorkList returned ${typeItems.length} items');
+      } catch (e) {
+        print('DcrEntryScreen: [PurposeOfVisit] getTypeOfWorkList failed: $e');
+      }
+
+      // 2) Purpose masters — all API texts for ID lookup (tour plan → DCR prefill)
+      final List<CommonDropdownItem> primaryPurposeItems = <CommonDropdownItem>[];
+      for (final text in _allPurposeVisitApiTexts) {
+        try {
+          final items = await repo.getPurposeOfVisitList(userId, text);
           print(
-              'DcrEntryScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
-        }
-
-        int? userId = userStore?.userDetail?.id;
-        String? serviceArea = userStore?.userDetail?.serviceArea;
-
-        print(
-            'DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea"');
-
-        if (userId == null || userId <= 0) {
-          print('DcrEntryScreen: [PurposeOfVisit] userId invalid, skipping');
-          return;
-        }
-
-        // Determine the text parameter based on serviceArea
-        // Only "Service Engineer" gets "ServiceEng PurposeVisit"
-        // All others (including null/empty serviceArea) get "Salesrep PurposeVisit"
-        String purposeText;
-        final String serviceAreaTrimmed = (serviceArea ?? '').trim();
-
-        if (serviceAreaTrimmed == 'Service Engineer') {
-          purposeText = 'ServiceEng PurposeVisit';
-        } else {
-          // All other users (Sales, Manager, Field Coordinator, empty, null, etc.)
-          purposeText = 'Salesrep PurposeVisit';
-        }
-
-        print(
-            'DcrEntryScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
-        final List<CommonDropdownItem> items =
-            await repo.getPurposeOfVisitList(userId, purposeText);
-        print(
-            'DcrEntryScreen: [PurposeOfVisit] API returned ${items.length} items');
-        final works = items
-            .map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim())
-            .where((s) => s.isNotEmpty)
-            .toSet();
-        if (works.isNotEmpty) {
-          setState(() {
-            _purposeOptions = works.toList();
-            // map names to ids for submit (same logic as tour plan form - line 828-833)
-            for (final item in items) {
-              final String key =
-                  (item.text.isNotEmpty ? item.text : item.typeText).trim();
-              if (key.isNotEmpty) {
-                _typeOfWorkNameToId[key] = item.id;
-                _typeOfWorkIdToName[item.id] =
-                    key; // Reverse mapping for pre-filling
-              }
-            }
-
-            // Resolve purpose names from initialTypeOfWorkId OR loadedTypeOfWorkId (for editing)
-            // ALWAYS resolve purpose from typeOfWorkId to ensure it matches API value
-            final int? typeOfWorkIdToResolve =
-                widget.initialTypeOfWorkId ?? _loadedTypeOfWorkId;
-            if (typeOfWorkIdToResolve != null && typeOfWorkIdToResolve > 0) {
-              _resolvePurposeFromTypeOfWorkId(typeOfWorkIdToResolve);
-            }
-
-            // Fallback: If purpose was set from initialEntry but not in options, try case-insensitive match
-            if (_purpose != null &&
-                _purpose!.trim().isNotEmpty &&
-                !_purposeOptions.contains(_purpose)) {
-              // Try case-insensitive matching
-              bool found = false;
-              String? matchedOption;
-              for (final option in _purposeOptions) {
-                if (_purpose!.trim().toLowerCase() == option.toLowerCase()) {
-                  _purpose = option; // Use exact match from API
-                  found = true;
-                  matchedOption = option;
-                  break;
-                }
-              }
-              print(
-                  'DcrEntryScreen: Case-insensitive purpose match count: ${found ? 1 : 0}');
-              if (matchedOption != null) {
-                print('DcrEntryScreen: Matched option count: 1');
-              }
-              // If still not found, add it to options (fallback)
-              if (!found) {
-                _purposeOptions = {..._purposeOptions, _purpose!}.toList();
-                print(
-                    'DcrEntryScreen: Added purpose to options list (fallback): $_purpose');
-              }
-            }
-
-            print(
-                'DcrEntryScreen: Final purpose value after resolution: "$_purpose"');
-            print(
-                'DcrEntryScreen: Purpose options count: ${_purposeOptions.length}');
-            print(
-                'DcrEntryScreen: Purpose is in options: ${_purpose != null && _purposeOptions.contains(_purpose)}');
-          });
-        } else {
+              'DcrEntryScreen: [PurposeOfVisit] Text="$text" returned ${items.length} items');
+          for (final item in items) {
+            _mergeTypeOfWorkDropdownItem(item);
+          }
+          if (_purposeVisitTextsForLoggedInUser(userStore).contains(text)) {
+            primaryPurposeItems.addAll(items);
+          }
+        } catch (e) {
           print(
-              'DcrEntryScreen: [PurposeOfVisit] No purpose options returned from API');
+              'DcrEntryScreen: [PurposeOfVisit] Text="$text" failed: $e');
         }
       }
+
+      final Set<String> dropdownWorks =
+          _purposeLabelsForDropdownItems(primaryPurposeItems);
+
+      if (!mounted) return;
+
+      if (_typeOfWorkIdToName.isEmpty && dropdownWorks.isEmpty) {
+        print('DcrEntryScreen: [PurposeOfVisit] No purpose options available');
+        if (_purpose == 'Loading...') {
+          setState(() => _purpose = null);
+        }
+        return;
+      }
+
+      setState(() {
+        _purposeOptions = dropdownWorks.toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+        // Resolve purpose from tour plan / edit DCR typeOfWorkId (merged lookup)
+        final int? typeOfWorkIdToResolve =
+            widget.initialTypeOfWorkId ?? _loadedTypeOfWorkId;
+        if (typeOfWorkIdToResolve != null && typeOfWorkIdToResolve > 0) {
+          final resolved = _purposeNameForTypeOfWorkId(typeOfWorkIdToResolve);
+          if (resolved != null) {
+            final previousPurpose = _purpose;
+            _purpose = resolved;
+            _purposeVersion++;
+            if (!_purposeOptions.contains(resolved)) {
+              _purposeOptions = {..._purposeOptions, resolved}.toList();
+            }
+            _typeOfWorkNameToId[resolved] = typeOfWorkIdToResolve;
+            if (previousPurpose != resolved) {
+              print(
+                  'DcrEntryScreen: ✓ Updated purpose from "$previousPurpose" to "$resolved" (ID: $typeOfWorkIdToResolve)');
+            }
+          } else if (_purpose == 'Loading...') {
+            _purpose = null;
+          }
+        }
+
+        // Fallback: match initialEntry.purposeOfVisit to dropdown label
+        if (_purpose != null &&
+            _purpose!.trim().isNotEmpty &&
+            _purpose != 'Loading...' &&
+            !_purposeOptions.contains(_purpose)) {
+          bool found = false;
+          for (final option in _purposeOptions) {
+            if (_purpose!.trim().toLowerCase() == option.toLowerCase()) {
+              _purpose = option;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            _purposeOptions = {..._purposeOptions, _purpose!}.toList();
+          }
+        }
+
+        print(
+            'DcrEntryScreen: [PurposeOfVisit] dropdown options: ${_purposeOptions.length}, id map: ${_typeOfWorkIdToName.length}');
+        print('DcrEntryScreen: Final purpose value: "$_purpose"');
+      });
     } catch (e) {
       print(
           'DcrEntryScreen: [PurposeOfVisit] Error loading purpose of visit: $e');
-      // Silent fail
+      if (mounted && _purpose == 'Loading...') {
+        setState(() => _purpose = null);
+      }
     }
   }
 
@@ -1893,7 +1929,26 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               _typeOfWorkIdToName.isNotEmpty) {
             print(
                 'DcrEntryScreen: Resolving purpose from _loadedTypeOfWorkId after DCR details loaded');
-            _resolvePurposeFromTypeOfWorkId(_loadedTypeOfWorkId!);
+            final resolved = _purposeNameForTypeOfWorkId(_loadedTypeOfWorkId!);
+            if (resolved != null) {
+              setState(() {
+                final previousPurpose = _purpose;
+                _purpose = resolved;
+                _purposeVersion++;
+                if (!_purposeOptions.contains(resolved)) {
+                  _purposeOptions = {..._purposeOptions, resolved}.toList();
+                }
+                _typeOfWorkNameToId[resolved] = _loadedTypeOfWorkId!;
+                if (previousPurpose != resolved) {
+                  print(
+                      'DcrEntryScreen: ✓ Updated purpose from "$previousPurpose" to "$resolved" (ID: $_loadedTypeOfWorkId)');
+                }
+              });
+            } else {
+              if (mounted && _purpose == 'Loading...') {
+                setState(() => _purpose = null);
+              }
+            }
           }
 
           // Log the form field values after setting them

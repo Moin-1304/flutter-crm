@@ -5654,6 +5654,55 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     );
   }
 
+  static const String _sbuIdInvalidErrorMessage =
+      'Something Went Wrong, Please Logout and Login and try again';
+
+  bool _isLoggedInSalesRep() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    return userStore?.userDetail?.repType == 1;
+  }
+
+  int? _resolveDistributorId({int? userSbuIdFromPrefs}) {
+    if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
+      try {
+        final id = _distributorItems
+            .firstWhere((item) => item.text == _selectedDistributor)
+            .id;
+        if (id > 1) return id;
+      } catch (_) {}
+    }
+    if (_distributorItems.isNotEmpty) {
+      final firstId = _distributorItems.first.id;
+      if (firstId > 1) return firstId;
+    }
+    final loadedId = _loadedOrderData?.distributerForId;
+    if (loadedId != null && loadedId > 1) return loadedId;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final userSbuFromStore = userStore?.userDetail?.sbuId;
+    if (userSbuFromStore != null && userSbuFromStore > 1) {
+      return userSbuFromStore;
+    }
+    if (userSbuIdFromPrefs != null && userSbuIdFromPrefs > 1) {
+      return userSbuIdFromPrefs;
+    }
+    return null;
+  }
+
+  bool _validateSbuIdBeforeSave(SalesOrderSaveRequest request) {
+    if (request.sbuId != 1) return true;
+    if (!mounted) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(_sbuIdInvalidErrorMessage),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 4),
+      ),
+    );
+    return false;
+  }
+
   Future<SalesOrderSaveRequest> _buildSaveRequest(int workflowFlag) async {
     // Get user info
     final sharedPrefHelper = getIt<SharedPreferenceHelper>();
@@ -5662,37 +5711,20 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       throw Exception('User not available');
     }
 
-    // Get bizUnit and distributor info
-    final UserDetailStore? userStore =
-        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final bool loggedInIsSalesRep = _isLoggedInSalesRep();
 
-    int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-    int? bizUnitFromPrefs = user.sbuId;
-    final int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
-        ? bizUnitFromStore
-        : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
-            ? bizUnitFromPrefs
-            : 1);
-
-    // Get distributor ID - use selected distributor or fallback to bizUnit
-    int distributorId = bizUnit; // Default to user's bizUnit
-
-    if (_selectedDistributor != null && _distributorItems.isNotEmpty) {
-      try {
-        final distributorItem = _distributorItems.firstWhere(
-          (item) => item.text == _selectedDistributor,
-        );
-        distributorId = distributorItem.id;
-        print('🔵 Selected Distributor ID: $distributorId');
-      } catch (e) {
-        print(
-            'Warning: Selected distributor not found in list, using bizUnit: $e');
-      }
+    final int? resolvedDistributorId =
+        _resolveDistributorId(userSbuIdFromPrefs: user.sbuId);
+    if (resolvedDistributorId == null || resolvedDistributorId <= 1) {
+      throw Exception(_sbuIdInvalidErrorMessage);
     }
 
-    // Backend requires SbuId and Bizunit to be set to DistributorId for workflow/amendment processing
+    final int distributorId = resolvedDistributorId;
     final int finalSbuId = distributorId;
     final int finalBizUnit = distributorId;
+
+    print(
+        '🔵 Resolved Distributor ID: $distributorId (IsSalesRep: $loggedInIsSalesRep)');
 
     // Get customer ID
     final int? customerId = _selectedCustomerCode != null
@@ -6125,7 +6157,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       bonusEnabled: _isBonusEnabled,
       vatRegistered: true, // Should be from customer data
       taxInclusive: false, // Should be from config
-      distributerForId: distributorId, // Important: Pass selected DistributerId
+      distributerForId: distributorId,
+      isSalesRep: loggedInIsSalesRep,
       saleOrderType: saleOrderType,
       isFullyUsed: _loadedOrderData?.isFullyUsed ??
           0, // Use from loaded data or default to 0
@@ -6228,6 +6261,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Build save request
       final request = await _buildSaveRequest(workflowFlag);
+      if (!_validateSbuIdBeforeSave(request)) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
@@ -6302,6 +6339,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         errorMessage = errorString;
       }
 
+      if (errorMessage == _sbuIdInvalidErrorMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(_sbuIdInvalidErrorMessage),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+
       // Show error dialog for better readability
       _showErrorDialog('Error Saving Draft', errorMessage);
     }
@@ -6325,6 +6373,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Build save request with WorkflowFlag = 1
       final request = await _buildSaveRequest(workflowFlag);
+      if (!_validateSbuIdBeforeSave(request)) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
@@ -6386,6 +6438,17 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         errorMessage = errorString.replaceFirst('Exception: ', '');
       } else {
         errorMessage = errorString;
+      }
+
+      if (errorMessage == _sbuIdInvalidErrorMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(_sbuIdInvalidErrorMessage),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
       }
 
       // Show error dialog for better readability
@@ -6473,6 +6536,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
       // Build save request with WorkflowFlag = 0 for Modify
       final request = await _buildSaveRequest(0);
+      if (!_validateSbuIdBeforeSave(request)) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();
@@ -6845,10 +6912,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         isBonusSO: request.isBonusSO,
         soType: request.soType,
         isSalesRepEdit: request.isSalesRepEdit,
+        isSalesRep: request.isSalesRep,
         vatRegistered: request.vatRegistered,
         taxInclusive: request.taxInclusive,
         bonusEnabled: request.bonusEnabled,
       );
+
+      if (!_validateSbuIdBeforeSave(updatedRequest)) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Call save API (upload attachments if any)
       final salesRepository = getIt<SalesRepository>();

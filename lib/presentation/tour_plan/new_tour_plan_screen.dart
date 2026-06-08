@@ -41,9 +41,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   List<String> _clusters = [];
   final Map<String, int> _clusterNameToId = <String, int>{};
 
-  // Customer and purpose options (static defaults + API appended)
-  List<String> _customerOptions = [];
-
   List<String> _purposeOptions = [];
   final Map<String, int> _typeOfWorkNameToId = <String, int>{};
   final Map<int, String> _typeOfWorkIdToName =
@@ -59,14 +56,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       <int, String>{}; // Added: reverse mapping id -> name
   final Map<String, String> _customerNameToClusterName = <String, String>{};
   Set<String> _autoSelectedClusters = <String>{};
+  Set<String> _removedAutoSelectedClusters = <String>{};
 
-  // Customer Type dropdown
+  // Customer Type dropdown options (selected per call)
   List<String> _customerTypeOptions = [];
   final Map<String, int> _customerTypeNameToId = <String, int>{};
-  String? _selectedCustomerType;
-  String? _customerTypeError;
   bool _isLoadingCustomerType = false;
-  bool _isLoadingCustomers = false;
 
   // Employee: for all users shows their name (read-only). For managers this is manager name.
   String? _selectedEmployee;
@@ -579,8 +574,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
     // Extract data from tour plan (don't set state yet)
     Set<String> clustersToSelect = <String>{};
-    String? customerTypeToSelect;
-    int? customerTypeIdFromDetails;
     DateTime? dateToSelect;
 
     // Extract clusters
@@ -596,25 +589,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         tourPlan.clusters != null &&
         tourPlan.clusters!.isNotEmpty) {
       clustersToSelect = _parseClusters(tourPlan.clusters);
-    }
-
-    // Extract customer type
-    if (tourPlan.tourPlanDetails != null &&
-        tourPlan.tourPlanDetails!.isNotEmpty) {
-      customerTypeIdFromDetails = tourPlan.tourPlanDetails!.first.customerType;
-    }
-    if (tourPlan.tourPlanType != null &&
-        tourPlan.tourPlanType!.isNotEmpty &&
-        tourPlan.tourPlanType != 'Select customer type') {
-      customerTypeToSelect = tourPlan.tourPlanType;
-    } else if (tourPlan.statusText != null &&
-        (tourPlan.statusText!.contains('Retailer') ||
-            tourPlan.statusText!.contains('Distributor'))) {
-      if (tourPlan.statusText!.contains('Retailer')) {
-        customerTypeToSelect = 'Retailer';
-      } else if (tourPlan.statusText!.contains('Distributor')) {
-        customerTypeToSelect = 'Distributor';
-      }
     }
 
     // Extract date
@@ -696,30 +670,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     // 4. NOW set selected values after options are loaded
     if (mounted) {
       setState(() {
-        // Set clusters
-        if (clustersToSelect.isNotEmpty) {
-          _selectedClusters = clustersToSelect;
-          print(
-              'NewTourPlanScreen: [Edit] Set clusters: ${_selectedClusters.toList()}');
-        }
-
-        // Set customer type (resolve from ID if needed)
-        if (customerTypeToSelect != null) {
-          _selectedCustomerType = customerTypeToSelect;
-        } else if (customerTypeIdFromDetails != null &&
-            customerTypeIdFromDetails > 0) {
-          // Try to resolve from ID
-          for (final entry in _customerTypeNameToId.entries) {
-            if (entry.value == customerTypeIdFromDetails) {
-              _selectedCustomerType = entry.key;
-              print(
-                  'NewTourPlanScreen: [Edit] Resolved customer type ID $customerTypeIdFromDetails to "$_selectedCustomerType"');
-              break;
-            }
-          }
-        }
+        // Reset any previous selections first so we always reflect the
+        // latest tour-plan payload (e.g. after Send Back update refresh).
+        _selectedClusters = clustersToSelect;
+        _autoSelectedClusters = <String>{};
+        _removedAutoSelectedClusters = <String>{};
+        _clusterError = null;
         print(
-            'NewTourPlanScreen: [Edit] Set customer type: $_selectedCustomerType');
+            'NewTourPlanScreen: [Edit] Set clusters: ${_selectedClusters.toList()}');
       });
     }
 
@@ -769,57 +727,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     }
 
-    // 6. Load customers based on selected clusters and customer type
-    if (_selectedClusters.isNotEmpty && _selectedCustomerType != null) {
-      // Ensure customer type ID mapping is available
-      if (!_customerTypeNameToId.containsKey(_selectedCustomerType!)) {
-        print(
-            'NewTourPlanScreen: [Edit] Customer type mapping not found for "$_selectedCustomerType". Waiting...');
-        int retry = 0;
-        while (!_customerTypeNameToId.containsKey(_selectedCustomerType!) &&
-            retry < 10) {
-          await Future.delayed(const Duration(milliseconds: 300));
-          retry++;
-          // Case-insensitive check
-          final String normalized = _selectedCustomerType!.toLowerCase().trim();
-          for (final entry in _customerTypeNameToId.entries) {
-            if (entry.key.toLowerCase().trim() == normalized) {
-              if (mounted) {
-                setState(() {
-                  _selectedCustomerType = entry.key; // Use exact key from map
-                });
-              }
-              break;
-            }
-          }
-        }
-      }
-
-      print('NewTourPlanScreen: [Edit] Loading customers...');
-      try {
-        await _loadMappedCustomers();
-        print(
-            'NewTourPlanScreen: [Edit] Customers loaded: ${_customerOptions.length} options');
-      } catch (e) {
-        print('NewTourPlanScreen: [Edit] Error loading customers: $e');
-      }
-    } else {
-      print(
-          'NewTourPlanScreen: [Edit] Skipping customer load - Clusters: ${_selectedClusters.isEmpty}, CustomerType: $_selectedCustomerType');
-    }
-
-    // 7. Wait for customers to finish loading before populating calls
-    if (_selectedClusters.isNotEmpty && _selectedCustomerType != null) {
-      int retry = 0;
-      while (_isLoadingCustomers && retry < 20) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        retry++;
-      }
-      print(
-          'NewTourPlanScreen: [Edit] Customers loading complete. Available: ${_customerOptions.length}');
-    }
-
-    // 8. Populate calls from tourPlanDetails
+    // 6. Populate calls from tourPlanDetails (customers loaded per call afterward)
     if (mounted) {
       setState(() {
         _calls.clear();
@@ -834,49 +742,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       for (final detail in tourPlan.tourPlanDetails!) {
         print('  Call Detail:');
         print('    - customerId: ${detail.customerId}');
+        print('    - customerType: ${detail.customerType}');
         print('    - typeOfWorkId: ${detail.typeOfWorkId}');
         print('    - productsToDiscuss: ${detail.productsToDiscuss}');
         print('    - samplesToDistribute: ${detail.samplesToDistribute}');
         print('    - remarks: ${detail.remarks}');
 
-        // Resolve customer name from ID
-        Set<String> resolvedCustomers = <String>{};
-        if (detail.customerId > 0) {
-          final customerName = _customerIdToName[detail.customerId];
-          if (customerName != null &&
-              customerName.isNotEmpty &&
-              _customerOptions.contains(customerName)) {
-            resolvedCustomers = {customerName};
-            print(
-                '    ✅ Resolved customer ID ${detail.customerId} to: $customerName');
-          } else {
-            // Try fallback from location
-            String? fallbackCustomerName;
-            if (detail.location != null && detail.location!.contains('-')) {
-              final parts = detail.location!.split('-');
-              if (parts.length >= 2) {
-                fallbackCustomerName = parts.sublist(1).join('-').trim();
-              }
-            }
-            if (fallbackCustomerName != null &&
-                fallbackCustomerName.isNotEmpty) {
-              if (_customerOptions.contains(fallbackCustomerName)) {
-                resolvedCustomers = {fallbackCustomerName};
-                print('    ✅ Using fallback customer: $fallbackCustomerName');
-              } else {
-                resolvedCustomers = {fallbackCustomerName};
-                print(
-                    '    ⚠️ Using fallback customer (not in dropdown): $fallbackCustomerName');
-              }
-            } else {
-              resolvedCustomers = {'Customer ID: ${detail.customerId}'};
-              print(
-                  '    ⚠️ Using placeholder for customer ID: ${detail.customerId}');
-            }
-          }
-        }
-
-        // Parse products
         Set<String> parsedProducts = <String>{};
         if (detail.productsToBeDiscussed != null &&
             detail.productsToBeDiscussed!.isNotEmpty) {
@@ -900,7 +771,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           print('    ✅ Loaded ${parsedProducts.length} products from string');
         }
 
-        // Resolve purpose of visit
         String? purposeValue = _typeOfWorkIdToName[detail.typeOfWorkId];
         if (purposeValue == null && detail.typeOfWorkId > 0) {
           purposeValue = null;
@@ -909,18 +779,81 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           print('    ✅ Resolved purpose: $purposeValue');
         }
 
+        final String? customerTypeValue =
+            _resolveCustomerTypeName(detail.customerType);
+        if (customerTypeValue != null) {
+          print('    ✅ Resolved customer type: $customerTypeValue');
+        }
+
         final callData = _CallData(
+          customerType: customerTypeValue,
           products: parsedProducts,
           samplesCtrl:
               TextEditingController(text: detail.samplesToDistribute ?? ''),
           remarksCtrl: TextEditingController(text: detail.remarks ?? ''),
-          customers: resolvedCustomers,
           purpose: purposeValue,
         );
 
         if (mounted) {
           setState(() {
             _calls.add(callData);
+          });
+        }
+      }
+
+      for (int i = 0; i < _calls.length; i++) {
+        final detail = tourPlan.tourPlanDetails![i];
+        if (_isCustomerOptionalPurposeForCall(_calls[i])) continue;
+        if (_calls[i].customerType == null || _calls[i].customerType!.isEmpty) {
+          continue;
+        }
+        if (_selectedClusters.isEmpty) continue;
+
+        try {
+          await _loadMappedCustomersForCall(i);
+        } catch (e) {
+          print(
+              'NewTourPlanScreen: [Edit] Error loading customers for call ${i + 1}: $e');
+        }
+
+        Set<String> resolvedCustomers = <String>{};
+        if (detail.customerId > 0) {
+          final customerName = _customerIdToName[detail.customerId];
+          if (customerName != null &&
+              customerName.isNotEmpty &&
+              _calls[i].customerOptions.contains(customerName)) {
+            resolvedCustomers = {customerName};
+            print(
+                '    ✅ Resolved customer ID ${detail.customerId} to: $customerName');
+          } else {
+            String? fallbackCustomerName;
+            if (detail.location != null && detail.location!.contains('-')) {
+              final parts = detail.location!.split('-');
+              if (parts.length >= 2) {
+                fallbackCustomerName = parts.sublist(1).join('-').trim();
+              }
+            }
+            if (fallbackCustomerName != null &&
+                fallbackCustomerName.isNotEmpty) {
+              if (_calls[i].customerOptions.contains(fallbackCustomerName)) {
+                resolvedCustomers = {fallbackCustomerName};
+                print('    ✅ Using fallback customer: $fallbackCustomerName');
+              } else {
+                resolvedCustomers = {fallbackCustomerName};
+                print(
+                    '    ⚠️ Using fallback customer (not in dropdown): $fallbackCustomerName');
+              }
+            } else {
+              resolvedCustomers = {'Customer ID: ${detail.customerId}'};
+              print(
+                  '    ⚠️ Using placeholder for customer ID: ${detail.customerId}');
+            }
+          }
+        }
+
+        if (mounted && resolvedCustomers.isNotEmpty) {
+          setState(() {
+            _calls[i].customers = resolvedCustomers;
           });
         }
       }
@@ -966,8 +899,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     }
     print('NewTourPlanScreen: [Edit] ✅ Form population completed!');
     print('  - Clusters selected: ${_selectedClusters.length}');
-    print('  - Customer type: $_selectedCustomerType');
-    print('  - Customers loaded: ${_customerOptions.length}');
     print('  - Calls created: ${_calls.length}');
   }
 
@@ -1102,12 +1033,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             _employeeError = null;
                                             // Clear clusters and customers when reporting staff changes
                                             _selectedClusters.clear();
-                                            _customerOptions.clear();
                                             _customerNameToId.clear();
                                             _customerIdToName.clear();
                                             _customerNameToClusterName
                                                 .clear();
                                             _autoSelectedClusters.clear();
+                                            _removedAutoSelectedClusters.clear();
                                             _purposeOptions.clear();
                                             _typeOfWorkNameToId.clear();
                                             _typeOfWorkIdToName.clear();
@@ -1115,9 +1046,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             _productNameToId.clear();
                                             _customerTypeOptions.clear();
                                             _customerTypeNameToId.clear();
-                                            _selectedCustomerType = null;
                                             for (final call in _calls) {
                                               call.customers = {};
+                                              call.customerType = null;
+                                              call.customerOptions = [];
                                             }
                                             _updateAutoSelectedClusters();
                                           });
@@ -1126,10 +1058,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             _loadTypeOfWorkList();
                                             _loadProductsList();
                                             _loadCustomerTypeList();
-                                            if (_selectedClusters.isNotEmpty &&
-                                                _selectedCustomerType != null) {
-                                              _loadMappedCustomers();
-                                            }
                                           }
                                         },
                                       ),
@@ -1171,44 +1099,32 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     ? (_) {} // No-op function for view-only mode
                                     : (v) {
                                         setState(() {
+                                          final Set<String> removedNow =
+                                              _selectedClusters
+                                                  .difference(v)
+                                                  .intersection(
+                                                      _autoSelectedClusters);
+                                          if (removedNow.isNotEmpty) {
+                                            _removedAutoSelectedClusters
+                                                .addAll(removedNow);
+                                          }
+                                          final Set<String> reAddedNow = v
+                                              .intersection(
+                                                  _removedAutoSelectedClusters);
+                                          if (reAddedNow.isNotEmpty) {
+                                            _removedAutoSelectedClusters
+                                                .removeAll(reAddedNow);
+                                          }
                                           _selectedClusters = v;
                                           _clusterError = null;
                                           _updateAutoSelectedClusters();
                                         });
-                                        // Refresh customers filtered by selected clusters
-                                        // This will also update cluster mapping from API response
-                                        _loadMappedCustomers().catchError((e) {
+                                        // Refresh customers for each call
+                                        _loadMappedCustomersForAllCalls()
+                                            .catchError((e) {
                                           print(
                                               'NewTourPlanScreen: Error loading customers: $e');
                                         });
-                                      },
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _Labeled(
-                              label: 'Customer Type',
-                              required: !allCallsCustomerOptional,
-                              errorText: _customerTypeError,
-                              child: _SingleSelectDropdown(
-                                options: _customerTypeOptions,
-                                value: _selectedCustomerType,
-                                hintText: _isLoadingCustomerType
-                                    ? 'Loading customer types...'
-                                    : 'Select customer type',
-                                isLoading: _isLoadingCustomerType,
-                                isEnabled: !_isViewOnlyMode &&
-                                    !allCallsCustomerOptional,
-                                onChanged: _isViewOnlyMode
-                                    ? (_) {} // No-op function for view-only mode
-                                    : (v) {
-                                        setState(() {
-                                          _selectedCustomerType = v;
-                                          _customerTypeError = null;
-                                        });
-                                        // Reload customers when customer type changes
-                                        if (_selectedClusters.isNotEmpty) {
-                                          _loadMappedCustomers();
-                                        }
                                       },
                               ),
                             ),
@@ -1218,7 +1134,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                 index: i,
                                 dateLabel: _formatDate(_tourPlanDate),
                                 data: _calls[i],
-                                customerOptions: _customerOptions,
+                                customerTypeOptions: _customerTypeOptions,
+                                isLoadingCustomerType: _isLoadingCustomerType,
+                                customerOptions: _calls[i].customerOptions,
                                 customerLabelBuilder: (name) {
                                   final cluster =
                                       _customerNameToClusterName[name]?.trim();
@@ -1236,6 +1154,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                     !_isCustomerOptionalPurposeForCall(_calls[i]),
                                 isProductsRequired:
                                     _isProductsMandatoryForCall(_calls[i]),
+                                isCustomerTypeEnabled:
+                                    !_isCustomerOptionalPurposeForCall(_calls[i]),
+                                isCustomerTypeRequired:
+                                    !_isCustomerOptionalPurposeForCall(_calls[i]),
+                                isLoadingCustomers: _calls[i].isLoadingCustomers,
+                                customerTypeError: i < _callErrors.length
+                                    ? _callErrors[i].customerTypeError
+                                    : null,
                                 customerError: i < _callErrors.length
                                     ? _callErrors[i].customerError
                                     : null,
@@ -1257,6 +1183,31 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                         }
                                         _updateAutoSelectedClusters();
                                       }),
+                                onCustomerTypeChanged: _isViewOnlyMode
+                                    ? null
+                                    : (customerType) {
+                                        setState(() {
+                                          _calls[i].customerType = customerType;
+                                          _calls[i].customers = <String>{};
+                                          _calls[i].customerOptions = [];
+                                          if (_callErrors.length > i) {
+                                            final List<_CallValidationState>
+                                                updated = _cloneCallErrors();
+                                            updated[i].customerTypeError = null;
+                                            updated[i].customerError = null;
+                                            _callErrors = updated;
+                                          }
+                                        });
+                                        if (customerType != null &&
+                                            customerType.isNotEmpty &&
+                                            _selectedClusters.isNotEmpty) {
+                                          _loadMappedCustomersForCall(i)
+                                              .catchError((e) {
+                                            print(
+                                                'NewTourPlanScreen: Error loading customers for call ${i + 1}: $e');
+                                          });
+                                        }
+                                      },
                                 onPurposeChanged: _isViewOnlyMode
                                     ? null
                                     : (purpose) => setState(() {
@@ -1266,6 +1217,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                                 _calls[i]);
                                         if (isCustomerOptional) {
                                           _calls[i].customers = <String>{};
+                                          _calls[i].customerType = null;
+                                          _calls[i].customerOptions = [];
                                         }
                                         final bool allOptionalNow =
                                             _calls.isNotEmpty &&
@@ -1273,15 +1226,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                                     _isCustomerOptionalPurposeForCall);
                                         if (allOptionalNow) {
                                           _selectedClusters = <String>{};
-                                          _selectedCustomerType = null;
                                           _clusterError = null;
-                                          _customerTypeError = null;
                                         }
                                         if (_callErrors.length > i) {
                                           final List<_CallValidationState> updated =
                                               _cloneCallErrors();
                                           if (isCustomerOptional) {
                                             updated[i].customerError = null;
+                                            updated[i].customerTypeError = null;
                                           }
                                           updated[i].purposeError = null;
                                           if (!_isProductsMandatoryForCall(
@@ -1592,6 +1544,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               ? '$clusterName - $customerName'
               : ' - $customerName';
 
+          final int? callCustomerTypeId =
+              _resolveCustomerTypeId(call.customerType);
+
           details.add({
             'Id': existingDetailId,
             'PlanDate': planDateTimeStr,
@@ -1609,6 +1564,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             'Customers': customersArray,
             'ProductsToBeDiscussed': productsToBeDiscussedArray,
             'MappedInstruments': [],
+            'CustomerType': callCustomerTypeId,
           });
           detailIndex++;
         }
@@ -1660,15 +1616,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       final bool isNewTourPlan = widget.tourPlanToEdit == null;
       // (kept) headerClusterName was unused; removed
 
-      // Get customer type ID
-      final int? customerTypeId = _selectedCustomerType != null &&
-              _customerTypeNameToId.containsKey(_selectedCustomerType!)
-          ? _customerTypeNameToId[_selectedCustomerType!]
+      // Header customer type: use when all non-optional calls share the same type
+      final Set<int?> headerCustomerTypeIds = <int?>{};
+      for (final _CallData call in _calls) {
+        if (_isCustomerOptionalPurposeForCall(call)) continue;
+        headerCustomerTypeIds.add(_resolveCustomerTypeId(call.customerType));
+      }
+      final int? customerTypeId = headerCustomerTypeIds.length == 1
+          ? headerCustomerTypeIds.first
           : null;
-      print(
-          'NewTourPlanScreen: [DEBUG] _selectedCustomerType: $_selectedCustomerType');
-      print(
-          'NewTourPlanScreen: [DEBUG] _customerTypeNameToId: $_customerTypeNameToId');
+      print('NewTourPlanScreen: [DEBUG] headerCustomerTypeIds: $headerCustomerTypeIds');
       print('NewTourPlanScreen: [DEBUG] customerTypeId: $customerTypeId');
 
       final Map<String, dynamic> body = {
@@ -1761,8 +1718,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: Effective Cluster IDs: $effectiveClusterIds');
       print('NewTourPlanScreen: Number of Details to Create: ${details.length}');
       print('NewTourPlanScreen: Tour Plan Type: $tourPlanTypeArray');
-      print('NewTourPlanScreen: Selected Customer Type: $_selectedCustomerType');
-      print('NewTourPlanScreen: Customer Type ID: ${_selectedCustomerType != null ? _customerTypeNameToId[_selectedCustomerType!] : null}');
+      print('NewTourPlanScreen: Customer Type ID (header): $customerTypeId');
       print('NewTourPlanScreen: Number of Calls: ${_calls.length}');
 
       print('NewTourPlanScreen: Call debug entries count: ${_calls.length}');
@@ -2181,6 +2137,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     }
 
+    if (_removedAutoSelectedClusters.isNotEmpty) {
+      derivedClusters.removeAll(_removedAutoSelectedClusters);
+    }
+
     if (derivedClusters.isNotEmpty) {
       final Set<String> combined = {..._clusters, ...derivedClusters};
       if (combined.length != _clusters.length) {
@@ -2262,14 +2222,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       isValid = false;
     }
 
-    String? customerTypeError;
-    if (!allCallsCustomerOptional &&
-        (_selectedCustomerType == null || _selectedCustomerType!.isEmpty)) {
-      customerTypeError = 'Please select a customer type';
-      firstMessage ??= 'Select a customer type';
-      isValid = false;
-    }
-
     if (_calls.isEmpty) {
       firstMessage ??= 'Add at least one call';
       isValid = false;
@@ -2284,6 +2236,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         if (!isCustomerOptionalPurpose && call.customers.isEmpty) {
           callErrors[i].customerError = 'Please select at least one customer';
           firstMessage ??= 'Select customer for $callLabel';
+          isValid = false;
+        }
+
+        if (!isCustomerOptionalPurpose &&
+            (call.customerType == null || call.customerType!.isEmpty)) {
+          callErrors[i].customerTypeError = 'Please select a customer type';
+          firstMessage ??= 'Select customer type for $callLabel';
           isValid = false;
         }
 
@@ -2307,7 +2266,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       _dateError = dateError;
       _clusterError = clusterError;
       _employeeError = employeeError;
-      _customerTypeError = customerTypeError;
       _callErrors = callErrors;
     });
 
@@ -2333,16 +2291,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
             .where((s) => s.isNotEmpty)
             .toSet();
         if (names.isNotEmpty) {
-          setState(() {
-            _customerOptions = {..._customerOptions, ...names}.toList();
-            // map names to ids for potential CustomerId mapping when employee list represents customers
-            for (final item in items) {
-              final String key =
-                  (item.employeeName.isNotEmpty ? item.employeeName : item.text)
-                      .trim();
-              if (key.isNotEmpty) _customerNameToId[key] = item.id;
-            }
-          });
+          for (final item in items) {
+            final String key =
+                (item.employeeName.isNotEmpty ? item.employeeName : item.text)
+                    .trim();
+            if (key.isNotEmpty) _customerNameToId[key] = item.id;
+          }
         }
       }
     } catch (e) {}
@@ -2558,16 +2512,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           normalizedPurposeToDisplay.putIfAbsent(raw.toLowerCase(), () => raw);
         }
         final Set<String> works = normalizedPurposeToDisplay.values.toSet();
-        final Set<String> filteredWorks = _isPocRep
-            ? works
-                .where(
-                    (w) => w.trim().toLowerCase() == 'warranty services')
-                .toSet()
-            : works;
-        if (filteredWorks.isNotEmpty) {
+        if (works.isNotEmpty) {
           if (mounted) {
             setState(() {
-              final List<String> dedupedPurposeOptions = filteredWorks.toList()
+              final List<String> dedupedPurposeOptions = works.toList()
                 ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
               _purposeOptions = dedupedPurposeOptions;
               _typeOfWorkNameToId.clear();
@@ -2576,9 +2524,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               for (final item in items) {
                 final String key =
                     (item.text.isNotEmpty ? item.text : item.typeText).trim();
-                if (key.isNotEmpty &&
-                    (!_isPocRep ||
-                        key.trim().toLowerCase() == 'warranty services')) {
+                if (key.isNotEmpty) {
                   _typeOfWorkNameToId[key] = item.id;
                   _typeOfWorkIdToName[item.id] =
                       key; // Reverse mapping for editing
@@ -2881,21 +2827,57 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     }
   }
 
-  Future<void> _loadMappedCustomers() async {
-    if (_isLoadingCustomers) {
+  int? _resolveCustomerTypeId(String? customerTypeName) {
+    if (customerTypeName == null || customerTypeName.isEmpty) return null;
+    if (_customerTypeNameToId.containsKey(customerTypeName)) {
+      return _customerTypeNameToId[customerTypeName];
+    }
+    final String normalized = customerTypeName.toLowerCase().trim();
+    for (final entry in _customerTypeNameToId.entries) {
+      if (entry.key.toLowerCase().trim() == normalized) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String? _resolveCustomerTypeName(int? customerTypeId) {
+    if (customerTypeId == null || customerTypeId <= 0) return null;
+    for (final entry in _customerTypeNameToId.entries) {
+      if (entry.value == customerTypeId) return entry.key;
+    }
+    return null;
+  }
+
+  Future<void> _loadMappedCustomersForAllCalls() async {
+    for (int i = 0; i < _calls.length; i++) {
+      final _CallData call = _calls[i];
+      if (_isCustomerOptionalPurposeForCall(call)) continue;
+      if (call.customerType == null || call.customerType!.isEmpty) continue;
+      await _loadMappedCustomersForCall(i);
+    }
+  }
+
+  Future<void> _loadMappedCustomersForCall(int callIndex) async {
+    if (callIndex < 0 || callIndex >= _calls.length) return;
+    final _CallData call = _calls[callIndex];
+
+    if (_isCustomerOptionalPurposeForCall(call)) return;
+    if (call.isLoadingCustomers) {
       print(
-          'NewTourPlanScreen: [Customers] Already loading customers - skipping');
+          'NewTourPlanScreen: [Customers] Call ${callIndex + 1} already loading - skipping');
       return;
     }
 
     try {
       if (mounted) {
-        setState(() => _isLoadingCustomers = true);
+        setState(() => call.isLoadingCustomers = true);
       } else {
-        _isLoadingCustomers = true;
+        call.isLoadingCustomers = true;
       }
 
-      print('NewTourPlanScreen: [Customers] Start loading mapped customers');
+      print(
+          'NewTourPlanScreen: [Customers] Start loading mapped customers for call ${callIndex + 1}');
       if (!getIt.isRegistered<TourPlanRepository>()) {
         print(
             'NewTourPlanScreen: [Customers] TourPlanRepository not registered - skipping');
@@ -2903,18 +2885,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
       final repo = getIt<TourPlanRepository>();
 
-      // For managers/field managers, use selectedEmployeeId; otherwise use current user's employeeId
       int? employeeId;
       int? selectedEmployeeIdForRequest;
 
       if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
-        // Manager/Field Manager: use selected employee
         employeeId = _selectedEmployeeId;
         selectedEmployeeIdForRequest = _selectedEmployeeId;
-        print(
-            'NewTourPlanScreen: [Customers] Using selected employeeId: $employeeId (Manager/Field Manager)');
       } else {
-        // Regular user: use current user's employeeId
         final userStore = getIt.isRegistered<UserDetailStore>()
             ? getIt<UserDetailStore>()
             : null;
@@ -2924,81 +2901,38 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           print('NewTourPlanScreen: [Customers] employeeId is null - skipping');
           return;
         }
-        print(
-            'NewTourPlanScreen: [Customers] Using current user employeeId: $employeeId');
       }
 
-      // Build ClusterIds from selected clusters in dropdown (with case-insensitive fallback)
       final List<ClusterIdModel> selectedClusterIds = [];
       for (final clusterName in _selectedClusters) {
         int? clusterId = _clusterNameToId[clusterName];
-
         if (clusterId == null || clusterId <= 0) {
-          // Try case-insensitive lookup
           final String normalized = clusterName.toLowerCase().trim();
           for (final entry in _clusterNameToId.entries) {
             if (entry.key.toLowerCase().trim() == normalized) {
               clusterId = entry.value;
-              print(
-                  'NewTourPlanScreen: [Customers] Found case-insensitive cluster match: "${entry.key}" for "$clusterName"');
               break;
             }
           }
         }
-
         if (clusterId != null && clusterId > 0) {
           selectedClusterIds.add(ClusterIdModel(clusterId: clusterId));
         }
       }
 
-      print(
-          'NewTourPlanScreen: [Customers] Selected clusters: $_selectedClusters');
-      print(
-          'NewTourPlanScreen: [Customers] Cluster IDs built: ${selectedClusterIds.map((c) => c.clusterId).toList()}');
+      final int? customerTypeId = _resolveCustomerTypeId(call.customerType);
 
-      // Get selected customer type ID (with case-insensitive fallback)
-      int? customerTypeId;
-      if (_selectedCustomerType != null) {
-        if (_customerTypeNameToId.containsKey(_selectedCustomerType!)) {
-          customerTypeId = _customerTypeNameToId[_selectedCustomerType!];
-        } else {
-          // Try case-insensitive match
-          final String normalized = _selectedCustomerType!.toLowerCase().trim();
-          for (final entry in _customerTypeNameToId.entries) {
-            if (entry.key.toLowerCase().trim() == normalized) {
-              customerTypeId = entry.value;
-              print(
-                  'NewTourPlanScreen: [Customers] Found case-insensitive customer type match: "${entry.key}" for "$_selectedCustomerType"');
-              break;
-            }
-          }
-        }
-      }
-
-      // Cluster selection is mandatory for mapped customer API.
-      // CustomerTypeId can be sent as 0 when user has not chosen a specific type.
-      if (selectedClusterIds.isEmpty) {
-        print(
-            'NewTourPlanScreen: [Customers] Cluster or CustomerType not selected - clearing customers');
-        print(
-            'NewTourPlanScreen: [Customers] ClusterIds empty: ${selectedClusterIds.isEmpty}, CustomerType: $_selectedCustomerType, CustomerTypeId: $customerTypeId');
-        if (customerTypeId == null && _selectedCustomerType != null) {
-          print(
-              'NewTourPlanScreen: [Customers] Available Customer Types: ${_customerTypeNameToId.keys.toList()}');
-        }
+      if (selectedClusterIds.isEmpty ||
+          call.customerType == null ||
+          call.customerType!.isEmpty) {
         if (mounted) {
           setState(() {
-            _customerOptions = [];
-            _customerNameToId.clear();
-            _customerIdToName.clear();
-            _customerNameToClusterName.clear();
-            _autoSelectedClusters.clear();
-            // Clear all customer selections when requirements not met
-            for (final call in _calls) {
-              call.customers = {};
-            }
-            _updateAutoSelectedClusters();
+            call.customerOptions = [];
+            call.customers = {};
           });
+        } else {
+          call.customerOptions = [];
+          call.customers = {};
         }
         return;
       }
@@ -3025,7 +2959,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         filterExpression: null,
         monthNumber: null,
         year: null,
-        id: employeeId, // Pass as both Id and EmployeeId for compatibility
+        id: employeeId,
         action: null,
         comment: null,
         status: null,
@@ -3037,112 +2971,55 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         planDate: planDateTimeStr,
         customerTypeId: customerTypeId ?? 0,
       );
-      print('NewTourPlanScreen: [Customers] Request body => ${req.toJson()}');
+      print(
+          'NewTourPlanScreen: [Customers] Call ${callIndex + 1} request => ${req.toJson()}');
       final res = await repo
           .getMappedCustomersByEmployeeId(req)
           .timeout(const Duration(seconds: 20));
-      print(
-          'NewTourPlanScreen: [Customers] API returned ${res.customers.length} customers');
-      if (res.customers.isNotEmpty) {
-        final sample = res.customers
-            .take(5)
-            .map((c) => {
-                  'CustomerId': c.customerId,
-                  'CustomerName': c.customerName,
-                  'ClusterId': c.clusterId,
-                  'ClusterName': c.clusterName,
-                })
-            .toList();
-        print('NewTourPlanScreen: [Customers] Sample => $sample');
-      }
 
-      // If API returns 0 customers, clear the list
-      if (res.customers.isEmpty) {
-        print(
-            'NewTourPlanScreen: [Customers] No customers returned - clearing list');
-        if (mounted) {
-          setState(() {
-            _customerOptions.clear();
-            _customerNameToId.clear();
-            _customerIdToName.clear();
-            _customerNameToClusterName.clear();
-            for (final call in _calls) {
-              call.customers = {};
-            }
-          });
+      final List<String> loadedOptions = [];
+      final Set<String> preselectedCustomers = <String>{};
+      final Set<String> clusterNamesFromApi = {};
+
+      for (final mc in res.customers) {
+        loadedOptions.add(mc.customerName);
+        if (mc.isSelected) {
+          preselectedCustomers.add(mc.customerName);
         }
-        return;
+        _customerNameToId[mc.customerName] = mc.customerId;
+        _customerIdToName[mc.customerId] = mc.customerName;
+
+        String clusterName = mc.clusterName.trim();
+        if (clusterName.isEmpty && mc.clusterId > 0) {
+          try {
+            clusterName = _clusterNameToId.entries
+                .firstWhere((e) => e.value == mc.clusterId)
+                .key
+                .trim();
+          } catch (_) {}
+        }
+        if (clusterName.isNotEmpty) {
+          _customerNameToClusterName[mc.customerName] = clusterName;
+        }
+        if (clusterName.isNotEmpty && mc.clusterId > 0) {
+          clusterNamesFromApi.add(clusterName);
+          if (!_clusterNameToId.containsKey(clusterName)) {
+            _clusterNameToId[clusterName] = mc.clusterId;
+          }
+          if (!_clusters.contains(clusterName)) {
+            _clusters.add(clusterName);
+          }
+        }
       }
 
       if (mounted) {
         setState(() {
-          // Clear any old data so only new API values appear
-          _customerOptions.clear();
-          _customerNameToId.clear();
-          _customerIdToName.clear();
-          _customerNameToClusterName.clear();
-
-          final Set<String> preselectedCustomers = <String>{};
-
-          // Store customers and update cluster mapping from API response
-          final Set<String> clusterNamesFromApi = {};
-          for (final mc in res.customers) {
-            _customerOptions.add(mc.customerName);
-            if (mc.isSelected) {
-              preselectedCustomers.add(mc.customerName);
-            }
-            _customerNameToId[mc.customerName] = mc.customerId;
-            _customerIdToName[mc.customerId] = mc.customerName;
-            // Cluster/city label for this customer:
-            // Prefer API-provided clusterName; if missing but clusterId exists,
-            // derive name from existing cluster list mapping.
-            String clusterName = mc.clusterName.trim();
-            if (clusterName.isEmpty && mc.clusterId > 0) {
-              try {
-                clusterName = _clusterNameToId.entries
-                    .firstWhere((e) => e.value == mc.clusterId)
-                    .key
-                    .trim();
-              } catch (_) {
-                // ignore if we can't resolve a name for this id
-              }
-            }
-            if (clusterName.isNotEmpty) {
-              _customerNameToClusterName[mc.customerName] = clusterName;
-            }
-
-            // Store cluster names from API response
-            if (clusterName.isNotEmpty && mc.clusterId > 0) {
-              clusterNamesFromApi.add(clusterName);
-              // Update cluster name to ID mapping if not already present
-              if (!_clusterNameToId.containsKey(clusterName)) {
-                _clusterNameToId[clusterName] = mc.clusterId;
-                print(
-                    'NewTourPlanScreen: [Customers] Added cluster from API: $clusterName (ID: ${mc.clusterId})');
-              }
-              // Update cluster list if not already present
-              if (!_clusters.contains(clusterName)) {
-                _clusters.add(clusterName);
-                print(
-                    'NewTourPlanScreen: [Customers] Added cluster to list: $clusterName');
-              }
-            }
-          }
-          _customerOptions = _customerOptions.toSet().toList();
+          call.customerOptions = loadedOptions.toSet().toList();
           _clusters = _clusters.toSet().toList();
 
-          // Update selected clusters to match cluster names from API
-          // This ensures cluster names from API are properly associated when submitting
           if (clusterNamesFromApi.isNotEmpty) {
-            print(
-                'NewTourPlanScreen: [Customers] Cluster names from API: ${clusterNamesFromApi.toList()}');
-            print(
-                'NewTourPlanScreen: [Customers] Currently selected clusters: ${_selectedClusters.toList()}');
-
-            // Sync selected clusters with API cluster names (case-insensitive match)
             final Set<String> updatedSelectedClusters = {};
             for (final selectedCluster in _selectedClusters) {
-              // Try to find matching cluster name from API (case-insensitive)
               String? matchedCluster;
               for (final apiCluster in clusterNamesFromApi) {
                 if (apiCluster.toLowerCase().trim() ==
@@ -3151,100 +3028,53 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                   break;
                 }
               }
-              // Use API cluster name if found, otherwise keep original
-              if (matchedCluster != null) {
-                updatedSelectedClusters.add(matchedCluster);
-                if (matchedCluster != selectedCluster) {
-                  print(
-                      'NewTourPlanScreen: [Customers] Updated cluster name: "$selectedCluster" -> "$matchedCluster"');
-                }
-              } else {
-                // Keep original if no match found (might be from cluster list API)
-                updatedSelectedClusters.add(selectedCluster);
-              }
+              updatedSelectedClusters
+                  .add(matchedCluster ?? selectedCluster);
             }
-
-            // Update selected clusters if there were any changes
             if (!setEquals(_selectedClusters, updatedSelectedClusters)) {
               _selectedClusters = updatedSelectedClusters;
-              print(
-                  'NewTourPlanScreen: [Customers] Updated selected clusters to match API: ${_selectedClusters.toList()}');
             }
           }
 
-          // Create a set of valid customer names for quick lookup
-          final Set<String> validCustomerNames = _customerOptions.toSet();
-
-          // Resolve customer names in existing calls, aligning by index with details if available
-          final tourPlan = _fullTourPlanData ?? widget.tourPlanToEdit;
-          if (tourPlan?.tourPlanDetails != null &&
-              tourPlan!.tourPlanDetails!.isNotEmpty) {
-            final int count = (tourPlan.tourPlanDetails!.length < _calls.length)
-                ? tourPlan.tourPlanDetails!.length
-                : _calls.length;
-            for (int i = 0; i < count; i++) {
-              final detail = tourPlan.tourPlanDetails![i];
-              final name = _customerIdToName[detail.customerId];
-              if (name != null &&
-                  name.isNotEmpty &&
-                  validCustomerNames.contains(name)) {
-                _calls[i].customers = {name};
+          final Set<String> validCustomerNames = call.customerOptions.toSet();
+          if (call.customers.length == 1) {
+            final only = call.customers.first;
+            if (only.startsWith('Customer ID:')) {
+              final idStr = only.split(':').last.trim();
+              final int? cid = int.tryParse(idStr);
+              if (cid != null && _customerIdToName[cid] != null) {
+                final resolvedName = _customerIdToName[cid]!;
+                call.customers = validCustomerNames.contains(resolvedName)
+                    ? {resolvedName}
+                    : {};
               } else {
-                // Clear customer if not found in new list (cluster changed)
-                _calls[i].customers = {};
+                call.customers = {};
               }
+            } else if (!validCustomerNames.contains(only)) {
+              call.customers = {};
             }
-          } else {
-            // If no details, try to replace placeholders like 'Customer ID: X'
-            // Also clear invalid customers when cluster changes
-            for (final call in _calls) {
-              if (call.customers.length == 1) {
-                final only = call.customers.first;
-                if (only.startsWith('Customer ID:')) {
-                  final idStr = only.split(':').last.trim();
-                  final int? cid = int.tryParse(idStr);
-                  if (cid != null && _customerIdToName[cid] != null) {
-                    final resolvedName = _customerIdToName[cid]!;
-                    if (validCustomerNames.contains(resolvedName)) {
-                      call.customers = {resolvedName};
-                    } else {
-                      // Clear if resolved customer is not in new list
-                      call.customers = {};
-                    }
-                  } else {
-                    // Clear if customer ID not found
-                    call.customers = {};
-                  }
-                } else {
-                  // Check if customer name is still valid in new cluster
-                  if (!validCustomerNames.contains(only)) {
-                    // Clear customer if not in new list (cluster changed)
-                    call.customers = {};
-                  }
-                }
-              } else if (call.customers.length > 1) {
-                // For multiple customers, filter to only valid ones
-                call.customers = call.customers
-                    .where((c) => validCustomerNames.contains(c))
-                    .toSet();
-              }
-            }
+          } else if (call.customers.length > 1) {
+            call.customers =
+                call.customers.where(validCustomerNames.contains).toSet();
           }
+
           if (widget.tourPlanToEdit == null &&
               preselectedCustomers.isNotEmpty &&
-              _calls.isNotEmpty) {
-            _calls.first.customers = {
-              ..._calls.first.customers,
-              ...preselectedCustomers
-            };
+              call.customers.isEmpty) {
+            call.customers = preselectedCustomers
+                .where(validCustomerNames.contains)
+                .toSet();
           }
+
           _syncCallErrorsLength();
           _updateAutoSelectedClusters();
         });
+      } else {
+        call.customerOptions = loadedOptions.toSet().toList();
       }
     } catch (e) {
       print(
-          'NewTourPlanScreen: [Customers] Error loading mapped customers: $e');
+          'NewTourPlanScreen: [Customers] Error loading customers for call ${callIndex + 1}: $e');
       if (mounted) {
         ToastMessage.show(context,
             message: 'Error loading customers: ${e.toString()}',
@@ -3252,9 +3082,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoadingCustomers = false);
+        setState(() => call.isLoadingCustomers = false);
       } else {
-        _isLoadingCustomers = false;
+        call.isLoadingCustomers = false;
       }
     }
   }
@@ -3329,19 +3159,26 @@ class _SpacerLabel extends StatelessWidget {
 class _CallData {
   _CallData({
     bool? isExpanded,
+    String? customerType,
     Set<String>? customers,
+    List<String>? customerOptions,
     String? purpose,
     Set<String>? products,
     TextEditingController? samplesCtrl,
     TextEditingController? remarksCtrl,
   })  : isExpanded = isExpanded ?? true,
+        customerType = customerType,
         customers = customers ?? <String>{},
+        customerOptions = customerOptions ?? <String>[],
         purpose = purpose,
         products = products ?? <String>{},
         samplesCtrl = samplesCtrl ?? TextEditingController(),
         remarksCtrl = remarksCtrl ?? TextEditingController();
   bool? isExpanded;
+  String? customerType;
   Set<String> customers = <String>{};
+  List<String> customerOptions = <String>[];
+  bool isLoadingCustomers = false;
   String? purpose;
   Set<String> products = <String>{};
   late final TextEditingController samplesCtrl;
@@ -3354,16 +3191,19 @@ class _CallData {
 
 class _CallValidationState {
   _CallValidationState({
+    this.customerTypeError,
     this.customerError,
     this.purposeError,
     this.productsError,
   });
+  String? customerTypeError;
   String? customerError;
   String? purposeError;
   String? productsError;
 
   _CallValidationState copy() {
     return _CallValidationState(
+      customerTypeError: customerTypeError,
       customerError: customerError,
       purposeError: purposeError,
       productsError: productsError,
@@ -3376,6 +3216,8 @@ class _CallCard extends StatelessWidget {
     required this.index,
     required this.dateLabel,
     required this.data,
+    required this.customerTypeOptions,
+    this.isLoadingCustomerType = false,
     required this.customerOptions,
     this.customerLabelBuilder,
     required this.purposeOptions,
@@ -3383,12 +3225,17 @@ class _CallCard extends StatelessWidget {
     this.isLoadingPurpose = false,
     this.isLoadingProducts = false,
     this.isViewOnly = false,
+    this.isCustomerTypeEnabled = true,
+    this.isCustomerTypeRequired = true,
     this.isCustomerEnabled = true,
     this.isCustomerRequired = true,
     this.isProductsRequired = false,
+    this.isLoadingCustomers = false,
+    this.customerTypeError,
     this.customerError,
     this.purposeError,
     this.productsError,
+    this.onCustomerTypeChanged,
     this.onCustomersChanged,
     this.onPurposeChanged,
     this.onProductsChanged,
@@ -3398,6 +3245,8 @@ class _CallCard extends StatelessWidget {
   final int index;
   final String dateLabel;
   final _CallData data;
+  final List<String> customerTypeOptions;
+  final bool isLoadingCustomerType;
   final List<String> customerOptions;
   final String Function(String)? customerLabelBuilder;
   final List<String> purposeOptions;
@@ -3405,12 +3254,17 @@ class _CallCard extends StatelessWidget {
   final bool isLoadingPurpose;
   final bool isLoadingProducts;
   final bool isViewOnly;
+  final bool isCustomerTypeEnabled;
+  final bool isCustomerTypeRequired;
   final bool isCustomerEnabled;
   final bool isCustomerRequired;
   final bool isProductsRequired;
+  final bool isLoadingCustomers;
+  final String? customerTypeError;
   final String? customerError;
   final String? purposeError;
   final String? productsError;
+  final ValueChanged<String?>? onCustomerTypeChanged;
   final ValueChanged<Set<String>>? onCustomersChanged;
   final ValueChanged<String?>? onPurposeChanged;
   final ValueChanged<Set<String>>? onProductsChanged;
@@ -3507,6 +3361,32 @@ class _CallCard extends StatelessWidget {
             ],
             if (expanded) ...[
               const SizedBox(height: 4),
+              if (isCustomerTypeEnabled) ...[
+                _Labeled(
+                  label: 'Customer Type',
+                  required: isCustomerTypeRequired,
+                  errorText: customerTypeError,
+                  child: _SingleSelectDropdown(
+                    options: customerTypeOptions,
+                    value: data.customerType,
+                    hintText: isLoadingCustomerType
+                        ? 'Loading customer types...'
+                        : 'Select customer type',
+                    isLoading: isLoadingCustomerType,
+                    isEnabled: !isViewOnly && isCustomerTypeEnabled,
+                    onChanged: isViewOnly
+                        ? (_) {}
+                        : (value) {
+                            if (onCustomerTypeChanged != null) {
+                              onCustomerTypeChanged!(value);
+                            } else {
+                              data.customerType = value;
+                            }
+                          },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               _Labeled(
                 label: 'Customer',
                 required: isCustomerRequired,
@@ -3515,8 +3395,13 @@ class _CallCard extends StatelessWidget {
                   options: customerOptions,
                   selectedValues: isCustomerEnabled ? data.customers : <String>{},
                   labelBuilder: customerLabelBuilder,
-                  hintText: 'Select customer',
-                  emptyMessage: 'No customers found',
+                  hintText: isLoadingCustomers
+                      ? 'Loading customers...'
+                      : 'Select customer',
+                  emptyMessage: isLoadingCustomers
+                      ? 'Loading customers...'
+                      : 'No customers found',
+                  isLoading: isLoadingCustomers,
                   isEnabled: !isViewOnly && isCustomerEnabled,
                   onChanged: isViewOnly
                       ? (_) {} // No-op function for view-only mode

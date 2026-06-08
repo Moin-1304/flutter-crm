@@ -2016,25 +2016,56 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     return null;
   }
 
+  /// HR / list APIs sometimes return placeholder designations (e.g. "Others New").
+  bool _looksLikePlaceholderDesignation(String raw) {
+    final String t =
+        raw.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    return t == 'others new' ||
+        t == 'other new' ||
+        t == 'othersnew' ||
+        t == 'others' ||
+        t == 'new' ||
+        t == 'n/a' ||
+        t == '-' ||
+        t == 'na';
+  }
+
+  String? _pickResolvedDesignation(String? candidate) {
+    if (candidate == null) return null;
+    final String t = candidate.trim();
+    if (t.isEmpty) return null;
+    if (_looksLikePlaceholderDesignation(t)) return null;
+    return t;
+  }
+
+  bool _isLoggedInUserPlan(TourPlanItem item) {
+    final int? loggedInEmployeeId = _userDetailStore.userDetail?.employeeId;
+    if (loggedInEmployeeId == null || loggedInEmployeeId <= 0) return false;
+    if (item.employeeId == loggedInEmployeeId) return true;
+    if (item.employee == loggedInEmployeeId) return true;
+    return false;
+  }
+
   String? _resolveDesignation(TourPlanItem item) {
-    final String? fromItem = item.designation?.trim();
-    if (fromItem != null && fromItem.isNotEmpty) return fromItem;
+    final String? fromItem = _pickResolvedDesignation(item.designation?.trim());
+    if (fromItem != null) return fromItem;
 
     final String? byEmployeeName = item.employeeName != null
-        ? _employeeNameToDesignation[item.employeeName!.trim()]
+        ? _pickResolvedDesignation(
+            _employeeNameToDesignation[item.employeeName!.trim()])
         : null;
-    if (byEmployeeName != null && byEmployeeName.trim().isNotEmpty) {
-      return byEmployeeName.trim();
-    }
+    if (byEmployeeName != null) return byEmployeeName;
 
-    final String? byEmployeeId = _employeeIdToDesignation[item.employeeId];
-    if (byEmployeeId != null && byEmployeeId.trim().isNotEmpty) {
-      return byEmployeeId.trim();
-    }
+    final String? byEmployeeId =
+        _pickResolvedDesignation(_employeeIdToDesignation[item.employeeId]);
+    if (byEmployeeId != null) return byEmployeeId;
 
-    final String serviceArea =
-        (_userDetailStore.userDetail?.serviceArea ?? '').trim();
-    if (serviceArea.isNotEmpty) return serviceArea;
+    // Fall back to logged-in user's designation when viewing own plan.
+    if (_isLoggedInUserPlan(item)) {
+      final String serviceArea =
+          (_userDetailStore.userDetail?.serviceArea ?? '').trim();
+      if (serviceArea.isNotEmpty) return serviceArea;
+    }
 
     return null;
   }
@@ -2130,11 +2161,13 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                 print(
                     'TourPlanScreen: [EmployeeList API] id=${item.id}, name="$key", designationRaw="${item.designation}"');
                 _employeeNameToId[key] = item.id;
-                if (item.designation.trim().isNotEmpty) {
-                  _employeeNameToDesignation[key] = item.designation.trim();
-                  _employeeIdToDesignation[item.id] = item.designation.trim();
+                final String? resolvedDesignation =
+                    _pickResolvedDesignation(item.designation.trim());
+                if (resolvedDesignation != null) {
+                  _employeeNameToDesignation[key] = resolvedDesignation;
+                  _employeeIdToDesignation[item.id] = resolvedDesignation;
                   print(
-                      'TourPlanScreen: [EmployeeList Map] id=${item.id}, name="$key", designationMapped="${item.designation.trim()}"');
+                      'TourPlanScreen: [EmployeeList Map] id=${item.id}, name="$key", designationMapped="$resolvedDesignation"');
                 }
                 // If this employee's id matches the employeeId used in API call, auto-select it
                 if (finalEmployeeId != null && item.id == finalEmployeeId) {

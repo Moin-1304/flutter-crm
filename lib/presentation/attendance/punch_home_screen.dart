@@ -17,6 +17,19 @@ import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/t
 import 'package:boilerplate/domain/entity/tour_plan/tour_plan.dart';
 import 'package:intl/intl.dart';
 
+/// Positive decimal km while typing (e.g. 123.123). Rejects invalid partial input
+/// instead of clearing the field (FilteringTextInputFormatter.allow + 2 decimals did that).
+final RegExp _punchKmInputPattern = RegExp(r'^\d*\.?\d{0,3}$');
+
+TextInputFormatter _punchKmInputFormatter() {
+  return TextInputFormatter.withFunction((oldValue, newValue) {
+    final String text = newValue.text;
+    if (text.isEmpty) return newValue;
+    if (_punchKmInputPattern.hasMatch(text)) return newValue;
+    return oldValue;
+  });
+}
+
 class PunchHomeScreen extends StatefulWidget {
   const PunchHomeScreen({super.key});
 
@@ -1308,9 +1321,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                     controller: kilometerController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d*\.?\d{0,2}$'),
-                      ),
+                      _punchKmInputFormatter(),
                     ],
                     autofocus: true,
                     style: TextStyle(
@@ -1360,9 +1371,7 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       controller: privateKmController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: <TextInputFormatter>[
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d{0,2}$'),
-                        ),
+                        _punchKmInputFormatter(),
                       ],
                       style: TextStyle(
                         fontSize: 16,

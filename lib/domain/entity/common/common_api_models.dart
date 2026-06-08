@@ -1862,7 +1862,7 @@ class CommonDropdownItem {
                   ? json['Rate'].toDouble()
                   : (json['Rate'] as num).toDouble())
           : 0.0,
-      typeText: json['typeText'] ?? '',
+      typeText: json['typeText'] ?? json['TypeText'] ?? '',
       currency: json['currency'] ?? 0,
       type: json['type'] ?? 0,
       days: json['days'] ?? 0,
