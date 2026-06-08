@@ -7,6 +7,11 @@ import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dar
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/domain/repository/common/common_repository.dart';
+import 'package:boilerplate/domain/entity/common/common_api_models.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
+
+import 'package:boilerplate/presentation/tour_plan/new_tour_plan_screen.dart';
 
 import 'package:google_fonts/google_fonts.dart';
 
@@ -25,31 +30,80 @@ class _TourPlanEntryScreenState extends State<TourPlanEntryScreen> {
   final TourPlanRepository _repo = getIt<TourPlanRepository>();
   DateTime _date = DateTime.now();
   final TextEditingController _dateCtrl = TextEditingController();
+  List<String> _purposeOptions = <String>[];
+  bool _isLoadingPurpose = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.entry != null) {
-      _date = widget.entry!.date;
-      _dateCtrl.text = _format(_date);
-      _clusters.add(widget.entry!.cluster);
-      _customers.add(widget.entry!.customer);
-      
-      // Prefill call details from the entry
-      _calls.add(_CallModel(
-        dateLabel: _format(_date),
-        status: _getStatusText(widget.entry!.status),
-        customer: widget.entry!.customer,
-        purpose: widget.entry!.callDetails.purposes.isNotEmpty 
-            ? widget.entry!.callDetails.purposes.first 
-            : null,
-        productsToDiscuss: widget.entry!.callDetails.productsToDiscuss,
-        samplesToDistribute: widget.entry!.callDetails.samplesToDistribute,
-        remarks: widget.entry!.callDetails.remarks,
-      ));
-    } else {
-      // For new entries, add one empty call
-      _calls.add(_CallModel(dateLabel: _format(_date), status: 'Draft'));
+    // Legacy screen used hardcoded purpose options — route new plans to API-driven screen.
+    if (widget.entry == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const NewTourPlanScreen()),
+        );
+      });
+      return;
+    }
+    _date = widget.entry!.date;
+    _dateCtrl.text = _format(_date);
+    _clusters.add(widget.entry!.cluster);
+    _customers.add(widget.entry!.customer);
+
+    // Prefill call details from the entry
+    _calls.add(_CallModel(
+      dateLabel: _format(_date),
+      status: _getStatusText(widget.entry!.status),
+      customer: widget.entry!.customer,
+      purpose: widget.entry!.callDetails.purposes.isNotEmpty
+          ? widget.entry!.callDetails.purposes.first
+          : null,
+      productsToDiscuss: widget.entry!.callDetails.productsToDiscuss,
+      samplesToDistribute: widget.entry!.callDetails.samplesToDistribute,
+      remarks: widget.entry!.callDetails.remarks,
+    ));
+    _loadPurposeOptionsFromApi();
+  }
+
+  Future<void> _loadPurposeOptionsFromApi() async {
+    if (!getIt.isRegistered<CommonRepository>()) return;
+    setState(() => _isLoadingPurpose = true);
+    try {
+      final UserDetailStore? userStore =
+          getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final loggedInUser =
+          await PurposeVisitHelper.ensureLoggedInUserProfile(userStore);
+      final int userId = loggedInUser?.id ?? 0;
+      if (userId <= 0) return;
+
+      final String purposeText = PurposeVisitHelper.dcrPurposeVisitText(
+        serviceArea: loggedInUser?.serviceArea,
+        repType: loggedInUser?.repType,
+        roleCategory: loggedInUser?.roleCategory,
+      );
+
+      final List<CommonDropdownItem> items =
+          await getIt<CommonRepository>().getPurposeOfVisitList(userId, purposeText);
+
+      final Map<String, String> normalized = <String, String>{};
+      for (final item in items) {
+        final String raw =
+            (item.text.isNotEmpty ? item.text : item.typeText).trim();
+        if (raw.isNotEmpty) {
+          normalized.putIfAbsent(raw.toLowerCase(), () => raw);
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _purposeOptions = normalized.values.toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      });
+    } catch (e) {
+      print('TourPlanEntryScreen: purpose API load failed: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingPurpose = false);
     }
   }
 
@@ -156,6 +210,8 @@ class _TourPlanEntryScreenState extends State<TourPlanEntryScreen> {
                   key: ValueKey('call_${e.key}_${e.value.hashCode}'),
                   index: e.key,
                   model: e.value,
+                  purposeOptions: _purposeOptions,
+                  isLoadingPurpose: _isLoadingPurpose,
                   onRemove: () => setState(() => _calls.removeAt(e.key)),
                   tealGreen: tealGreen,
                   lightMint: lightMint,
@@ -500,6 +556,8 @@ class _CallCard extends StatefulWidget {
     super.key,
     required this.index,
     required this.model,
+    required this.purposeOptions,
+    this.isLoadingPurpose = false,
     required this.onRemove,
     required this.tealGreen,
     required this.lightMint,
@@ -507,6 +565,8 @@ class _CallCard extends StatefulWidget {
 
   final int index;
   final _CallModel model;
+  final List<String> purposeOptions;
+  final bool isLoadingPurpose;
   final VoidCallback onRemove;
   final Color tealGreen;
   final Color lightMint;
@@ -654,9 +714,13 @@ class _CallCardState extends State<_CallCard> {
                 border: Border.all(color: Colors.grey[200]!),
               ),
               child: SingleSelectDropdown(
-                options: const ['Field Visit', 'Product Detailing', 'Follow-up'],
+                options: widget.purposeOptions,
                 value: widget.model.purpose,
-                hintText: 'Select purpose',
+                hintText: widget.isLoadingPurpose
+                    ? 'Loading purpose...'
+                    : widget.purposeOptions.isEmpty
+                        ? 'Select purpose'
+                        : 'Select purpose (${widget.purposeOptions.length} options)',
                 onChanged: (v) {
                   setState(() {
                     widget.model.purpose = v;

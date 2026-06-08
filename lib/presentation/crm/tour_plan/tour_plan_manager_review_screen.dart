@@ -11,6 +11,7 @@ import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobx/mobx.dart';
 import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart';
@@ -3140,16 +3141,14 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   List<String> _purposeVisitTextsForLoggedInUser() {
     final ud = _userDetailStore.userDetail;
-    if (ud == null) return ['Salesrep PurposeVisit'];
-    final int repType = ud.repType ?? 0;
-    final int roleCategory = ud.roleCategory;
-    if (repType == 3 && roleCategory == 3) {
-      return ['PocRep-PurposeofVisit'];
-    }
-    if (ud.serviceArea.trim().toLowerCase() == 'service engineer') {
-      return ['ServiceEng PurposeVisit'];
-    }
-    return ['Salesrep PurposeVisit'];
+    if (ud == null) return [PurposeVisitTexts.salesRep];
+    return [
+      PurposeVisitHelper.tourPlanPurposeVisitText(
+        serviceArea: ud.serviceArea,
+        repType: ud.repType,
+        roleCategory: ud.roleCategory,
+      ),
+    ];
   }
 
   /// Prefer team dropdown maps; ignore placeholder header designations ("Others New").

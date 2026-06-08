@@ -17,11 +17,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
+import 'package:boilerplate/domain/entity/user/user_detail.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:convert';
@@ -398,8 +400,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final int? roleCategory = userStore?.userDetail?.roleCategory;
     final String? serviceArea = userStore?.userDetail?.serviceArea;
-    _isServiceEngineer =
-        serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    _isServiceEngineer = PurposeVisitHelper.isServiceEngineer(
+      serviceArea: serviceArea,
+      repType: userStore?.userDetail?.repType,
+    );
     _isManager = roleCategory == 1 || roleCategory == 2;
     _isNewDcr = widget.dcrId == null && widget.id == null;
 
@@ -548,10 +552,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final String? serviceArea = userStore?.userDetail?.serviceArea;
-    _isServiceEngineer =
-        serviceArea != null && serviceArea.trim() == 'Service Engineer';
+    _isServiceEngineer = PurposeVisitHelper.isServiceEngineer(
+      serviceArea: serviceArea,
+      repType: userStore?.userDetail?.repType,
+    );
     print(
-        'DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
+        'DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea", repType: ${userStore?.userDetail?.repType})');
   }
 
   Future<void> _loadManagerList() async {
@@ -1225,14 +1231,12 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   /// Dropdown list API [Text] for DCR Type of Visit (CommandType 337).
   List<String> _purposeVisitTextsForLoggedInUser(UserDetailStore? userStore) {
     final ud = userStore?.userDetail;
-    if (ud == null) return const ['Salesrep PurposeVisit'];
-    if (_isPocRepUser(userStore)) {
-      return const [_dcrPocRepTypeOfVisitText];
-    }
-    if (ud.serviceArea.trim().toLowerCase() == 'service engineer') {
-      return const ['ServiceEng PurposeVisit'];
-    }
-    return const ['Salesrep PurposeVisit'];
+    if (ud == null) return const [PurposeVisitTexts.salesRep];
+    return PurposeVisitHelper.dcrPurposeVisitTexts(
+      serviceArea: ud.serviceArea,
+      repType: ud.repType,
+      roleCategory: ud.roleCategory,
+    );
   }
 
   void _mergeTypeOfWorkDropdownItem(CommonDropdownItem item) {
@@ -1266,21 +1270,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           ? getIt<UserDetailStore>()
           : null;
 
-      // Wait for user to be loaded (retry up to 20 times = 6 seconds max)
-      int retry = 0;
-      while (userStore?.isUserLoaded != true && retry < 20) {
-        await Future.delayed(const Duration(milliseconds: 300));
-        retry++;
-        print(
-            'DcrEntryScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
-      }
+      final UserDetail? loggedInUser =
+          await PurposeVisitHelper.ensureLoggedInUserProfile(userStore);
 
-      final int? userId = userStore?.userDetail?.id;
-      final String? serviceArea = userStore?.userDetail?.serviceArea;
+      final int? userId = loggedInUser?.id;
+      final String? serviceArea = loggedInUser?.serviceArea;
+      final int? repType = loggedInUser?.repType;
       final bool isPocRep = _isPocRepUser(userStore);
 
       print(
-          'DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea", isPocRep: $isPocRep');
+          'DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea", repType: $repType, isPocRep: $isPocRep, purposeText: "${PurposeVisitHelper.dcrPurposeVisitText(serviceArea: serviceArea, repType: repType, roleCategory: loggedInUser?.roleCategory)}"');
 
       if (userId == null || userId <= 0) {
         print('DcrEntryScreen: [PurposeOfVisit] userId invalid, skipping');
@@ -1306,6 +1305,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           final items = await repo.getPurposeOfVisitList(userId, text);
           print(
               'DcrEntryScreen: [PurposeOfVisit] Text="$text" returned ${items.length} items');
+          if (_purposeVisitTextsForLoggedInUser(userStore).contains(text) &&
+              items.isNotEmpty) {
+            print(
+                'DcrEntryScreen: [PurposeOfVisit] primary labels: ${items.map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim()).where((s) => s.isNotEmpty).join(", ")}');
+          }
           for (final item in items) {
             _mergeTypeOfWorkDropdownItem(item);
           }

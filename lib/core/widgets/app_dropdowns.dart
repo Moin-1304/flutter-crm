@@ -120,8 +120,12 @@ class _SingleSelectDropdownState extends State<SingleSelectDropdown> {
                     border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(.4)),
                   ),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 320),
+                    constraints: BoxConstraints(
+                      maxHeight: (widget.options.length * 52.0 + 24)
+                          .clamp(120.0, 320.0),
+                    ),
                     child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       itemCount: widget.options.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 6),

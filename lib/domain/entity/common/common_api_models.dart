@@ -1751,6 +1751,7 @@ class CommonDropdownItem {
   final int displayOrder;
   final bool bonusEnabled;
   final bool isSelected;
+  final int? repType;
 
   CommonDropdownItem({
     required this.id,
@@ -1817,6 +1818,7 @@ class CommonDropdownItem {
     required this.displayOrder,
     this.bonusEnabled = false,
     this.isSelected = false,
+    this.repType,
   });
 
   factory CommonDropdownItem.fromJson(Map<String, dynamic> json) {
@@ -1903,7 +1905,15 @@ class CommonDropdownItem {
           json['IsSelected'] == true ||
           json['isSelected'] == 1 ||
           json['IsSelected'] == 1,
+      repType: _parseOptionalInt(json['repType'] ?? json['RepType']),
     );
+  }
+
+  static int? _parseOptionalInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 }
 

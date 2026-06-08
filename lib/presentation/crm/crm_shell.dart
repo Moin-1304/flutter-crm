@@ -7,6 +7,7 @@ import 'deviation/deviation_list_screen.dart';
 import 'deviation/deviation_entry_screen.dart';
 import 'deviation/deviation_manager_review_screen.dart';
 import 'tour_plan/tour_plan_list_screen.dart';
+import 'package:boilerplate/presentation/tour_plan/new_tour_plan_screen.dart';
 import 'tour_plan/tour_plan_entry_screen.dart';
 import 'tour_plan/tour_plan_manager_review_screen.dart';
 import 'sale_contract/sale_contract_list_screen.dart';
@@ -252,7 +253,7 @@ class _CRMShellState extends State<CRMShell> with WidgetsBindingObserver {
           fab: Builder(
             builder: (ctx) => FloatingActionButton.extended(
               onPressed: () => Navigator.of(ctx).push(
-                MaterialPageRoute(builder: (_) => const TourPlanEntryScreen()),
+                MaterialPageRoute(builder: (_) => const NewTourPlanScreen()),
               ),
               icon: const Icon(Icons.add),
               label: const Text('New Plan'),
@@ -296,7 +297,7 @@ class _CRMShellState extends State<CRMShell> with WidgetsBindingObserver {
         break;
       case 2:
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const TourPlanEntryScreen()),
+          MaterialPageRoute(builder: (_) => const NewTourPlanScreen()),
         );
         break;
       case 3:

@@ -9,9 +9,11 @@ import 'package:boilerplate/presentation/crm/tour_plan/store/tour_plan_store.dar
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
+import 'package:boilerplate/domain/entity/user/user_detail.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 
 void main() {
   runApp(const MaterialApp(
@@ -68,6 +70,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   // Reporting Staff: dropdown for managers only; selected staff drives clusters/customers etc.
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = <String, int>{};
+  /// Reporting staff [CommonDropdownItem.id] is employeeId — not login userId.
+  final Map<int, int> _reportingStaffRepTypeByEmployeeId = <int, int>{};
+  final Map<int, String> _reportingStaffDesignationByEmployeeId = <int, String>{};
   String? _selectedReportingStaff; // Selected reporting staff display name (managers only)
   int? _selectedEmployeeId; // For managers = selected reporting staff ID; for non-managers = current user's employeeId
   String? _employeeError;
@@ -89,6 +94,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   TourPlanItem?
       _fullTourPlanData; // Store the full tour plan data after fetching
   bool _isSubmitting = false; // Flag to track if we're submitting the tour plan
+  UserDetailStore? _userDetailStore;
+  int? _lastLoadedPurposeRepType;
+  int _purposeLoadGeneration = 0;
 
   /// Check if the form should be in view-only mode
   /// Returns true if isViewOnly is true OR if the tour plan is approved (status 5)
@@ -112,6 +120,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   @override
   void dispose() {
+    _userDetailStore?.removeListener(_onUserProfileUpdated);
     _dateCtrl.dispose();
     for (final c in _calls) {
       c.dispose();
@@ -125,29 +134,61 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     _dateCtrl = TextEditingController(text: _formatDate(_tourPlanDate));
     _clearCallErrors();
 
-    // Check if user is manager or field manager
+    if (getIt.isRegistered<UserDetailStore>()) {
+      _userDetailStore = getIt<UserDetailStore>();
+      _userDetailStore!.addListener(_onUserProfileUpdated);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeScreen();
+    });
+    _clearCallErrors();
+  }
+
+  Future<void> _initializeScreen() async {
+    await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
+    if (!mounted) return;
+
     _checkUserRole();
 
     if (widget.tourPlanToEdit != null) {
-      // For editing, fetch full tour plan details from API
-      _loadTourPlanDetails();
-    } else {
-      // For new tour plan, initialize with basic data
-      // Load data only when allowed:
-      // - Non-managers: load immediately
-      // - Managers (role 1/2): wait until Reporting Staff is selected
-      final shouldLoadNow =
-          !_isManagerOrFieldManager || (_selectedEmployeeId != null);
-      if (shouldLoadNow) {
-        _loadInitialData().catchError((e) {
-          print('NewTourPlanScreen: Error loading initial data: $e');
-        });
-      } else {
-        print(
-            'NewTourPlanScreen: Skipping initial data load until Reporting Staff is selected (role 1/2)');
-      }
+      await _loadTourPlanDetails();
+      return;
     }
-    _clearCallErrors();
+
+    // Managers: load reporting staff first so repType map is ready for purpose API.
+    if (_isManagerOrFieldManager) {
+      await _loadReportingStaffList();
+    }
+
+    final shouldLoadNow =
+        !_isManagerOrFieldManager || (_selectedEmployeeId != null);
+    if (shouldLoadNow) {
+      try {
+        await _loadInitialData();
+      } catch (e) {
+        print('NewTourPlanScreen: Error loading initial data: $e');
+      }
+    } else {
+      print(
+          'NewTourPlanScreen: Skipping initial data load until Reporting Staff is selected (role 1/2)');
+    }
+  }
+
+  void _onUserProfileUpdated() {
+    if (!mounted) return;
+    final int? repType = _userDetailStore?.userDetail?.repType;
+    if (repType == null || repType <= 0) return;
+    if (_isManagerOrFieldManager && _selectedEmployeeId == null) return;
+    // Re-fetch if profile arrived late or list looks truncated (e.g. stuck at 3).
+    if (repType == _lastLoadedPurposeRepType &&
+        _purposeOptions.length > 5 &&
+        PurposeVisitHelper.isServiceEngineer(repType: repType)) {
+      return;
+    }
+
+    _checkUserRole();
+    _loadTypeOfWorkList();
   }
 
   /// Check if user is manager or field manager/coordinator based on RoleCategory
@@ -158,10 +199,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final String serviceArea =
         (userStore?.userDetail?.serviceArea ?? '').trim();
-    _isServiceEngineer =
-        serviceArea.toLowerCase() == 'service engineer' ||
-        serviceArea.toLowerCase() == 'serviceeng purposevisit' ||
-        serviceArea.toLowerCase().contains('service engineer');
+    _isServiceEngineer = PurposeVisitHelper.isServiceEngineer(
+      serviceArea: serviceArea,
+      repType: userStore?.userDetail?.repType,
+    );
     final int? roleCategory = userStore?.userDetail?.roleCategory;
     final int? repType = userStore?.userDetail?.repType;
     _isPocRep = (repType == 3 && roleCategory == 3);
@@ -207,13 +248,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           if (mounted) {
             setState(() {
               _selectedEmployee = displayName;
-              _selectedEmployeeId = null; // Set when they select Reporting Staff
+              // Service-engineer managers plan for themselves using employeeId.
+              if (PurposeVisitHelper.isServiceEngineer(
+                serviceArea: userStore?.userDetail?.serviceArea,
+                repType: repType,
+              )) {
+                _selectedEmployeeId = managerEmployeeId;
+                print(
+                    'NewTourPlanScreen: [Employee] SE manager — pre-selected self employeeId: $managerEmployeeId, repType: $repType');
+              } else {
+                _selectedEmployeeId = null;
+              }
             });
           }
           print(
               'NewTourPlanScreen: [Employee] Set manager name in Employee field: $_selectedEmployee');
         }
-        _loadReportingStaffList();
       }
     } else {
       print(
@@ -297,6 +347,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         setState(() {
           _employeeOptions.clear();
           _employeeNameToId.clear();
+          _reportingStaffRepTypeByEmployeeId.clear();
+          _reportingStaffDesignationByEmployeeId.clear();
 
           for (final item in items) {
             // Format: "CODE - NAME" or just "NAME" if no code
@@ -309,7 +361,31 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
             if (displayName.trim().isNotEmpty) {
               _employeeOptions.add(displayName);
+              // item.id from CommandType 276 is employeeId (not login userId).
               _employeeNameToId[displayName] = item.id;
+              if (item.repType != null && item.repType! > 0) {
+                _reportingStaffRepTypeByEmployeeId[item.id] = item.repType!;
+              }
+              final String designation = item.designation.trim();
+              if (designation.isNotEmpty) {
+                _reportingStaffDesignationByEmployeeId[item.id] = designation;
+              }
+            }
+          }
+
+          // Default reporting staff to logged-in manager when listed under their team.
+          if (_selectedEmployeeId == null &&
+              loginEmployeeId != null &&
+              loginEmployeeId > 0) {
+            for (final MapEntry<String, int> entry
+                in _employeeNameToId.entries) {
+              if (entry.value == loginEmployeeId) {
+                _selectedReportingStaff = entry.key;
+                _selectedEmployeeId = loginEmployeeId;
+                print(
+                    'NewTourPlanScreen: [Employee] Auto-selected reporting staff: $_selectedReportingStaff (employeeId: $_selectedEmployeeId)');
+                break;
+              }
             }
           }
 
@@ -1042,6 +1118,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             _purposeOptions.clear();
                                             _typeOfWorkNameToId.clear();
                                             _typeOfWorkIdToName.clear();
+                                            _lastLoadedPurposeRepType = null;
                                             _productOptions.clear();
                                             _productNameToId.clear();
                                             _customerTypeOptions.clear();
@@ -1146,6 +1223,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                   return '$name ($cluster)';
                                 },
                                 purposeOptions: _purposeOptions,
+                                isLoadingPurpose: _isLoadingPurpose,
                                 productOptions: _productOptions,
                                 isViewOnly: _isViewOnlyMode,
                                 isCustomerEnabled:
@@ -2428,6 +2506,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   }
 
   Future<void> _loadTypeOfWorkList() async {
+    final int loadGeneration = ++_purposeLoadGeneration;
     try {
       if (mounted) {
         setState(() {
@@ -2447,31 +2526,65 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-            ? getIt<UserDetailStore>()
-            : null;
+        final UserDetail? loggedInUser =
+            await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
 
-        // Wait for user to be loaded (retry up to 10 times = 3 seconds max)
-        int retry = 0;
-        while (userStore?.isUserLoaded != true && retry < 10) {
-          await Future.delayed(const Duration(milliseconds: 300));
-          retry++;
+        // SE manager planning own tour plan — ensure reporting staff employeeId is set.
+        if (_isManagerOrFieldManager &&
+            _selectedEmployeeId == null &&
+            PurposeVisitHelper.isServiceEngineerUser(loggedInUser)) {
+          _selectedEmployeeId = loggedInUser?.employeeId;
           print(
-              'NewTourPlanScreen: [PurposeOfVisit] Waiting for user to load... retry $retry');
+              'NewTourPlanScreen: [PurposeOfVisit] Late-bound SE manager employeeId: $_selectedEmployeeId');
         }
 
-        int? userId = userStore?.userDetail?.id;
+        int? reportingStaffRepType;
+        String? reportingStaffDesignation;
+
         if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
-          userId = _selectedEmployeeId;
-          print(
-              'NewTourPlanScreen: [PurposeOfVisit] Using selected employeeId as userId: $userId');
+          reportingStaffRepType =
+              _reportingStaffRepTypeByEmployeeId[_selectedEmployeeId!];
+          reportingStaffDesignation =
+              _reportingStaffDesignationByEmployeeId[_selectedEmployeeId!];
         }
-        String? serviceArea = userStore?.userDetail?.serviceArea;
+
+        final int userId = PurposeVisitHelper.resolvePurposeApiUserId(
+          loggedInUser: loggedInUser,
+          selectedEmployeeId: _selectedEmployeeId,
+        );
+
+        final int? effectiveRepType = PurposeVisitHelper.isPlanningForSelf(
+          loggedInUser: loggedInUser,
+          selectedEmployeeId: _selectedEmployeeId,
+        )
+            ? (loggedInUser?.repType ?? reportingStaffRepType)
+            : reportingStaffRepType;
+
+        String purposeText = PurposeVisitHelper.resolveTourPlanPurposeText(
+          loggedInUser: loggedInUser,
+          selectedEmployeeId: _selectedEmployeeId,
+          reportingStaffRepType: reportingStaffRepType,
+          reportingStaffDesignation: reportingStaffDesignation,
+        );
+
+        // Hard guarantee for Service Engineer profiles (repType 5 / serviceArea).
+        if (PurposeVisitHelper.isServiceEngineer(
+          serviceArea: PurposeVisitHelper.isPlanningForSelf(
+            loggedInUser: loggedInUser,
+            selectedEmployeeId: _selectedEmployeeId,
+          )
+              ? loggedInUser?.serviceArea
+              : null,
+          repType: effectiveRepType,
+          designation: reportingStaffDesignation,
+        )) {
+          purposeText = PurposeVisitTexts.serviceEng;
+        }
 
         print(
-            'NewTourPlanScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea"');
+            'NewTourPlanScreen: [PurposeOfVisit] apiUserId: $userId, selectedEmployeeId: $_selectedEmployeeId, repType: ${loggedInUser?.repType}, staffRepType: $reportingStaffRepType, effectiveRepType: $effectiveRepType, text: "$purposeText"');
 
-        if (userId == null || userId <= 0) {
+        if (userId <= 0) {
           print('NewTourPlanScreen: [PurposeOfVisit] userId invalid, skipping');
           if (mounted) {
             setState(() {
@@ -2481,28 +2594,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           return;
         }
 
-        // Determine the text parameter based on serviceArea
-        // Only "Service Engineer" gets "ServiceEng PurposeVisit"
-        // All others (including null/empty serviceArea) get "Salesrep PurposeVisit"
-        String purposeText;
-        final String serviceAreaTrimmed = (serviceArea ?? '').trim();
-
-        if (_isPocRep) {
-          purposeText = 'PocRep-PurposeofVisit';
-        } else if (serviceAreaTrimmed == 'Service Engineer') {
-          purposeText = 'ServiceEng PurposeVisit';
-        } else {
-          // All other users (Sales, Manager, Field Coordinator, empty, null, etc.)
-          purposeText = 'Salesrep PurposeVisit';
-        }
-
-        print(
-            'NewTourPlanScreen: [PurposeOfVisit] serviceArea: "$serviceAreaTrimmed", using text: "$purposeText"');
         final List<CommonDropdownItem> items = await repo
             .getPurposeOfVisitList(userId, purposeText)
             .timeout(const Duration(seconds: 15));
+
+        if (!mounted || loadGeneration != _purposeLoadGeneration) {
+          print(
+              'NewTourPlanScreen: [PurposeOfVisit] Ignoring stale response (gen $loadGeneration)');
+          return;
+        }
+
         print(
-            'NewTourPlanScreen: [PurposeOfVisit] API returned ${items.length} items');
+            'NewTourPlanScreen: [PurposeOfVisit] API returned ${items.length} items for Text="$purposeText"');
+        if (items.isNotEmpty) {
+          print(
+              'NewTourPlanScreen: [PurposeOfVisit] labels: ${items.map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim()).where((s) => s.isNotEmpty).join(", ")}');
+        }
 
         final Map<String, String> normalizedPurposeToDisplay =
             <String, String>{};
@@ -2513,6 +2620,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
         final Set<String> works = normalizedPurposeToDisplay.values.toSet();
         if (works.isNotEmpty) {
+          _lastLoadedPurposeRepType = effectiveRepType;
           if (mounted) {
             setState(() {
               final List<String> dedupedPurposeOptions = works.toList()
@@ -2642,8 +2750,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           isFromAMCUser = 0;
           print(
               'NewTourPlanScreen: [Products] Manager/Field Manager - using selected employeeId: $actualUserId, IsFromAMCUser: 0');
-        } else if (serviceArea != null &&
-            serviceArea.trim() == 'Service Engineer') {
+        } else if (PurposeVisitHelper.isServiceEngineer(
+          serviceArea: serviceArea,
+          repType: userStore?.userDetail?.repType,
+        )) {
           if (employeeId != null && employeeId > 0) {
             actualUserId = employeeId;
             isFromAMCUser = 0;
@@ -3424,9 +3534,12 @@ class _CallCard extends StatelessWidget {
                   value: data.purpose,
                   hintText: isLoadingPurpose
                       ? 'Loading purpose...'
-                      : 'Select purpose',
+                      : purposeOptions.isEmpty
+                          ? 'Select purpose'
+                          : 'Select purpose (${purposeOptions.length} options)',
                   isLoading: isLoadingPurpose,
                   isEnabled: !isViewOnly,
+                  enableSearch: true,
                   onChanged: isViewOnly
                       ? (_) {} // No-op function for view-only mode
                       : (value) {
@@ -4211,6 +4324,10 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
     if (widget.value != _value) {
       _value = widget.value;
     }
+    if (oldWidget.options.length != widget.options.length ||
+        oldWidget.isLoading != widget.isLoading) {
+      _entry?.markNeedsBuild();
+    }
     final bool enableSearch = widget.enableSearch ?? false;
     final bool oldEnableSearch = oldWidget.enableSearch ?? false;
     if (!enableSearch && oldEnableSearch) {
@@ -4368,95 +4485,98 @@ class _SingleSelectDropdownState extends State<_SingleSelectDropdown> {
                                 ),
                               ),
                             ),
-                          Expanded(
-                            child: filteredOptions.isEmpty
-                                ? Padding(
-                                    padding: const EdgeInsets.all(20),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.info_outline,
-                                          size: 20,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          widget.options.isEmpty
-                                              ? 'No data found'
-                                              : 'No matching results',
-                                          style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : ListView.separated(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 12),
-                                    itemCount: filteredOptions.length,
-                                    separatorBuilder: (_, __) =>
-                                        const SizedBox(height: 6),
-                                    itemBuilder: (context, i) {
-                                      final opt = filteredOptions[i];
-                                      final selected = opt == _value;
-                                      return InkWell(
-                                        borderRadius: BorderRadius.circular(12),
-                                        onTap: () {
-                                          _value = opt;
-                                          widget.onChanged(opt);
-                                          setState(() {});
-                                          _removeOverlay();
-                                        },
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 12),
-                                          child: Row(
-                                            children: [
-                                              Container(
-                                                width: 20,
-                                                height: 20,
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(6),
-                                                  border: Border.all(
-                                                    color: selected
-                                                        ? const Color(
-                                                            0xFF4db1b3)
-                                                        : Colors.black
-                                                            .withOpacity(.35),
-                                                    width: 1.4,
-                                                  ),
-                                                  color: selected
-                                                      ? const Color(0xFF4db1b3)
-                                                      : Colors.transparent,
-                                                ),
-                                                child: selected
-                                                    ? const Icon(Icons.check,
-                                                        size: 16,
-                                                        color: Colors.white)
-                                                    : null,
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Text(
-                                                  opt,
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
+                          if (filteredOptions.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 20,
+                                    color: Colors.grey.shade600,
                                   ),
-                          ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    widget.options.isEmpty
+                                        ? 'No data found'
+                                        : 'No matching results',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              height: (filteredOptions.length * 52.0 + 24)
+                                  .clamp(80.0, showSearch ? 260.0 : 320.0),
+                              child: ListView.separated(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 12),
+                                itemCount: filteredOptions.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 6),
+                                itemBuilder: (context, i) {
+                                  final opt = filteredOptions[i];
+                                  final selected = opt == _value;
+                                  return InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: () {
+                                      _value = opt;
+                                      widget.onChanged(opt);
+                                      setState(() {});
+                                      _removeOverlay();
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 12),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 20,
+                                            height: 20,
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: selected
+                                                    ? const Color(
+                                                        0xFF4db1b3)
+                                                    : Colors.black
+                                                        .withOpacity(.35),
+                                                width: 1.4,
+                                              ),
+                                              color: selected
+                                                  ? const Color(0xFF4db1b3)
+                                                  : Colors.transparent,
+                                            ),
+                                            child: selected
+                                                ? const Icon(Icons.check,
+                                                    size: 16,
+                                                    color: Colors.white)
+                                                : null,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              opt,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                         ],
                       );
                     }),

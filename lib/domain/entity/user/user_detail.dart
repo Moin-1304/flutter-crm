@@ -405,8 +405,15 @@ class UserDetail {
       moduleId: json['moduleId'],
       moduleText: json['moduleText'],
       signatureFileName: json['signatureFileName'],
-      repType: json['repType'],
+      repType: _parseOptionalInt(json['repType'] ?? json['RepType']),
     );
+  }
+
+  static int? _parseOptionalInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   Map<String, dynamic> toJson() {
