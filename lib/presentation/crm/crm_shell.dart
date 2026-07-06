@@ -16,6 +16,7 @@ import 'widgets/section_scaffold.dart';
 import 'package:boilerplate/utils/routes/routes.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 
 class CRMShell extends StatefulWidget {
   const CRMShell({super.key, this.initialIndex = 0, this.showBottomNav = true});
@@ -71,13 +72,11 @@ class _CRMShellState extends State<CRMShell> with WidgetsBindingObserver {
   }
 
   List<Widget> get _pages {
-    // Hide Manager Review for non-managers: roleCategory == 3 (e.g. Medical Rep, Service Engineer)
-    // or when serviceArea is "Service Engineer" (in case API omits roleCategory for some users).
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final detail = userStore?.userDetail;
-    final bool isServiceEngineer = (detail?.serviceArea ?? '').trim() == 'Service Engineer';
-    final bool isNonManagerRole = detail?.roleCategory == 3;
-    final shouldHideManagerReview = isNonManagerRole || isServiceEngineer;
+    // Hide Manager Review for field reps (Medical Rep, Service Engineer, POC, etc.)
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final shouldHideManagerReview =
+        PurposeVisitHelper.shouldHideManagerReview(userStore?.userDetail);
     
     return <Widget>[
             CRMSectionScaffold(

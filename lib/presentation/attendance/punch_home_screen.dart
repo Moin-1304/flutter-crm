@@ -10,6 +10,8 @@ import 'package:boilerplate/domain/usecase/attendance/punch_in_out_usecase.dart'
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/domain/entity/attendance/punch_in_out_api_models.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/domain/entity/user/user.dart';
+import 'package:boilerplate/domain/entity/user/user_detail.dart';
 import 'package:boilerplate/core/widgets/animated_toast.dart';
 import '../../../di/service_locator.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
@@ -64,7 +66,10 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 
   bool _punchedIn = false;
   DateTime? _punchedInSince;
+  double? _sessionKilometerIn;
   final List<_LogEntry> _todayLog = <_LogEntry>[];
+  double? _apiLastPunchOutKilometer;
+  double? _apiActivePunchInKilometer;
 
   Timer? _clockTicker;
   DateTime _now = DateTime.now();
@@ -1250,10 +1255,188 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
 
 
 
+  /// Today's punch-in odometer reading for the active session.
+  double? _kilometerInFromTodayLog() {
+    for (final entry in _todayLog) {
+      if (entry.type == _LogType.inn &&
+          entry.kilometer != null &&
+          entry.kilometer! > 0) {
+        return entry.kilometer;
+      }
+    }
+    return _sessionKilometerIn;
+  }
+
+  double? _activePunchInKilometer() {
+    final double? fromLog = _kilometerInFromTodayLog();
+    if (fromLog != null && fromLog > 0) return fromLog;
+    return _sessionKilometerIn;
+  }
+
+  /// Most recent punch-out odometer reading for today (for multi-session days).
+  double? _lastPunchOutKilometerToday() {
+    for (final entry in _todayLog) {
+      if (entry.type == _LogType.out &&
+          entry.kilometer != null &&
+          entry.kilometer! > 0) {
+        return entry.kilometer;
+      }
+    }
+    return null;
+  }
+
+  double? _effectiveLastPunchOutKilometer() {
+    final double? fromLog = _lastPunchOutKilometerToday();
+    if (fromLog != null && fromLog > 0) return fromLog;
+    if (_apiLastPunchOutKilometer != null && _apiLastPunchOutKilometer! > 0) {
+      return _apiLastPunchOutKilometer;
+    }
+    return null;
+  }
+
+  double? _effectiveActivePunchInKilometer() {
+    final double? fromLog = _activePunchInKilometer();
+    if (fromLog != null && fromLog > 0) return fromLog;
+    if (_apiActivePunchInKilometer != null && _apiActivePunchInKilometer! > 0) {
+      return _apiActivePunchInKilometer;
+    }
+    return null;
+  }
+
+  void _syncKilometerBaselinesFromRecords(
+    List<LogDetail> logs,
+    PunchInOutResponse? parentItem,
+  ) {
+    double? lastOut;
+    double? activeIn;
+
+    final List<LogDetail> sorted = List<LogDetail>.from(logs)
+      ..sort((a, b) => b.checkDateTime.compareTo(a.checkDateTime));
+
+    for (final log in sorted) {
+      final String act = log.activity.toLowerCase();
+      final bool isOut =
+          act.contains('punch out') || log.checkOutStatus == 1;
+      final double? kmOut = log.kilometerOut;
+      if (kmOut != null && kmOut > 0 && (isOut || (log.kilometerIn ?? 0) == 0)) {
+        lastOut = kmOut;
+        break;
+      }
+    }
+
+    if (lastOut == null) {
+      for (final log in sorted) {
+        final double? kmOut = log.kilometerOut;
+        if (kmOut != null && kmOut > 0) {
+          lastOut = kmOut;
+          break;
+        }
+      }
+    }
+
+    if (_punchedIn) {
+      for (final log in sorted) {
+        final String act = log.activity.toLowerCase();
+        if (act.contains('punch in') && !act.contains('punch out')) {
+          final double? kmIn = log.kilometerIn;
+          if (kmIn != null && kmIn > 0) {
+            activeIn = kmIn;
+            break;
+          }
+        }
+      }
+      if (activeIn == null) {
+        for (final log in sorted) {
+          final double? kmIn = log.kilometerIn;
+          final double? kmOut = log.kilometerOut;
+          if (kmIn != null && kmIn > 0 && (kmOut == null || kmOut == 0)) {
+            activeIn = kmIn;
+            break;
+          }
+        }
+      }
+      activeIn ??= _sessionKilometerIn;
+    }
+
+    if (parentItem != null) {
+      if ((parentItem.kilometerOut ?? 0) > 0) {
+        lastOut ??= parentItem.kilometerOut;
+      }
+      if (_punchedIn && (parentItem.kilometerIn ?? 0) > 0) {
+        activeIn ??= parentItem.kilometerIn;
+      }
+    }
+
+    _apiLastPunchOutKilometer = lastOut;
+    _apiActivePunchInKilometer = activeIn;
+  }
+
+  /// Returns a user-facing message when mileage rules fail, or null if valid.
+  String? _validatePunchMileage({
+    required bool isPunchIn,
+    required double kilometer,
+    double? privateKilometers,
+  }) {
+    if (isPunchIn) {
+      final double? lastOut = _effectiveLastPunchOutKilometer();
+      if (lastOut != null && lastOut > 0 && kilometer < lastOut) {
+        return _punchInTooLowMessage(lastOut);
+      }
+      return null;
+    }
+
+    final double? punchInKm = _effectiveActivePunchInKilometer();
+    if (punchInKm != null && punchInKm > 0 && kilometer < punchInKm) {
+      return _punchOutTooLowMessage(punchInKm);
+    }
+
+    final double privateKm = privateKilometers ?? 0;
+    if (punchInKm != null &&
+        punchInKm > 0 &&
+        privateKm > (kilometer - punchInKm)) {
+      return 'Private KM cannot exceed work distance (${_formatKilometer(kilometer - punchInKm)} km)';
+    }
+
+    return null;
+  }
+
+  String _friendlyPunchSaveError(String? error) {
+    if (error == null || error.trim().isEmpty) {
+      return 'Failed to save punch record. Please try again.';
+    }
+    final String cleaned =
+        error.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+    final String lower = cleaned.toLowerCase();
+    if (lower.contains('kilometer') ||
+        lower.contains('mileage') ||
+        lower.contains('punch out') ||
+        lower.contains('punch in') ||
+        lower.contains('odometer')) {
+      return cleaned;
+    }
+    if (lower.contains('server error')) {
+      final double? lastOut = _effectiveLastPunchOutKilometer();
+      final double? punchInKm = _effectiveActivePunchInKilometer();
+      if (lastOut != null && lastOut > 0) {
+        return '${_punchInTooLowMessage(lastOut)} Please correct the value and try again.';
+      }
+      if (punchInKm != null && punchInKm > 0) {
+        return '${_punchOutTooLowMessage(punchInKm)} Please correct the value and try again.';
+      }
+      return 'Could not save punch record. Please check your kilometer readings and try again.';
+    }
+    return cleaned;
+  }
+
   /// Shows a dialog to enter mileage values.
-  /// For punch in: requires Kilometer In only.
-  /// For punch out: requires Kilometer Out and Private KM.
-  Future<_PunchMileageInput?> _showKilometerDialog(BuildContext context, {required bool isPunchIn}) async {
+  /// For punch in: requires Kilometer In only (must be >= last punch out same day).
+  /// For punch out: requires Kilometer Out and Private KM (Out must be >= punch in).
+  Future<_PunchMileageInput?> _showKilometerDialog(
+    BuildContext context, {
+    required bool isPunchIn,
+    double? punchInKilometer,
+    double? lastPunchOutKilometer,
+  }) async {
     final kilometerController = TextEditingController();
     final privateKmController = TextEditingController(text: '0');
     final key = GlobalKey<FormState>();
@@ -1316,6 +1499,34 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  if (!isPunchIn &&
+                      punchInKilometer != null &&
+                      punchInKilometer > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Punch in reading: ${_formatKilometer(punchInKilometer)} km',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: tealGreen,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  if (isPunchIn &&
+                      lastPunchOutKilometer != null &&
+                      lastPunchOutKilometer > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Last punch out: ${_formatKilometer(lastPunchOutKilometer)} km',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: tealGreen,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: kilometerController,
@@ -1362,6 +1573,18 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                       if (v == null || v.trim().isEmpty) return 'Please enter mileage';
                       final n = double.tryParse(v.trim());
                       if (n == null || n < 0) return 'Enter a valid number (≥ 0)';
+                      if (isPunchIn &&
+                          lastPunchOutKilometer != null &&
+                          lastPunchOutKilometer > 0 &&
+                          n < lastPunchOutKilometer) {
+                        return _punchInTooLowMessage(lastPunchOutKilometer);
+                      }
+                      if (!isPunchIn &&
+                          punchInKilometer != null &&
+                          punchInKilometer > 0 &&
+                          n < punchInKilometer) {
+                        return _punchOutTooLowMessage(punchInKilometer);
+                      }
                       return null;
                     },
                   ),
@@ -1413,6 +1636,16 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
                         if (v == null || v.trim().isEmpty) return 'Please enter Private KM';
                         final n = double.tryParse(v.trim());
                         if (n == null || n < 0) return 'Enter a valid number (≥ 0)';
+                        if (punchInKilometer != null && punchInKilometer > 0) {
+                          final double? kmOut =
+                              double.tryParse(kilometerController.text.trim());
+                          if (kmOut != null && kmOut >= punchInKilometer) {
+                            final double maxPrivate = kmOut - punchInKilometer;
+                            if (n > maxPrivate) {
+                              return 'Cannot exceed ${_formatKilometer(maxPrivate)} km';
+                            }
+                          }
+                        }
                         return null;
                       },
                     ),
@@ -1474,20 +1707,52 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     );
   }
 
+  /// Resolves punch save identifiers to match the website payload (managers often
+  /// have primarySBUId / employee profile fields that differ from login user.sbuId).
+  ({
+    int userId,
+    int employeeId,
+    int sbuId,
+    int bizUnit,
+    int createdBy,
+    String userName,
+    String sbuName,
+  }) _resolvePunchSaveFields(User user, UserDetail userDetail) {
+    final int sbuId = userDetail.primarySBUId ??
+        (userDetail.sbuId > 0
+            ? userDetail.sbuId
+            : (user.sbuId > 0 ? user.sbuId : 1));
+    final int bizUnit = sbuId > 0
+        ? sbuId
+        : (userDetail.sbuCompany > 0 ? userDetail.sbuCompany : 1);
+    final int userId = (userDetail.userId ?? user.userId) > 0
+        ? (userDetail.userId ?? user.userId)
+        : user.userId;
+    final int createdBy =
+        user.userId > 0 ? user.userId : (userDetail.userId ?? user.id);
+    final String userName = userDetail.employeeName.trim().isNotEmpty
+        ? userDetail.employeeName.trim()
+        : user.name;
+    final String sbuName = userDetail.sbuName.trim();
+
+    return (
+      userId: userId,
+      employeeId: userDetail.employeeId,
+      sbuId: sbuId,
+      bizUnit: bizUnit,
+      createdBy: createdBy,
+      userName: userName,
+      sbuName: sbuName,
+    );
+  }
+
   void _togglePunch() async {
     if (_isLoading) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
       // Get user data from shared preferences
       final user = await _sharedPreferenceHelper.getUser();
       if (user == null) {
-        setState(() {
-          _isLoading = false;
-        });
         _showToast('User not found. Please login again.', isError: true);
         return;
       }
@@ -1495,46 +1760,66 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
       // Get employee ID from user detail store
       final userDetail = _userDetailStore.userDetail;
       if (userDetail == null) {
-        setState(() {
-          _isLoading = false;
-        });
         _showToast('User details not loaded. Please refresh the app.', isError: true);
         return;
       }
 
       final isPunchIn = !_punchedIn;
-      
+
+      // Refresh today's readings so mileage limits match the server before the dialog opens.
+      await _loadTodayPunchRecords();
+
       // Show dialog to enter vehicle mileage (Kilometer In for punch in, Kilometer Out for punch out)
       final _PunchMileageInput? mileageInput =
-          await _showKilometerDialog(context, isPunchIn: isPunchIn);
+          await _showKilometerDialog(
+        context,
+        isPunchIn: isPunchIn,
+        punchInKilometer: isPunchIn ? null : _effectiveActivePunchInKilometer(),
+        lastPunchOutKilometer:
+            isPunchIn ? _effectiveLastPunchOutKilometer() : null,
+      );
       if (mileageInput == null && !mounted) {
-        setState(() => _isLoading = false);
         return;
       }
-      // User cancelled dialog (null and no validation error)
+      // User cancelled dialog
       if (mileageInput == null || mileageInput.kilometer == null) {
-        setState(() => _isLoading = false);
         return;
       }
       final double kilometerValue = mileageInput.kilometer!;
-      
-      // Get sbuId from userDetail (preferred) or fallback to user.sbuId or default to 1
-      // Priority: primarySBUId > userDetail.sbuId > user.sbuId > 1
-      final int sbuIdValue = userDetail.primarySBUId ?? 
-                            (userDetail.sbuId > 0 ? userDetail.sbuId : 
-                            (user.sbuId > 0 ? user.sbuId : 1));
+
+      final String? mileageError = _validatePunchMileage(
+        isPunchIn: isPunchIn,
+        kilometer: kilometerValue,
+        privateKilometers: mileageInput.privateKilometers,
+      );
+      if (mileageError != null) {
+        _showToast(mileageError, isError: true);
+        return;
+      }
+
+      if (userDetail.employeeId <= 0) {
+        _showToast(
+          'Employee profile not loaded. Please logout and login again.',
+          isError: true,
+        );
+        return;
+      }
+
+      setState(() => _isLoading = true);
+
+      final punchFields = _resolvePunchSaveFields(user, userDetail);
       
       // Call API to save punch in/out with vehicle mileage
       final result = await _punchInOutUseCase.savePunchInOut(
-        userId: user.userId,
-        employeeId: userDetail.employeeId, // Get from user detail store
-        sbuId: sbuIdValue, // Use correct sbuId from userDetail
-        createdBy: user.createdBy,
+        userId: punchFields.userId,
+        employeeId: punchFields.employeeId,
+        sbuId: punchFields.sbuId,
+        createdBy: punchFields.createdBy,
         status: 1, // Active status
-        bizUnit: userDetail.sbuId > 0 ? userDetail.sbuId : 1,
+        bizUnit: punchFields.bizUnit,
         isPunchIn: isPunchIn,
-        userName: user.name,
-        sbuName: '',
+        userName: punchFields.userName,
+        sbuName: punchFields.sbuName,
         kilometerIn: isPunchIn ? kilometerValue : null,
         kilometerOut: isPunchIn ? null : kilometerValue,
         privateKilometers: isPunchIn ? null : mileageInput.privateKilometers,
@@ -1546,9 +1831,11 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
           final DateTime now = DateTime.now();
           if (_punchedIn) {
             _punchedInSince = now;
+            _sessionKilometerIn = kilometerValue;
             _todayLog.insert(0, _LogEntry(_LogType.inn, now, kilometer: kilometerValue));
             _showToast('Punch In successful!');
           } else {
+            _sessionKilometerIn = null;
             _todayLog.insert(0, _LogEntry(_LogType.out, now, kilometer: kilometerValue));
             _showToast('Punch Out successful!');
           }
@@ -1564,24 +1851,20 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         setState(() {
           _isLoading = false;
         });
-        _showToast(result.error ?? 'Failed to save punch record', isError: true);
+        _showToast(_friendlyPunchSaveError(result.error), isError: true);
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      // Extract user-friendly error message
-      String errorMessage = 'Failed to save punch record. Please try again.';
-      final errorString = e.toString();
-      if (errorString.contains('Server error')) {
-        errorMessage = 'Server error occurred. Please try again later.';
-      } else if (errorString.contains('Connection error') || errorString.contains('Network error')) {
-        errorMessage = 'Connection error. Please check your internet connection and try again.';
+      final String errorString = e.toString();
+      String errorMessage = _friendlyPunchSaveError(errorString);
+      if (errorMessage == 'Failed to save punch record. Please try again.' &&
+          errorString.contains('Connection error')) {
+        errorMessage =
+            'Connection error. Please check your internet connection and try again.';
       } else if (errorString.contains('Authentication failed')) {
         errorMessage = 'Authentication failed. Please login again.';
-      } else if (errorString.isNotEmpty && !errorString.contains('Exception:') && !errorString.contains('DioException')) {
-        // Use the error message if it's already user-friendly
-        errorMessage = errorString;
       }
       _showToast(errorMessage, isError: true);
     }
@@ -1609,23 +1892,23 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
         return false; // Can't punch out without user details
       }
       
-      // Get sbuId from userDetail (preferred) or fallback to user.sbuId or default to 1
-      // Priority: primarySBUId > userDetail.sbuId > user.sbuId > 1
-      final int sbuIdValue = userDetail.primarySBUId ?? 
-                            (userDetail.sbuId > 0 ? userDetail.sbuId : 
-                            (user.sbuId > 0 ? user.sbuId : 1));
+      if (userDetail.employeeId <= 0) {
+        return false;
+      }
+
+      final punchFields = _resolvePunchSaveFields(user, userDetail);
       
       // Call API to save punch out
       final result = await _punchInOutUseCase.savePunchInOut(
-        userId: user.userId,
-        employeeId: userDetail.employeeId,
-        sbuId: sbuIdValue, // Use correct sbuId from userDetail
-        createdBy: user.createdBy,
+        userId: punchFields.userId,
+        employeeId: punchFields.employeeId,
+        sbuId: punchFields.sbuId,
+        createdBy: punchFields.createdBy,
         status: 1, // Active status
-        bizUnit: 1, // Default business unit
+        bizUnit: punchFields.bizUnit,
         isPunchIn: false, // Punch out
-        userName: user.name,
-        sbuName: '',
+        userName: punchFields.userName,
+        sbuName: punchFields.sbuName,
         privateKilometers: 0,
       );
 
@@ -1939,6 +2222,25 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
             _punchedIn = false;
             _punchedInSince = null;
           }
+
+          if (_punchedIn) {
+            final double? kmIn = _kilometerInFromTodayLog();
+            if (kmIn != null && kmIn > 0) {
+              _sessionKilometerIn = kmIn;
+            } else if (hasItem) {
+              final double? apiKmIn = punchRecords.items.first.kilometerIn;
+              if (apiKmIn != null && apiKmIn > 0) {
+                _sessionKilometerIn = apiKmIn;
+              }
+            }
+          } else {
+            _sessionKilometerIn = null;
+          }
+
+          _syncKilometerBaselinesFromRecords(
+            logs,
+            hasItem ? punchRecords.items.first : null,
+          );
         });
       }
     } catch (e) {
@@ -2020,6 +2322,14 @@ class _PunchHomeScreenState extends State<PunchHomeScreen> with AutomaticKeepAli
     final int hour = d.hour % 12 == 0 ? 12 : d.hour % 12;
     final String ampm = d.hour >= 12 ? 'PM' : 'AM';
     return '${hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} $ampm';
+  }
+
+  static String _punchInTooLowMessage(double minimumKm) {
+    return 'Kilometer In cannot be less than your last Punch Out. Enter at least ${_formatKilometer(minimumKm)} km.';
+  }
+
+  static String _punchOutTooLowMessage(double minimumKm) {
+    return 'Kilometer Out cannot be less than your Punch In. Enter at least ${_formatKilometer(minimumKm)} km.';
   }
 
   static String _formatKilometer(double value) {

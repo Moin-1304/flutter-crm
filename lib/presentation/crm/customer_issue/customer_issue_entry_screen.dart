@@ -176,83 +176,101 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
 
     // Load stores, issue-to, issue-against, and division category options after the first frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      print('🔄 Starting form initialization...');
-      print('   Edit Mode: $_isEditMode');
-      print('   View Mode: $_isViewMode');
-      print('   Issue ID: ${widget.issueId}');
-      print('   Has API Data: ${widget.apiIssueData != null}');
+      try {
+        print('🔄 Starting form initialization...');
+        print('   Edit Mode: $_isEditMode');
+        print('   View Mode: $_isViewMode');
+        print('   Issue ID: ${widget.issueId}');
+        print('   Has API Data: ${widget.apiIssueData != null}');
 
-      // Step 1: ALWAYS call Get API in edit/view mode to get complete data
-      // Even if apiIssueData is provided, Get API has more complete details
-      if ((_isEditMode || _isViewMode) && widget.issueId != null) {
-        final issueId = int.tryParse(widget.issueId!);
-        if (issueId != null && issueId > 0) {
-          print(
-              '📥 Calling Get API to load complete issue data (ID: $issueId)...');
-          print('   (This will override any partial data from list screen)');
-          await _loadIssueFromApi(issueId);
+        // Step 1: ALWAYS call Get API in edit/view mode to get complete data
+        // Even if apiIssueData is provided, Get API has more complete details
+        if ((_isEditMode || _isViewMode) && widget.issueId != null) {
+          final issueId = int.tryParse(widget.issueId!);
+          if (issueId != null && issueId > 0) {
+            print(
+                '📥 Calling Get API to load complete issue data (ID: $issueId)...');
+            print('   (This will override any partial data from list screen)');
+            await _loadIssueFromApi(issueId);
+          } else {
+            print('⚠️ Invalid issue ID: ${widget.issueId}');
+          }
         } else {
-          print('⚠️ Invalid issue ID: ${widget.issueId}');
-        }
-      } else {
-        print(
-            'ℹ️ Not in edit/view mode or no issue ID - skipping Get API call');
-      }
-
-      // Step 2: Load all dropdowns in parallel
-      print('🔄 Loading dropdowns for form population...');
-      await Future.wait([
-        _loadStores(),
-        _loadIssueToOptions(),
-        _loadIssueAgainstOptions(),
-        _loadDivisionCategoryOptions(),
-      ]);
-
-      print('✅ All dropdowns loaded');
-      print('   - Stores: ${_storeList.length}');
-      print('   - Issue To: ${_issueToList.length}');
-      print('   - Issue Against: ${_issueAgainstList.length}');
-      print('   - Division Categories: ${_divisionCategoryList.length}');
-
-      // Step 3: Load workflow data and get process IDs
-      await _loadWorkflowData();
-
-      // Step 4: After both API data and dropdowns are loaded, populate form
-      // Check pending data first (loaded from API), then widget data
-      print('🔍 Checking for API data to populate form...');
-      print(
-          '   _pendingApiIssueData: ${_pendingApiIssueData != null ? "EXISTS (ID: ${_pendingApiIssueData!.id})" : "NULL"}');
-      print(
-          '   widget.apiIssueData: ${widget.apiIssueData != null ? "EXISTS (ID: ${widget.apiIssueData!.id})" : "NULL"}');
-
-      final apiDataToUse = _pendingApiIssueData ?? widget.apiIssueData;
-      if (apiDataToUse != null && mounted) {
-        _loadedIssueIsDraft = _isDraftIssue(apiDataToUse);
-        if (_loadedIssueIsDraft) {
-          print('   📋 Issue is DRAFT - reloading workflow with create URL');
-          await _loadWorkflowData(useCreateUrl: true);
-        }
-        print(
-            '✅ Found API data - Populating form with API data (ID: ${apiDataToUse.id})...');
-        await _populateFormFromApiIssue(apiDataToUse);
-        _pendingApiIssueData = null; // Clear pending data
-        print('✅ Form population completed');
-      } else {
-        print('❌ No API data to populate!');
-        if (widget.issueId != null) {
           print(
-              '   Issue ID provided: ${widget.issueId}, but no API data available');
-        }
-        if (_pendingApiIssueData == null && widget.apiIssueData == null) {
-          print(
-              '   ⚠️ WARNING: Both _pendingApiIssueData and widget.apiIssueData are null!');
-          print('   This means the Get API either failed or was not called.');
+              'ℹ️ Not in edit/view mode or no issue ID - skipping Get API call');
         }
 
-        // New issue: default-select From/To stores.
-        // - From store: top 1 item in dropdown
-        // - To store: first item that is NOT the same as From store
-        _applyDefaultStoreSelectionIfNeeded();
+        if (!mounted) return;
+
+        // Step 2: Load all dropdowns in parallel
+        print('🔄 Loading dropdowns for form population...');
+        await Future.wait([
+          _loadStores(),
+          _loadIssueToOptions(),
+          _loadIssueAgainstOptions(),
+          _loadDivisionCategoryOptions(),
+        ]);
+
+        if (!mounted) return;
+
+        print('✅ All dropdowns loaded');
+        print('   - Stores: ${_storeList.length}');
+        print('   - Issue To: ${_issueToList.length}');
+        print('   - Issue Against: ${_issueAgainstList.length}');
+        print('   - Division Categories: ${_divisionCategoryList.length}');
+
+        // Step 3: Load workflow data and get process IDs
+        await _loadWorkflowData();
+
+        if (!mounted) return;
+
+        // Step 4: After both API data and dropdowns are loaded, populate form
+        // Check pending data first (loaded from API), then widget data
+        print('🔍 Checking for API data to populate form...');
+        print(
+            '   _pendingApiIssueData: ${_pendingApiIssueData != null ? "EXISTS (ID: ${_pendingApiIssueData!.id})" : "NULL"}');
+        print(
+            '   widget.apiIssueData: ${widget.apiIssueData != null ? "EXISTS (ID: ${widget.apiIssueData!.id})" : "NULL"}');
+
+        final apiDataToUse = _pendingApiIssueData ?? widget.apiIssueData;
+        if (apiDataToUse != null && mounted) {
+          _loadedIssueIsDraft = _isDraftIssue(apiDataToUse);
+          if (_loadedIssueIsDraft) {
+            print('   📋 Issue is DRAFT - reloading workflow with create URL');
+            await _loadWorkflowData(useCreateUrl: true);
+          }
+          if (!mounted) return;
+          print(
+              '✅ Found API data - Populating form with API data (ID: ${apiDataToUse.id})...');
+          await _populateFormFromApiIssue(apiDataToUse);
+          _pendingApiIssueData = null; // Clear pending data
+          print('✅ Form population completed');
+        } else {
+          print('❌ No API data to populate!');
+          if (widget.issueId != null) {
+            print(
+                '   Issue ID provided: ${widget.issueId}, but no API data available');
+          }
+          if (_pendingApiIssueData == null && widget.apiIssueData == null) {
+            print(
+                '   ⚠️ WARNING: Both _pendingApiIssueData and widget.apiIssueData are null!');
+            print('   This means the Get API either failed or was not called.');
+          }
+
+          // New issue: default-select From/To stores.
+          // - From store: top 1 item in dropdown
+          // - To store: first item that is NOT the same as From store
+          _applyDefaultStoreSelectionIfNeeded();
+        }
+      } catch (e) {
+        debugPrint('CustomerIssueEntryScreen: form initialization failed: $e');
+        if (mounted) {
+          ToastMessage.show(
+            context,
+            message: 'Failed to load form data. Please try again.',
+            type: ToastType.error,
+          );
+        }
       }
     });
   }
@@ -630,10 +648,13 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         _divisionToItemDescriptionList[divisionCategory];
     if (itemDescriptionList == null) return;
 
-    final itemItem = itemDescriptionList.firstWhere(
-      (item) => item.text == itemDescription,
-      orElse: () => itemDescriptionList.first,
-    );
+    CommonDropdownItem? itemItem;
+    try {
+      itemItem = itemDescriptionList
+          .firstWhere((item) => item.text == itemDescription);
+    } catch (_) {
+      return;
+    }
     final requestItemId = _getItemRequestId(itemItem);
 
     // Check if already loaded
@@ -659,7 +680,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
           ? storeBizUnit
           : (prefBizUnit > 0 ? prefBizUnit : 1);
 
-      final toDate = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(DateTime.now());
+      final toDate = _formatBatchLookupDate();
+      final departmentId = _resolveFromStoreIdForBatch();
       final commonRepository = getIt<CommonRepository>();
       final batchNoList = await commonRepository
           .getBatchNoList(
@@ -667,19 +689,28 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
             employeeId: employeeId,
             toDate: toDate,
             bizUnit: bizUnit,
+            department: departmentId > 0 ? departmentId : null,
           )
           .timeout(const Duration(seconds: 30));
 
       print(
-          'Batch lookup item mapping: optionId=${itemItem.id}, item=${itemItem.item}, value=${itemItem.value}, requestItemId=$requestItemId, text="${itemItem.text}"');
+          'Batch lookup item mapping: optionId=${itemItem.id}, item=${itemItem.item}, value=${itemItem.value}, requestItemId=$requestItemId, departmentId=$departmentId, text="${itemItem.text}"');
 
       if (mounted) {
-        final batchNos = batchNoList.map((item) => item.text).toList();
+        final batchNos = _batchOptionLabels(batchNoList);
         _itemToBatchNumbers[itemDescription] = batchNos;
         _itemToBatchNumberList[itemDescription] = batchNoList;
         setState(() {
           itemDetail.batchNoOptions = batchNos;
         });
+        if (batchNos.isEmpty) {
+          ToastMessage.show(
+            context,
+            message:
+                'No batch numbers found for this item in the selected from store.',
+            type: ToastType.warning,
+          );
+        }
       }
     } catch (e) {
       print('Error loading batch numbers: $e');
@@ -782,6 +813,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
   }
 
   Future<void> _populateFormFromApiIssue(ItemIssueApiItem apiIssue) async {
+    if (!mounted) return;
+
     print('═══════════════════════════════════════════════════════════');
     print('📝 POPULATING FORM FROM API ISSUE DATA');
     print('═══════════════════════════════════════════════════════════');
@@ -799,6 +832,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     print('Issue To List Count: ${_issueToList.length}');
     print('═══════════════════════════════════════════════════════════');
 
+    if (!mounted) return;
+
     // Map full API issue data to form fields
     setState(() {
       _stNo = apiIssue.no.isNotEmpty ? apiIssue.no : apiIssue.id.toString();
@@ -813,9 +848,23 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         print('Error parsing date: ${apiIssue.date}');
       }
 
-      // Map stores - use text values directly
-      _fromStore =
-          apiIssue.departmentText.isNotEmpty ? apiIssue.departmentText : null;
+      // Map stores - prefer department ID, fallback to text label
+      if (apiIssue.department > 0 && _storeList.isNotEmpty) {
+        try {
+          final storeItem = _storeList.firstWhere(
+            (item) => item.id == apiIssue.department,
+          );
+          _fromStore = storeItem.text;
+        } catch (_) {
+          _fromStore = apiIssue.departmentText.isNotEmpty
+              ? apiIssue.departmentText
+              : null;
+        }
+      } else {
+        _fromStore = apiIssue.departmentText.isNotEmpty
+            ? apiIssue.departmentText
+            : null;
+      }
       _toStore = apiIssue.toStoreText.isNotEmpty ? apiIssue.toStoreText : null;
 
       // Map issue against - API returns display text (e.g. "EMAR Pharma"); fallback to issueReceiptType ID
@@ -1082,6 +1131,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     if (_itemDetails.isNotEmpty) {
       print('🔄 Loading dropdown options for populated items...');
       for (int i = 0; i < _itemDetails.length; i++) {
+        if (!mounted) return;
         final itemDetail = _itemDetails[i];
 
         // Load item descriptions if division category is set
@@ -2855,7 +2905,8 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                         if (batchList != null) {
                           try {
                             final batchItem = batchList.firstWhere(
-                              (item) => item.text.trim() == v.trim(),
+                              (item) =>
+                                  _batchOptionLabel(item).trim() == v.trim(),
                             );
                             detail.batchId = batchItem.id;
                             print(
@@ -2865,7 +2916,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                             try {
                               final batchItem = batchList.firstWhere(
                                 (item) =>
-                                    item.text.trim().toLowerCase() ==
+                                    _batchOptionLabel(item)
+                                        .trim()
+                                        .toLowerCase() ==
                                     v.trim().toLowerCase(),
                               );
                               detail.batchId = batchItem.id;
@@ -2975,11 +3028,14 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
                 child: TextFormField(
                   controller: detail.qtyInStockCtrl,
                   keyboardType: TextInputType.number,
-                  readOnly: true,
+                  readOnly: _isViewMode,
                   decoration: InputDecoration(
-                    hintText: 'Auto-filled',
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
+                    hintText: detail.batchNo != null
+                        ? 'Auto-filled from batch'
+                        : 'Enter quantity in stock',
+                    filled: _isViewMode,
+                    fillColor:
+                        _isViewMode ? Colors.grey.shade100 : Colors.white,
                   ),
                 ),
               ),
@@ -3479,6 +3535,38 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     }
   }
 
+  String _formatBatchLookupDate() {
+    return DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(_stDate);
+  }
+
+  int _resolveFromStoreIdForBatch() {
+    if (_fromStore != null && _fromStore!.trim().isNotEmpty) {
+      final int fromStoreId = _getIdFromText(_fromStore, _storeList);
+      if (fromStoreId > 0) return fromStoreId;
+    }
+    if (_storeList.isNotEmpty) {
+      return _storeList.first.id;
+    }
+    return 0;
+  }
+
+  String _batchOptionLabel(CommonDropdownItem item) {
+    final String text = item.text.trim();
+    if (text.isNotEmpty) return text;
+    final String no = item.no.trim();
+    if (no.isNotEmpty) return no;
+    final String name = item.name.trim();
+    if (name.isNotEmpty) return name;
+    return '';
+  }
+
+  List<String> _batchOptionLabels(List<CommonDropdownItem> items) {
+    return items
+        .map(_batchOptionLabel)
+        .where((label) => label.isNotEmpty)
+        .toList();
+  }
+
   /// Get workflow process ID and action ID
   /// Returns true if the issue is in draft state (saved but never submitted).
   bool _isDraftIssue(ItemIssueApiItem issue) {
@@ -3601,8 +3689,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
     print('  issueId: ${widget.issueId ?? 'NULL'}');
     print('  items count: ${_itemDetails.length}');
 
-    // Convert _itemDetails to _items for processing
+    // Convert _itemDetails to _items for processing (skip empty placeholder rows).
     _items = _itemDetails
+        .where((detail) => (detail.itemDescription ?? '').trim().isNotEmpty)
         .map((detail) => _convertItemDetailToIssueItemDetail(detail))
         .toList();
 
@@ -3663,6 +3752,9 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       print(
           '📋 Submitting DRAFT as NEW (first-time submit) - Id: null, No: "[NEW]", IsEdit: null');
     }
+
+    // API expects ISO datetime (same as list/get responses, e.g. 2026-06-17T00:00:00.000).
+    final String dateStr = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS").format(_stDate);
 
     // Build details list
     final List<ItemIssueDetailSaveRequest> details = [];
@@ -3851,7 +3943,7 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
         uomText: item.uom,
         purchaseRequestHeaderId: 0,
         no: null,
-        date: null,
+        date: dateStr,
         version: 0,
         select: null,
         slNo: i,
@@ -3923,9 +4015,6 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       throw Exception(
           'No items added. Please add at least one item before saving.');
     }
-
-    // Save payload now expects space-separated datetime format.
-    final dateStr = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(_stDate);
 
     final menuId = 1589;
     final moduleId = 8;
@@ -4342,7 +4431,10 @@ class _CustomerIssueEntryScreenState extends State<CustomerIssueEntryScreen> {
       }
     }
 
-    if (_items.isEmpty) {
+    if (_itemDetails.isEmpty ||
+        _itemDetails.every((d) =>
+            (d.divisionCategory ?? '').trim().isEmpty &&
+            (d.itemDescription ?? '').trim().isEmpty)) {
       ToastMessage.show(
         context,
         message: 'Please add at least one item before submitting',

@@ -138,6 +138,15 @@ class DcrApiItem {
   final List<CoVisitorDetail> coVisitorDetails;
   final double? customerLatitude;
   final double? customerLongitude;
+  // Flattened Service Report fields from DCR list API (when tourPlanDCRDetails is null)
+  final String? serviceReportContactPerson;
+  final String? serviceReportContactMobile;
+  final String? serviceReportProduct;
+  final String? serviceReportSerialNumber;
+  final String? serviceReportServiceTypeText;
+  final int? dcrDetailIdServiceReport;
+  final int? serviceReportId;
+  final bool? isServiceReportExists;
 
   DcrApiItem({
     required this.id,
@@ -174,9 +183,43 @@ class DcrApiItem {
     this.coVisitorDetails = const [],
     this.customerLatitude,
     this.customerLongitude,
+    this.serviceReportContactPerson,
+    this.serviceReportContactMobile,
+    this.serviceReportProduct,
+    this.serviceReportSerialNumber,
+    this.serviceReportServiceTypeText,
+    this.dcrDetailIdServiceReport,
+    this.serviceReportId,
+    this.isServiceReportExists,
   });
 
   factory DcrApiItem.fromJson(Map<String, dynamic> json) {
+    final dynamic dcrDetailIdServiceReportRaw =
+        json['dcrDetailIdServiceReport'] ?? json['DcrDetailIdServiceReport'];
+    final int? dcrDetailIdServiceReport = dcrDetailIdServiceReportRaw is int
+        ? dcrDetailIdServiceReportRaw
+        : (dcrDetailIdServiceReportRaw is String
+            ? int.tryParse(dcrDetailIdServiceReportRaw)
+            : null);
+
+    final dynamic serviceReportIdRaw =
+        json['serviceReportId'] ?? json['ServiceReportId'];
+    final int? serviceReportId = serviceReportIdRaw is int
+        ? serviceReportIdRaw
+        : (serviceReportIdRaw is String
+            ? int.tryParse(serviceReportIdRaw)
+            : null);
+
+    final dynamic isServiceReportExistsRaw =
+        json['isServiceReportExists'] ?? json['IsServiceReportExists'];
+    final bool? isServiceReportExists = isServiceReportExistsRaw is bool
+        ? isServiceReportExistsRaw
+        : (isServiceReportExistsRaw is String
+            ? isServiceReportExistsRaw.toLowerCase() == 'true'
+            : (isServiceReportExistsRaw is int
+                ? isServiceReportExistsRaw == 1
+                : null));
+
     return DcrApiItem(
       id: json['id'] ?? 0,
       cityId: json['cityId'] ?? 0,
@@ -223,6 +266,18 @@ class DcrApiItem {
           [],
       customerLatitude: (json['customerLatitude'] == null) ? null : (json['customerLatitude'] as num).toDouble(),
       customerLongitude: (json['customerLongitude'] == null) ? null : (json['customerLongitude'] as num).toDouble(),
+      serviceReportContactPerson:
+          (json['contactPerson'] ?? json['ContactPerson'])?.toString(),
+      serviceReportContactMobile:
+          (json['contactMobile'] ?? json['ContactMobile'])?.toString(),
+      serviceReportProduct: (json['product'] ?? json['Product'])?.toString(),
+      serviceReportSerialNumber:
+          (json['serialNumber'] ?? json['SerialNumber'])?.toString(),
+      serviceReportServiceTypeText:
+          (json['serviceTypeText'] ?? json['ServiceTypeText'])?.toString(),
+      dcrDetailIdServiceReport: dcrDetailIdServiceReport,
+      serviceReportId: serviceReportId,
+      isServiceReportExists: isServiceReportExists,
     );
   }
 }

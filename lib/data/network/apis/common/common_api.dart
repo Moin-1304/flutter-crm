@@ -9,6 +9,7 @@ import '../../../../domain/entity/common/common_api_models.dart'
         TaxComponentResponse,
         ItemDetailResponse,
         PurposeOfVisitRequest,
+        DcrPurposeOfVisitRequest,
         CustomerTypeRequest,
         TourPlanProductsRequest,
         DcrProductsRequest,
@@ -215,6 +216,45 @@ class CommonApi {
       }
     } catch (e) {
       throw Exception('Failed to get purpose of visit list: ${e.toString()}');
+    }
+  }
+
+  /// DCR Form Type of Visit (role-specific CommandType + Text; not Tour Plan).
+  Future<List<CommonDropdownItem>> getDcrPurposeOfVisitList({
+    required int userId,
+    required int commandType,
+    required String text,
+  }) async {
+    try {
+      final request = DcrPurposeOfVisitRequest(
+        userId: userId,
+        commandType: commandType,
+        text: text,
+      );
+      final response = await _dioClient.dio.post(
+        Endpoints.commonGetAuto,
+        data: request.toJson(),
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        if (response.data is List) {
+          return (response.data as List)
+              .map((item) => CommonDropdownItem.fromJson(item))
+              .toList();
+        } else {
+          throw Exception('Invalid response format - expected array');
+        }
+      } else {
+        throw Exception('No response data received');
+      }
+    } catch (e) {
+      throw Exception(
+          'Failed to get DCR purpose of visit list: ${e.toString()}');
     }
   }
 
@@ -1017,6 +1057,7 @@ class CommonApi {
     required int bizUnit,
     int module = 13,
     int transactionType = 12,
+    int? department,
   }) async {
     try {
       final request = BatchNoRequest(
@@ -1024,6 +1065,7 @@ class CommonApi {
         employeeId: employeeId,
         toDate: toDate,
         bizUnit: bizUnit,
+        department: department,
         module: module,
         transactionType: transactionType,
       );
@@ -1047,6 +1089,8 @@ class CommonApi {
       print('🔑 Key Parameters:');
       print('   CommandType: ${requestJson['CommandType']}');
       print('   Id (ItemId): ${requestJson['Id']}');
+      print('   Item: ${requestJson['Item']}');
+      print('   Department: ${requestJson['Department']}');
       print('   EmployeeId: ${requestJson['EmployeeId']}');
       print('   ToDate: ${requestJson['ToDate']}');
       print('   BizUnit: ${requestJson['BizUnit']}');

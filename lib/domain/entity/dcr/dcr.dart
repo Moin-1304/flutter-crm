@@ -32,6 +32,7 @@ class DcrEntry {
     this.clusterId,
     this.coVisit = false,
     this.coVisitorId,
+    this.coVisitorName,
     // Service Engineer / Service Report fields
     this.mappedInstruments,
     this.complaint,
@@ -67,6 +68,7 @@ class DcrEntry {
   final int? clusterId; // ClusterId from detail
   final bool coVisit;
   final int? coVisitorId; // Reporting manager ID for co-visit
+  final String? coVisitorName; // Reporting manager name for co-visit
   // Service Engineer / Service Report fields coming from DCR Get API
   final List<Map<String, dynamic>>?
       mappedInstruments; // {productId, productName, customerId}
@@ -103,6 +105,7 @@ class DcrEntry {
     int? clusterId,
     bool? coVisit,
     int? coVisitorId,
+    String? coVisitorName,
     List<Map<String, dynamic>>? mappedInstruments,
     String? complaint,
     String? actionTaken,
@@ -137,6 +140,7 @@ class DcrEntry {
       clusterId: clusterId ?? this.clusterId,
       coVisit: coVisit ?? this.coVisit,
       coVisitorId: coVisitorId ?? this.coVisitorId,
+      coVisitorName: coVisitorName ?? this.coVisitorName,
       mappedInstruments: mappedInstruments ?? this.mappedInstruments,
       complaint: complaint ?? this.complaint,
       actionTaken: actionTaken ?? this.actionTaken,
@@ -180,6 +184,7 @@ class CreateDcrParams {
     this.complaintRemarks,
     this.coVisit = false,
     this.coVisitorId,
+    this.coVisitorName,
     // Update fields
     this.dcrId,
     this.detailId,
@@ -218,6 +223,7 @@ class CreateDcrParams {
   final String? complaintRemarks;
   final bool coVisit;
   final int? coVisitorId; // Reporting manager ID for co-visit
+  final String? coVisitorName; // Reporting manager name for co-visit
   // Update fields
   final String? dcrId; // DCR ID for update
   final int? detailId; // Detail ID for update

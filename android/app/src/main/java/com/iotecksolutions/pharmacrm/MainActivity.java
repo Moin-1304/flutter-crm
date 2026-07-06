@@ -1,4 +1,4 @@
-package com.iotecksolutions.todoapp;
+package com.iotecksolutions.pharmacrm;
 
 import io.flutter.embedding.android.FlutterActivity;
 

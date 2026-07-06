@@ -387,6 +387,28 @@ class CommonRepositoryImpl implements CommonRepository {
   }
 
   @override
+  Future<List<CommonDropdownItem>> getDcrPurposeOfVisitList({
+    required int userId,
+    required int commandType,
+    required String text,
+  }) async {
+    try {
+      if (getIt.isRegistered<CommonApi>()) {
+        final commonApi = getIt<CommonApi>();
+        return await commonApi.getDcrPurposeOfVisitList(
+          userId: userId,
+          commandType: commandType,
+          text: text,
+        );
+      }
+    } catch (e) {
+      // API get DCR purpose of visit list failed
+    }
+
+    return [];
+  }
+
+  @override
   Future<List<CommonDropdownItem>> getStoreList() async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
@@ -580,6 +602,7 @@ class CommonRepositoryImpl implements CommonRepository {
     required int bizUnit,
     int module = 13,
     int transactionType = 12,
+    int? department,
   }) async {
     try {
       if (getIt.isRegistered<CommonApi>()) {
@@ -592,6 +615,7 @@ class CommonRepositoryImpl implements CommonRepository {
           bizUnit: bizUnit,
           module: module,
           transactionType: transactionType,
+          department: department,
         );
         return response;
       }

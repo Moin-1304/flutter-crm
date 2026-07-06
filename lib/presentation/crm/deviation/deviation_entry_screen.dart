@@ -8,6 +8,8 @@ import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
 import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
+import 'package:boilerplate/domain/entity/user/user_detail.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -107,10 +109,11 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
     final String employeeName = userStore?.userDetail?.employeeName ?? '';
     _employeeNameController.text = employeeName;
     
-    // Check if current user is a Service Engineer
-    final String? serviceArea = userStore?.userDetail?.serviceArea;
-    _isServiceEngineer = serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    print('DeviationEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea")');
+    // Check if current user is a Service Engineer (all designation fields)
+    final UserDetail? userDetail = userStore?.userDetail;
+    _isServiceEngineer = PurposeVisitHelper.isServiceEngineerUser(userDetail);
+    print(
+        'DeviationEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "${userDetail?.serviceArea}", repType: ${userDetail?.repType}, repTypeText: ${userDetail?.repTypeText}, roleText: ${userDetail?.roleText})');
     
     // Debug logging for DCR parameters
     if (widget.dcrId != null || widget.tourPlanId != null) {
@@ -123,11 +126,15 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
     // Auto-refresh removed: APIs will only be called once during initialization
   }
 
-  // Hide deviation lock option for Service Engineers: helper
+  // No deviation lock for Service Engineer, POC Rep, or Application Engineer.
+  bool _bypassesValidateUserLock() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    return PurposeVisitHelper.bypassesValidateUserLock(userStore?.userDetail);
+  }
+
   bool _shouldShowDeviationLock() {
-    // If service engineer, do not show lock option
-    if (_isServiceEngineer) return false;
-    // fallback: show by default
+    if (_bypassesValidateUserLock()) return false;
     return true;
   }
 
@@ -1308,8 +1315,8 @@ class _DeviationEntryScreenState extends State<DeviationEntryScreen> {
   }
 
   Future<void> _revalidateUserAfterDeviationSubmit() async {
-    // Service Engineers intentionally bypass validate-user checks.
-    if (_isServiceEngineer) return;
+    // SE, POC Rep, and Application Engineer bypass validate-user deviation lock.
+    if (_bypassesValidateUserLock()) return;
     if (!getIt.isRegistered<UserValidationStore>()) return;
 
     try {

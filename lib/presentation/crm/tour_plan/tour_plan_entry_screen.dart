@@ -77,10 +77,11 @@ class _TourPlanEntryScreenState extends State<TourPlanEntryScreen> {
       final int userId = loggedInUser?.id ?? 0;
       if (userId <= 0) return;
 
-      final String purposeText = PurposeVisitHelper.dcrPurposeVisitText(
-        serviceArea: loggedInUser?.serviceArea,
-        repType: loggedInUser?.repType,
-        roleCategory: loggedInUser?.roleCategory,
+      final String purposeText = PurposeVisitHelper.resolveTourPlanPurposeText(
+        loggedInUser: loggedInUser,
+        selectedEmployeeId: loggedInUser?.employeeId,
+        reportingStaffRepType: loggedInUser?.repType,
+        reportingStaffRepTypeText: loggedInUser?.repTypeText,
       );
 
       final List<CommonDropdownItem> items =

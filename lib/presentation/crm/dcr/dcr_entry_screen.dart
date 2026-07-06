@@ -6,6 +6,7 @@ import 'package:boilerplate/core/widgets/app_form_fields.dart';
 import 'package:boilerplate/core/widgets/app_dropdowns.dart';
 import 'package:boilerplate/core/widgets/date_picker_field.dart';
 import 'package:boilerplate/domain/entity/dcr/dcr.dart';
+import 'package:boilerplate/domain/entity/dcr/unified_dcr_item.dart';
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
@@ -24,10 +25,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/utils/purpose_visit_helper.dart';
+import 'package:boilerplate/utils/dcr_purpose_visit_helper.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/rendering.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'location_picker_map_screen.dart';
 
 /// Max value for 32-bit signed int (backend UIN type). Max digits = 10.
@@ -187,6 +190,58 @@ extension ServiceFeedbackStatusX on ServiceFeedbackStatus {
   }
 }
 
+/// Service Report fields available from the DCR list API (fallback when Get API is empty).
+class ServiceReportListHint {
+  const ServiceReportListHint({
+    this.customerName,
+    this.customerId,
+    this.contactPerson,
+    this.contactMobile,
+    this.product,
+    this.serialNumber,
+    this.serviceTypeText,
+    this.dcrDetailId,
+    this.serviceReportId,
+  });
+
+  final String? customerName;
+  final int? customerId;
+  final String? contactPerson;
+  final String? contactMobile;
+  final String? product;
+  final String? serialNumber;
+  final String? serviceTypeText;
+  final int? dcrDetailId;
+  final int? serviceReportId;
+
+  bool get hasData {
+    return serviceReportId != null && serviceReportId! > 0 ||
+        (customerName?.trim().isNotEmpty ?? false) ||
+        (contactPerson?.trim().isNotEmpty ?? false) ||
+        (contactMobile?.trim().isNotEmpty ?? false) ||
+        (product?.trim().isNotEmpty ?? false) ||
+        (serialNumber?.trim().isNotEmpty ?? false) ||
+        (serviceTypeText?.trim().isNotEmpty ?? false);
+  }
+
+  factory ServiceReportListHint.fromUnifiedItem(UnifiedDcrItem item) {
+    final String? customerName = item.customerName.trim().isNotEmpty
+        ? item.customerName.trim()
+        : null;
+    return ServiceReportListHint(
+      customerName: customerName,
+      customerId: item.customerId > 0 ? item.customerId : null,
+      contactPerson: item.serviceReportContactPerson,
+      contactMobile: item.serviceReportContactMobile,
+      product: item.serviceReportProduct,
+      serialNumber: item.serviceReportSerialNumber,
+      serviceTypeText: item.serviceReportServiceTypeText,
+      dcrDetailId: item.dcrDetailIdServiceReport ?? item.id,
+      serviceReportId: item.serviceReportId,
+    );
+  }
+}
+
 class DcrEntryScreen extends StatefulWidget {
   final String? dcrId; // Optional DCR ID for editing existing DCR
   final String? id; // Optional ID for editing existing DCR
@@ -203,6 +258,9 @@ class DcrEntryScreen extends StatefulWidget {
   /// tab is editable and can be saved. Used with viewOnly for "View DCR + Edit Service Report".
   final bool allowServiceReportEditOnly;
 
+  /// Optional Service Report snapshot from DCR list (used when Get API returns empty).
+  final ServiceReportListHint? serviceReportListHint;
+
   const DcrEntryScreen({
     super.key,
     this.dcrId,
@@ -213,6 +271,7 @@ class DcrEntryScreen extends StatefulWidget {
     this.initialTypeOfWorkId,
     this.viewOnly = false,
     this.allowServiceReportEditOnly = false,
+    this.serviceReportListHint,
   });
 
   @override
@@ -259,17 +318,6 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   int?
       _loadedTypeOfWorkId; // Store typeOfWorkId from loaded DCR entry for editing
 
-  /// CommandType 337 [Text] values merged for ID/name lookup (incl. tour plan prefill).
-  static const String _dcrPocRepTypeOfVisitText = 'DCR-PocRepType';
-  static const String _tourPlanPocRepPurposeOfVisitText = 'PocRep-PurposeofVisit';
-
-  static const List<String> _allPurposeVisitApiTexts = <String>[
-    'Salesrep PurposeVisit',
-    'ServiceEng PurposeVisit',
-    _dcrPocRepTypeOfVisitText,
-    _tourPlanPocRepPurposeOfVisitText,
-  ];
-
   final TextEditingController _durationCtrl = TextEditingController();
   final TextEditingController _samplesCtrl = TextEditingController();
   final TextEditingController _discussionCtrl = TextEditingController();
@@ -287,7 +335,22 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
   String? _durationErrorText;
   String? _productsErrorText;
 
+  bool get _isServiceEngineerAvailablePurpose =>
+      _isServiceEngineer &&
+      DcrPurposeVisitHelper.isServiceEngineerAvailablePurpose(_purpose);
+
+  bool get _shouldDisableCustomerField {
+    if (_isServiceEngineerAvailablePurpose) return false;
+    return !_customerRequiredForSelectedVisitType;
+  }
+
+  bool get _clusterRequiredForSelectedVisitType {
+    if (_isServiceEngineerAvailablePurpose) return false;
+    return true;
+  }
+
   bool get _customerRequiredForSelectedVisitType {
+    if (_isServiceEngineerAvailablePurpose) return false;
     final p = _purpose?.trim().toLowerCase() ?? '';
     if (p.isEmpty || p == 'loading...') return true;
     // For these visit types, customer is not applicable.
@@ -403,6 +466,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     _isServiceEngineer = PurposeVisitHelper.isServiceEngineer(
       serviceArea: serviceArea,
       repType: userStore?.userDetail?.repType,
+      repTypeText: userStore?.userDetail?.repTypeText,
     );
     _isManager = roleCategory == 1 || roleCategory == 2;
     _isNewDcr = widget.dcrId == null && widget.id == null;
@@ -504,48 +568,53 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     }
 
     // Load lists first so when details arrive we can map reliably
-    // IMPORTANT: Load typeOfWork list FIRST if we have initialTypeOfWorkId to resolve purpose immediately
-    if (widget.initialTypeOfWorkId != null && widget.initialTypeOfWorkId! > 0) {
-      // Load typeOfWork list first to resolve purpose before other lists
-      _loadTypeOfWorkList().then((_) {
-        // Then load other lists in parallel
-        Future.wait([
-          _loadClusterList(),
-          _loadProductsList(),
-          _loadCountries(),
-          _loadCustomerTypes(),
-          _loadMedicalRepDropdowns(),
-          _loadServiceDropdowns(),
-        ]).whenComplete(() {
-          // Load customers after clusters are loaded (if cluster is already selected)
-          if (_cluster != null && _cluster!.trim().isNotEmpty) {
-            _loadMappedCustomers();
-          }
-          _loadDcrDetails();
-        }).whenComplete(() {
-          _loadInstrumentsList();
-        });
-      });
-    } else {
-      // No initialTypeOfWorkId, load all lists in parallel
-      Future.wait([
-        _loadClusterList(),
-        _loadTypeOfWorkList(),
-        _loadProductsList(),
-        _loadCountries(),
-        _loadCustomerTypes(),
-        _loadMedicalRepDropdowns(),
-        _loadServiceDropdowns(),
-      ]).whenComplete(() {
-        // Load customers after clusters are loaded (if cluster is already selected)
-        if (_cluster != null && _cluster!.trim().isNotEmpty) {
-          _loadMappedCustomers();
-        }
-        _loadDcrDetails();
-      }).whenComplete(() {
-        _loadInstrumentsList();
-      });
+    _startInitialDcrDataLoads();
+  }
+
+  void _logDcrInitLoadError(Object error) {
+    debugPrint('DcrEntryScreen: initial data load failed: $error');
+  }
+
+  Future<void> _loadDcrMasterDropdowns({bool includeTypeOfWork = true}) {
+    final futures = <Future<void>>[
+      if (includeTypeOfWork) _loadTypeOfWorkList(),
+      _loadClusterList(),
+      _loadProductsList(),
+      _loadCountries(),
+      _loadCustomerTypes(),
+      _loadMedicalRepDropdowns(),
+      _loadServiceDropdowns(),
+    ];
+    return Future.wait(futures);
+  }
+
+  Future<void> _loadDcrDetailsAndInstruments() async {
+    if (!mounted) return;
+    if (_cluster != null && _cluster!.trim().isNotEmpty) {
+      await _loadMappedCustomers();
     }
+    if (!mounted) return;
+    await _loadDcrDetails();
+    if (!mounted) return;
+    await _loadInstrumentsList();
+  }
+
+  void _startInitialDcrDataLoads() {
+    final bool loadTypeOfWorkFirst =
+        widget.initialTypeOfWorkId != null && widget.initialTypeOfWorkId! > 0;
+    final bool isEditMode = widget.id != null || widget.dcrId != null;
+
+    if (loadTypeOfWorkFirst || isEditMode) {
+      _loadTypeOfWorkList()
+          .then((_) => _loadDcrMasterDropdowns(includeTypeOfWork: false))
+          .then((_) => _loadDcrDetailsAndInstruments())
+          .catchError(_logDcrInitLoadError);
+      return;
+    }
+
+    _loadDcrMasterDropdowns()
+        .then((_) => _loadDcrDetailsAndInstruments())
+        .catchError(_logDcrInitLoadError);
   }
 
   void _checkServiceEngineer() {
@@ -555,9 +624,366 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     _isServiceEngineer = PurposeVisitHelper.isServiceEngineer(
       serviceArea: serviceArea,
       repType: userStore?.userDetail?.repType,
+      repTypeText: userStore?.userDetail?.repTypeText,
     );
     print(
-        'DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea", repType: ${userStore?.userDetail?.repType})');
+        'DcrEntryScreen: Is Service Engineer: $_isServiceEngineer (serviceArea: "$serviceArea", repType: ${userStore?.userDetail?.repType}, repTypeText: ${userStore?.userDetail?.repTypeText})');
+  }
+
+  Future<void> _awaitUserDetailLoaded() async {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    int retry = 0;
+    while (userStore?.isUserLoaded != true && retry < 20) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      retry++;
+    }
+    _checkServiceEngineer();
+  }
+
+  bool _shouldLoadServiceReportData() {
+    return _isServiceEngineer || widget.allowServiceReportEditOnly;
+  }
+
+  /// DCR detail row id used to load/save the linked Service Report.
+  int? _resolvedDcrDetailId() {
+    final int? fromEntry = _loadedEntry?.detailId;
+    if (fromEntry != null && fromEntry > 0) return fromEntry;
+    final int? fromHint = widget.serviceReportListHint?.dcrDetailId;
+    if (fromHint != null && fromHint > 0) return fromHint;
+    final int? fromWidget = int.tryParse(widget.id ?? '');
+    if (fromWidget != null && fromWidget > 0) return fromWidget;
+    return null;
+  }
+
+  int? _resolvedDcrParentId() {
+    final int? fromWidget = int.tryParse(widget.dcrId ?? '');
+    if (fromWidget != null && fromWidget > 0) return fromWidget;
+    final int? fromLoaded = int.tryParse(_loadedEntry?.id ?? '');
+    if (fromLoaded != null && fromLoaded > 0) return fromLoaded;
+    return null;
+  }
+
+  String _serviceReportCacheKey(int dcrDetailId) => 'service_report_v1_$dcrDetailId';
+
+  Future<void> _persistServiceReportCache(
+      int dcrDetailId, Map<String, dynamic> json) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_serviceReportCacheKey(dcrDetailId), jsonEncode(json));
+      print(
+          'DcrEntryScreen: [ServiceReport] Cached snapshot for detailId=$dcrDetailId');
+    } catch (e) {
+      print('DcrEntryScreen: [ServiceReport] Cache save failed: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readServiceReportCache(int dcrDetailId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? raw = prefs.getString(_serviceReportCacheKey(dcrDetailId));
+      if (raw == null || raw.trim().isEmpty) return null;
+      final dynamic decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final Map<String, dynamic> map = Map<String, dynamic>.from(decoded);
+      if (!_serviceReportJsonHasData(map)) return null;
+      print(
+          'DcrEntryScreen: [ServiceReport] Loaded cache for detailId=$dcrDetailId (${_serviceReportJsonFieldCount(map)} fields)');
+      return map;
+    } catch (e) {
+      print('DcrEntryScreen: [ServiceReport] Cache read failed: $e');
+      return null;
+    }
+  }
+
+  Map<String, dynamic> _buildServiceReportSnapshotFromForm() {
+    final int dcrDetailId = _resolvedDcrDetailId() ?? 0;
+    final int customerId = _customerNameToId[_serviceReportCustomer] ?? 0;
+    final int productId = _productNameToId[_serviceReportProduct] ?? 0;
+    return {
+      'Id': _serviceReportId,
+      'DcrDetailId': dcrDetailId,
+      'CustomerName': _serviceReportCustomer ?? '',
+      'CustomerId': customerId,
+      'ContactPerson': _contactPersonCtrl.text.trim(),
+      'ContactMobile': _contactMobileCtrl.text.trim(),
+      'ServiceDate': _serviceDate != null
+          ? _formatServiceReportDateTimeForApi(_serviceDate!)
+          : null,
+      'ProductId': productId,
+      'Product': _serviceReportProduct ?? '',
+      'SerialNumber': _serialNumberCtrl.text.trim(),
+      'ServiceTypeId': _selectedServiceType?.value ?? 0,
+      'ServiceType': _selectedServiceType?.description ?? '',
+      'StartTime': _startTime != null
+          ? _formatServiceReportDateTimeForApi(_startTime!)
+          : null,
+      'EndTime':
+          _endTime != null ? _formatServiceReportDateTimeForApi(_endTime!) : null,
+      'ElectricitySafetyTest': _selectedElectricitySafetyTest?.description,
+      'ElectricitySafetyTestId': _selectedElectricitySafetyTest?.value ?? 0,
+      'ComplaintDetails': _complaintCtrl.text.trim(),
+      'ActionTaken': _actionTakenCtrl.text.trim(),
+      'Result': _resultCtrl.text.trim(),
+      'ComplaintDateTime': _complaintDateTime != null
+          ? _formatServiceReportDateTimeForApi(_complaintDateTime!)
+          : null,
+      'ServiceStatusId': _selectedServiceReportStatus?.value ?? 0,
+      'ServiceStatus': _selectedServiceReportStatus?.description ?? '',
+      'WorkDescription': _workDescriptionCtrl.text.trim(),
+      'MaterialsUsed': _materialsUsedCtrl.text.trim(),
+      'Remarks': _serviceRemarksCtrl.text.trim(),
+      'FeedbackOption': _selectedFeedbackOption?.description ?? '',
+      'FeedbackOptionId': _selectedFeedbackOption?.value ?? 0,
+      'SignedBy': _signedByCtrl.text.trim(),
+      'SignatureImageUrl': _signatureImageUrl,
+      'ServiceRate': double.tryParse(_serviceRateCtrl.text.trim()) ?? 0.0,
+      if (_serviceReportCreatedDate != null)
+        'CreatedDate': _serviceReportCreatedDate,
+    };
+  }
+
+  int? _resolvedServiceReportLookupId() {
+    if (_serviceReportId != null && _serviceReportId! > 0) {
+      return _serviceReportId;
+    }
+    final int? fromHint = widget.serviceReportListHint?.serviceReportId;
+    if (fromHint != null && fromHint > 0) return fromHint;
+    return null;
+  }
+
+  int? _readPositiveInt(dynamic raw) {
+    if (raw is int) return raw > 0 ? raw : null;
+    if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
+  int? _parseServiceReportIdFromBody(dynamic body) {
+    if (body == null) return null;
+    dynamic parsed = body;
+    if (parsed is String && parsed.trim().isNotEmpty) {
+      try {
+        parsed = jsonDecode(parsed);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (parsed is! Map) return null;
+    final Map<String, dynamic> map = Map<String, dynamic>.from(parsed);
+    final List<dynamic> candidates = <dynamic>[
+      map,
+      map['Data'],
+      map['data'],
+      map['result'],
+      map['Result'],
+      map['item'],
+      map['Item'],
+    ];
+    for (final candidate in candidates) {
+      if (candidate is! Map) continue;
+      final Map<String, dynamic> nested = Map<String, dynamic>.from(candidate);
+      final int? id = _readPositiveInt(nested['Id'] ??
+          nested['id'] ??
+          nested['serviceReportId'] ??
+          nested['ServiceReportId']);
+      if (id != null && id > 0) return id;
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _parseServiceReportPayload(dynamic data) {
+    if (data == null) return null;
+    dynamic normalized = data;
+    if (normalized is String && normalized.trim().isNotEmpty) {
+      try {
+        normalized = jsonDecode(normalized);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    dynamic payload = normalized;
+    if (normalized is List && normalized.isNotEmpty) {
+      payload = normalized.first;
+    } else if (normalized is Map) {
+      final Map<String, dynamic> map = Map<String, dynamic>.from(normalized);
+      final dynamic nested = map['Data'] ??
+          map['data'] ??
+          map['result'] ??
+          map['Result'] ??
+          map['item'] ??
+          map['Item'] ??
+          map['items'];
+      if (nested is List && nested.isNotEmpty) {
+        payload = nested.first;
+      } else if (nested is Map) {
+        payload = nested;
+      } else if (map.containsKey('id') ||
+          map.containsKey('Id') ||
+          map.containsKey('serviceReportId') ||
+          map.containsKey('ServiceReportId') ||
+          map.containsKey('dcrDetailId') ||
+          map.containsKey('DcrDetailId') ||
+          map.containsKey('customerName') ||
+          map.containsKey('CustomerName') ||
+          map.containsKey('workDescription') ||
+          map.containsKey('WorkDescription')) {
+        payload = map;
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
+
+    if (payload is! Map) return null;
+    return payload is Map<String, dynamic>
+        ? payload
+        : Map<String, dynamic>.from(payload);
+  }
+
+  bool _serviceReportJsonHasData(Map<String, dynamic> json) {
+    return _serviceReportJsonFieldCount(json) > 0;
+  }
+
+  int _serviceReportJsonFieldCount(Map<String, dynamic> json) {
+    if (json.isEmpty) return 0;
+    const keys = <String>[
+      'id',
+      'Id',
+      'serviceReportId',
+      'ServiceReportId',
+      'customerName',
+      'CustomerName',
+      'contactPerson',
+      'ContactPerson',
+      'contactMobile',
+      'ContactMobile',
+      'product',
+      'Product',
+      'serialNumber',
+      'SerialNumber',
+      'workDescription',
+      'WorkDescription',
+      'materialsUsed',
+      'MaterialsUsed',
+      'complaintDetails',
+      'ComplaintDetails',
+      'actionTaken',
+      'ActionTaken',
+      'result',
+      'Result',
+      'remarks',
+      'Remarks',
+      'serviceRate',
+      'ServiceRate',
+      'startTime',
+      'StartTime',
+      'endTime',
+      'EndTime',
+    ];
+    var count = 0;
+    for (final key in keys) {
+      final dynamic value = json[key];
+      if (value == null) continue;
+      if (value is String && value.trim().isEmpty) continue;
+      if (value is num && value == 0) continue;
+      count++;
+    }
+    return count;
+  }
+
+  /// Keep saved Service Report customer/product visible in dropdowns after async reloads.
+  void _ensureServiceReportDropdownOptions() {
+    final String? customerName = _serviceReportCustomer;
+    if (customerName != null && customerName.trim().isNotEmpty) {
+      final String name = customerName.trim();
+      if (!_customerOptions.contains(name)) {
+        _customerOptions = [..._customerOptions, name];
+        _customerOptions.sort();
+      }
+      final int? customerId = _customerNameToId[name];
+      if (customerId == null || customerId <= 0) {
+        final int? fromDcr = _loadedEntry?.customerId;
+        if (fromDcr != null && fromDcr > 0) {
+          _customerNameToId[name] = fromDcr;
+        }
+      }
+    }
+
+    final String? productName = _serviceReportProduct;
+    if (productName != null && productName.trim().isNotEmpty) {
+      final String name = productName.trim();
+      if (!_productOptions.contains(name)) {
+        _productOptions = [..._productOptions, name];
+        _productOptions.sort();
+      }
+    }
+  }
+
+  void _applyServiceReportListHint() {
+    final ServiceReportListHint? hint = widget.serviceReportListHint;
+    if (hint == null || !hint.hasData) return;
+
+    final String? customerName = hint.customerName?.trim();
+    if (customerName != null && customerName.isNotEmpty) {
+      _serviceReportCustomer ??= customerName;
+      if (hint.customerId != null && hint.customerId! > 0) {
+        _customerNameToId.putIfAbsent(customerName, () => hint.customerId!);
+      }
+    }
+
+    final String? product = hint.product?.trim();
+    if (product != null && product.isNotEmpty) {
+      _serviceReportProduct ??= product;
+    }
+
+    if (_contactPersonCtrl.text.trim().isEmpty &&
+        (hint.contactPerson?.trim().isNotEmpty ?? false)) {
+      _contactPersonCtrl.text = hint.contactPerson!.trim();
+    }
+    if (_contactMobileCtrl.text.trim().isEmpty &&
+        (hint.contactMobile?.trim().isNotEmpty ?? false)) {
+      _contactMobileCtrl.text = hint.contactMobile!.trim();
+    }
+    if (_serialNumberCtrl.text.trim().isEmpty &&
+        (hint.serialNumber?.trim().isNotEmpty ?? false)) {
+      _serialNumberCtrl.text = hint.serialNumber!.trim();
+    }
+
+    final String? serviceTypeText = hint.serviceTypeText?.trim();
+    if (_selectedServiceType == null &&
+        serviceTypeText != null &&
+        serviceTypeText.isNotEmpty) {
+      for (final t in ServiceReportType.values) {
+        if (t.description.toLowerCase() == serviceTypeText.toLowerCase()) {
+          _selectedServiceType = t;
+          _serviceType = t.description;
+          break;
+        }
+      }
+    }
+
+    _ensureServiceReportDropdownOptions();
+  }
+
+  void _seedServiceReportFromDcrContext() {
+    if ((_serviceReportCustomer == null ||
+            _serviceReportCustomer!.trim().isEmpty) &&
+        _customer != null &&
+        _customer!.trim().isNotEmpty) {
+      _serviceReportCustomer = _customer;
+    }
+    final String? srCustomer = _serviceReportCustomer;
+    if (srCustomer != null &&
+        srCustomer.trim().isNotEmpty &&
+        !_customerNameToId.containsKey(srCustomer)) {
+      final int? customerId = _loadedEntry?.customerId;
+      if (customerId != null && customerId > 0) {
+        _customerNameToId[srCustomer] = customerId;
+      }
+    }
+    _ensureServiceReportDropdownOptions();
   }
 
   Future<void> _loadManagerList() async {
@@ -639,7 +1065,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         // For others: use userId as UserId (matches _loadProductsList logic)
         int? actualUserId = employeeId;
 
-        if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+        if (_isServiceEngineer) {
           if (employeeId != null && employeeId > 0) {
             actualUserId = employeeId;
             print(
@@ -823,7 +1249,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         // For others: use userId as UserId
         int? actualUserId = employeeId;
 
-        if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+        if (_isServiceEngineer) {
           if (employeeId != null && employeeId > 0) {
             actualUserId = employeeId;
             print(
@@ -844,6 +1270,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             await repo.getDcrProductsList(actualUserId ?? 0);
         if (items.isNotEmpty) {
           setState(() {
+            final String? preservedServiceReportProduct = _serviceReportProduct;
+            final int? preservedServiceReportProductId =
+                preservedServiceReportProduct != null
+                    ? _productNameToId[preservedServiceReportProduct]
+                    : null;
             _productOptions.clear();
             _productNameToId.clear();
             for (final item in items) {
@@ -855,6 +1286,19 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               }
             }
             _productOptions.sort();
+            if (preservedServiceReportProduct != null &&
+                preservedServiceReportProduct.trim().isNotEmpty) {
+              if (!_productOptions.contains(preservedServiceReportProduct)) {
+                _productOptions.add(preservedServiceReportProduct);
+                _productOptions.sort();
+              }
+              if (preservedServiceReportProductId != null &&
+                  preservedServiceReportProductId > 0) {
+                _productNameToId[preservedServiceReportProduct] =
+                    preservedServiceReportProductId;
+              }
+            }
+            _ensureServiceReportDropdownOptions();
             print(
                 'DcrEntryScreen: [Products] Loaded ${_productOptions.length} products');
           });
@@ -901,7 +1345,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
       // For Service Engineer use employeeId as UserId, otherwise use userId
       int? actualUserId = employeeId;
-      if (serviceArea != null && serviceArea.trim() == 'Service Engineer') {
+      if (_isServiceEngineer) {
         if (employeeId != null && employeeId > 0) {
           actualUserId = employeeId;
         } else {
@@ -1069,6 +1513,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       setState(() {
         // Clear old customer options
         final String? existingCustomer = _customer;
+        final String? existingServiceReportCustomer = _serviceReportCustomer;
+        final int? existingServiceReportCustomerId = existingServiceReportCustomer !=
+                null
+            ? _customerNameToId[existingServiceReportCustomer]
+            : null;
         _customerOptions = [];
         _customerNameToId.clear();
 
@@ -1081,6 +1530,20 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         // Remove duplicates and sort
         _customerOptions = _customerOptions.toSet().toList();
         _customerOptions.sort();
+
+        // Preserve Service Report customer selection across cluster-filter reloads.
+        if (existingServiceReportCustomer != null &&
+            existingServiceReportCustomer.trim().isNotEmpty) {
+          if (!_customerOptions.contains(existingServiceReportCustomer)) {
+            _customerOptions.add(existingServiceReportCustomer);
+            _customerOptions.sort();
+          }
+          if (existingServiceReportCustomerId != null &&
+              existingServiceReportCustomerId > 0) {
+            _customerNameToId[existingServiceReportCustomer] =
+                existingServiceReportCustomerId;
+          }
+        }
 
         // If editing and existing customer is in the new list, keep it selected
         // Otherwise, if it's not in the list, try to preserve it
@@ -1173,21 +1636,37 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
       if (res.customers.isEmpty) {
         setState(() {
-          _customerOptions = [];
-          _customerNameToId.clear();
+          _ensureServiceReportDropdownOptions();
         });
         return;
       }
 
       setState(() {
+        final String? preservedServiceReportCustomer = _serviceReportCustomer;
+        final int? preservedServiceReportCustomerId =
+            preservedServiceReportCustomer != null
+                ? _customerNameToId[preservedServiceReportCustomer]
+                : null;
         _customerOptions = [];
         _customerNameToId.clear();
         for (final mc in res.customers) {
           _customerOptions.add(mc.customerName);
           _customerNameToId[mc.customerName] = mc.customerId;
         }
+        if (preservedServiceReportCustomer != null &&
+            preservedServiceReportCustomer.trim().isNotEmpty) {
+          if (!_customerOptions.contains(preservedServiceReportCustomer)) {
+            _customerOptions.add(preservedServiceReportCustomer);
+          }
+          if (preservedServiceReportCustomerId != null &&
+              preservedServiceReportCustomerId > 0) {
+            _customerNameToId[preservedServiceReportCustomer] =
+                preservedServiceReportCustomerId;
+          }
+        }
         _customerOptions = _customerOptions.toSet().toList();
         _customerOptions.sort();
+        _ensureServiceReportDropdownOptions();
       });
       print(
           'DcrEntryScreen: [ServiceReport - Customers] Loaded ${_customerOptions.length} customers');
@@ -1223,32 +1702,81 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     return purposeName.trim();
   }
 
-  bool _isPocRepUser(UserDetailStore? userStore) {
-    final ud = userStore?.userDetail;
-    return (ud?.repType ?? 0) == 3 && (ud?.roleCategory ?? 0) == 3;
+  /// Raw + resolved role for DCR Type of Visit routing (do not substitute serviceArea as repTypeText).
+  String _currentEmployeeRepTypeText(UserDetail? user) {
+    return DcrPurposeVisitHelper.describeEmployeeRole(
+      repTypeText: user?.repTypeText,
+      serviceArea: user?.serviceArea,
+      repType: user?.repType,
+      roleCategory: user?.roleCategory,
+      designation: user?.repTypeText ?? user?.serviceArea,
+      roleText: user?.roleText,
+    );
   }
 
-  /// Dropdown list API [Text] for DCR Type of Visit (CommandType 337).
-  List<String> _purposeVisitTextsForLoggedInUser(UserDetailStore? userStore) {
-    final ud = userStore?.userDetail;
-    if (ud == null) return const [PurposeVisitTexts.salesRep];
-    return PurposeVisitHelper.dcrPurposeVisitTexts(
-      serviceArea: ud.serviceArea,
-      repType: ud.repType,
-      roleCategory: ud.roleCategory,
+  DcrPurposeVisitConfig _dcrPurposeConfigForLoggedInUser(UserDetail? user) {
+    return DcrPurposeVisitHelper.resolveForEmployee(
+      repTypeText: user?.repTypeText,
+      serviceArea: user?.serviceArea,
+      repType: user?.repType,
+      roleCategory: user?.roleCategory,
+      designation: user?.repTypeText ?? user?.serviceArea,
+      roleText: user?.roleText,
     );
+  }
+
+  Future<void> _ensureAvailablePurposeOptionForServiceEngineer(
+    int purposeUserId,
+    CommonRepository repo,
+  ) async {
+    final bool alreadyPresent = _typeOfWorkNameToId.keys
+            .any((k) => k.trim().toLowerCase() == 'available') ||
+        _purposeOptions.any((p) => p.trim().toLowerCase() == 'available');
+    if (alreadyPresent) return;
+
+    try {
+      final items = await repo.getPurposeOfVisitList(
+        purposeUserId,
+        PurposeVisitTexts.serviceEng,
+      );
+      for (final item in items) {
+        final String label =
+            (item.text.isNotEmpty ? item.text : item.typeText).trim();
+        if (label.toLowerCase() == 'available') {
+          _mergeTypeOfWorkDropdownItem(item);
+          print(
+              'DcrEntryScreen: [PurposeOfVisit] merged Available from tour-plan master (id=${item.id})');
+          return;
+        }
+      }
+    } catch (e) {
+      print('DcrEntryScreen: [PurposeOfVisit] Available merge failed: $e');
+    }
+
+    const String label =
+        DcrPurposeVisitHelper.serviceEngineerAvailablePurposeLabel;
+    _typeOfWorkNameToId.putIfAbsent(label, () => 118);
+    _typeOfWorkIdToName.putIfAbsent(118, () => label);
+    print('DcrEntryScreen: [PurposeOfVisit] Added fallback Available label (id=118)');
   }
 
   void _mergeTypeOfWorkDropdownItem(CommonDropdownItem item) {
     final String key =
         (item.text.isNotEmpty ? item.text : item.typeText).trim();
-    if (key.isNotEmpty) {
-      _typeOfWorkNameToId[key] = item.id;
+    if (key.isEmpty) return;
+
+    if (item.id > 0) {
       _typeOfWorkIdToName[item.id] = key;
+      _typeOfWorkNameToId.putIfAbsent(key, () => item.id);
+    }
+    for (final int altId in <int>[item.value, item.item]) {
+      if (altId > 0) {
+        _typeOfWorkIdToName[altId] = key;
+      }
     }
   }
 
-  /// Labels shown in the Type of Visit dropdown (role-scoped; POC Rep uses DCR-PocRepType).
+  /// Labels shown in the Type of Visit dropdown (DCR role-specific list only).
   Set<String> _purposeLabelsForDropdownItems(List<CommonDropdownItem> items) {
     final Map<String, String> normalized = <String, String>{};
     for (final item in items) {
@@ -1260,8 +1788,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     return normalized.values.toSet();
   }
 
-  /// Loads purpose/type-of-work lists the same way as [TourPlanScreen._loadPurposeLookups]:
-  /// merge generic + all purpose API texts for ID resolution; show role-primary list in dropdown.
+  /// Loads DCR Type of Visit from role-specific CommandType + Text (not Tour Plan).
   Future<void> _loadTypeOfWorkList() async {
     try {
       if (!getIt.isRegistered<CommonRepository>()) return;
@@ -1273,39 +1800,36 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       final UserDetail? loggedInUser =
           await PurposeVisitHelper.ensureLoggedInUserProfile(userStore);
 
-      final int? userId = loggedInUser?.id;
-      final String? serviceArea = loggedInUser?.serviceArea;
-      final int? repType = loggedInUser?.repType;
-      final bool isPocRep = _isPocRepUser(userStore);
+      final String repTypeText = _currentEmployeeRepTypeText(loggedInUser);
+      final DcrPurposeVisitConfig primaryConfig =
+          _dcrPurposeConfigForLoggedInUser(loggedInUser);
+      final int purposeUserId = DcrPurposeVisitHelper.resolveDcrPurposeUserId(
+        employeeId: loggedInUser?.employeeId,
+        loginUserId: loggedInUser?.id,
+      );
 
       print(
-          'DcrEntryScreen: [PurposeOfVisit] userId: $userId, serviceArea: "$serviceArea", repType: $repType, isPocRep: $isPocRep, purposeText: "${PurposeVisitHelper.dcrPurposeVisitText(serviceArea: serviceArea, repType: repType, roleCategory: loggedInUser?.roleCategory)}"');
+          'DcrEntryScreen: [PurposeOfVisit] employeeId: $purposeUserId, repTypeText: "$repTypeText", CommandType: ${primaryConfig.commandType}, Text: "${primaryConfig.text}"');
 
-      if (userId == null || userId <= 0) {
-        print('DcrEntryScreen: [PurposeOfVisit] userId invalid, skipping');
+      if (purposeUserId <= 0) {
+        print('DcrEntryScreen: [PurposeOfVisit] employeeId invalid, skipping');
         return;
       }
 
-      // 1) Generic type-of-work list (TourPlanScreen merges this first)
-      try {
-        final typeItems = await repo.getTypeOfWorkList();
-        for (final item in typeItems) {
-          _mergeTypeOfWorkDropdownItem(item);
-        }
-        print(
-            'DcrEntryScreen: [PurposeOfVisit] getTypeOfWorkList returned ${typeItems.length} items');
-      } catch (e) {
-        print('DcrEntryScreen: [PurposeOfVisit] getTypeOfWorkList failed: $e');
-      }
-
-      // 2) Purpose masters — all API texts for ID lookup (tour plan → DCR prefill)
-      final List<CommonDropdownItem> primaryPurposeItems = <CommonDropdownItem>[];
-      for (final text in _allPurposeVisitApiTexts) {
+      // Merge all DCR purpose masters for saved typeOfWorkId → label lookup.
+      final List<CommonDropdownItem> primaryPurposeItems =
+          <CommonDropdownItem>[];
+      for (final config in DcrPurposeVisitHelper.allConfigs) {
         try {
-          final items = await repo.getPurposeOfVisitList(userId, text);
+          final items = await repo.getDcrPurposeOfVisitList(
+            userId: purposeUserId,
+            commandType: config.commandType,
+            text: config.text,
+          );
           print(
-              'DcrEntryScreen: [PurposeOfVisit] Text="$text" returned ${items.length} items');
-          if (_purposeVisitTextsForLoggedInUser(userStore).contains(text) &&
+              'DcrEntryScreen: [PurposeOfVisit] CommandType=${config.commandType} Text="${config.text}" returned ${items.length} items');
+          if (config.commandType == primaryConfig.commandType &&
+              config.text == primaryConfig.text &&
               items.isNotEmpty) {
             print(
                 'DcrEntryScreen: [PurposeOfVisit] primary labels: ${items.map((e) => (e.text.isNotEmpty ? e.text : e.typeText).trim()).where((s) => s.isNotEmpty).join(", ")}');
@@ -1313,17 +1837,29 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           for (final item in items) {
             _mergeTypeOfWorkDropdownItem(item);
           }
-          if (_purposeVisitTextsForLoggedInUser(userStore).contains(text)) {
+          if (config.commandType == primaryConfig.commandType &&
+              config.text == primaryConfig.text) {
             primaryPurposeItems.addAll(items);
           }
         } catch (e) {
           print(
-              'DcrEntryScreen: [PurposeOfVisit] Text="$text" failed: $e');
+              'DcrEntryScreen: [PurposeOfVisit] CommandType=${config.commandType} Text="${config.text}" failed: $e');
         }
+      }
+
+      if (_isServiceEngineer) {
+        await _ensureAvailablePurposeOptionForServiceEngineer(
+            purposeUserId, repo);
       }
 
       final Set<String> dropdownWorks =
           _purposeLabelsForDropdownItems(primaryPurposeItems);
+      if (_isServiceEngineer &&
+          _typeOfWorkNameToId.containsKey(
+              DcrPurposeVisitHelper.serviceEngineerAvailablePurposeLabel)) {
+        dropdownWorks
+            .add(DcrPurposeVisitHelper.serviceEngineerAvailablePurposeLabel);
+      }
 
       if (!mounted) return;
 
@@ -1400,7 +1936,7 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
           ? getIt<UserDetailStore>()
           : null;
-      if (userStore?.userDetail?.serviceArea == 'Medical Rep') {
+      if (PurposeVisitHelper.isMedicalRepUser(userStore?.userDetail)) {
         if (mounted) {
           setState(() {
             _customerTypeOptions = [];
@@ -1724,6 +2260,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
 
           // Store the loaded entry for preserving detailId and clusterId during updates
           _loadedEntry = dcrEntry;
+          final int? resolvedDetailId = _resolvedDcrDetailId();
+          if (resolvedDetailId != null &&
+              (dcrEntry.detailId == null || dcrEntry.detailId! <= 0)) {
+            _loadedEntry = dcrEntry.copyWith(detailId: resolvedDetailId);
+          }
 
           // Store typeOfWorkId from loaded DCR entry to resolve purpose after typeOfWork list loads
           if (dcrEntry.typeOfWorkId != null && dcrEntry.typeOfWorkId! > 0) {
@@ -1761,7 +2302,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
               _selectedProducts.clear();
             }
             _samplesCtrl.text = dcrEntry.samplesDistributed;
-            _discussionCtrl.text = dcrEntry.keyDiscussionPoints;
+            _discussionCtrl.text =
+                DcrPurposeVisitHelper.resolveRemarksForAvailablePurpose(
+              purposeOfVisit: _purpose ?? dcrEntry.purposeOfVisit,
+              discussionText: dcrEntry.keyDiscussionPoints,
+            );
             _date = dcrEntry.date;
             // Set time from date if available
             _time = TimeOfDay(
@@ -1888,19 +2433,27 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             if (_coVisit &&
                 dcrEntry.coVisitorId != null &&
                 dcrEntry.coVisitorId! > 0) {
-              // Load manager list first, then find the manager name matching the ID
+              // Use stored name directly if available from API response
+              if (dcrEntry.coVisitorName != null &&
+                  dcrEntry.coVisitorName!.isNotEmpty) {
+                _selectedManager = dcrEntry.coVisitorName;
+                _managerNameToId[dcrEntry.coVisitorName!] =
+                    dcrEntry.coVisitorId!;
+              }
+              // Also load manager list for dropdown (and fallback name resolution)
               _loadManagerList().then((_) {
-                // Find manager name by ID
-                String? managerName;
-                _managerNameToId.forEach((name, id) {
-                  if (id == dcrEntry.coVisitorId) {
-                    managerName = name;
-                  }
-                });
-                if (managerName != null && mounted) {
-                  setState(() {
-                    _selectedManager = managerName;
+                if (_selectedManager == null && mounted) {
+                  String? managerName;
+                  _managerNameToId.forEach((name, id) {
+                    if (id == dcrEntry.coVisitorId) {
+                      managerName = name;
+                    }
                   });
+                  if (managerName != null) {
+                    setState(() {
+                      _selectedManager = managerName;
+                    });
+                  }
                 }
               });
             }
@@ -1921,10 +2474,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             }
           });
 
-          // Load customers for the selected cluster in edit mode
+          // Load customers for the selected cluster in edit mode (await before service report)
           if (_cluster != null && _cluster!.trim().isNotEmpty) {
             print('DcrEntryScreen: Loading customers for selected cluster count: 1');
-            _loadMappedCustomers();
+            await _loadMappedCustomers();
           }
 
           // If we have _loadedTypeOfWorkId and typeOfWork list is already loaded, resolve purpose now
@@ -1968,11 +2521,24 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
           print('  _time: $_time');
           print('  _position: ${_position?.latitude}, ${_position?.longitude}');
 
-          // When updating DCR and user is Service Engineer: load Service Report by DCR detail Id to autofill (do not call when creating new DCR)
-          if (_isServiceEngineer &&
-              dcrEntry.detailId != null &&
-              dcrEntry.detailId! > 0) {
-            await _loadServiceReportForDcrDetail(dcrEntry.detailId!);
+          // Service Engineer: load Service Report by DCR detail id (separate API).
+          await _awaitUserDetailLoaded();
+          final int? serviceReportDetailId = _resolvedDcrDetailId();
+          if (_shouldLoadServiceReportData() &&
+              serviceReportDetailId != null &&
+              serviceReportDetailId > 0) {
+            final bool loadedFromApi =
+                await _loadServiceReportForDcrDetail(serviceReportDetailId);
+            if (!loadedFromApi && mounted) {
+              setState(() {
+                _applyServiceReportListHint();
+                _seedServiceReportFromDcrContext();
+              });
+            }
+            await _loadMappedCustomersForServiceReport();
+            if (mounted) {
+              setState(_ensureServiceReportDropdownOptions);
+            }
           }
         } else {
           print('No DCR found with ID: ${widget.id}');
@@ -2015,318 +2581,420 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     }
   }
 
-  /// Load existing Service Report data (if any) for the current DCR detail
-  Future<void> _loadServiceReportForDcrDetail(int detailId) async {
+  Future<Map<String, dynamic>?> _fetchServiceReportPayloadFromPost(
+    DioClient dioClient, {
+    required Map<String, dynamic> body,
+  }) async {
+    print('DcrEntryScreen: [ServiceReport] POST ${Endpoints.serviceReportGetEndpoint} body=$body');
+    final response = await dioClient.dio.post(
+      Endpoints.serviceReportGetEndpoint,
+      data: body,
+      options: Options(
+        headers: {'Content-Type': 'application/json'},
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+    if (response.statusCode == null ||
+        response.statusCode == 204 ||
+        response.statusCode! < 200 ||
+        response.statusCode! >= 300) {
+      print(
+          'DcrEntryScreen: [ServiceReport] POST ${response.statusCode} body=${response.data}');
+      return null;
+    }
+    final Map<String, dynamic>? json =
+        _parseServiceReportPayload(response.data);
+    if (json == null || !_serviceReportJsonHasData(json)) {
+      print(
+          'DcrEntryScreen: [ServiceReport] POST no usable payload: ${response.data}');
+      return null;
+    }
+    return json;
+  }
+
+  Future<Map<String, dynamic>?> _fetchServiceReportPayloadFromUrl(
+    DioClient dioClient,
+    String url,
+  ) async {
+    print('DcrEntryScreen: [ServiceReport] GET $url');
+    final response = await dioClient.dio.get(
+      url,
+      options: Options(
+        validateStatus: (status) => status != null && status < 500,
+      ),
+    );
+    if (response.statusCode == null ||
+        response.statusCode == 204 ||
+        response.statusCode! < 200 ||
+        response.statusCode! >= 300) {
+      print(
+          'DcrEntryScreen: [ServiceReport] GET ${response.statusCode} for $url');
+      return null;
+    }
+    final Map<String, dynamic>? json =
+        _parseServiceReportPayload(response.data);
+    if (json == null || !_serviceReportJsonHasData(json)) {
+      print(
+          'DcrEntryScreen: [ServiceReport] No usable payload from $url (raw=${response.data})');
+      return null;
+    }
+    return json;
+  }
+
+  void _applyServiceReportJson(Map<String, dynamic> json) {
+    final dynamic idRaw = json['id'] ??
+        json['Id'] ??
+        json['serviceReportId'] ??
+        json['ServiceReportId'];
+    final int id = idRaw is int
+        ? idRaw
+        : (idRaw is String ? int.tryParse(idRaw) ?? 0 : 0);
+
+    String? parsedCreatedDateStr;
+    final String? createdDateStr =
+        (json['createdDate'] ?? json['CreatedDate'])?.toString();
+    if (createdDateStr != null && createdDateStr.isNotEmpty) {
+      parsedCreatedDateStr = createdDateStr;
+    }
+
+    final String? customerName =
+        (json['customerName'] ?? json['CustomerName'])?.toString();
+    final dynamic customerIdRaw = json['customerId'] ?? json['CustomerId'];
+    final int? customerId = customerIdRaw is int
+        ? customerIdRaw
+        : (customerIdRaw is String ? int.tryParse(customerIdRaw) : null);
+
+    final String? productName =
+        (json['product'] ?? json['Product'])?.toString();
+    final dynamic productIdRaw = json['productId'] ?? json['ProductId'];
+    final int? productId = productIdRaw is int
+        ? productIdRaw
+        : (productIdRaw is String ? int.tryParse(productIdRaw) : null);
+
+    final String? contactPerson =
+        (json['contactPerson'] ?? json['ContactPerson'])?.toString();
+    final String? contactMobile =
+        (json['contactMobile'] ?? json['ContactMobile'])?.toString();
+    final String? serviceDateStr =
+        (json['serviceDate'] ?? json['ServiceDate'])?.toString();
+    final String? serialNumber =
+        (json['serialNumber'] ?? json['SerialNumber'])?.toString();
+
+    final dynamic serviceTypeIdRaw =
+        json['serviceTypeId'] ?? json['ServiceTypeId'];
+    final int? serviceTypeId = serviceTypeIdRaw is int
+        ? serviceTypeIdRaw
+        : (serviceTypeIdRaw is String ? int.tryParse(serviceTypeIdRaw) : null);
+
+    final dynamic electricitySafetyIdRaw =
+        json['electricitySafetyTestId'] ?? json['ElectricitySafetyTestId'];
+    final int? electricitySafetyId = electricitySafetyIdRaw is int
+        ? electricitySafetyIdRaw
+        : (electricitySafetyIdRaw is String
+            ? int.tryParse(electricitySafetyIdRaw)
+            : null);
+
+    final dynamic serviceStatusIdRaw =
+        json['serviceStatusId'] ?? json['ServiceStatusId'];
+    final int? serviceStatusId = serviceStatusIdRaw is int
+        ? serviceStatusIdRaw
+        : (serviceStatusIdRaw is String
+            ? int.tryParse(serviceStatusIdRaw)
+            : null);
+
+    final dynamic feedbackOptionIdRaw =
+        json['feedbackOptionId'] ?? json['FeedbackOptionId'];
+    final int? feedbackOptionId = feedbackOptionIdRaw is int
+        ? feedbackOptionIdRaw
+        : (feedbackOptionIdRaw is String
+            ? int.tryParse(feedbackOptionIdRaw)
+            : null);
+
+    final String? complaintDetails =
+        (json['complaintDetails'] ?? json['ComplaintDetails'])?.toString();
+    final String? actionTaken =
+        (json['actionTaken'] ?? json['ActionTaken'])?.toString();
+    final String? result = (json['result'] ?? json['Result'])?.toString();
+    final String? complaintDateTimeStr =
+        (json['complaintDateTime'] ?? json['ComplaintDateTime'])?.toString();
+    final String? startTimeStr =
+        (json['startTime'] ?? json['StartTime'])?.toString();
+    final String? endTimeStr = (json['endTime'] ?? json['EndTime'])?.toString();
+
+    final String? workDescription =
+        (json['workDescription'] ?? json['WorkDescription'])?.toString();
+    final String? materialsUsed =
+        (json['materialsUsed'] ?? json['MaterialsUsed'])?.toString();
+    final String? remarks = (json['remarks'] ?? json['Remarks'])?.toString();
+
+    final String? signedBy =
+        (json['signedBy'] ?? json['SignedBy'])?.toString();
+    final String? signatureImageUrl =
+        (json['signatureImageUrl'] ?? json['SignatureImageUrl'])?.toString();
+    final String? signatureImageBase64 = (json['signatureImageBase64'] ??
+            json['SignatureImageBase64'] ??
+            json['signatureValue'] ??
+            json['SignatureValue'])
+        ?.toString();
+
+    final dynamic serviceRateRaw = json['serviceRate'] ?? json['ServiceRate'];
+    final double? serviceRate = serviceRateRaw is num
+        ? serviceRateRaw.toDouble()
+        : (serviceRateRaw is String && serviceRateRaw.isNotEmpty
+            ? double.tryParse(serviceRateRaw)
+            : null);
+
+    DateTime? parsedServiceDate;
+    if (serviceDateStr != null && serviceDateStr.isNotEmpty) {
+      try {
+        parsedServiceDate = DateTime.parse(serviceDateStr);
+      } catch (_) {}
+    }
+
+    DateTime? parsedComplaintDateTime;
+    if (complaintDateTimeStr != null && complaintDateTimeStr.isNotEmpty) {
+      try {
+        parsedComplaintDateTime = DateTime.parse(complaintDateTimeStr);
+      } catch (_) {}
+    }
+
+    DateTime? parsedStartTime;
+    if (startTimeStr != null && startTimeStr.isNotEmpty) {
+      try {
+        parsedStartTime = DateTime.parse(startTimeStr);
+      } catch (_) {}
+    }
+    DateTime? parsedEndTime;
+    if (endTimeStr != null && endTimeStr.isNotEmpty) {
+      try {
+        parsedEndTime = DateTime.parse(endTimeStr);
+      } catch (_) {}
+    }
+
+    _serviceReportId = id > 0 ? id : _serviceReportId;
+    if (parsedCreatedDateStr != null) {
+      _serviceReportCreatedDate = parsedCreatedDateStr;
+    }
+
+    if (customerName != null && customerName.isNotEmpty) {
+      _serviceReportCustomer = customerName;
+      if (!_customerOptions.contains(customerName)) {
+        _customerOptions = {..._customerOptions, customerName}.toList();
+      }
+      if (customerId != null && customerId > 0) {
+        _customerNameToId[customerName] = customerId;
+      }
+    }
+
+    if (productName != null && productName.isNotEmpty) {
+      _serviceReportProduct = productName;
+      if (!_productOptions.contains(productName)) {
+        _productOptions = {..._productOptions, productName}.toList();
+      }
+      if (productId != null && productId > 0) {
+        _productNameToId[productName] = productId;
+      }
+    }
+
+    if (contactPerson != null) _contactPersonCtrl.text = contactPerson;
+    if (contactMobile != null) _contactMobileCtrl.text = contactMobile;
+    if (serialNumber != null) _serialNumberCtrl.text = serialNumber;
+    if (workDescription != null) {
+      _workDescriptionCtrl.text = workDescription;
+    }
+    if (materialsUsed != null) _materialsUsedCtrl.text = materialsUsed;
+    if (remarks != null) _serviceRemarksCtrl.text = remarks;
+    if (signedBy != null) _signedByCtrl.text = signedBy;
+    if (signatureImageUrl != null && signatureImageUrl.trim().isNotEmpty) {
+      _signatureImageUrl = signatureImageUrl.trim();
+      _signatureImageBase64 = null;
+      _signatureValue = 'Captured';
+    } else if (signatureImageBase64 != null &&
+        signatureImageBase64.trim().isNotEmpty) {
+      _signatureImageBase64 = signatureImageBase64;
+      _signatureValue = 'Captured';
+    }
+    if (serviceRate != null) {
+      _serviceRateCtrl.text = serviceRate.toStringAsFixed(2);
+    }
+
+    if (parsedServiceDate != null) {
+      _serviceDate = parsedServiceDate;
+      try {
+        _serviceDateCtrl.text = _formatServiceDate(parsedServiceDate);
+      } catch (_) {}
+    }
+    if (parsedComplaintDateTime != null) {
+      _complaintDateTime = parsedComplaintDateTime;
+    }
+    if (parsedStartTime != null) {
+      _startTime = parsedStartTime;
+    }
+    if (parsedEndTime != null) {
+      _endTime = parsedEndTime;
+    }
+
+    if (complaintDetails != null) _complaintCtrl.text = complaintDetails;
+    if (actionTaken != null) _actionTakenCtrl.text = actionTaken;
+    if (result != null) _resultCtrl.text = result;
+
+    if (serviceTypeId != null && serviceTypeId > 0) {
+      for (final t in ServiceReportType.values) {
+        if (t.value == serviceTypeId) {
+          _selectedServiceType = t;
+          _serviceType = t.description;
+          break;
+        }
+      }
+    }
+
+    if (electricitySafetyId != null && electricitySafetyId > 0) {
+      for (final s in ElectricitySafetyTestStatus.values) {
+        if (s.value == electricitySafetyId) {
+          _selectedElectricitySafetyTest = s;
+          _electricitySafetyTest = s.description;
+          break;
+        }
+      }
+    }
+
+    if (serviceStatusId != null && serviceStatusId > 0) {
+      for (final s in ServiceReportStatus.values) {
+        if (s.value == serviceStatusId) {
+          _selectedServiceReportStatus = s;
+          _serviceStatus = s.description;
+          break;
+        }
+      }
+    }
+
+    if (feedbackOptionId != null && feedbackOptionId > 0) {
+      for (final f in ServiceFeedbackStatus.values) {
+        if (f.value == feedbackOptionId) {
+          _selectedFeedbackOption = f;
+          break;
+        }
+      }
+    }
+
+    _ensureServiceReportDropdownOptions();
+  }
+
+  /// Load existing Service Report data (if any) for the current DCR detail.
+  /// Returns true when report fields were applied from the API.
+  Future<bool> _loadServiceReportForDcrDetail(int dcrDetailId) async {
     try {
       final dioClient =
           getIt.isRegistered<DioClient>() ? getIt<DioClient>() : null;
       if (dioClient == null) {
         print(
             'DcrEntryScreen: [ServiceReport] DioClient not registered, skipping load');
-        return;
+        return false;
       }
 
-      final String url = Endpoints.serviceReportGet(detailId);
-      print(
-          'DcrEntryScreen: [ServiceReport] Loading existing service report from $url');
+      final int? dcrParentId = _resolvedDcrParentId();
+      final int? serviceReportId = _resolvedServiceReportLookupId();
 
-      final response = await dioClient.dio.get(url);
-      if (response.statusCode == null ||
-          response.statusCode! < 200 ||
-          response.statusCode! >= 300) {
+      final List<String> getUrls = <String>[];
+      void addUrl(String url) {
+        if (!getUrls.contains(url)) getUrls.add(url);
+      }
+
+      void addGetById(int? id) {
+        if (id != null && id > 0) {
+          addUrl(Endpoints.serviceReportGet(id));
+          if (dcrParentId != null && dcrParentId > 0) {
+            addUrl(Endpoints.serviceReportGetWithDcr(id, dcrParentId));
+          }
+        }
+      }
+
+      addGetById(dcrDetailId);
+      addGetById(serviceReportId);
+      addUrl(Endpoints.serviceReportGetByDcrDetailId(dcrDetailId));
+      if (dcrParentId != null && dcrParentId > 0) {
+        addUrl(Endpoints.serviceReportGetByDcrDetailAndDcrId(
+            dcrDetailId, dcrParentId));
+      }
+
+      final List<Map<String, dynamic>> postBodies = <Map<String, dynamic>>[];
+      void addPost(Map<String, dynamic> body) {
+        final exists = postBodies.any((b) => jsonEncode(b) == jsonEncode(body));
+        if (!exists) postBodies.add(body);
+      }
+
+      if (dcrParentId != null && dcrParentId > 0) {
+        addPost({
+          'Id': dcrDetailId,
+          'DCRId': dcrParentId,
+          'DcrDetailId': dcrDetailId,
+        });
+        addPost({
+          'Id': dcrDetailId,
+          'DcrDetailId': dcrDetailId,
+          'DCRId': dcrParentId,
+        });
+        if (serviceReportId != null && serviceReportId > 0) {
+          addPost({
+            'Id': serviceReportId,
+            'DCRId': dcrParentId,
+            'DcrDetailId': dcrDetailId,
+          });
+        }
+      } else {
+        addPost({'Id': dcrDetailId, 'DcrDetailId': dcrDetailId});
+        if (serviceReportId != null && serviceReportId > 0) {
+          addPost({'Id': serviceReportId, 'DcrDetailId': dcrDetailId});
+        }
+      }
+
+      Map<String, dynamic>? bestJson;
+
+      for (final url in getUrls) {
+        final Map<String, dynamic>? json =
+            await _fetchServiceReportPayloadFromUrl(dioClient, url);
+        if (json == null) continue;
+        if (bestJson == null ||
+            _serviceReportJsonFieldCount(json) >
+                _serviceReportJsonFieldCount(bestJson)) {
+          bestJson = json;
+        }
+      }
+
+      for (final body in postBodies) {
+        final Map<String, dynamic>? json =
+            await _fetchServiceReportPayloadFromPost(dioClient, body: body);
+        if (json == null) continue;
+        if (bestJson == null ||
+            _serviceReportJsonFieldCount(json) >
+                _serviceReportJsonFieldCount(bestJson)) {
+          bestJson = json;
+        }
+      }
+
+      final Map<String, dynamic>? cached =
+          await _readServiceReportCache(dcrDetailId);
+      if (cached != null) {
+        if (bestJson == null ||
+            _serviceReportJsonFieldCount(cached) >
+                _serviceReportJsonFieldCount(bestJson)) {
+          bestJson = cached;
+        }
+      }
+
+      if (bestJson != null) {
         print(
-            'DcrEntryScreen: [ServiceReport] Get failed with status: ${response.statusCode}');
-        return;
+            'DcrEntryScreen: [ServiceReport] Applying report (${_serviceReportJsonFieldCount(bestJson)} fields)');
+        if (!mounted) return false;
+        setState(() => _applyServiceReportJson(bestJson!));
+        return true;
       }
 
-      // 204 No Content = no service report saved previously for this DCR detail; nothing to autofill
-      if (response.statusCode == 204) {
-        print(
-            'DcrEntryScreen: [ServiceReport] Get returned 204 No Content - no existing service report');
-        return;
-      }
-
-      final dynamic data = response.data;
-      if (data == null) {
-        print('DcrEntryScreen: [ServiceReport] Get returned null body');
-        return;
-      }
-
-      // API returns a single object (camelCase keys per client spec)
-      dynamic payload = data;
-      if (data is Map) {
-        final Map<String, dynamic> map = Map<String, dynamic>.from(data);
-        final dynamic dataList = map['Data'] ?? map['data'];
-        if (dataList is List && dataList.isNotEmpty) {
-          payload = dataList.first;
-        }
-      }
-
-      // Defensive casting for both Map<String, dynamic> and generic Map
-      final Map<String, dynamic> json = payload is Map<String, dynamic>
-          ? payload
-          : Map<String, dynamic>.from(payload as Map);
-
-      print(
-          'DcrEntryScreen: [ServiceReport] Loaded existing service report: $json');
-
-      // Extract basic identifiers
-      final dynamic idRaw = json['id'] ??
-          json['Id'] ??
-          json['serviceReportId'] ??
-          json['ServiceReportId'];
-      final int id = idRaw is int
-          ? idRaw
-          : (idRaw is String ? int.tryParse(idRaw) ?? 0 : 0);
-
-      // Store CreatedDate as-is from API so we send same format back on Update (.NET expects ISO 8601)
-      String? parsedCreatedDateStr;
-      final String? createdDateStr =
-          (json['createdDate'] ?? json['CreatedDate'])?.toString();
-      if (createdDateStr != null && createdDateStr.isNotEmpty) {
-        parsedCreatedDateStr = createdDateStr;
-      }
-
-      final String? customerName =
-          (json['customerName'] ?? json['CustomerName'])?.toString();
-      final dynamic customerIdRaw = json['customerId'] ?? json['CustomerId'];
-      final int? customerId = customerIdRaw is int
-          ? customerIdRaw
-          : (customerIdRaw is String ? int.tryParse(customerIdRaw) : null);
-
-      final String? productName =
-          (json['product'] ?? json['Product'])?.toString();
-      final dynamic productIdRaw = json['productId'] ?? json['ProductId'];
-      final int? productId = productIdRaw is int
-          ? productIdRaw
-          : (productIdRaw is String ? int.tryParse(productIdRaw) : null);
-
-      final String? contactPerson =
-          (json['contactPerson'] ?? json['ContactPerson'])?.toString();
-      final String? contactMobile =
-          (json['contactMobile'] ?? json['ContactMobile'])?.toString();
-      final String? serviceDateStr =
-          (json['serviceDate'] ?? json['ServiceDate'])?.toString();
-      final String? serialNumber =
-          (json['serialNumber'] ?? json['SerialNumber'])?.toString();
-
-      final dynamic serviceTypeIdRaw =
-          json['serviceTypeId'] ?? json['ServiceTypeId'];
-      final int? serviceTypeId = serviceTypeIdRaw is int
-          ? serviceTypeIdRaw
-          : (serviceTypeIdRaw is String
-              ? int.tryParse(serviceTypeIdRaw)
-              : null);
-
-      final dynamic electricitySafetyIdRaw =
-          json['electricitySafetyTestId'] ?? json['ElectricitySafetyTestId'];
-      final int? electricitySafetyId = electricitySafetyIdRaw is int
-          ? electricitySafetyIdRaw
-          : (electricitySafetyIdRaw is String
-              ? int.tryParse(electricitySafetyIdRaw)
-              : null);
-
-      final dynamic serviceStatusIdRaw =
-          json['serviceStatusId'] ?? json['ServiceStatusId'];
-      final int? serviceStatusId = serviceStatusIdRaw is int
-          ? serviceStatusIdRaw
-          : (serviceStatusIdRaw is String
-              ? int.tryParse(serviceStatusIdRaw)
-              : null);
-
-      final dynamic feedbackOptionIdRaw =
-          json['feedbackOptionId'] ?? json['FeedbackOptionId'];
-      final int? feedbackOptionId = feedbackOptionIdRaw is int
-          ? feedbackOptionIdRaw
-          : (feedbackOptionIdRaw is String
-              ? int.tryParse(feedbackOptionIdRaw)
-              : null);
-
-      final String? complaintDetails =
-          (json['complaintDetails'] ?? json['ComplaintDetails'])?.toString();
-      final String? actionTaken =
-          (json['actionTaken'] ?? json['ActionTaken'])?.toString();
-      final String? result = (json['result'] ?? json['Result'])?.toString();
-      final String? complaintDateTimeStr =
-          (json['complaintDateTime'] ?? json['ComplaintDateTime'])?.toString();
-      final String? startTimeStr =
-          (json['startTime'] ?? json['StartTime'])?.toString();
-      final String? endTimeStr =
-          (json['endTime'] ?? json['EndTime'])?.toString();
-
-      final String? workDescription =
-          (json['workDescription'] ?? json['WorkDescription'])?.toString();
-      final String? materialsUsed =
-          (json['materialsUsed'] ?? json['MaterialsUsed'])?.toString();
-      final String? remarks = (json['remarks'] ?? json['Remarks'])?.toString();
-
-      final String? signedBy =
-          (json['signedBy'] ?? json['SignedBy'])?.toString();
-      final String? signatureImageUrl =
-          (json['signatureImageUrl'] ?? json['SignatureImageUrl'])?.toString();
-      // Legacy: API may return base64 (camelCase or PascalCase)
-      final String? signatureImageBase64 = (json['signatureImageBase64'] ??
-              json['SignatureImageBase64'] ??
-              json['signatureValue'] ??
-              json['SignatureValue'])
-          ?.toString();
-
-      final dynamic serviceRateRaw = json['serviceRate'] ?? json['ServiceRate'];
-      final double? serviceRate = serviceRateRaw is num
-          ? serviceRateRaw.toDouble()
-          : (serviceRateRaw is String && serviceRateRaw.isNotEmpty
-              ? double.tryParse(serviceRateRaw)
-              : null);
-
-      DateTime? parsedServiceDate;
-      if (serviceDateStr != null && serviceDateStr.isNotEmpty) {
-        try {
-          parsedServiceDate = DateTime.parse(serviceDateStr);
-        } catch (_) {}
-      }
-
-      DateTime? parsedComplaintDateTime;
-      if (complaintDateTimeStr != null && complaintDateTimeStr.isNotEmpty) {
-        try {
-          parsedComplaintDateTime = DateTime.parse(complaintDateTimeStr);
-        } catch (_) {}
-      }
-
-      DateTime? parsedStartTime;
-      if (startTimeStr != null && startTimeStr.isNotEmpty) {
-        try {
-          parsedStartTime = DateTime.parse(startTimeStr);
-        } catch (_) {}
-      }
-      DateTime? parsedEndTime;
-      if (endTimeStr != null && endTimeStr.isNotEmpty) {
-        try {
-          parsedEndTime = DateTime.parse(endTimeStr);
-        } catch (_) {}
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _serviceReportId = id > 0 ? id : _serviceReportId;
-        if (parsedCreatedDateStr != null) {
-          _serviceReportCreatedDate = parsedCreatedDateStr;
-        }
-
-        // Customer
-        if (customerName != null && customerName.isNotEmpty) {
-          _serviceReportCustomer = customerName;
-          if (!_customerOptions.contains(customerName)) {
-            _customerOptions = {..._customerOptions, customerName}.toList();
-          }
-          if (customerId != null && customerId > 0) {
-            _customerNameToId[customerName] = customerId;
-          }
-        }
-
-        // Product
-        if (productName != null && productName.isNotEmpty) {
-          _serviceReportProduct = productName;
-          if (!_productOptions.contains(productName)) {
-            _productOptions = {..._productOptions, productName}.toList();
-          }
-          if (productId != null && productId > 0) {
-            _productNameToId[productName] = productId;
-          }
-        }
-
-        // Basic fields
-        _contactPersonCtrl.text = contactPerson ?? _contactPersonCtrl.text;
-        _contactMobileCtrl.text = contactMobile ?? _contactMobileCtrl.text;
-        _serialNumberCtrl.text = serialNumber ?? _serialNumberCtrl.text;
-        _workDescriptionCtrl.text =
-            workDescription ?? _workDescriptionCtrl.text;
-        _materialsUsedCtrl.text = materialsUsed ?? _materialsUsedCtrl.text;
-        _serviceRemarksCtrl.text = remarks ?? _serviceRemarksCtrl.text;
-        _signedByCtrl.text = signedBy ?? _signedByCtrl.text;
-        if (signatureImageUrl != null && signatureImageUrl.trim().isNotEmpty) {
-          _signatureImageUrl = signatureImageUrl.trim();
-          _signatureImageBase64 = null;
-          _signatureValue = 'Captured';
-        } else if (signatureImageBase64 != null &&
-            signatureImageBase64.trim().isNotEmpty) {
-          _signatureImageBase64 = signatureImageBase64;
-          _signatureValue = 'Captured';
-        }
-        if (serviceRate != null) {
-          _serviceRateCtrl.text = serviceRate.toStringAsFixed(2);
-        }
-
-        // Dates
-        if (parsedServiceDate != null) {
-          _serviceDate = parsedServiceDate;
-          try {
-            _serviceDateCtrl.text = _formatServiceDate(parsedServiceDate);
-          } catch (_) {}
-        }
-        if (parsedComplaintDateTime != null) {
-          _complaintDateTime = parsedComplaintDateTime;
-        }
-        if (parsedStartTime != null) {
-          _startTime = parsedStartTime;
-        }
-        if (parsedEndTime != null) {
-          _endTime = parsedEndTime;
-        }
-
-        // Complaint fields
-        if (complaintDetails != null && complaintDetails.isNotEmpty) {
-          _complaintCtrl.text = complaintDetails;
-        }
-        if (actionTaken != null && actionTaken.isNotEmpty) {
-          _actionTakenCtrl.text = actionTaken;
-        }
-        if (result != null && result.isNotEmpty) {
-          _resultCtrl.text = result;
-        }
-
-        // Enums: Service Type
-        if (serviceTypeId != null && serviceTypeId > 0) {
-          for (final t in ServiceReportType.values) {
-            if (t.value == serviceTypeId) {
-              _selectedServiceType = t;
-              break;
-            }
-          }
-        }
-
-        // Enums: Electricity Safety
-        if (electricitySafetyId != null && electricitySafetyId > 0) {
-          for (final s in ElectricitySafetyTestStatus.values) {
-            if (s.value == electricitySafetyId) {
-              _selectedElectricitySafetyTest = s;
-              break;
-            }
-          }
-        }
-
-        // Enums: Service Status
-        if (serviceStatusId != null && serviceStatusId > 0) {
-          for (final s in ServiceReportStatus.values) {
-            if (s.value == serviceStatusId) {
-              _selectedServiceReportStatus = s;
-              break;
-            }
-          }
-        }
-
-        // Enums: Feedback
-        if (feedbackOptionId != null && feedbackOptionId > 0) {
-          for (final f in ServiceFeedbackStatus.values) {
-            if (f.value == feedbackOptionId) {
-              _selectedFeedbackOption = f;
-              break;
-            }
-          }
-        }
-      });
+      return false;
     } catch (e, s) {
       print(
-          'DcrEntryScreen: [ServiceReport] Error loading existing service report for detailId=$detailId: $e\n$s');
+          'DcrEntryScreen: [ServiceReport] Error loading existing service report for detailId=$dcrDetailId: $e\n$s');
+      return false;
     }
   }
 
@@ -2669,26 +3337,29 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 16),
-      // 3. Cluster / City *
+      // 3. Cluster / City
       _LabeledField(
         label: 'Cluster / City',
-        required: true,
+        required: _clusterRequiredForSelectedVisitType,
         errorText: _clusterErrorText,
-        child: SearchableDropdown(
-          options: _clusters,
-          value: _cluster,
-          hintText: 'Type to search cluster/city...',
-          searchHintText: 'Search cluster...',
-          hasError: _clusterErrorText != null,
-          onChanged: (v) {
-            setState(() {
-              _cluster = v;
-              _clusterErrorText = null;
-              _customer = null;
-              _customerErrorText = null;
-            });
-            _loadMappedCustomers();
-          },
+        child: IgnorePointer(
+          ignoring: _isViewOnly,
+          child: SearchableDropdown(
+            options: _clusters,
+            value: _cluster,
+            hintText: 'Type to search cluster/city...',
+            searchHintText: 'Search cluster...',
+            hasError: _clusterErrorText != null,
+            onChanged: (v) {
+              setState(() {
+                _cluster = v;
+                _clusterErrorText = null;
+                _customer = null;
+                _customerErrorText = null;
+              });
+              _loadMappedCustomers();
+            },
+          ),
         ),
       ),
       const SizedBox(height: 16),
@@ -2711,15 +3382,15 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
         ),
       ),
       const SizedBox(height: 20),
-      // 6. Customer *
+      // 6. Customer
       _LabeledField(
         label: 'Customer',
         required: _customerRequiredForSelectedVisitType,
         errorText: _customerErrorText,
         child: Opacity(
-          opacity: _customerRequiredForSelectedVisitType ? 1.0 : 0.55,
+          opacity: _shouldDisableCustomerField ? 0.55 : 1.0,
           child: IgnorePointer(
-            ignoring: !_customerRequiredForSelectedVisitType || _isViewOnly,
+            ignoring: _shouldDisableCustomerField || _isViewOnly,
             child: SearchableDropdown(
               options: _customerOptions,
               value: _customer,
@@ -2755,9 +3426,16 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
             setState(() {
               _purpose = v;
               _purposeErrorText = null;
-              if (!_customerRequiredForSelectedVisitType) {
+              if (!_customerRequiredForSelectedVisitType &&
+                  !_isServiceEngineerAvailablePurpose) {
                 _customer = null;
                 _customerErrorText = null;
+              }
+              if (_isServiceEngineerAvailablePurpose) {
+                if (_discussionCtrl.text.trim().isEmpty) {
+                  _discussionCtrl.text =
+                      DcrPurposeVisitHelper.serviceEngineerAvailableRemarks;
+                }
               }
             });
           },
@@ -3838,7 +4516,11 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                         getIt.isRegistered<UserDetailStore>()
                             ? (getIt<UserDetailStore>().userDetail?.id ?? 0)
                             : 0;
-                    final int dcrDetailId = _loadedEntry?.detailId ?? 0;
+                    final int dcrDetailId = _resolvedDcrDetailId() ?? 0;
+                    if (dcrDetailId <= 0) {
+                      throw Exception(
+                          'Cannot save service report: missing DCR detail id');
+                    }
                     final bool isUpdate =
                         _serviceReportId != null && _serviceReportId! > 0;
                     final DateTime now = DateTime.now();
@@ -3927,6 +4609,21 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
                     if (response.statusCode != null &&
                         response.statusCode! >= 200 &&
                         response.statusCode! < 300) {
+                      final dynamic body = response.data;
+                      final int? savedId = _parseServiceReportIdFromBody(body);
+                      if (savedId != null && savedId > 0) {
+                        setState(() {
+                          _serviceReportId = savedId;
+                        });
+                      }
+                      final Map<String, dynamic> snapshot =
+                          _buildServiceReportSnapshotFromForm();
+                      if (savedId != null && savedId > 0) {
+                        snapshot['Id'] = savedId;
+                      }
+                      await _persistServiceReportCache(dcrDetailId, snapshot);
+                      // Reload from API/cache so form matches server + local snapshot.
+                      await _loadServiceReportForDcrDetail(dcrDetailId);
                       ToastMessage.show(
                         context,
                         message: 'Service report saved successfully',
@@ -4304,9 +5001,10 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
     final String code = _customerCodeCtrl.text.trim();
     final String mobile = _customerMobileCtrl.text.trim();
     final String uin = _uinCtrl.text.trim();
-    final String? serviceArea = getIt.isRegistered<UserDetailStore>()
-        ? getIt<UserDetailStore>().userDetail?.serviceArea
+    final UserDetail? userDetail = getIt.isRegistered<UserDetailStore>()
+        ? getIt<UserDetailStore>().userDetail
         : null;
+    final String? serviceArea = userDetail?.serviceArea;
 
     if (name.isEmpty) {
       ToastMessage.show(
@@ -4318,7 +5016,8 @@ class _DcrEntryScreenState extends State<DcrEntryScreen>
       return;
     }
     // Customer Type required only for Sales Rep (Pharmacy save); not for Medical Rep (Doctor save)
-    final bool isMedicalRepServiceArea = serviceArea == 'Medical Rep';
+    final bool isMedicalRepServiceArea =
+        PurposeVisitHelper.isMedicalRepUser(userDetail);
     if (!isMedicalRepServiceArea) {
       if (_selectedCustomerType == null ||
           !_customerTypeNameToId.containsKey(_selectedCustomerType)) {
@@ -5044,12 +5743,50 @@ class _TimeFieldState extends State<_TimeField> {
 
 // Submission handlers
 extension on _DcrEntryScreenState {
+  String _clusterForSave() => _cluster?.trim() ?? '';
+
+  int? _resolvedCityIdForSave() {
+    if (_isServiceEngineerAvailablePurpose) {
+      final String? clusterName = _cluster?.trim();
+      if (clusterName == null || clusterName.isEmpty) return 0;
+      return _clusterNameToId[clusterName] ?? widget.initialClusterId ?? 0;
+    }
+    return _clusterNameToId[_cluster] ?? widget.initialClusterId;
+  }
+
+  int? _resolvedCustomerIdForSave() {
+    if (_isServiceEngineerAvailablePurpose) {
+      final String? customerName = _customer?.trim();
+      if (customerName == null || customerName.isEmpty) return 0;
+      return _customerNameToId[customerName] ?? widget.initialCustomerId ?? 0;
+    }
+    if (!_customerRequiredForSelectedVisitType) return 0;
+    return _customerNameToId[_customer] ?? widget.initialCustomerId;
+  }
+
+  String _customerNameForSave() {
+    final String? name = _customer?.trim();
+    if (name == null || name.isEmpty) return '';
+    if (_isServiceEngineerAvailablePurpose || _customerRequiredForSelectedVisitType) {
+      return name;
+    }
+    return '';
+  }
+
+  String _keyDiscussionPointsForSave() {
+    return DcrPurposeVisitHelper.resolveRemarksForAvailablePurpose(
+      purposeOfVisit: _purpose,
+      discussionText: _discussionCtrl.text,
+    );
+  }
+
   bool _validate({required bool forSubmit}) {
     bool isValid = true;
     String? firstMessage;
 
     String? clusterError;
-    if (_cluster == null || _cluster!.trim().isEmpty) {
+    if (_clusterRequiredForSelectedVisitType &&
+        (_cluster == null || _cluster!.trim().isEmpty)) {
       clusterError = 'Please select a cluster / locality';
       isValid = false;
       firstMessage ??= 'Select a cluster / locality';
@@ -5107,7 +5844,7 @@ extension on _DcrEntryScreenState {
       firstMessage ??= 'Select a manager for co-visit';
     }
 
-    if (forSubmit && !_atLocation) {
+    if (forSubmit && !_atLocation && !_isServiceEngineerAvailablePurpose) {
       isValid = false;
       firstMessage ??= 'Mark your visit as "At location" before submitting';
     }
@@ -5167,14 +5904,15 @@ extension on _DcrEntryScreenState {
       // Get IDs from the name-to-ID maps, with fallbacks for editing
       int? typeOfWorkId =
           _typeOfWorkNameToId[_purpose] ?? widget.initialTypeOfWorkId;
-      int? cityId = _clusterNameToId[_cluster] ?? widget.initialClusterId;
-      int? customerId =
-          _customerNameToId[_customer] ?? widget.initialCustomerId;
+      int? cityId = _resolvedCityIdForSave();
+      int? customerId = _resolvedCustomerIdForSave();
 
       // If we're editing and still don't have IDs, use fallback values
       if (widget.dcrId != null) {
         typeOfWorkId ??= 1; // Default fallback for editing
-        cityId ??= 1; // Default fallback for editing
+        if (!_isServiceEngineerAvailablePurpose) {
+          cityId ??= 1; // Default fallback for editing
+        }
         if (_customerRequiredForSelectedVisitType) {
           customerId ??= 1; // Default fallback for editing when customer is required
         }
@@ -5204,7 +5942,7 @@ extension on _DcrEntryScreenState {
             'Available purposes in map: ${_typeOfWorkNameToId.keys.toList()}');
         throw Exception('Please select a valid purpose of visit');
       }
-      if (cityId == null) {
+      if (!_isServiceEngineerAvailablePurpose && cityId == null) {
         print('ERROR: No cityId found for selected cluster');
         print('Available clusters in map count: ${_clusterNameToId.length}');
         throw Exception('Please select a valid cluster/locality');
@@ -5233,7 +5971,7 @@ extension on _DcrEntryScreenState {
 
       // Use same logic as dropdowns for UserId consistency
       int actualUserId = userDetail.id;
-      if (userDetail.serviceArea.trim() == 'Service Engineer') {
+      if (PurposeVisitHelper.isServiceEngineerUser(userDetail)) {
         if (userDetail.employeeId > 0) {
           actualUserId = userDetail.employeeId;
         }
@@ -5242,13 +5980,13 @@ extension on _DcrEntryScreenState {
       // Create params with the IDs from UserStore and name-to-ID maps
       final params = CreateDcrParams(
         date: visit,
-        cluster: _cluster!,
-        customer: _customerRequiredForSelectedVisitType ? (_customer ?? '') : '',
+        cluster: _clusterForSave(),
+        customer: _customerNameForSave(),
         purposeOfVisit: _purpose!,
         callDurationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 0,
         productsDiscussed: _selectedProducts.join(', '),
         samplesDistributed: _samplesCtrl.text.trim(),
-        keyDiscussionPoints: _discussionCtrl.text.trim(),
+        keyDiscussionPoints: _keyDiscussionPointsForSave(),
         linkedTourPlanId: widget.initialEntry?.linkedTourPlanId,
         employeeId: userDetail.employeeId.toString(),
         employeeName: userDetail.employeeName,
@@ -5257,7 +5995,7 @@ extension on _DcrEntryScreenState {
         // Pass the IDs for API call
         typeOfWorkId: typeOfWorkId,
         cityId: cityId,
-        customerId: _customerRequiredForSelectedVisitType ? customerId : null,
+        customerId: (_customerNameForSave().isNotEmpty) ? customerId : null,
         userId: actualUserId,
         bizunit: userDetail.sbuId,
         latitude: _position?.latitude,
@@ -5298,6 +6036,7 @@ extension on _DcrEntryScreenState {
         // Co-visit fields
         coVisit: _coVisit,
         coVisitorId: coVisitorId,
+        coVisitorName: _selectedManager,
       );
 
       print('Creating DCR: ${submit ? "Submit" : "Draft"}');
@@ -5320,13 +6059,13 @@ extension on _DcrEntryScreenState {
         // Create params with update info - add dcrId to params for update
         final updateParams = CreateDcrParams(
           date: visit,
-          cluster: _cluster!,
-          customer: _customerRequiredForSelectedVisitType ? (_customer ?? '') : '',
+          cluster: _clusterForSave(),
+          customer: _customerNameForSave(),
           purposeOfVisit: _purpose!,
           callDurationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 0,
           productsDiscussed: _selectedProducts.join(', '),
           samplesDistributed: _samplesCtrl.text.trim(),
-          keyDiscussionPoints: _discussionCtrl.text.trim(),
+          keyDiscussionPoints: _keyDiscussionPointsForSave(),
           linkedTourPlanId: _loadedEntry?.linkedTourPlanId,
           employeeId: userDetail.employeeId.toString(),
           employeeName: userDetail.employeeName,
@@ -5334,7 +6073,7 @@ extension on _DcrEntryScreenState {
           geoProximity: _atLocation ? GeoProximity.at : GeoProximity.away,
           typeOfWorkId: typeOfWorkId,
           cityId: cityId,
-          customerId: _customerRequiredForSelectedVisitType ? customerId : null,
+          customerId: (_customerNameForSave().isNotEmpty) ? customerId : null,
           userId: actualUserId,
           bizunit: userDetail.sbuId,
           latitude: _position?.latitude,
@@ -5377,9 +6116,10 @@ extension on _DcrEntryScreenState {
           // Co-visit fields
           coVisit: _coVisit,
           coVisitorId: coVisitorId,
+          coVisitorName: _selectedManager,
           // Update fields
           dcrId: dcrIdToUpdate,
-          detailId: _loadedEntry?.detailId,
+          detailId: _resolvedDcrDetailId() ?? _loadedEntry?.detailId,
         );
 
         // Use create method which will handle update if dcrId is provided

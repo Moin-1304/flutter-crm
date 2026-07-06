@@ -8,6 +8,24 @@ class ItemIssueApi {
 
   ItemIssueApi(this._dioClient);
 
+  static String? _friendlyDateSaveError(dynamic responseData) {
+    final String raw = responseData?.toString() ?? '';
+    if (raw.contains(r'$.Date') || raw.contains(r'Path: $.Date')) {
+      return 'ST Date is missing or invalid. Please select a valid date and try again.';
+    }
+    if (responseData is List) {
+      for (final entry in responseData) {
+        if (entry is Map) {
+          final String? property = entry['propertyName']?.toString();
+          if (property == r'$.Date' || property == 'Date') {
+            return 'ST Date is missing or invalid. Please select a valid date and try again.';
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   /// Get ItemIssue list with filter criteria
   Future<ItemIssueListResponse> getItemIssueList(
       ItemIssueListRequest request) async {
@@ -133,7 +151,10 @@ class ItemIssueApi {
         // If no header error, try to extract from response body
         if (errorMessage == 'Failed to save ItemIssue') {
           final responseData = e.response?.data;
-          if (responseData is Map) {
+          final String? dateError = _friendlyDateSaveError(responseData);
+          if (dateError != null) {
+            errorMessage = dateError;
+          } else if (responseData is Map) {
             final message = responseData['message'] ??
                 responseData['error'] ??
                 responseData['Message'] ??

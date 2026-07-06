@@ -60,7 +60,11 @@ class ExpenseEntryScreen extends StatefulWidget {
 class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
   String? _cluster;
   String? _linkedDcrId;
-  DateTime _date = DateTime.now();
+  DateTime _date = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+  );
   int? _currentExpenseId; // Store the current expense ID for editing
   String?
       _currentExpenseStatus; // Store the current expense status (e.g., "Draft", "Submitted")
@@ -126,15 +130,38 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
     super.dispose();
   }
 
+  DateTime _todayDateOnly() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isFutureExpenseDate(DateTime date) {
+    final normalized = DateTime(date.year, date.month, date.day);
+    return normalized.isAfter(_todayDateOnly());
+  }
+
+  DateTime _normalizeExpenseDate(DateTime date, {bool allowFuture = false}) {
+    final normalized = DateTime(date.year, date.month, date.day);
+    if (allowFuture || !_isFutureExpenseDate(normalized)) {
+      return normalized;
+    }
+    return _todayDateOnly();
+  }
+
   DateTime _parseApiExpenseDate(String? raw) {
     final String t = raw?.trim() ?? '';
-    if (t.isEmpty) return DateTime.now();
+    if (t.isEmpty) return _todayDateOnly();
     final parsed = DateTime.tryParse(t);
-    if (parsed != null) return parsed;
+    if (parsed != null) {
+      return _normalizeExpenseDate(parsed, allowFuture: widget.viewOnly);
+    }
     try {
-      return DateTime.parse(t);
+      return _normalizeExpenseDate(
+        DateTime.parse(t),
+        allowFuture: widget.viewOnly,
+      );
     } catch (_) {
-      return DateTime.now();
+      return _todayDateOnly();
     }
   }
 
@@ -167,7 +194,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
       _currentExpenseStatusId = dcrStatusId;
       final String? c = clusterNames?.trim();
       _cluster = (c == null || c.isEmpty) ? null : c;
-      _date = date;
+      _date = _normalizeExpenseDate(date, allowFuture: widget.viewOnly);
       _refreshDcrListIfNeeded();
 
       for (final detail in _expenseDetails) {
@@ -312,7 +339,10 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                 _currentExpenseStatusId =
                     statusId; // Store the expense status ID
                 _cluster = expense.cluster;
-                _date = expense.date;
+                _date = _normalizeExpenseDate(
+                  expense.date,
+                  allowFuture: widget.viewOnly,
+                );
                 _refreshDcrListIfNeeded();
                 _linkedDcrId = expense.linkedDcrId;
                 _serverAttachments = [];
@@ -424,9 +454,10 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                                   child: DatePickerField(
                                     initialDate: _date,
                                     label: 'Date',
+                                    lastDate: _todayDateOnly(),
                                     onChanged: (d) {
                                       setState(() {
-                                        _date = d;
+                                        _date = _normalizeExpenseDate(d);
                                         // Clear linked DCR when date changes
                                         _linkedDcrId = null;
                                         _refreshDcrListIfNeeded();
@@ -941,6 +972,11 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
     bool isValid = true;
     String? firstMessage;
     int? firstInvalidDetailIndex;
+
+    if (!widget.viewOnly && _isFutureExpenseDate(_date)) {
+      _showSnack('Expense date cannot be in the future');
+      return false;
+    }
 
     for (int i = 0; i < _expenseDetails.length; i++) {
       final detail = _expenseDetails[i];

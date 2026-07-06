@@ -7,6 +7,9 @@ import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
 import 'package:boilerplate/data/network/apis/expense/expense_api_models.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/di/service_locator.dart';
+import 'package:boilerplate/utils/dcr_tour_plan_helper.dart';
+import 'package:boilerplate/utils/dcr_display_resolver.dart';
+import 'package:boilerplate/utils/dcr_purpose_visit_helper.dart';
 
 class DcrRepositoryImpl implements DcrRepository {
   final List<DcrEntry> _items = <DcrEntry>[];
@@ -42,11 +45,18 @@ class DcrRepositoryImpl implements DcrRepository {
           }
         }
 
+        final bool isAvailablePurpose =
+            DcrPurposeVisitHelper.isServiceEngineerAvailablePurpose(
+                params.purposeOfVisit);
         final bool isCustomerRequired =
             _isCustomerRequiredForVisitType(params.purposeOfVisit);
 
         // Validate required IDs
-        if (params.typeOfWorkId == null || params.cityId == null) {
+        if (params.typeOfWorkId == null) {
+          throw Exception('Missing required IDs (typeOfWorkId)');
+        }
+        if (!isAvailablePurpose &&
+            (params.cityId == null || params.cityId! <= 0)) {
           throw Exception('Missing required IDs (typeOfWorkId or cityId)');
         }
         if (isCustomerRequired && params.customerId == null) {
@@ -65,14 +75,17 @@ class DcrRepositoryImpl implements DcrRepository {
             // Required fields
             planDate: params.date.toIso8601String().split('T')[0],
             typeOfWorkId: params.typeOfWorkId!,
-            cityId: params.cityId!,
+            cityId: params.cityId ?? 0,
             customerId: params.customerId ?? 0,
             statusId: params.submit
                 ? 3
                 : 0, // 3 for submitted as per API, 0 for draft
-            remarks: params.keyDiscussionPoints.isNotEmpty
-                ? params.keyDiscussionPoints
-                : params.purposeOfVisit,
+            remarks: DcrPurposeVisitHelper.resolveRemarksForAvailablePurpose(
+              purposeOfVisit: params.purposeOfVisit,
+              discussionText: params.keyDiscussionPoints.isNotEmpty
+                  ? params.keyDiscussionPoints
+                  : params.purposeOfVisit,
+            ),
             isBasedOnPlan: 1,
             bizunit: bizunitInt,
             samplesToDistribute: params.samplesDistributed.isNotEmpty
@@ -185,7 +198,7 @@ class DcrRepositoryImpl implements DcrRepository {
                     remarks: null,
                     active: 1,
                     slNo: null,
-                    coVisitorName: null,
+                    coVisitorName: params.coVisitorName,
                   ),
                 ]
               : const [], // Empty array when coVisit is false
@@ -250,6 +263,9 @@ class DcrRepositoryImpl implements DcrRepository {
   }
 
   bool _isCustomerRequiredForVisitType(String purposeOfVisit) {
+    if (DcrPurposeVisitHelper.isServiceEngineerAvailablePurpose(purposeOfVisit)) {
+      return false;
+    }
     final p = purposeOfVisit.trim().toLowerCase();
     if (p.isEmpty) return true;
     if (p.contains('training') ||
@@ -286,7 +302,10 @@ class DcrRepositoryImpl implements DcrRepository {
           // First try direct GET API call with provided dcrId
           try {
             final response = await dcrApi.getDcrDetails(intId, intDcrId);
-            return _convertApiResponseToDcrEntry(response);
+            return _convertApiResponseToDcrEntry(
+              response,
+              requestDetailId: intId,
+            );
           } catch (e) {
             // If caller already provided explicit dcrId, avoid list lookup to prevent
             // extra list API calls while opening view-only DCR screens.
@@ -334,7 +353,10 @@ class DcrRepositoryImpl implements DcrRepository {
                 try {
                   final response =
                       await dcrApi.getDcrDetails(intId, correctDcrId);
-                  return _convertApiResponseToDcrEntry(response);
+                  return _convertApiResponseToDcrEntry(
+                    response,
+                    requestDetailId: intId,
+                  );
                 } catch (e2) {
                   // Fallback: use the list data directly
                   return _convertApiItemToDcrEntry(match);
@@ -699,7 +721,7 @@ class DcrRepositoryImpl implements DcrRepository {
                       remarks: null,
                       active: 1,
                       slNo: null,
-                      coVisitorName: null,
+                      coVisitorName: entry.coVisitorName,
                     ),
                   ]
                 : const [], // Empty array when coVisit is false
@@ -818,9 +840,17 @@ class DcrRepositoryImpl implements DcrRepository {
       final String customer = (detail?.customerName ?? '').isNotEmpty
           ? detail!.customerName
           : (apiItem.customerName.isNotEmpty ? apiItem.customerName : '');
-      final String purpose = (detail?.remarks ?? '').isNotEmpty
-          ? detail!.remarks
-          : (apiItem.remarks.isNotEmpty ? apiItem.remarks : '');
+    final int effectiveTypeOfWorkId = DcrTourPlanHelper.effectiveTypeOfWorkId(
+      parentTypeOfWorkId: apiItem.typeOfWorkId,
+      detailTypeOfWorkId: detail?.typeOfWorkId,
+    );
+    final String apiPurposeText = DcrTourPlanHelper.apiPurposeText(
+      parentTypeOfWork: apiItem.typeOfWork,
+    );
+    final String purpose = DcrDisplayResolver.resolvePurposeDisplay(
+      typeOfWork: apiPurposeText,
+      typeOfWorkId: effectiveTypeOfWorkId,
+    );
       final int visitDuration = (detail?.visitDuration ?? 0) > 0
           ? detail!.visitDuration.round()
           : (apiItem.tourPlanDCRDetails.isNotEmpty
@@ -838,16 +868,25 @@ class DcrRepositoryImpl implements DcrRepository {
               : (apiItem.samplesToDistribute.isNotEmpty
                   ? apiItem.samplesToDistribute
                   : '');
-      final String remarks = apiItem.remarks.isNotEmpty
-          ? apiItem.remarks
-          : ((detail?.remarks ?? '').isNotEmpty ? detail!.remarks : '');
+      final String remarks = DcrTourPlanHelper.resolveKeyDiscussionPoints(
+        tourPlanId: apiItem.tourPlanId,
+        statusText: apiItem.statusText,
+        dcrStatusId: apiItem.dcrStatusId,
+        remarks: DcrTourPlanHelper.resolveDcrRemarksSource(
+          headerRemarks: apiItem.remarks,
+          detailRemarks: detail?.remarks ?? '',
+        ),
+        purposeOfVisit: purpose,
+      );
 
       return DcrEntry(
         id: apiItem.id.toString(),
         date: finalDcrDate, // Use date combined with visitTime
         cluster: cluster.isNotEmpty ? cluster : 'Unknown',
         customer: customer.isNotEmpty ? customer : 'Unknown Customer',
-        purposeOfVisit: purpose.isNotEmpty ? purpose : 'Visit',
+        purposeOfVisit: purpose.isNotEmpty
+            ? purpose
+            : (effectiveTypeOfWorkId > 0 ? '' : 'Visit'),
         callDurationMinutes: visitDuration,
         productsDiscussed: productsToDiscuss,
         samplesDistributed: samplesToDistribute,
@@ -863,6 +902,9 @@ class DcrRepositoryImpl implements DcrRepository {
         customerLongitude: apiItem.customerLongitude ?? detail?.longitude,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
+        typeOfWorkId: effectiveTypeOfWorkId,
+        cityId: apiItem.cityId,
+        customerId: apiItem.customerId,
       );
     }).toList();
   }
@@ -895,6 +937,21 @@ class DcrRepositoryImpl implements DcrRepository {
       dcrDate = DateTime.now();
     }
 
+    final detail = apiItem.tourPlanDCRDetails.isNotEmpty
+        ? apiItem.tourPlanDCRDetails.first
+        : null;
+    final int effectiveTypeOfWorkId = DcrTourPlanHelper.effectiveTypeOfWorkId(
+      parentTypeOfWorkId: apiItem.typeOfWorkId,
+      detailTypeOfWorkId: detail?.typeOfWorkId,
+    );
+    final String apiPurposeText = DcrTourPlanHelper.apiPurposeText(
+      parentTypeOfWork: apiItem.typeOfWork,
+    );
+    final String listPurpose = DcrDisplayResolver.resolvePurposeDisplay(
+      typeOfWork: apiPurposeText,
+      typeOfWorkId: effectiveTypeOfWorkId,
+    );
+
     return DcrEntry(
       id: apiItem.id.toString(),
       date: dcrDate,
@@ -903,8 +960,9 @@ class DcrRepositoryImpl implements DcrRepository {
       customer: apiItem.customerName.isNotEmpty
           ? apiItem.customerName
           : 'Unknown Customer',
-      purposeOfVisit:
-          apiItem.typeOfWork.isNotEmpty ? apiItem.typeOfWork : 'Visit',
+      purposeOfVisit: listPurpose.isNotEmpty
+          ? listPurpose
+          : (effectiveTypeOfWorkId > 0 ? '' : 'Visit'),
       callDurationMinutes: 0, // Not available in list response
       productsDiscussed: apiItem.tourPlanDCRDetails.isNotEmpty
           ? (apiItem.tourPlanDCRDetails[0].productsToBeDiscussed ?? [])
@@ -912,7 +970,16 @@ class DcrRepositoryImpl implements DcrRepository {
               .join(', ')
           : '',
       samplesDistributed: apiItem.samplesToDistribute,
-      keyDiscussionPoints: apiItem.remarks,
+      keyDiscussionPoints: DcrTourPlanHelper.resolveKeyDiscussionPoints(
+        tourPlanId: apiItem.tourPlanId,
+        statusText: apiItem.statusText,
+        dcrStatusId: apiItem.dcrStatusId,
+        remarks: DcrTourPlanHelper.resolveDcrRemarksSource(
+          headerRemarks: apiItem.remarks,
+          detailRemarks: detail?.remarks ?? '',
+        ),
+        purposeOfVisit: listPurpose,
+      ),
       status: status,
       employeeId: apiItem.employeeId.toString(),
       employeeName:
@@ -924,18 +991,29 @@ class DcrRepositoryImpl implements DcrRepository {
       customerLongitude: apiItem.customerLongitude,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
-      typeOfWorkId: apiItem.typeOfWorkId,
+      typeOfWorkId: effectiveTypeOfWorkId,
       cityId: apiItem.cityId,
       customerId: apiItem.customerId,
     );
   }
 
-  DcrEntry _convertApiResponseToDcrEntry(DcrGetResponse response) {
-    // Get the first DCR detail from tourPlanDCRDetails array
-    final TourPlanDcrDetailGet? dcrDetail =
-        response.tourPlanDCRDetails.isNotEmpty
-            ? response.tourPlanDCRDetails.first
-            : null;
+  DcrEntry _convertApiResponseToDcrEntry(
+    DcrGetResponse response, {
+    int? requestDetailId,
+  }) {
+    // Prefer the detail row matching the requested detail id when opening edit/view.
+    TourPlanDcrDetailGet? dcrDetail;
+    if (response.tourPlanDCRDetails.isNotEmpty) {
+      if (requestDetailId != null && requestDetailId > 0) {
+        for (final detail in response.tourPlanDCRDetails) {
+          if (detail.id == requestDetailId) {
+            dcrDetail = detail;
+            break;
+          }
+        }
+      }
+      dcrDetail ??= response.tourPlanDCRDetails.first;
+    }
 
     if (dcrDetail == null) {
       throw Exception('No DCR details found in response');
@@ -1015,8 +1093,17 @@ class DcrRepositoryImpl implements DcrRepository {
     final String customer = dcrDetail.customerName.isNotEmpty
         ? dcrDetail.customerName
         : 'Unknown Customer';
-    final String purpose =
-        dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : 'Visit';
+    final String apiPurposeText = DcrTourPlanHelper.apiPurposeText(
+      parentTypeOfWork: response.typeOfWork,
+    );
+    final int effectiveTypeOfWorkId = DcrTourPlanHelper.effectiveTypeOfWorkId(
+      parentTypeOfWorkId: response.typeOfWorkId,
+      detailTypeOfWorkId: dcrDetail.typeOfWorkId,
+    );
+    final String purpose = DcrDisplayResolver.resolvePurposeDisplay(
+      typeOfWork: apiPurposeText,
+      typeOfWorkId: effectiveTypeOfWorkId,
+    );
     // Prefer productsToBeDiscussed array; fallback to productsToDiscuss string (API often returns string only)
     final String productsToDiscuss =
         (dcrDetail.productsToBeDiscussed != null &&
@@ -1030,8 +1117,16 @@ class DcrRepositoryImpl implements DcrRepository {
     final String samplesToDistribute = dcrDetail.samplesToDistribute.isNotEmpty
         ? dcrDetail.samplesToDistribute
         : '';
-    final String remarks =
-        dcrDetail.remarks.isNotEmpty ? dcrDetail.remarks : '';
+    final String remarks = DcrTourPlanHelper.resolveKeyDiscussionPoints(
+      tourPlanId: response.tourPlanId,
+      statusText: response.statusText,
+      dcrStatusId: response.dcrStatusId,
+      remarks: DcrTourPlanHelper.resolveDcrRemarksSource(
+        headerRemarks: response.remarks,
+        detailRemarks: dcrDetail.remarks,
+      ),
+      purposeOfVisit: purpose,
+    );
 
     // Helper function to check if a coordinate is valid (not 0.0)
     bool isValidCoordinate(double? coord) {
@@ -1058,9 +1153,12 @@ class DcrRepositoryImpl implements DcrRepository {
       finalLng = null;
     }
 
-    // Use detailId only if it's greater than 0, otherwise set to null
-    final int? validDetailId =
-        (dcrDetail.id != null && dcrDetail.id! > 0) ? dcrDetail.id : null;
+    // Use detail id from response, or fall back to the id used in the GET request.
+    final int? validDetailId = (dcrDetail.id != null && dcrDetail.id! > 0)
+        ? dcrDetail.id
+        : (requestDetailId != null && requestDetailId > 0
+            ? requestDetailId
+            : null);
 
     // Map Service Engineer / Service Report fields from API detail
     final List<Map<String, dynamic>>? mappedInstruments =
@@ -1088,13 +1186,18 @@ class DcrRepositoryImpl implements DcrRepository {
     final int? coVisitorId = effectiveCoVisitors.isNotEmpty
         ? effectiveCoVisitors.first.coVisitorId
         : null;
+    final String? coVisitorName = effectiveCoVisitors.isNotEmpty
+        ? effectiveCoVisitors.first.coVisitorName
+        : null;
 
     return DcrEntry(
       id: response.id.toString(), // This is the DCR parent ID
       date: finalDcrDate, // Use date combined with visitTime
       cluster: cluster,
       customer: customer,
-      purposeOfVisit: purpose,
+      purposeOfVisit: purpose.isNotEmpty
+          ? purpose
+          : (effectiveTypeOfWorkId > 0 ? '' : 'Visit'),
       callDurationMinutes:
           dcrDetail.visitDuration.round(), // Convert double to int
       productsDiscussed: productsToDiscuss,
@@ -1111,13 +1214,14 @@ class DcrRepositoryImpl implements DcrRepository {
       customerLongitude: finalLng,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
-      typeOfWorkId: dcrDetail.typeOfWorkId,
+      typeOfWorkId: effectiveTypeOfWorkId,
       cityId: dcrDetail.cityId,
       customerId: dcrDetail.customerId,
       detailId: validDetailId,
       clusterId: dcrDetail.clusterId,
       coVisit: hasCoVisit,
       coVisitorId: coVisitorId,
+      coVisitorName: coVisitorName,
       // Service Engineer / Service Report fields
       mappedInstruments: mappedInstruments,
       complaint: complaint,

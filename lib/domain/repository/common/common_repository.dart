@@ -39,6 +39,11 @@ abstract class CommonRepository {
       {String type = 'Service Engineer'});
   Future<List<CommonDropdownItem>> getPurposeOfVisitList(
       int userId, String text);
+  Future<List<CommonDropdownItem>> getDcrPurposeOfVisitList({
+    required int userId,
+    required int commandType,
+    required String text,
+  });
   Future<List<CommonDropdownItem>> getStoreList();
   Future<List<CommonDropdownItem>> getIssueToList(int userId, int bizUnit);
   Future<List<CommonDropdownItem>> getIssueAgainstList();
@@ -89,6 +94,7 @@ abstract class CommonRepository {
     required int bizUnit,
     int module = 13,
     int transactionType = 12,
+    int? department,
   });
   Future<List<CommonDropdownItem>> getReportingManagerList({
     required int id,

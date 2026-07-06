@@ -82,7 +82,6 @@ class UserStore extends ChangeNotifier {
       }
       errorMessage = errorMsg;
       notifyListeners();
-      rethrow;
     } finally {
       isLoading = false;
       notifyListeners();

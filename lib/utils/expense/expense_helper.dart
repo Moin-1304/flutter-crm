@@ -307,6 +307,22 @@ class ExpenseHelper {
         return false;
       }
 
+      final DateTime? expenseDate =
+          DateTime.tryParse(jsonData['DateOfExpense'] as String);
+      if (expenseDate != null) {
+        final DateTime today = DateTime.now();
+        final DateTime todayOnly = DateTime(today.year, today.month, today.day);
+        final DateTime expenseOnly = DateTime(
+          expenseDate.year,
+          expenseDate.month,
+          expenseDate.day,
+        );
+        if (expenseOnly.isAfter(todayOnly)) {
+          print('Invalid DateOfExpense: future dates are not allowed');
+          return false;
+        }
+      }
+
       // Validate ID if present
       if (jsonData.containsKey('Id') && jsonData['Id'] != null) {
         if (jsonData['Id'] is! int || (jsonData['Id'] as int) <= 0) {

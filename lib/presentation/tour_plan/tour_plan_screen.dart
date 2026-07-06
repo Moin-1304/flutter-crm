@@ -10,6 +10,7 @@ import 'package:boilerplate/domain/entity/tour_plan/tour_plan.dart' as domain;
 import 'package:boilerplate/presentation/crm/tour_plan/mock/mock_tour_plan.dart';
 import 'package:boilerplate/presentation/crm/tour_plan/store/tour_plan_store.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart' as login;
 import 'package:boilerplate/di/service_locator.dart';
@@ -27,6 +28,8 @@ import 'dart:async';
 import '../../data/network/apis/user/lib/domain/entity/tour_plan/calendar_view_data.dart';
 import '../../data/network/apis/user/lib/domain/entity/tour_plan/tour_plan_api_models.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
+import 'package:boilerplate/utils/dcr_tour_plan_helper.dart';
 
 void main() {
   runApp(const MaterialApp(home: TourPlanScreen()));
@@ -177,6 +180,8 @@ class _TourPlanScreenState extends State<TourPlanScreen>
           _applyFilters();
         });
       }
+    }).catchError((Object e) {
+      debugPrint('TourPlanScreen: filter refresh failed: $e');
     });
   }
 
@@ -283,11 +288,9 @@ class _TourPlanScreenState extends State<TourPlanScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Hide Manager Review for non-managers (roleCategory == 3) or Service Engineers
-    final detail = _userDetailStore.userDetail;
-    final bool isServiceEngineer = detail?.serviceArea?.trim() == 'Service Engineer';
-    final bool isNonManagerRole = detail?.roleCategory == 3;
-    final shouldHideManagerReview = isNonManagerRole || isServiceEngineer;
+    // Hide Manager Review for field reps (not managers/coordinators).
+    final shouldHideManagerReview =
+        PurposeVisitHelper.shouldHideManagerReview(_userDetailStore.userDetail);
     final tabLength = shouldHideManagerReview ? 1 : 2;
     final isTablet = MediaQuery.of(context).size.width >= 600;
 
@@ -485,7 +488,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                           final validationStore =
                                               getIt<UserValidationStore>();
                                           final isEnabled =
-                                              _isCurrentUserServiceEngineer() ||
+                                              _bypassesValidateUserLock() ||
                                                   validationStore
                                                       .canCreateTourPlan;
                                           return CrmActionButton(
@@ -1920,19 +1923,16 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       for (final item in typeItems) {
         final String label =
             (item.text.isNotEmpty ? item.text : item.typeText).trim();
-        if (label.isNotEmpty) {
-          mergedMap[item.id] = label;
+        if (label.isEmpty) continue;
+        for (final int key in <int>[item.id, item.value, item.item]) {
+          if (key > 0) mergedMap[key] = label;
         }
       }
 
       // 2) Purpose masters (independent of service area availability)
       final int userId = _userDetailStore.userDetail?.id ?? 0;
       if (userId > 0) {
-        const texts = <String>[
-          'Salesrep PurposeVisit',
-          'ServiceEng PurposeVisit',
-          'PocRep-PurposeofVisit',
-        ];
+        const texts = PurposeVisitTexts.allPurposeVisitApiTexts;
         for (final text in texts) {
           try {
             final purposeItems =
@@ -1940,8 +1940,9 @@ class _TourPlanScreenState extends State<TourPlanScreen>
             for (final item in purposeItems) {
               final String label =
                   (item.text.isNotEmpty ? item.text : item.typeText).trim();
-              if (label.isNotEmpty) {
-                mergedMap[item.id] = label;
+              if (label.isEmpty) continue;
+              for (final int key in <int>[item.id, item.value, item.item]) {
+                if (key > 0) mergedMap[key] = label;
               }
             }
           } catch (_) {
@@ -1966,11 +1967,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
     if (!getIt.isRegistered<CommonRepository>()) return;
 
     final commonRepo = getIt<CommonRepository>();
-    const texts = <String>[
-      'Salesrep PurposeVisit',
-      'ServiceEng PurposeVisit',
-      'PocRep-PurposeofVisit',
-    ];
+    const texts = PurposeVisitTexts.allPurposeVisitApiTexts;
     final Map<int, String> mergedMap = <int, String>{};
     for (final text in texts) {
       try {
@@ -2797,17 +2794,15 @@ class _TourPlanScreenState extends State<TourPlanScreen>
         actualStatus == 5;
   }
 
-  /// Check if current user is a Service Engineer (validate-user not applied for them)
-  bool _isCurrentUserServiceEngineer() {
-    final String? serviceArea =
-        _userDetailStore.userDetail?.serviceArea?.trim();
-    return serviceArea == 'Service Engineer';
+  bool _bypassesValidateUserLock() {
+    return PurposeVisitHelper.bypassesValidateUserLock(
+        _userDetailStore.userDetail);
   }
 
   /// Check if tour plan can be edited (Draft, Pending, or Sent Back status)
   bool _canEditTourPlan(TourPlanItem item) {
-    // Service Engineers: skip validate-user; others: require canUpdateTourPlan
-    if (!_isCurrentUserServiceEngineer() &&
+    // SE / POC / Application Engineer: skip validate-user; others require it.
+    if (!_bypassesValidateUserLock() &&
         getIt.isRegistered<UserValidationStore>()) {
       final validationStore = getIt<UserValidationStore>();
       if (!validationStore.canUpdateTourPlan) {
@@ -3527,9 +3522,9 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                 builder: (context, _) {
                                   final validationStore =
                                       getIt<UserValidationStore>();
-                                  // Service Engineers: always allow; others: use validate-user API
+                                  // SE / POC / Application Engineer: always allow; others use API
                                   final isEnabled =
-                                      _isCurrentUserServiceEngineer() ||
+                                      _bypassesValidateUserLock() ||
                                           validationStore.canUpdateTourPlan;
                                   return FilledButton.icon(
                                     onPressed: isEnabled
@@ -3629,7 +3624,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
                                   final validationStore =
                                       getIt<UserValidationStore>();
                                   final isEnabled =
-                                      _isCurrentUserServiceEngineer() ||
+                                      _bypassesValidateUserLock() ||
                                           validationStore.canCreateDcr;
                                   return FilledButton.icon(
                                     onPressed: isEnabled
@@ -4257,7 +4252,7 @@ class _TourPlanScreenState extends State<TourPlanScreen>
       callDurationMinutes: 0,
       productsDiscussed: products,
       samplesDistributed: samples,
-      keyDiscussionPoints: notes,
+      keyDiscussionPoints: DcrTourPlanHelper.autoCreatedDiscussionText,
       status: dcr.DcrStatus.draft,
       employeeId: _userDetailStore.userDetail?.employeeId.toString() ?? '',
       employeeName: _userDetailStore.userDetail?.employeeName ?? '',

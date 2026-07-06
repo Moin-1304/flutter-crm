@@ -111,7 +111,9 @@ class _DashboardShellState extends State<DashboardShell>
       _loadMenu(),
       _loadUserDetails(),
       _validateUser(),
-    ]);
+    ]).catchError((Object e) {
+      debugPrint('DashboardShell: initial load failed: $e');
+    });
   }
 
   @override

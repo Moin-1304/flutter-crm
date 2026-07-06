@@ -170,8 +170,36 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
   // Scroll controller to preserve scroll position
   final ScrollController _scrollController = ScrollController();
 
+  /// Keys for scrolling to a specific line-item card after "Add Item".
+  final List<GlobalKey> _itemCardKeys = <GlobalKey>[];
+
   // Flag to prevent automatic focus restoration after dropdown selection
   bool _preventingFocusRestoration = false;
+
+  void _syncItemCardKeys() {
+    while (_itemCardKeys.length < _items.length) {
+      _itemCardKeys.add(GlobalKey());
+    }
+    while (_itemCardKeys.length > _items.length) {
+      _itemCardKeys.removeLast();
+    }
+  }
+
+  void _scrollToItemCard(int index) {
+    if (index < 0 || index >= _itemCardKeys.length) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final BuildContext? cardContext = _itemCardKeys[index].currentContext;
+      if (cardContext != null) {
+        Scrollable.ensureVisible(
+          cardContext,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          alignment: 0.05,
+        );
+      }
+    });
+  }
 
   bool get _isEditMode =>
       widget.contractId != null ||
@@ -713,6 +741,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
 
     // Parse items
     _items.clear();
+    _itemCardKeys.clear();
     print('🔵 Parsing salesContractItems...');
     print(
         '   salesContractItems type: ${orderData.salesContractItems.runtimeType}');
@@ -2373,6 +2402,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       item.dispose();
     }
     _items.clear();
+    _itemCardKeys.clear();
     for (final row in _taxRows) {
       row.dispose();
     }
@@ -2489,6 +2519,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     // This method is legacy - data should be loaded from API via _loadOrderData or _populateFormFromOrderData
     // Clear items - they will be populated from API
     _items.clear();
+    _itemCardKeys.clear();
     // Load customers once when editing order
     _loadCustomers();
     setState(() {});
@@ -2509,6 +2540,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     _loadCustomers();
     _items
         .clear(); // Start with empty items - user will add items via API search
+    _itemCardKeys.clear();
     _notesController.clear();
     _customerPOController.clear();
     _quotationNoController.clear();
@@ -3025,6 +3057,8 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 ),
                 TextButton.icon(
                   onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    final int newIndex = _items.length;
                     setState(() {
                       for (final it in _items) {
                         it.expanded = false;
@@ -3043,10 +3077,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                           emptyProduct,
                           itemDescription: '',
                           rate: 0.0,
+                          expanded: true,
                         ),
                       );
-                      _updateTotals();
+                      _itemCardKeys.add(GlobalKey());
+                      _updateTotalsWithoutSetState();
                     });
+                    _scrollToItemCard(newIndex);
                   },
                   icon: Icon(Icons.add, size: 18, color: tealGreen),
                   label: Text(
@@ -3077,19 +3114,26 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                 ),
               )
             else
-              Column(
-                children: [
-                  for (int i = 0; i < _items.length; i++) ...[
-                    _ItemCard(
-                      index: i,
-                      totalCount: _items.length,
-                      item: _items[i],
-                      isEditMode: _isEditMode,
-                      onRemove: () {
-                        setState(() {
-                          _items.removeAt(i);
-                        });
-                      },
+              Builder(
+                builder: (context) {
+                  _syncItemCardKeys();
+                  return Column(
+                    children: [
+                      for (int i = 0; i < _items.length; i++) ...[
+                        _ItemCard(
+                          key: _itemCardKeys[i],
+                          index: i,
+                          totalCount: _items.length,
+                          item: _items[i],
+                          isEditMode: _isEditMode,
+                          onRemove: () {
+                            setState(() {
+                              _items.removeAt(i);
+                              if (i < _itemCardKeys.length) {
+                                _itemCardKeys.removeAt(i);
+                              }
+                            });
+                          },
                       onChanged: () {
                         setState(() {
                           _updateTotals();
@@ -3159,9 +3203,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
                         return distributorId;
                       },
                     ),
-                    if (i != _items.length - 1) const SizedBox(height: 12),
-                  ],
-                ],
+                        if (i != _items.length - 1) const SizedBox(height: 12),
+                      ],
+                    ],
+                  );
+                },
               ),
           ],
         ),
@@ -6267,6 +6313,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       }
 
       // Call save API (upload attachments if any)
+      print('📎 [SaveDraft] _attachments count: ${_attachments.length}');
+      for (int i = 0; i < _attachments.length; i++) {
+        print('   File[$i]: name=${_attachments[i].name}, size=${_attachments[i].size}, path=${_attachments[i].path}');
+      }
+      print('📎 [SaveDraft] Existing fileUploadDetails: ${_loadedOrderData?.fileUploadDetails?.length ?? 0}');
       final salesRepository = getIt<SalesRepository>();
       final response = await salesRepository.saveSalesOrder(
         request,
@@ -6379,6 +6430,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       }
 
       // Call save API (upload attachments if any)
+      print('📎 [Submit] _attachments count: ${_attachments.length}');
+      for (int i = 0; i < _attachments.length; i++) {
+        print('   File[$i]: name=${_attachments[i].name}, size=${_attachments[i].size}, path=${_attachments[i].path}');
+      }
+      print('📎 [Submit] Existing fileUploadDetails: ${_loadedOrderData?.fileUploadDetails?.length ?? 0}');
       final salesRepository = getIt<SalesRepository>();
       final response = await salesRepository.saveSalesOrder(
         request,
@@ -6998,6 +7054,7 @@ class _ItemCard extends StatelessWidget {
   final int Function() getDistributorId;
 
   const _ItemCard({
+    super.key,
     required this.index,
     required this.totalCount,
     required this.item,

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:async';
-import 'dcr_entry_screen.dart' show DcrEntryScreen;
+import 'dcr_entry_screen.dart' show DcrEntryScreen, ServiceReportListHint;
 import '../expenses/expense_entry_screen.dart'
     show ExpenseEntryScreen; // kept if needed elsewhere
 import 'package:boilerplate/domain/repository/dcr/dcr_repository.dart';
@@ -18,11 +18,14 @@ import '../deviation/deviation_entry_screen.dart';
 import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/presentation/user/store/user_store.dart';
+import 'package:boilerplate/domain/entity/user/user_detail.dart';
 import 'package:boilerplate/presentation/user/store/user_validation_store.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
 import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.dart';
 import 'package:boilerplate/presentation/crm/widgets/crm_action_button.dart';
+import 'package:boilerplate/utils/dcr_display_resolver.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -300,10 +303,13 @@ class _DcrListScreenState extends State<DcrListScreen>
         statusId: selectedStatusId,
       );
 
-      // Convert API items to unified items
-      final List<UnifiedDcrItem> unifiedItems = apiItems
-          .map<UnifiedDcrItem>((item) => UnifiedDcrItem.fromDcrApiItem(item))
-          .toList();
+      // Convert API items to unified items, then resolve purpose labels (SE DCRs).
+      final List<UnifiedDcrItem> unifiedItems =
+          await _enrichUnifiedItemsForDisplay(
+        apiItems
+            .map<UnifiedDcrItem>((item) => UnifiedDcrItem.fromDcrApiItem(item))
+            .toList(),
+      );
 
       if (!mounted) return;
 
@@ -580,7 +586,11 @@ class _DcrListScreenState extends State<DcrListScreen>
                             builder: (context, _) {
                               final validationStore =
                                   getIt<UserValidationStore>();
-                              final isEnabled = validationStore.canCreateDcr;
+                              final isEnabled = PurposeVisitHelper
+                                  .allowsValidateUserGatedAction(
+                                _currentUserDetail(),
+                                validationStore.canCreateDcr,
+                              );
                               return FilledButton.icon(
                                 onPressed: isEnabled
                                     ? () async {
@@ -677,7 +687,11 @@ class _DcrListScreenState extends State<DcrListScreen>
                             builder: (context, _) {
                               final validationStore =
                                   getIt<UserValidationStore>();
-                              final isEnabled = validationStore.canCreateDcr;
+                              final isEnabled = PurposeVisitHelper
+                                  .allowsValidateUserGatedAction(
+                                _currentUserDetail(),
+                                validationStore.canCreateDcr,
+                              );
                               return FilledButton.icon(
                                 onPressed: isEnabled
                                     ? () async {
@@ -842,7 +856,10 @@ class _DcrListScreenState extends State<DcrListScreen>
                                                   UserValidationStore>() ||
                                               getIt<UserValidationStore>()
                                                   .canCreateDeviation ||
-                                              _isCurrentUserServiceEngineer())
+                                              PurposeVisitHelper
+                                                  .bypassesValidateUserLock(
+                                                _currentUserDetail(),
+                                              ))
                                       ? () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
@@ -865,7 +882,11 @@ class _DcrListScreenState extends State<DcrListScreen>
                                               UserValidationStore>()) {
                                             final validationStore =
                                                 getIt<UserValidationStore>();
-                                            if (!validationStore.canUpdateDcr) {
+                                            if (!PurposeVisitHelper
+                                                    .allowsValidateUserGatedAction(
+                                                  _currentUserDetail(),
+                                                  validationStore.canUpdateDcr,
+                                                )) {
                                               return; // Button disabled
                                             }
                                           }
@@ -878,6 +899,9 @@ class _DcrListScreenState extends State<DcrListScreen>
                                                         id: item.id.toString(),
                                                         dcrId: item.dcrId
                                                             .toString(),
+                                                        serviceReportListHint:
+                                                            _serviceReportHintFor(
+                                                                item),
                                                       )),
                                             );
                                           } else if (item.isExpense) {
@@ -1033,11 +1057,10 @@ class _DcrListScreenState extends State<DcrListScreen>
             listenable: getIt<UserValidationStore>(),
             builder: (context, _) {
               final validationStore = getIt<UserValidationStore>();
-              // Service Engineers: always allow New DCR; others: use validate-user API
-              final canCreateDcr = _isCurrentUserServiceEngineer() ||
+              // SE / POC / Application Engineer: always allow; others use API
+              final canCreateDcr = _bypassesValidateUserLock() ||
                   validationStore.canCreateDcr;
-              // Service Engineers: skip validate-user for expense too
-              final canCreateExpense = _isCurrentUserServiceEngineer() ||
+              final canCreateExpense = _bypassesValidateUserLock() ||
                   validationStore.canCreateExpense;
 
               return Row(
@@ -2298,8 +2321,8 @@ class _DcrListScreenState extends State<DcrListScreen>
           item.dcrStatusId == 6 ||
           item.dcrStatusId == 7;
 
-      // Service Engineers can always edit draft/sent-back DCRs (bypass validate-user for update)
-      if (_isCurrentUserServiceEngineer() &&
+      // SE / POC / Application Engineer can edit draft/sent-back without validate-user lock
+      if (_bypassesValidateUserLock() &&
           (isDraftOrSentBackByText || isDraftOrSentBackById)) {
         return true;
       }
@@ -2354,18 +2377,34 @@ class _DcrListScreenState extends State<DcrListScreen>
     return item.dcrStatusId == 6;
   }
 
-  /// Check if current user is a Service Engineer
-  bool _isCurrentUserServiceEngineer() {
+  UserDetail? _currentUserDetail() {
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final String? serviceArea = userStore?.userDetail?.serviceArea;
-    final bool isServiceEngineer =
-        serviceArea != null && serviceArea.trim() == 'Service Engineer';
-    return isServiceEngineer;
+    return userStore?.userDetail;
+  }
+
+  bool _bypassesValidateUserLock() {
+    return PurposeVisitHelper.bypassesValidateUserLock(_currentUserDetail());
+  }
+
+  /// Check if current user is a Service Engineer (service-report UI only).
+  bool _isCurrentUserServiceEngineer() {
+    return PurposeVisitHelper.isServiceEngineerUser(_currentUserDetail());
+  }
+
+  ServiceReportListHint? _serviceReportHintFor(UnifiedDcrItem item) {
+    if (!item.isDcr) return null;
+    final ServiceReportListHint hint =
+        ServiceReportListHint.fromUnifiedItem(item);
+    return hint.hasData ? hint : null;
   }
 
   /// Check if item has Service Report data
   bool _hasServiceReportData(UnifiedDcrItem item) {
+    if (item.isServiceReportExists == true) return true;
+    if (item.serviceReportId != null && item.serviceReportId! > 0) return true;
+    if (item.hasServiceReportListFields) return true;
+
     final bool hasMappedInstruments =
         item.mappedInstruments != null && item.mappedInstruments!.isNotEmpty;
     final bool hasComplaint =
@@ -2425,6 +2464,7 @@ class _DcrListScreenState extends State<DcrListScreen>
               dcrId: item.dcrId.toString(),
               viewOnly: true,
               allowServiceReportEditOnly: serviceReportOnlyEdit,
+              serviceReportListHint: _serviceReportHintFor(item),
             ),
           ),
         );
@@ -2464,6 +2504,20 @@ class _DcrListScreenState extends State<DcrListScreen>
     }
   }
 
+  /// Resolves designation and purpose for DCR detail view (SE APIs often
+  /// return placeholder designation and parent-level typeOfWork text).
+  Future<List<UnifiedDcrItem>> _enrichUnifiedItemsForDisplay(
+    List<UnifiedDcrItem> items,
+  ) async {
+    return DcrDisplayResolver.enrichItems(items);
+  }
+
+  Future<UnifiedDcrItem> _enrichDcrItemForDisplay(UnifiedDcrItem item) async {
+    if (!item.isDcr) return item;
+    final enriched = await _enrichUnifiedItemsForDisplay([item]);
+    return enriched.first;
+  }
+
   /// Show detailed popup for DCR or Expense item
   Future<void> _showDcrDetails(UnifiedDcrItem item) async {
     // For DCR items, fetch full details using Get API to get Service Report fields
@@ -2496,6 +2550,8 @@ class _DcrListScreenState extends State<DcrListScreen>
         print('Falling back to list item data');
       }
     }
+
+    displayItem = await _enrichDcrItemForDisplay(displayItem);
 
     if (!mounted) return;
 
@@ -2655,6 +2711,8 @@ class _DcrListScreenState extends State<DcrListScreen>
                                     builder: (_) => DcrEntryScreen(
                                       id: item.id.toString(),
                                       dcrId: item.dcrId.toString(),
+                                      serviceReportListHint:
+                                          _serviceReportHintFor(item),
                                     ),
                                   ),
                                 );

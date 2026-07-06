@@ -16,6 +16,7 @@ import 'package:boilerplate/presentation/crm/widgets/attachment_viewer_screen.da
 import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
 import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 import 'package:boilerplate/presentation/crm/expenses/expense_entry_screen.dart';
+import 'package:boilerplate/utils/manager_review_helper.dart';
 
 const String kFilterClearToken = '__CLEAR__';
 
@@ -31,7 +32,7 @@ class ExpenseManagerReviewScreen extends StatefulWidget {
 class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> with SingleTickerProviderStateMixin {
   // Initialize to first day of current month for month-wise filtering
   DateTime _date = DateTime(DateTime.now().year, DateTime.now().month, 1);
-  String? _selectedEmployee;
+  String? _selectedEmployee = 'All Staff';
   String? _status;
   List<ExpenseEntry> _expenseItems = [];
   final Set<String> _selectedItems = <String>{};
@@ -153,39 +154,15 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
       List<DcrApiItem> apiItems = [];
       
       if (_isAllStaffSelected()) {
-        // When "All Staff" is selected, call API with EmployeeId: 0 and ManagerId: 61
-        try {
-          if (getIt.isRegistered<DcrApi>()) {
-            final dcrApi = getIt<DcrApi>();
-            final sharedPrefHelper = getIt<SharedPreferenceHelper>();
-            final user = await sharedPrefHelper.getUser();
-            
-            if (user != null) {
-              final request = DcrListRequest(
-                pageNumber: 1,
-                pageSize: 1000,
-                sortOrder: 0,
-                sortDir: 0,
-                sortField: 'DCRDate',
-                fromDate: fromDateStr,
-                toDate: toDateStr,
-                userId: user.userId ?? user.id,
-                bizunit: user.sbuId,
-                status: selectedStatusId,
-                employeeId: 0, // EmployeeId: 0 for "All Staff"
-                managerId: 61, // ManagerId: 61 as specified
-                transactionType: "Expense", // Filter for expenses only
-                dcrDate: null, // Set to null as per requirement
-              );
-              
-              final response = await dcrApi.getDcrList(request);
-              apiItems = response.items;
-              print('ExpenseManagerReviewScreen: Loaded expenses with All Staff filter (EmployeeId: 0, ManagerId: 61)');
-            }
-          }
-        } catch (e) {
-          print('Error loading expenses with All Staff filter: $e');
-        }
+        apiItems = await _loadAllStaffExpenses(
+          start: start,
+          end: end,
+          fromDateStr: fromDateStr,
+          toDateStr: toDateStr,
+          managerId: managerId,
+          statusId: selectedStatusId,
+          dcrRepo: dcrRepo,
+        );
       } else if (selectedEmployeeId != null) {
         // Load expenses for specific employee
         apiItems = await dcrRepo.getDcrListUnified(
@@ -196,39 +173,15 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
           transactionType: "Expense", // Filter for expenses only
         );
       } else {
-        // Load expenses for all team members
-        // First get the manager's own expenses
-        apiItems = await dcrRepo.getDcrListUnified(
+        apiItems = await _loadAllStaffExpenses(
           start: start,
           end: end,
-          employeeId: managerId.toString(),
+          fromDateStr: fromDateStr,
+          toDateStr: toDateStr,
+          managerId: managerId,
           statusId: selectedStatusId,
-          transactionType: "Expense", // Filter for expenses only
+          dcrRepo: dcrRepo,
         );
-        
-        // Then get expenses for each team member
-        if (_employeeOptions.isNotEmpty) {
-          for (final employeeName in _employeeOptions) {
-            // Skip "All Staff" option
-            if (employeeName == 'All Staff') continue;
-            
-            final int? employeeId = _employeeNameToId[employeeName];
-            if (employeeId != null && employeeId != managerId) {
-              try {
-                final List<DcrApiItem> teamMemberExpenses = await dcrRepo.getDcrListUnified(
-                  start: start,
-                  end: end,
-                  employeeId: employeeId.toString(),
-                  statusId: selectedStatusId,
-                  transactionType: "Expense", // Filter for expenses only
-                );
-                apiItems.addAll(teamMemberExpenses);
-              } catch (e) {
-                print('Error loading expenses for employee $employeeName (ID: $employeeId): $e');
-              }
-            }
-          }
-        }
       }
       
       // Filter for Expense items only (exclude DCR items) - client-side filter as API may return mixed results
@@ -250,7 +203,9 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
           .toList();
       
       // Show ALL expenses (Approved, Pending, Submitted, etc.) - status filter applied at API level
-      final List<ExpenseEntry> reviewableExpenses = expenseItems;
+      final List<ExpenseEntry> reviewableExpenses = expenseItems
+          .where((item) => !_isOwnExpenseForReview(item))
+          .toList();
       
       print('ExpenseManagerReviewScreen: Loaded ${apiItems.length} API items (${expenseApiItems.length} Expense items), ${reviewableExpenses.length} expenses after reviewable filter');
       print('ExpenseManagerReviewScreen: Status filter: $_status, TransactionType: Expense');
@@ -362,6 +317,20 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
     return item.status == ExpenseStatus.approved;
   }
 
+  bool _isOwnExpenseForReview(ExpenseEntry item) {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    final int recordEmployeeId = int.tryParse(item.employeeId) ?? 0;
+    return ManagerReviewHelper.isOwnEmployeeRecord(
+      loggedInUser: userStore?.userDetail,
+      recordEmployeeId: recordEmployeeId,
+    );
+  }
+
+  bool _isSelectableForBulkReview(ExpenseEntry item) {
+    return !_isApproved(item) && !_isOwnExpenseForReview(item);
+  }
+
   Future<void> _openExpenseFullView(ExpenseEntry item) async {
     final int? parsedId = int.tryParse(item.id);
     if (parsedId == null || parsedId <= 0) {
@@ -389,9 +358,8 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
   }
 
   int? _selectedEmployeeId() {
-    // Handle special option: "All Staff" means pass EmployeeId: 0 and ManagerId: 61
     if (_selectedEmployee == null || _selectedEmployee == 'All Staff') {
-      return null; // null indicates "All Staff" selection
+      return null;
     }
     if (_selectedEmployee != null && _employeeNameToId.containsKey(_selectedEmployee)) {
       return _employeeNameToId[_selectedEmployee!];
@@ -402,6 +370,92 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
   // Check if "All Staff" is selected
   bool _isAllStaffSelected() {
     return _selectedEmployee == 'All Staff';
+  }
+
+  Future<List<DcrApiItem>> _loadAllStaffExpenses({
+    required DateTime start,
+    required DateTime end,
+    required String fromDateStr,
+    required String toDateStr,
+    required int managerId,
+    required int? statusId,
+    required DcrRepository dcrRepo,
+  }) async {
+    final List<DcrApiItem> apiItems = [];
+    final Set<int> loadedItemIds = <int>{};
+
+    void mergeItems(List<DcrApiItem> items) {
+      for (final item in items) {
+        if (loadedItemIds.add(item.id)) {
+          apiItems.add(item);
+        }
+      }
+    }
+
+    try {
+      if (getIt.isRegistered<DcrApi>()) {
+        final dcrApi = getIt<DcrApi>();
+        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+        final user = await sharedPrefHelper.getUser();
+        if (user != null) {
+          final request = DcrListRequest(
+            pageNumber: 1,
+            pageSize: 1000,
+            sortOrder: 0,
+            sortDir: 0,
+            sortField: 'DCRDate',
+            fromDate: fromDateStr,
+            toDate: toDateStr,
+            userId: user.userId ?? user.id,
+            bizunit: user.sbuId,
+            status: statusId,
+            employeeId: 0,
+            managerId: managerId,
+            transactionType: 'Expense',
+            dcrDate: null,
+          );
+          final response = await dcrApi.getDcrList(request);
+          mergeItems(response.items);
+          print(
+              'ExpenseManagerReviewScreen: Bulk All Staff API returned ${response.items.length} expenses (ManagerId: $managerId)');
+        }
+      }
+    } catch (e) {
+      print('Error loading expenses with All Staff bulk API: $e');
+    }
+
+    if (_employeeNameToId.isEmpty) {
+      await _getManagerTeamEmployees();
+    }
+
+    final Set<int> loadedEmployeeIds = <int>{};
+
+    Future<void> loadForEmployee(int employeeId) async {
+      if (!loadedEmployeeIds.add(employeeId)) return;
+      try {
+        mergeItems(await dcrRepo.getDcrListUnified(
+          start: start,
+          end: end,
+          employeeId: employeeId.toString(),
+          statusId: statusId,
+          transactionType: 'Expense',
+        ));
+      } catch (e) {
+        print('Error loading expenses for employee ID $employeeId: $e');
+      }
+    }
+
+    for (final employeeName in _employeeOptions) {
+      if (employeeName == 'All Staff') continue;
+      final int? employeeId = _employeeNameToId[employeeName];
+      if (employeeId != null) {
+        await loadForEmployee(employeeId);
+      }
+    }
+
+    print(
+        'ExpenseManagerReviewScreen: All Staff load complete - ${apiItems.length} unique expense items');
+    return apiItems;
   }
 
   ExpenseStatus? _statusFromText(String? statusText) {
@@ -761,10 +815,9 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                         child: _ManagerReviewExpenseItemCard(
                           item: item,
                           isSelected: _selectedItems.contains(item.id),
-                          isEnabled: !_isApproved(item), // Disable selection for approved expenses
+                          isEnabled: _isSelectableForBulkReview(item),
                           onSelectionChanged: (selected) {
-                            // Only allow selection if item is not approved
-                            if (!_isApproved(item)) {
+                            if (_isSelectableForBulkReview(item)) {
                               setState(() {
                                 if (selected) {
                                   _selectedItems.add(item.id);
@@ -828,6 +881,8 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnExpenseForReview)) return false;
     
     // Check if all items are approved
     final allApproved = selectedItems.every((item) => item.status == ExpenseStatus.approved);
@@ -855,6 +910,8 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnExpenseForReview)) return false;
     
     // Check if all items are approved
     final allApproved = selectedItems.every((item) => item.status == ExpenseStatus.approved);
@@ -879,6 +936,8 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnExpenseForReview)) return false;
     
     // Check if any item is approved
     final hasApproved = selectedItems.any((item) => item.status == ExpenseStatus.approved);
@@ -905,8 +964,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
       _selectedItems.clear();
       
       for (final item in _expenseItems) {
-        // Only select items that are not approved
-        if (!_isApproved(item)) {
+        if (_isSelectableForBulkReview(item)) {
           _selectedItems.add(item.id);
         }
       }
@@ -920,25 +978,11 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
   }
 
   Future<void> _clearAllFilters() async {
-    // Get logged-in employee (manager) to set as default
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final int? managerId = userStore?.userDetail?.employeeId;
-    
-    // Find the manager's employee name from the options
-    String? managerEmployeeName;
-    if (managerId != null && _employeeNameToId.isNotEmpty) {
-      _employeeNameToId.forEach((name, id) {
-        if (id == managerId) {
-          managerEmployeeName = name;
-        }
-      });
-    }
-    
     setState(() {
       _status = null;
-      _selectedEmployee = managerEmployeeName; // Set to logged-in employee (manager) instead of null
+      _selectedEmployee = 'All Staff';
       final now = DateTime.now();
-      _date = DateTime(now.year, now.month, 1); // Reset to first day of current month
+      _date = DateTime(now.year, now.month, 1);
     });
     await _load();
     _showToast(
@@ -1138,9 +1182,24 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
   // Build Filter Modal
   Widget _buildFilterModal(bool isMobile, bool isTablet, Color tealGreen) {
     // Temp selections that live for the lifetime of the modal
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     String? _tempStatus = _status;
-    String? _tempEmployee = _selectedEmployee;
+    String? _tempEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+      selected: _selectedEmployee,
+      options: _employeeOptions,
+      nameToId: _employeeNameToId,
+      loggedInUser: userStore?.userDetail,
+      allStaffOption: 'All Staff',
+    );
     DateTime _tempDate = _date;
+    final List<String> employeeFilterOptions =
+        ManagerReviewHelper.filterOptionsForDisplay(
+      _employeeOptions,
+      _employeeNameToId,
+      userStore?.userDetail,
+      allStaffOption: 'All Staff',
+    );
 
     return GestureDetector(
       onTap: _closeFilterModal,
@@ -1286,7 +1345,7 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
                                   title: 'Employee',
                                   icon: Icons.badge_outlined,
                                   selectedValue: _tempEmployee,
-                                  options: _employeeOptions,
+                                  options: employeeFilterOptions,
                                   onChanged: (value) {
                                     setModalState(() {
                                       _tempEmployee = value;
@@ -1627,29 +1686,33 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         final int? managerId = userStore?.userDetail?.employeeId;
         
         if (managerId != null) {
-          final List<CommonDropdownItem> items = await commonRepo.getEmployeesReportingTo(managerId);
-          final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
+          final List<CommonDropdownItem> items =
+              ManagerReviewHelper.teamItemsExcludingLoggedInManager(
+            await commonRepo.getEmployeesReportingTo(managerId),
+            userStore?.userDetail,
+          );
           
-          if (names.isNotEmpty && mounted) {
+          if (mounted) {
             setState(() {
-              // Add "All Staff" option at the beginning (removed "Select All")
-              _employeeOptions = ['All Staff', ...names.toList()];
-              String? selectedEmployeeName;
+              _employeeNameToId.clear();
+              _employeeOptions = ManagerReviewHelper.buildTeamFilterOptions(
+                items,
+                userStore?.userDetail,
+                allStaffOption: 'All Staff',
+              );
               for (final item in items) {
-                final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+                final String key = ManagerReviewHelper.employeeFilterLabel(item);
                 if (key.isNotEmpty) {
                   _employeeNameToId[key] = item.id;
-                  // Auto-select the manager's own employee if found
-                  if (item.id == managerId) {
-                    selectedEmployeeName = key;
-                  }
                 }
               }
-              // Auto-select the manager's employee only if no employee is currently selected (first time initialization)
-              if (selectedEmployeeName != null && _selectedEmployee == null) {
-                _selectedEmployee = selectedEmployeeName;
-                print('ExpenseManagerReviewScreen: Auto-selected employee: $selectedEmployeeName (ID: $managerId)');
-              }
+              _selectedEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+                selected: _selectedEmployee,
+                options: _employeeOptions,
+                nameToId: _employeeNameToId,
+                loggedInUser: userStore?.userDetail,
+                allStaffOption: 'All Staff',
+              ) ?? 'All Staff';
             });
             print('ExpenseManagerReviewScreen: Loaded ${_employeeOptions.length} team employees (including All Staff)');
           }
@@ -2250,15 +2313,23 @@ class ExpenseManagerReviewScreenState extends State<ExpenseManagerReviewScreen> 
         throw Exception('Unable to access expense repository or user information');
       }
 
-      // Get selected expense IDs
+      // Get selected expense IDs (exclude manager's own records)
       final List<int> selectedExpenseIds = _selectedItems
+          .where((id) {
+            try {
+              final item = _expenseItems.firstWhere((e) => e.id == id);
+              return !_isOwnExpenseForReview(item);
+            } catch (_) {
+              return false;
+            }
+          })
           .map((id) => int.tryParse(id))
           .where((id) => id != null)
           .cast<int>()
           .toList();
 
       if (selectedExpenseIds.isEmpty) {
-        throw Exception('No valid expense IDs selected');
+        throw Exception('You cannot review your own expense records');
       }
 
       // Create expense action details

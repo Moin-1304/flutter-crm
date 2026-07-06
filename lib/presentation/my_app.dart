@@ -63,12 +63,15 @@ class _MyAppState extends State<MyApp> {
     
     // 4. Show a message to the user ONLY if they were previously logged in
     if (wasLoggedIn) {
-      ScaffoldMessenger.of(Routes.navigatorKey.currentContext!).showSnackBar(
-        const SnackBar(
-          content: Text('Session expired. Please login again.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      final BuildContext? snackContext = Routes.navigatorKey.currentContext;
+      if (snackContext != null && snackContext.mounted) {
+        ScaffoldMessenger.of(snackContext).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please login again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'dcr_api_models.dart';
+import 'package:boilerplate/utils/dcr_tour_plan_helper.dart';
 
 /// Unified model to handle both DCR and Expense items from the API response
 @immutable
@@ -36,6 +37,14 @@ class UnifiedDcrItem {
     this.complaintStatus,
     this.complaintDate,
     this.complaintRemarks,
+    this.serviceReportContactPerson,
+    this.serviceReportContactMobile,
+    this.serviceReportProduct,
+    this.serviceReportSerialNumber,
+    this.serviceReportServiceTypeText,
+    this.dcrDetailIdServiceReport,
+    this.serviceReportId,
+    this.isServiceReportExists,
   });
 
   final int id;
@@ -69,6 +78,24 @@ class UnifiedDcrItem {
   final String? complaintStatus; // Display string: "Resolved" or "Not Resolved"
   final String? complaintDate;
   final String? complaintRemarks;
+  // Flattened Service Report fields from DCR list API
+  final String? serviceReportContactPerson;
+  final String? serviceReportContactMobile;
+  final String? serviceReportProduct;
+  final String? serviceReportSerialNumber;
+  final String? serviceReportServiceTypeText;
+  final int? dcrDetailIdServiceReport;
+  final int? serviceReportId;
+  final bool? isServiceReportExists;
+
+  /// Whether the list API included any Service Report tab fields.
+  bool get hasServiceReportListFields {
+    return (serviceReportContactPerson?.trim().isNotEmpty ?? false) ||
+        (serviceReportContactMobile?.trim().isNotEmpty ?? false) ||
+        (serviceReportProduct?.trim().isNotEmpty ?? false) ||
+        (serviceReportSerialNumber?.trim().isNotEmpty ?? false) ||
+        (serviceReportServiceTypeText?.trim().isNotEmpty ?? false);
+  }
 
   /// Factory constructor to create from DcrApiItem
   factory UnifiedDcrItem.fromDcrApiItem(DcrApiItem item) {
@@ -102,6 +129,20 @@ class UnifiedDcrItem {
     final String? complaintDate = detail?.complaintDate;
     final String? complaintRemarks = detail?.complaintRemarks;
     
+    final int effectiveTypeOfWorkId = DcrTourPlanHelper.effectiveTypeOfWorkId(
+      parentTypeOfWorkId: item.typeOfWorkId,
+      detailTypeOfWorkId: detail?.typeOfWorkId,
+    );
+
+    final String apiPurposeText = DcrTourPlanHelper.apiPurposeText(
+      parentTypeOfWork: item.typeOfWork,
+    );
+
+    final String remarksSource = DcrTourPlanHelper.resolveDcrRemarksSource(
+      headerRemarks: item.remarks,
+      detailRemarks: detail?.remarks ?? '',
+    );
+
     return UnifiedDcrItem(
       id: item.id,
       transactionType: item.transactionType,
@@ -110,16 +151,22 @@ class UnifiedDcrItem {
       clusterNames: item.clusterNames,
       statusText: item.statusText,
       dcrDate: item.dcrDate,
-      remarks: item.remarks,
+      remarks: DcrTourPlanHelper.resolveKeyDiscussionPoints(
+        tourPlanId: item.tourPlanId,
+        statusText: item.statusText,
+        dcrStatusId: item.dcrStatusId,
+        remarks: remarksSource,
+        purposeOfVisit: apiPurposeText,
+      ),
       customerName: item.customerName,
-      typeOfWork: item.typeOfWork,
+      typeOfWork: apiPurposeText,
       customerId: item.customerId,
       cityId: item.cityId,
       employeeId: item.employeeId,
       dcrId: item.dcrId,
       tourPlanId: item.tourPlanId,
       dcrStatusId: item.dcrStatusId,
-      typeOfWorkId: item.typeOfWorkId,
+      typeOfWorkId: effectiveTypeOfWorkId,
       isGeneric: item.isGeneric,
       customerLatitude: latitude,
       customerLongitude: longitude,
@@ -134,6 +181,14 @@ class UnifiedDcrItem {
       complaintStatus: complaintStatus,
       complaintDate: complaintDate,
       complaintRemarks: complaintRemarks,
+      serviceReportContactPerson: item.serviceReportContactPerson,
+      serviceReportContactMobile: item.serviceReportContactMobile,
+      serviceReportProduct: item.serviceReportProduct,
+      serviceReportSerialNumber: item.serviceReportSerialNumber,
+      serviceReportServiceTypeText: item.serviceReportServiceTypeText,
+      dcrDetailIdServiceReport: item.dcrDetailIdServiceReport,
+      serviceReportId: item.serviceReportId,
+      isServiceReportExists: item.isServiceReportExists,
     );
   }
 
@@ -167,6 +222,11 @@ class UnifiedDcrItem {
       dcrDateTime = DateTime.now().toIso8601String();
     }
 
+    final int typeOfWorkId = item.typeOfWorkId ?? 0;
+    final String apiPurposeText = DcrTourPlanHelper.apiPurposeText(
+      parentTypeOfWork: item.typeOfWork ?? '',
+    );
+
     return UnifiedDcrItem(
       id: item.id ?? 0,
       transactionType: item.transactionType ?? 'DCR',
@@ -175,16 +235,22 @@ class UnifiedDcrItem {
       clusterNames: item.clusterNames ?? '',
       statusText: item.statusText ?? 'Unknown',
       dcrDate: dcrDateTime,
-      remarks: item.remarks ?? '',
+      remarks: DcrTourPlanHelper.resolveKeyDiscussionPoints(
+        tourPlanId: item.tourPlanId ?? 0,
+        statusText: item.statusText ?? '',
+        dcrStatusId: item.dcrStatusId,
+        remarks: item.remarks ?? '',
+        purposeOfVisit: apiPurposeText,
+      ),
       customerName: item.customerName ?? 'Unknown Customer',
-      typeOfWork: item.typeOfWork ?? '',
+      typeOfWork: apiPurposeText,
       customerId: item.customerId ?? 0,
       cityId: item.cityId ?? 0,
       employeeId: item.employeeId ?? 0,
       dcrId: item.dcrId ?? 0,
       tourPlanId: item.tourPlanId ?? 0,
       dcrStatusId: item.dcrStatusId ?? 0,
-      typeOfWorkId: item.typeOfWorkId ?? 0,
+      typeOfWorkId: typeOfWorkId,
       isGeneric: item.isGeneric ?? 0,
       customerLatitude: latitude,
       customerLongitude: longitude,
@@ -245,6 +311,20 @@ class UnifiedDcrItem {
     print('  - Extracted complaintDate: "$complaintDate"');
     print('  - Extracted complaintRemarks: "$complaintRemarks"');
 
+    final int effectiveTypeOfWorkId = DcrTourPlanHelper.effectiveTypeOfWorkId(
+      parentTypeOfWorkId: response.typeOfWorkId,
+      detailTypeOfWorkId: detail.typeOfWorkId,
+    );
+
+    final String apiPurposeText = DcrTourPlanHelper.apiPurposeText(
+      parentTypeOfWork: response.typeOfWork,
+    );
+
+    final String remarksSource = DcrTourPlanHelper.resolveDcrRemarksSource(
+      headerRemarks: response.remarks,
+      detailRemarks: detail.remarks,
+    );
+
     return UnifiedDcrItem(
       id: detail.id ?? response.id,
       transactionType: response.transactionType.isNotEmpty ? response.transactionType : 'DCR',
@@ -253,16 +333,22 @@ class UnifiedDcrItem {
       clusterNames: detail.clusterNames.isNotEmpty ? detail.clusterNames : (response.clusterNames.isNotEmpty ? response.clusterNames : 'Unknown'),
       statusText: response.statusText.isNotEmpty ? response.statusText : 'Unknown',
       dcrDate: response.dcrDate.isNotEmpty ? response.dcrDate : DateTime.now().toIso8601String(),
-      remarks: detail.remarks.isNotEmpty ? detail.remarks : (response.remarks.isNotEmpty ? response.remarks : ''),
+      remarks: DcrTourPlanHelper.resolveKeyDiscussionPoints(
+        tourPlanId: response.tourPlanId,
+        statusText: response.statusText,
+        dcrStatusId: response.dcrStatusId,
+        remarks: remarksSource,
+        purposeOfVisit: apiPurposeText,
+      ),
       customerName: detail.customerName.isNotEmpty ? detail.customerName : (response.customerName.isNotEmpty ? response.customerName : 'Unknown Customer'),
-      typeOfWork: response.typeOfWork.isNotEmpty ? response.typeOfWork : 'Visit',
+      typeOfWork: apiPurposeText,
       customerId: detail.customerId,
       cityId: detail.cityId,
       employeeId: response.employeeId,
       dcrId: response.dcrId > 0 ? response.dcrId : response.id,
       tourPlanId: response.tourPlanId,
       dcrStatusId: response.dcrStatusId,
-      typeOfWorkId: detail.typeOfWorkId,
+      typeOfWorkId: effectiveTypeOfWorkId,
       isGeneric: response.isGeneric,
       customerLatitude: latitude,
       customerLongitude: longitude,
@@ -370,6 +456,14 @@ class UnifiedDcrItem {
     String? complaintStatus,
     String? complaintDate,
     String? complaintRemarks,
+    String? serviceReportContactPerson,
+    String? serviceReportContactMobile,
+    String? serviceReportProduct,
+    String? serviceReportSerialNumber,
+    String? serviceReportServiceTypeText,
+    int? dcrDetailIdServiceReport,
+    int? serviceReportId,
+    bool? isServiceReportExists,
   }) {
     return UnifiedDcrItem(
       id: id ?? this.id,
@@ -402,6 +496,20 @@ class UnifiedDcrItem {
       complaintStatus: complaintStatus ?? this.complaintStatus,
       complaintDate: complaintDate ?? this.complaintDate,
       complaintRemarks: complaintRemarks ?? this.complaintRemarks,
+      serviceReportContactPerson:
+          serviceReportContactPerson ?? this.serviceReportContactPerson,
+      serviceReportContactMobile:
+          serviceReportContactMobile ?? this.serviceReportContactMobile,
+      serviceReportProduct: serviceReportProduct ?? this.serviceReportProduct,
+      serviceReportSerialNumber:
+          serviceReportSerialNumber ?? this.serviceReportSerialNumber,
+      serviceReportServiceTypeText:
+          serviceReportServiceTypeText ?? this.serviceReportServiceTypeText,
+      dcrDetailIdServiceReport:
+          dcrDetailIdServiceReport ?? this.dcrDetailIdServiceReport,
+      serviceReportId: serviceReportId ?? this.serviceReportId,
+      isServiceReportExists:
+          isServiceReportExists ?? this.isServiceReportExists,
     );
   }
 }

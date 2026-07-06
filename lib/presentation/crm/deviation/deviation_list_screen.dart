@@ -16,6 +16,7 @@ import 'package:boilerplate/presentation/crm/widgets/crm_record_pill.dart';
 
 import '../../user/store/user_store.dart';
 import '../../user/store/user_validation_store.dart';
+import 'package:boilerplate/utils/purpose_visit_helper.dart';
 
 class DeviationListScreen extends StatefulWidget {
   const DeviationListScreen({super.key});
@@ -263,8 +264,8 @@ class _DeviationListScreenState extends State<DeviationListScreen>
   Future<void> refreshData() async {
     print(
         'DeviationListScreen: Refreshing data after returning from deviation entry...');
-    // Re-validate immediately after deviation submit/update for non-service engineers.
-    if (!_isCurrentUserServiceEngineer()) {
+    // Re-validate after submit only for roles subject to deviation lock.
+    if (!_bypassesValidateUserLock()) {
       await _validateUserOnScreenOpen();
     }
     // Add a small delay to ensure the deviation entry screen has completed its save operation
@@ -406,12 +407,10 @@ class _DeviationListScreenState extends State<DeviationListScreen>
     return roleCategory == 1 || roleCategory == 2;
   }
 
-  /// Check if current user is a Service Engineer (validate-user not applied for them)
-  bool _isCurrentUserServiceEngineer() {
+  bool _bypassesValidateUserLock() {
     final UserDetailStore? userStore =
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final String? serviceArea = userStore?.userDetail?.serviceArea?.trim();
-    return serviceArea == 'Service Engineer';
+    return PurposeVisitHelper.bypassesValidateUserLock(userStore?.userDetail);
   }
 
   bool _hasActiveFilters() {
@@ -1197,9 +1196,9 @@ class _DeviationListScreenState extends State<DeviationListScreen>
                                           builder: (context, _) {
                                             final validationStore =
                                                 getIt<UserValidationStore>();
-                                            // Service Engineers: always allow; others: use validate-user API
+                                            // SE / POC / Application Engineer: always allow
                                             final isEnabled =
-                                                _isCurrentUserServiceEngineer() ||
+                                                _bypassesValidateUserLock() ||
                                                     validationStore
                                                         .canCreateDeviation;
                                             return CrmActionButton(

@@ -1228,6 +1228,7 @@ class BatchNoRequest {
   final int employeeId;
   final String toDate; // Format: "yyyy-MM-dd'T'HH:mm:ss.SSS"
   final int bizUnit;
+  final int? department; // From Store ID (warehouse)
   final int module; // 13 for Sample Issue
   final int transactionType; // 12 for Sample Issue
 
@@ -1236,6 +1237,7 @@ class BatchNoRequest {
     required this.employeeId,
     required this.toDate,
     required this.bizUnit,
+    this.department,
     this.module = 13,
     this.transactionType = 12,
   });
@@ -1275,6 +1277,9 @@ class BatchNoRequest {
       'ReceiveType': null,
       'Module': module,
       'TransactionType': transactionType,
+      'Item': itemId,
+      'Date': toDate,
+      'Department': department,
     };
   }
 }
@@ -1293,6 +1298,133 @@ class PurposeOfVisitRequest {
       'TransactionId': null,
       'UserId': userId,
       'CommandType': 337,
+      'CommandText': null,
+      'Value': null,
+      'CountryId': null,
+      'Key': null,
+      'Text': text,
+      'Type': null,
+      'TaxFlag': 0,
+      'SubType': null,
+      'RoleMapList': null,
+      'CategoryId': null,
+      'ClusterId': null,
+      'EmployeeId': null,
+      'PageUrl': null,
+      'IncludeCancelled': false,
+      'Program': null,
+      'Category': null,
+      'Status': null,
+      'FromDate': null,
+      'ToDate': null,
+      'ReportName': null,
+      'IsOrganizationUser': null,
+      'ItemGroupName': null,
+      'Active': null,
+      'ConstantMasterPk': null,
+      'ConstantMasterActive': null,
+      'ConstantMasterGroup': null,
+      'ConstantMasterGroupValue': null,
+      'ConstantMasterGroupTypeValue': null,
+      'TypeValue': null,
+      'SbuId': null,
+      'LsmLine': null,
+      'LsmListType': null,
+      'LineId': null,
+      'Item': null,
+      'Date': null,
+      'Department': null,
+      'ItemGrade': null,
+      'Process': null,
+      'Surface': null,
+      'Colour': null,
+      'Thickness': null,
+      'Sterile': null,
+      'Nature': null,
+      'Grade': null,
+      'Length': null,
+      'Chlorination': null,
+      'Size': null,
+      'AdditionalSpec1': null,
+      'ProductGroupId': null,
+      'SpecialCondition': null,
+      'P_COA_SUB_TYPE': null,
+      'Group': null,
+      'GroupType': null,
+      'Name': null,
+      'CityId': null,
+      'StateId': null,
+      'DistributerId': null,
+      'TaxCategory': null,
+      'OnlyParent': null,
+      'DesignationCode': null,
+      'DistrictId': null,
+      'TownId': null,
+      'BizUnit': null,
+      'ProcessId': null,
+      'FieldName': null,
+      'Sector': 0,
+      'ConstantMasterParent': null,
+      'Vendor': null,
+      'ReceiveType': null,
+      'Module': null,
+      'Flag': null,
+      'CustomerId': null,
+      'Customer': null,
+      'DespatchNo': null,
+      'SurveyType': null,
+      'PageName': null,
+      'Mode': null,
+      'Division': null,
+      'DivisionGroup': null,
+      'Role': null,
+      'TypeId': null,
+      'PageType': null,
+      'IsTax': null,
+      'CategoryAccountType': null,
+      'AddressLine1': null,
+      'AddressLine2': null,
+      'AddressLine3': null,
+      'PostalCode': null,
+      'VehicleNo': null,
+      'StatusType': null,
+      'CurrentStatusID': null,
+      'ProcessType': null,
+      'IsMaterialIssue': false,
+      'IsItemIssue': false,
+      'ReferenceType': null,
+      'TransactionType': null,
+      'ManufacturerMasterDoc': null,
+      'BrandName': null,
+      'AccountSubType': null,
+      'IsFromAMCUser': null,
+      'IsContra': null,
+      'receiveSubType': null,
+      'IssueId': null,
+      'CustomerSelectedList': null,
+    };
+  }
+}
+
+/// Request model for DCR Type of Visit (role-specific CommandType + Text).
+class DcrPurposeOfVisitRequest {
+  final int userId;
+  final int commandType;
+  final String text;
+
+  DcrPurposeOfVisitRequest({
+    required this.userId,
+    required this.commandType,
+    required this.text,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'SearchText': null,
+      'Id': null,
+      'TransactionId': null,
+      'UserId': userId,
+      'CommandType': commandType,
       'CommandText': null,
       'Value': null,
       'CountryId': null,
@@ -1752,6 +1884,7 @@ class CommonDropdownItem {
   final bool bonusEnabled;
   final bool isSelected;
   final int? repType;
+  final String? repTypeText;
 
   CommonDropdownItem({
     required this.id,
@@ -1819,6 +1952,7 @@ class CommonDropdownItem {
     this.bonusEnabled = false,
     this.isSelected = false,
     this.repType,
+    this.repTypeText,
   });
 
   factory CommonDropdownItem.fromJson(Map<String, dynamic> json) {
@@ -1906,7 +2040,19 @@ class CommonDropdownItem {
           json['isSelected'] == 1 ||
           json['IsSelected'] == 1,
       repType: _parseOptionalInt(json['repType'] ?? json['RepType']),
+      repTypeText: _parseOptionalString(
+        json['repTypetext'] ??
+            json['RepTypetext'] ??
+            json['repTypeText'] ??
+            json['RepTypeText'],
+      ),
     );
+  }
+
+  static String? _parseOptionalString(dynamic value) {
+    if (value == null) return null;
+    final String s = value.toString().trim();
+    return s.isEmpty ? null : s;
   }
 
   static int? _parseOptionalInt(dynamic value) {

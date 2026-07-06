@@ -10,6 +10,9 @@ import 'package:boilerplate/domain/entity/deviation/deviation_api_models.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:boilerplate/core/widgets/toast_message.dart';
+import 'package:boilerplate/utils/manager_review_helper.dart';
+
+const String kAllStaffFilterOption = 'All Staff';
 
 /// Format date string from ISO 8601 format to DD-MMM-YYYY
 String _formatDateString(String? dateString) {
@@ -45,7 +48,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   List<DeviationApiItem> _filteredDeviations = [];
   List<String> _employeeOptions = [];
   final Map<String, int> _employeeNameToId = {};
-  String? _selectedEmployee;
+  String? _selectedEmployee = kAllStaffFilterOption;
   String? _selectedStatus;
   List<String> _statusOptions = [];
   final Map<String, int> _statusNameToId = {};
@@ -147,55 +150,90 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
     }
   }
 
-  /// Load employee list from API for employee filter (same as DCR screen)
+  /// Load reporting team for employee filter (manager excluded).
   Future<void> _loadEmployeeList({int? employeeId}) async {
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        // Get employeeId from user store if not provided
-        final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-        final int? finalEmployeeId = employeeId ?? userStore?.userDetail?.employeeId;
-        
-        // Use same API call as DCR screen (CommandType 106 or 276 if employeeId provided)
-        final List<CommonDropdownItem> items = await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
-        final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
-        
-        if (names.isNotEmpty && mounted) {
+        final UserDetailStore? userStore =
+            getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+        final int? managerId = employeeId ?? userStore?.userDetail?.employeeId;
+
+        if (managerId == null) return;
+
+        final List<CommonDropdownItem> items =
+            ManagerReviewHelper.teamItemsExcludingLoggedInManager(
+          await commonRepo.getEmployeesReportingTo(managerId),
+          userStore?.userDetail,
+        );
+
+        if (mounted) {
           setState(() {
-            _employeeOptions = {..._employeeOptions, ...names}.toList();
-            // map names to ids for potential employee ID mapping
-            String? selectedEmployeeName;
+            _employeeNameToId.clear();
+            _employeeOptions = ManagerReviewHelper.buildTeamFilterOptions(
+              items,
+              userStore?.userDetail,
+              allStaffOption: kAllStaffFilterOption,
+            );
             for (final item in items) {
-              final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+              final String key = ManagerReviewHelper.employeeFilterLabel(item);
               if (key.isNotEmpty) {
                 _employeeNameToId[key] = item.id;
-                // If this employee's id matches the employeeId used in API call, auto-select it
-                if (finalEmployeeId != null && item.id == finalEmployeeId) {
-                  selectedEmployeeName = key;
-                }
               }
             }
-            // Auto-select default employee only when there is no active valid selection.
-            // This prevents overriding the employee chosen from the searchable filter.
-            final bool hasValidCurrentSelection = _selectedEmployee != null &&
-                _employeeOptions.contains(_selectedEmployee);
-            if (selectedEmployeeName != null && !hasValidCurrentSelection) {
-              _selectedEmployee = selectedEmployeeName;
-              print('DeviationManagerReviewScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
-            }
+            _selectedEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+              selected: _selectedEmployee,
+              options: _employeeOptions,
+              nameToId: _employeeNameToId,
+              loggedInUser: userStore?.userDetail,
+              allStaffOption: kAllStaffFilterOption,
+            ) ?? kAllStaffFilterOption;
           });
-          print('DeviationManagerReviewScreen: Loaded ${_employeeOptions.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
+          print(
+              'DeviationManagerReviewScreen: Loaded ${_employeeOptions.length} team employees (manager excluded)');
         }
       }
     } catch (e) {
       print('DeviationManagerReviewScreen: Error getting employee list: $e');
-      // Fallback to default employees
-      if (mounted) {
-        setState(() {
-          _employeeOptions = ['All Employees', 'John Doe', 'Jane Smith', 'Mike Johnson', 'Sarah Wilson'];
-        });
+    }
+  }
+
+  bool _isAllStaffSelected() =>
+      _selectedEmployee == null || _selectedEmployee == kAllStaffFilterOption;
+
+  int? _selectedEmployeeId() {
+    if (_isAllStaffSelected()) return null;
+    return _employeeNameToId[_selectedEmployee!];
+  }
+
+  Future<List<DeviationApiItem>> _loadDeviationsForEmployeeIds({
+    required DeviationRepository deviationRepo,
+    required dynamic user,
+    required List<int> employeeIds,
+  }) async {
+    final Set<int> seenIds = <int>{};
+    final List<DeviationApiItem> merged = <DeviationApiItem>[];
+
+    for (final int empId in employeeIds) {
+      try {
+        final response = await deviationRepo.getDeviationList(
+          searchText: _searchController.text,
+          pageNumber: 1,
+          pageSize: 1000,
+          userId: user.userId,
+          bizUnit: user.sbuId,
+          employeeId: empId,
+        );
+        for (final item in response.items) {
+          if (seenIds.add(item.id) && !_isOwnDeviationForReview(item)) {
+            merged.add(item);
+          }
+        }
+      } catch (e) {
+        print('DeviationManagerReviewScreen: Error loading deviations for employee $empId: $e');
       }
     }
+    return merged;
   }
 
   Future<void> _loadStatusList() async {
@@ -243,35 +281,32 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
         final int? currentEmployeeId = userStore?.userDetail?.employeeId;
 
         if (user != null && currentEmployeeId != null) {
-          // Get the selected employee ID for filtering
-          int? filterEmployeeId = currentEmployeeId; // Default to current user
-          if (_selectedEmployee != null) {
-            filterEmployeeId = _employeeNameToId[_selectedEmployee];
-            print('Filtering by employee: $_selectedEmployee (ID: $filterEmployeeId)');
-            if (filterEmployeeId == null) {
-              print('ERROR: Employee ID not found for $_selectedEmployee');
-              print('Available employees: $_employeeNameToId');
-            }
+          final int? selectedEmployeeId = _selectedEmployeeId();
+          final List<int> employeeIds = <int>[];
+
+          if (selectedEmployeeId != null) {
+            employeeIds.add(selectedEmployeeId);
+            print(
+                'DeviationManagerReviewScreen: Filtering by employee: $_selectedEmployee (ID: $selectedEmployeeId)');
           } else {
-            print('Showing all employees (current user: $currentEmployeeId)');
+            employeeIds.addAll(_employeeNameToId.values);
+            print(
+                'DeviationManagerReviewScreen: Loading deviations for all reporting staff (${employeeIds.length} employees)');
           }
-          
-          print('Loading deviations with filters - Employee: $filterEmployeeId, Status: $_selectedStatus');
-          
-          final response = await deviationRepo.getDeviationList(
-            searchText: _searchController.text,
-            pageNumber: 1,
-            pageSize: 1000,
-            userId: user.userId,
-            bizUnit: user.sbuId,
-            employeeId: filterEmployeeId ?? currentEmployeeId,
-          );
-          
+
+          final List<DeviationApiItem> items = employeeIds.isEmpty
+              ? <DeviationApiItem>[]
+              : await _loadDeviationsForEmployeeIds(
+                  deviationRepo: deviationRepo,
+                  user: user,
+                  employeeIds: employeeIds,
+                );
+
           if (mounted) {
             setState(() {
-              _deviations = response.items;
+              _deviations = items;
               print('Loaded ${_deviations.length} deviations from API');
-              _applyStatusFilter(); // Apply status filter on client side
+              _applyStatusFilter();
             });
           }
         }
@@ -348,19 +383,9 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   }
 
   Future<void> _clearAllFilters() async {
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final int? managerId = userStore?.userDetail?.employeeId;
-    String? managerEmployeeName;
-    if (managerId != null && _employeeNameToId.isNotEmpty) {
-      _employeeNameToId.forEach((name, id) {
-        if (id == managerId) {
-          managerEmployeeName = name;
-        }
-      });
-    }
     setState(() {
       _selectedStatus = null;
-      _selectedEmployee = managerEmployeeName; // Set to logged-in employee (manager)
+      _selectedEmployee = kAllStaffFilterOption;
       _searchController.clear();
     });
     await _loadDeviations();
@@ -369,14 +394,33 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   int _getFilterCount() {
     int count = 0;
     if (_selectedStatus != null) count++;
-    if (_selectedEmployee != null) count++;
+    if (_selectedEmployee != null && !_isAllStaffSelected()) count++;
     return count;
   }
   
+  List<String> _employeeFilterDropdownOptions() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    return ManagerReviewHelper.filterOptionsForDisplay(
+      _employeeOptions,
+      _employeeNameToId,
+      userStore?.userDetail,
+      allStaffOption: kAllStaffFilterOption,
+    );
+  }
+
   void _openFilterModal() {
     if (_filterModalController == null) return;
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     setState(() {
-      _modalTempEmployee = _selectedEmployee;
+      _modalTempEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+        selected: _selectedEmployee,
+        options: _employeeOptions,
+        nameToId: _employeeNameToId,
+        loggedInUser: userStore?.userDetail,
+        allStaffOption: kAllStaffFilterOption,
+      );
       _modalTempStatus = _selectedStatus;
       _showFilterModal = true;
     });
@@ -496,9 +540,39 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   }
 
 
+  DeviationApiItem? _findDeviationById(int deviationId) {
+    for (final list in [_filteredDeviations, _deviations]) {
+      for (final item in list) {
+        if (item.id == deviationId) return item;
+      }
+    }
+    return null;
+  }
+
+  bool _isOwnDeviationForReview(DeviationApiItem deviation) {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    return ManagerReviewHelper.isOwnEmployeeRecord(
+      loggedInUser: userStore?.userDetail,
+      recordEmployeeId: deviation.employeeId,
+    );
+  }
+
   Future<void> _performIndividualAction(String action, int deviationId, String comment, {BuildContext? dialogContext, BuildContext? viewDetailsContext}) async {
     try {
       print('Performing $action on deviation $deviationId with comment: $comment');
+
+      final DeviationApiItem? deviation = _findDeviationById(deviationId);
+      if (deviation != null && _isOwnDeviationForReview(deviation)) {
+        if (mounted) {
+          _showToast(
+            'You cannot review your own deviation',
+            type: ToastType.warning,
+            icon: Icons.warning_amber_rounded,
+          );
+        }
+        return;
+      }
       
       // Get the repository and user store
       if (!getIt.isRegistered<DeviationRepository>()) {
@@ -803,8 +877,15 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
     final bool isApproved = statusLower.contains('approved');
     final bool isSentBack = statusLower.contains('sent back') || statusLower.contains('sentback');
     
-    // Buttons should be enabled if it's not already approved or sent back
-    final bool buttonsEnabled = !isApproved && !isSentBack;
+    final bool isOwnDeviation = ManagerReviewHelper.isOwnEmployeeRecord(
+      loggedInUser: getIt.isRegistered<UserDetailStore>()
+          ? getIt<UserDetailStore>().userDetail
+          : null,
+      recordEmployeeId: data.employeeId,
+    );
+
+    // Buttons should be enabled if it's not already approved, sent back, or own record
+    final bool buttonsEnabled = !isApproved && !isSentBack && !isOwnDeviation;
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
     final double panelHeight = isTablet ? screenHeight * 0.85 : screenHeight * 0.9;
@@ -1076,6 +1157,15 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
   }
 
   Future<void> _showIndividualActionModal(String action, DeviationApiItem deviation, {BuildContext? viewDetailsContext}) async {
+    if (_isOwnDeviationForReview(deviation)) {
+      _showToast(
+        'You cannot review your own deviation',
+        type: ToastType.warning,
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
+    }
+
     final TextEditingController commentController = TextEditingController();
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final titleFont = isTablet ? 18.0 : 16.0;
@@ -1609,7 +1699,7 @@ class _DeviationManagerReviewScreenState extends State<DeviationManagerReviewScr
                                     title: 'Employee',
                                     icon: Icons.person_outline,
                                     selectedValue: _modalTempEmployee,
-                                    options: _employeeOptions,
+                                    options: _employeeFilterDropdownOptions(),
                                     onChanged: (v) => setModalState(() => _modalTempEmployee = v),
                                     isTablet: isTablet,
                                     // Removed onExpanded to prevent layout conflicts during scrolling

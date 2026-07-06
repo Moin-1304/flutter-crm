@@ -16,7 +16,7 @@ the cause is usually a **missing or invalid Google Maps API key**. Without a val
    **APIs & Services → Library** → search **"Maps SDK for Android"** / **"Maps SDK for iOS"** → **Enable**.
 4. Create an API key: **APIs & Services → Credentials → Create credentials → API key**.
 5. (Recommended) Restrict the key:
-   - **Android**: Application restrictions → Android apps → Add package name `com.iotecksolutions.todoapp` and your SHA-1 (see below).
+   - **Android**: Application restrictions → Android apps → Add package name `com.iotecksolutions.pharmacrm` and your SHA-1 (see below).
    - **iOS**: Application restrictions → iOS apps → Add your bundle ID (e.g. from Xcode or `ios/Runner/Info.plist`).
 6. Ensure **billing** is enabled for the project (required for Maps even on free tier).
 
@@ -89,7 +89,7 @@ Then in [Google Cloud Console](https://console.cloud.google.com/) for the projec
 2. **Billing** → ensure a billing account is linked (Maps requires it even for free tier).
 3. **APIs & Services → Credentials** → click your API key:
    - If **Application restrictions** is set to "Android apps", add:
-     - Package name: `com.iotecksolutions.todoapp`
+     - Package name: `com.iotecksolutions.pharmacrm`
      - SHA-1 certificate fingerprint: get it with  
        `keytool -list -v -keystore ~/.android/debug.keystore`  
        (password: `android`), then copy the SHA-1 line.
@@ -97,6 +97,6 @@ Then in [Google Cloud Console](https://console.cloud.google.com/) for the projec
 
 ## Log reference
 
-- **Package name**: `com.iotecksolutions.todoapp`
+- **Package name**: `com.iotecksolutions.pharmacrm`
 - **Debug SHA-1** (for key restriction):  
   `keytool -list -v -keystore ~/.android/debug.keystore` (default password: `android`)

@@ -68,6 +68,8 @@ class UserValidationStore extends ChangeNotifier {
     }
   }
 
+  
+
   /// Reset validation state
   void reset() {
     _isUserValid = null;

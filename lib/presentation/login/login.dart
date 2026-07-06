@@ -60,6 +60,18 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  Future<void> _submitLogin() async {
+    if (!_formStore.canLogin) {
+      _showErrorMessage('Please fill in all fields');
+      return;
+    }
+    DeviceUtils.hideKeyboard(context);
+    await _userStore.login(
+      _userEmailController.text,
+      _passwordController.text,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
@@ -470,21 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: buttonHeight,
                         child: FilledButton(
                           onPressed: () async {
-                            if (_formStore.canLogin) {
-                              DeviceUtils.hideKeyboard(context);
-                              try {
-                                await _userStore.login(
-                                  _userEmailController.text,
-                                  _passwordController.text,
-                                );
-                                // Error handling is done by the listener when isLoading becomes false
-                              } catch (e) {
-                                // Error is handled by UserStore and will show via listener
-                                // The finally block ensures isLoading is set to false
-                              }
-                            } else {
-                              _showErrorMessage('Please fill in all fields');
-                            }
+                            await _submitLogin();
                           },
                           style: FilledButton.styleFrom(
                             backgroundColor: tealGreen,
@@ -742,10 +740,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 onChanged: (v) => _formStore.setPassword(v),
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) {
-                  if (_formStore.canLogin) {
-                    DeviceUtils.hideKeyboard(context);
-                    _userStore.login(_userEmailController.text, _passwordController.text);
-                  }
+                  _submitLogin();
                 },
                 style: TextStyle(
                   color: Colors.grey[900],

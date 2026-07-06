@@ -522,6 +522,10 @@ class SalesApi {
     String relativePath = 'Uploads/Attachments/Sales/Orders',
   }) async {
     try {
+      final uploadUrl = Endpoints.fileUpload(relativePath: relativePath);
+      print('📤 [SalesApi.uploadFile] URL: $uploadUrl');
+      print('   File: ${file.name}, size: ${file.size}, path: ${file.path}, hasBytes: ${file.bytes != null}');
+
       MultipartFile multipartFile;
       if (file.bytes != null) {
         multipartFile = MultipartFile.fromBytes(
@@ -538,18 +542,20 @@ class SalesApi {
       }
       final formData = FormData.fromMap({'file': multipartFile});
       final response = await _dioClient.dio.post(
-        Endpoints.fileUpload(relativePath: relativePath),
+        uploadUrl,
         data: formData,
         options: Options(
           headers: {'Content-Type': 'multipart/form-data'},
         ),
       );
+      print('   Upload response status: ${response.statusCode}');
+      print('   Upload response data: ${response.data}');
       if (response.data != null) {
         return FileUploadResponse.fromJson(response.data);
       }
       throw Exception('No response data from file upload');
     } catch (e) {
-      print('Error uploading file for sales order: $e');
+      print('❌ [SalesApi.uploadFile] Error: $e');
       throw Exception('Failed to upload file: ${e.toString()}');
     }
   }
@@ -563,15 +569,19 @@ class SalesApi {
       Map<String, dynamic> requestJson = request.toJson();
 
       if (files != null && files.isNotEmpty) {
+        print('📎 [SalesApi] Uploading ${files.length} attachment(s) before save...');
         final existingDetails =
             _parseFileUploadDetails(request.fileUploadDetails);
         final newDetails = <FileUploadDetail>[];
+        final List<String> failedUploads = [];
         for (final file in files) {
           try {
+            print('   Uploading: ${file.name} (size: ${file.size} bytes, path: ${file.path})');
             final uploadResponse = await uploadFile(
               file,
               relativePath: 'Uploads/Attachments/Sales/Orders',
             );
+            print('   ✅ Upload success: ${uploadResponse.fileName} → ${uploadResponse.path}');
             final extension = file.extension?.toLowerCase() ?? '';
             newDetails.add(FileUploadDetail(
               id: 0,
@@ -580,12 +590,20 @@ class SalesApi {
               extension: extension.isNotEmpty ? extension : 'file',
             ));
           } catch (uploadError) {
-            print('Error uploading file ${file.name}: $uploadError');
+            print('   ❌ Upload FAILED for ${file.name}: $uploadError');
+            failedUploads.add(file.name);
           }
         }
+        if (failedUploads.isNotEmpty) {
+          print('⚠️ [SalesApi] ${failedUploads.length}/${files.length} file(s) failed to upload: $failedUploads');
+        }
         final merged = [...existingDetails, ...newDetails];
+        print('📎 [SalesApi] FileUploadDetails being sent: ${merged.length} item(s) (existing: ${existingDetails.length}, new: ${newDetails.length})');
         requestJson['FileUploadDetails'] =
             merged.map((e) => e.toJson()).toList();
+        print('   FileUploadDetails JSON: ${requestJson['FileUploadDetails']}');
+      } else {
+        print('📎 [SalesApi] No new files to upload. Existing fileUploadDetails from request: ${requestJson['FileUploadDetails']}');
       }
 
       // Log request for debugging

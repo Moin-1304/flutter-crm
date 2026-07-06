@@ -126,8 +126,10 @@ class UserDetail {
   final int? moduleId;
   final String? moduleText;
   final String? signatureFileName;
-  /// Rep type from API: 1 = Sales Rep, 2 = Medical Rep, 5 = Service Engineer. Used when serviceArea is empty for Customer Type API.
+  /// Rep type from API: 1 = Sales Rep, 2 = Medical Rep, 4/6 = Application Engineer, 5 = Service Engineer.
   final int? repType;
+  /// Human-readable rep type from API (e.g. "Service Engineer", "Poc Rep", "Application").
+  final String? repTypeText;
 
   UserDetail({
     this.createdDate,
@@ -258,14 +260,38 @@ class UserDetail {
     this.moduleText,
     this.signatureFileName,
     this.repType,
+    this.repTypeText,
   });
 
-  /// Resolves roleCategory from API. Service Engineers (serviceArea) are treated as 3 if API omits it.
+  /// Resolves roleCategory from API. Field reps get 3 when API omits roleCategory.
   static int _parseRoleCategory(Map<String, dynamic> json) {
     final raw = json['roleCategory'];
-    if (raw != null && raw is int) return raw;
-    final serviceArea = (json['serviceArea'] as String?)?.trim() ?? '';
-    if (serviceArea == 'Service Engineer') return 3;
+    if (raw != null && raw is int && raw > 0) return raw;
+
+    final String serviceArea =
+        ((json['serviceArea'] as String?) ?? '').trim().toLowerCase();
+    final String repTypeText = ((json['repTypetext'] ??
+                json['repTypeText'] ??
+                json['RepTypeText']) as String? ??
+            '')
+        .trim()
+        .toLowerCase();
+    final String roleText =
+        ((json['roleText'] as String?) ?? '').trim().toLowerCase();
+    final int? repType = _parseOptionalInt(json['repType'] ?? json['RepType']);
+
+    if (repType == 1 || repType == 2 || repType == 3 || repType == 5) {
+      return 3;
+    }
+    for (final String t in <String>[serviceArea, repTypeText, roleText]) {
+      if (t.contains('service eng') ||
+          t.contains('medical') ||
+          t.contains('poc') ||
+          t.contains('sales') ||
+          t.contains('application')) {
+        return 3;
+      }
+    }
     return 0;
   }
 
@@ -406,7 +432,19 @@ class UserDetail {
       moduleText: json['moduleText'],
       signatureFileName: json['signatureFileName'],
       repType: _parseOptionalInt(json['repType'] ?? json['RepType']),
+      repTypeText: _parseOptionalString(
+        json['repTypetext'] ??
+            json['RepTypetext'] ??
+            json['repTypeText'] ??
+            json['RepTypeText'],
+      ),
     );
+  }
+
+  static String? _parseOptionalString(dynamic value) {
+    if (value == null) return null;
+    final String s = value.toString().trim();
+    return s.isEmpty ? null : s;
   }
 
   static int? _parseOptionalInt(dynamic value) {
@@ -546,6 +584,7 @@ class UserDetail {
       'moduleText': moduleText,
       'signatureFileName': signatureFileName,
       'repType': repType,
+      'repTypeText': repTypeText,
     };
   }
 }

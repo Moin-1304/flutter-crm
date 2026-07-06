@@ -415,6 +415,7 @@ class SearchableDropdown extends StatefulWidget {
     this.hintText,
     this.searchHintText,
     this.hasError = false,
+    this.maxOverlayHeight,
   });
   
   final List<String> options;
@@ -423,6 +424,8 @@ class SearchableDropdown extends StatefulWidget {
   final String? hintText;
   final String? searchHintText;
   final bool hasError;
+  /// Max height for the dropdown panel; defaults to ~55% of screen height.
+  final double? maxOverlayHeight;
 
   @override
   State<SearchableDropdown> createState() => _SearchableDropdownState();
@@ -625,32 +628,72 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
     _searchController.clear();
     _filteredOptions = widget.options;
     
-    // Calculate position and check if scrolling is needed BEFORE creating overlay
+    const double searchSectionHeight = 68.0;
+    const double optionRowHeight = 48.0;
+    const double listBottomPadding = 12.0;
+
     final Offset currentPosition = box.localToGlobal(Offset.zero);
     final MediaQueryData mediaQuery = MediaQuery.of(context);
     final double screenHeight = mediaQuery.size.height;
     final double spaceBelow = screenHeight - currentPosition.dy - size.height;
-    final double maxHeight = (spaceBelow - 20).clamp(100.0, 320.0);
+    final double spaceAbove = currentPosition.dy;
+
+    final double maxPanelHeight = widget.maxOverlayHeight ??
+        (screenHeight * 0.55).clamp(280.0, 520.0);
+
+    final double availableBelow = (spaceBelow - 16).clamp(180.0, maxPanelHeight);
+    final double availableAbove = (spaceAbove - 16).clamp(180.0, maxPanelHeight);
+
+    final int optionCount =
+        _filteredOptions.isEmpty ? 1 : _filteredOptions.length;
+    final double idealListHeight =
+        optionCount * optionRowHeight + listBottomPadding;
+
+    double listHeightForSpace(double availableSpace) {
+      final double listCap = availableSpace - searchSectionHeight;
+      if (listCap <= 0) return 120.0;
+      return idealListHeight < listCap ? idealListHeight : listCap;
+    }
+
+    final double listHeightBelow = listHeightForSpace(availableBelow);
+    final double listHeightAbove = listHeightForSpace(availableAbove);
+
+    final bool showAbove = listHeightBelow < idealListHeight &&
+        listHeightAbove > listHeightBelow;
+    final double listHeight = showAbove ? listHeightAbove : listHeightBelow;
+    final double panelHeight = searchSectionHeight + listHeight;
+    final Offset followerOffset = showAbove
+        ? Offset(0, -panelHeight + 1)
+        : Offset(0, size.height - 1);
     
-    // Auto-scroll to make the dropdown visible if needed
+    // Auto-scroll the page so the panel stays on screen.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final double fieldTop = currentPosition.dy;
       final double fieldBottom = currentPosition.dy + size.height;
-      final double dropdownHeight = maxHeight;
-      final double screenBottom = screenHeight;
-      
-      // If dropdown would go off screen, scroll to make it visible
-      if (fieldBottom + dropdownHeight > screenBottom - 20) {
-        final ScrollableState? scrollable = Scrollable.maybeOf(context);
-        if (scrollable != null) {
-          final ScrollPosition position = scrollable.position;
-          final double scrollOffset = (fieldBottom + dropdownHeight) - (screenBottom - 20);
-          if (scrollOffset > 0 && position.hasContentDimensions) {
-            position.animateTo(
-              position.pixels + scrollOffset,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-            );
-          }
+      final ScrollableState? scrollable = Scrollable.maybeOf(context);
+      if (scrollable == null) return;
+
+      final ScrollPosition position = scrollable.position;
+      if (!position.hasContentDimensions) return;
+
+      if (showAbove) {
+        final double panelTop = fieldTop - panelHeight;
+        if (panelTop < 16) {
+          position.animateTo(
+            (position.pixels + panelTop - 16).clamp(0.0, position.maxScrollExtent),
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      } else {
+        final double panelBottom = fieldBottom + panelHeight;
+        if (panelBottom > screenHeight - 16) {
+          final double scrollOffset = panelBottom - (screenHeight - 16);
+          position.animateTo(
+            (position.pixels + scrollOffset).clamp(0.0, position.maxScrollExtent),
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
         }
       }
     });
@@ -670,18 +713,18 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
             CompositedTransformFollower(
               link: _link,
               showWhenUnlinked: false,
-              offset: Offset(0, size.height - 1), // Always show below
+              offset: followerOffset,
               child: Material(
                 color: Colors.transparent,
                 child: Container(
                   width: size.width,
+                  height: panelHeight,
                   constraints: BoxConstraints(
-                    maxHeight: maxHeight,
-                    maxWidth: screenWidth - 32, // Leave padding on sides
+                    maxWidth: screenWidth - 32,
                   ),
                   decoration: BoxDecoration(
                     color: scheme.surface,
-                    borderRadius: BorderRadius.circular(18), // Curved corners like DCR forms
+                    borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 18, offset: const Offset(0, 6)),
                     ],
@@ -693,10 +736,8 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                     ),
                   ),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Search field
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                           child: TextField(
@@ -734,13 +775,11 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                           ),
                           onChanged: _filterOptions,
                           onTap: () {
-                            // Request focus when user explicitly taps on search field
                             _searchFocusNode.requestFocus();
                           },
                         ),
                       ),
-                      // Options list
-                      Flexible(
+                      Expanded(
                         child: _filteredOptions.isEmpty
                             ? Padding(
                                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
@@ -758,8 +797,8 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                                 thumbVisibility: true,
                                 child: ListView.separated(
                                   controller: _scrollController,
-                                  shrinkWrap: true,
-                                  padding: const EdgeInsets.only(top: 0, bottom: 12),
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.only(bottom: 12),
                                   itemCount: _filteredOptions.length,
                                   separatorBuilder: (_, __) => const SizedBox(height: 6),
                                   itemBuilder: (context, i) {
@@ -770,33 +809,18 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                                       child: InkWell(
                                         borderRadius: BorderRadius.circular(12),
                                         onTap: () {
-                                          print('🔵 SearchableDropdown: User selected option: $opt (current _value: $_value, widget.value: ${widget.value})');
-                                          // Validate that the selected option exists in the options list
                                           if (!widget.options.contains(opt)) {
-                                            print('🔵 Warning: Selected option "$opt" not in options list: ${widget.options}');
                                             return;
                                           }
                                           
-                                          // Set flag to prevent value reset during selection
                                           _isUserSelecting = true;
-                                          
-                                          // Close the overlay first to prevent visual glitches
                                           _removeOverlay();
-                                          
-                                          // Update internal state immediately for responsive UI
                                           _value = opt;
-                                          _previousWidgetValue = opt; // Set this BEFORE calling onChanged
+                                          _previousWidgetValue = opt;
                                           _updateDisplayText();
-                                          
-                                          // Call the parent's onChanged callback
-                                          // This will trigger parent's setState, which will rebuild this widget
-                                          // with the new widget.value, which should match opt
                                           widget.onChanged(opt);
-                                          
-                                          // Update local state to reflect the change
                                           setState(() {});
                                           
-                                          // Reset flag after a short delay to allow parent to update
                                           Future.delayed(const Duration(milliseconds: 100), () {
                                             if (mounted) {
                                               _isUserSelecting = false;
@@ -806,6 +830,7 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                                           child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Expanded(
                                                 child: Text(
@@ -818,10 +843,13 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
                                                 ),
                                               ),
                                               if (selected)
-                                                Icon(
-                                                  Icons.check,
-                                                  size: 20,
-                                                  color: theme.colorScheme.primary,
+                                                Padding(
+                                                  padding: const EdgeInsets.only(left: 8),
+                                                  child: Icon(
+                                                    Icons.check,
+                                                    size: 20,
+                                                    color: theme.colorScheme.primary,
+                                                  ),
                                                 ),
                                             ],
                                           ),
@@ -843,7 +871,6 @@ class _SearchableDropdownState extends State<SearchableDropdown> {
     );
     Overlay.of(context).insert(_entry!);
     
-    // Ensure search field is not focused after overlay is shown
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _searchFocusNode.unfocus();

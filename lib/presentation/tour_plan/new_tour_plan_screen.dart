@@ -72,6 +72,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   final Map<String, int> _employeeNameToId = <String, int>{};
   /// Reporting staff [CommonDropdownItem.id] is employeeId — not login userId.
   final Map<int, int> _reportingStaffRepTypeByEmployeeId = <int, int>{};
+  final Map<int, String> _reportingStaffRepTypeTextByEmployeeId = <int, String>{};
   final Map<int, String> _reportingStaffDesignationByEmployeeId = <int, String>{};
   String? _selectedReportingStaff; // Selected reporting staff display name (managers only)
   int? _selectedEmployeeId; // For managers = selected reporting staff ID; for non-managers = current user's employeeId
@@ -95,8 +96,36 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       _fullTourPlanData; // Store the full tour plan data after fetching
   bool _isSubmitting = false; // Flag to track if we're submitting the tour plan
   UserDetailStore? _userDetailStore;
-  int? _lastLoadedPurposeRepType;
+  String? _lastLoadedPurposeText;
   int _purposeLoadGeneration = 0;
+  bool _handlingProfileUpdate = false;
+  bool _isPopulatingFromEdit = false;
+
+  void _resetClusterOptions() {
+    _clusters.clear();
+    _clusterNameToId.clear();
+  }
+
+  String? _canonicalClusterName(String clusterName) {
+    final String normalized = clusterName.toLowerCase().trim();
+    if (normalized.isEmpty) return null;
+    for (final String option in _clusters) {
+      if (option.toLowerCase().trim() == normalized) return option;
+    }
+    for (final String key in _clusterNameToId.keys) {
+      if (key.toLowerCase().trim() == normalized) return key;
+    }
+    return null;
+  }
+
+  Set<String> _filterClustersToEmployeeOptions(Set<String> clusters) {
+    final Set<String> filtered = <String>{};
+    for (final String cluster in clusters) {
+      final String? canonical = _canonicalClusterName(cluster);
+      if (canonical != null) filtered.add(canonical);
+    }
+    return filtered;
+  }
 
   /// Check if the form should be in view-only mode
   /// Returns true if isViewOnly is true OR if the tour plan is approved (status 5)
@@ -152,6 +181,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     _checkUserRole();
 
     if (widget.tourPlanToEdit != null) {
+      if (_isManagerOrFieldManager) {
+        await _loadReportingStaffList();
+      }
       await _loadTourPlanDetails();
       return;
     }
@@ -176,19 +208,52 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
   }
 
   void _onUserProfileUpdated() {
-    if (!mounted) return;
-    final int? repType = _userDetailStore?.userDetail?.repType;
-    if (repType == null || repType <= 0) return;
+    if (!mounted || _handlingProfileUpdate) return;
+    _checkUserRole();
     if (_isManagerOrFieldManager && _selectedEmployeeId == null) return;
+    if (_isLoadingPurpose) return;
+
+    final UserDetail? ud = _userDetailStore?.userDetail;
+    if (ud == null) return;
+
+    int? staffRepType;
+    String? staffRepTypeText;
+    if (_selectedEmployeeId != null) {
+      staffRepType = _reportingStaffRepTypeByEmployeeId[_selectedEmployeeId!];
+      staffRepTypeText =
+          _reportingStaffRepTypeTextByEmployeeId[_selectedEmployeeId!];
+    }
+
+    final String expectedText = PurposeVisitHelper.resolveTourPlanPurposeText(
+      loggedInUser: ud,
+      selectedEmployeeId: _selectedEmployeeId,
+      reportingStaffRepType: staffRepType,
+      reportingStaffRepTypeText: staffRepTypeText,
+    );
+
     // Re-fetch if profile arrived late or list looks truncated (e.g. stuck at 3).
-    if (repType == _lastLoadedPurposeRepType &&
-        _purposeOptions.length > 5 &&
-        PurposeVisitHelper.isServiceEngineer(repType: repType)) {
+    if (expectedText == _lastLoadedPurposeText && _purposeOptions.length > 3) {
       return;
     }
 
-    _checkUserRole();
-    _loadTypeOfWorkList();
+    _handlingProfileUpdate = true;
+    _loadTypeOfWorkList().whenComplete(() {
+      _handlingProfileUpdate = false;
+    });
+  }
+
+  /// Pre-select own employeeId for SE / AE / Field Coordinator managers.
+  void _tryPreselectSelfPlanningManager([UserDetail? user]) {
+    if (!_isManagerOrFieldManager || _selectedEmployeeId != null) return;
+    final UserDetail? ud = user ??
+        (getIt.isRegistered<UserDetailStore>()
+            ? getIt<UserDetailStore>().userDetail
+            : null);
+    if (!PurposeVisitHelper.managerPreselectsSelfForTourPlan(ud)) return;
+    final int? employeeId = ud?.employeeId;
+    if (employeeId != null && employeeId > 0) {
+      _selectedEmployeeId = employeeId;
+    }
   }
 
   /// Check if user is manager or field manager/coordinator based on RoleCategory
@@ -199,18 +264,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     final String serviceArea =
         (userStore?.userDetail?.serviceArea ?? '').trim();
-    _isServiceEngineer = PurposeVisitHelper.isServiceEngineer(
-      serviceArea: serviceArea,
-      repType: userStore?.userDetail?.repType,
-    );
+    _isServiceEngineer = PurposeVisitHelper.isServiceEngineerUser(userStore?.userDetail);
     final int? roleCategory = userStore?.userDetail?.roleCategory;
     final int? repType = userStore?.userDetail?.repType;
-    _isPocRep = (repType == 3 && roleCategory == 3);
+    _isPocRep = PurposeVisitHelper.isPocRepUser(userStore?.userDetail);
 
     if (roleCategory != null) {
       // RoleCategory 1 or 2 = Manager/Field Manager/Coordinator
       // RoleCategory 3 = Representative
-      _isManagerOrFieldManager = roleCategory == 1 || roleCategory == 2;
+      _isManagerOrFieldManager =
+          PurposeVisitHelper.isManagerOrFieldManagerUser(userStore?.userDetail);
 
       print(
           'NewTourPlanScreen: [Employee] RoleCategory: $roleCategory, RepType: $repType, Is Manager/Field Manager: $_isManagerOrFieldManager, Is POC Rep: $_isPocRep');
@@ -226,14 +289,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               employeeCode != null && employeeCode.isNotEmpty
                   ? '$employeeCode - $employeeName'
                   : employeeName;
-          if (mounted) {
+          if (mounted &&
+              (_selectedEmployeeId != employeeId ||
+                  _selectedEmployee != displayName)) {
             setState(() {
               _selectedEmployee = displayName;
               _selectedEmployeeId = employeeId;
             });
+            print(
+                'NewTourPlanScreen: [Employee] Set current employee: $_selectedEmployee (ID: $_selectedEmployeeId)');
           }
-          print(
-              'NewTourPlanScreen: [Employee] Set current employee: $_selectedEmployee (ID: $_selectedEmployeeId)');
         }
       } else {
         // For managers/field managers: Employee field shows manager's name (read-only)
@@ -245,17 +310,19 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               managerCode != null && managerCode.isNotEmpty
                   ? '$managerCode - $managerName'
                   : managerName;
-          if (mounted) {
+          final bool preselectSelf = PurposeVisitHelper
+              .managerPreselectsSelfForTourPlan(userStore?.userDetail);
+          final int? nextEmployeeId =
+              preselectSelf ? managerEmployeeId : null;
+          if (mounted &&
+              (_selectedEmployee != displayName ||
+                  _selectedEmployeeId != nextEmployeeId)) {
             setState(() {
               _selectedEmployee = displayName;
-              // Service-engineer managers plan for themselves using employeeId.
-              if (PurposeVisitHelper.isServiceEngineer(
-                serviceArea: userStore?.userDetail?.serviceArea,
-                repType: repType,
-              )) {
+              if (preselectSelf) {
                 _selectedEmployeeId = managerEmployeeId;
                 print(
-                    'NewTourPlanScreen: [Employee] SE manager — pre-selected self employeeId: $managerEmployeeId, repType: $repType');
+                    'NewTourPlanScreen: [Employee] Self-planning manager — pre-selected employeeId: $managerEmployeeId, repType: $repType');
               } else {
                 _selectedEmployeeId = null;
               }
@@ -348,9 +415,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           _employeeOptions.clear();
           _employeeNameToId.clear();
           _reportingStaffRepTypeByEmployeeId.clear();
+          _reportingStaffRepTypeTextByEmployeeId.clear();
           _reportingStaffDesignationByEmployeeId.clear();
 
           for (final item in items) {
+            // Managers must not appear in their own reporting-staff list.
+            if (item.id == loginEmployeeId) {
+              continue;
+            }
+
             // Format: "CODE - NAME" or just "NAME" if no code
             final String employeeName =
                 item.employeeName.isNotEmpty ? item.employeeName : item.text;
@@ -366,27 +439,25 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               if (item.repType != null && item.repType! > 0) {
                 _reportingStaffRepTypeByEmployeeId[item.id] = item.repType!;
               }
+              final String repTypeText = (item.repTypeText ?? '').trim();
+              if (repTypeText.isNotEmpty) {
+                _reportingStaffRepTypeTextByEmployeeId[item.id] = repTypeText;
+              }
               final String designation = item.designation.trim();
               if (designation.isNotEmpty) {
                 _reportingStaffDesignationByEmployeeId[item.id] = designation;
               }
+              print(
+                  'NewTourPlanScreen: [Employee] staff employeeId=${item.id} repType=${item.repType} repTypetext="$repTypeText" => purpose API Text="${PurposeVisitHelper.purposeVisitTextFromRepTypeText(repTypeText.isNotEmpty ? repTypeText : null)}" display="$displayName"');
             }
           }
 
-          // Default reporting staff to logged-in manager when listed under their team.
-          if (_selectedEmployeeId == null &&
-              loginEmployeeId != null &&
-              loginEmployeeId > 0) {
-            for (final MapEntry<String, int> entry
-                in _employeeNameToId.entries) {
-              if (entry.value == loginEmployeeId) {
-                _selectedReportingStaff = entry.key;
-                _selectedEmployeeId = loginEmployeeId;
-                print(
-                    'NewTourPlanScreen: [Employee] Auto-selected reporting staff: $_selectedReportingStaff (employeeId: $_selectedEmployeeId)');
-                break;
-              }
-            }
+          // Clear reporting staff if it was previously set to the manager (self).
+          if (_selectedEmployeeId == loginEmployeeId &&
+              !PurposeVisitHelper.managerPreselectsSelfForTourPlan(
+                  userStore?.userDetail)) {
+            _selectedReportingStaff = null;
+            _selectedEmployeeId = null;
           }
 
           print(
@@ -629,6 +700,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
 
   /// Populate form fields from TourPlanItem data
   Future<void> _populateFormFromTourPlan(TourPlanItem tourPlan) async {
+    _isPopulatingFromEdit = true;
+    try {
     print('NewTourPlanScreen: [Edit] Starting _populateFormFromTourPlan');
     print('  - TourPlan ID: ${tourPlan.id}');
     print(
@@ -666,6 +739,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         tourPlan.clusters!.isNotEmpty) {
       clustersToSelect = _parseClusters(tourPlan.clusters);
     }
+
+    // Header clusters can include cities from other staff — only keep those
+    // that belong to the selected reporting employee (validated after API load).
 
     // Extract date
     if (tourPlan.tourPlanDetails != null &&
@@ -743,7 +819,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       print('NewTourPlanScreen: [Edit] Error loading dropdown options: $e');
     }
 
-    // 4. NOW set selected values after options are loaded
+    // 4. NOW set selected values after options are loaded (scoped to employee)
+    clustersToSelect = _filterClustersToEmployeeOptions(clustersToSelect);
     if (mounted) {
       setState(() {
         // Reset any previous selections first so we always reflect the
@@ -753,23 +830,26 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         _removedAutoSelectedClusters = <String>{};
         _clusterError = null;
         print(
-            'NewTourPlanScreen: [Edit] Set clusters: ${_selectedClusters.toList()}');
+            'NewTourPlanScreen: [Edit] Set clusters (employee-scoped): ${_selectedClusters.toList()}');
       });
     }
 
-    // 5. Map cluster IDs and verify cluster names match loaded options
+    // 5. Map cluster IDs from saved details (do not add clusters outside employee list)
     if (tourPlan.tourPlanDetails != null &&
         tourPlan.tourPlanDetails!.isNotEmpty) {
-      final detail = tourPlan.tourPlanDetails!.first;
-      if (detail.clusterId > 0 && _selectedClusters.isNotEmpty) {
-        final firstClusterName = _selectedClusters.first;
-        if (mounted) {
-          setState(() {
-            _clusterNameToId[firstClusterName] = detail.clusterId;
-            if (!_clusters.contains(firstClusterName)) {
-              _clusters.add(firstClusterName);
-            }
-          });
+      for (final detail in tourPlan.tourPlanDetails!) {
+        if (detail.clusterId <= 0) continue;
+        final String? clusterName = detail.clusterNames?.split(',').first.trim();
+        if (clusterName == null || clusterName.isEmpty) continue;
+        final String? canonical = _canonicalClusterName(clusterName);
+        if (canonical != null) {
+          if (mounted) {
+            setState(() {
+              _clusterNameToId[canonical] = detail.clusterId;
+            });
+          } else {
+            _clusterNameToId[canonical] = detail.clusterId;
+          }
         }
       }
     }
@@ -976,14 +1056,19 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     print('NewTourPlanScreen: [Edit] ✅ Form population completed!');
     print('  - Clusters selected: ${_selectedClusters.length}');
     print('  - Calls created: ${_calls.length}');
+    } finally {
+      _isPopulatingFromEdit = false;
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_requestedInitialClusters) {
+    if (!_requestedInitialClusters && widget.tourPlanToEdit == null) {
       _requestedInitialClusters = true;
-      _ensureClustersLoaded();
+      if (!_isManagerOrFieldManager || _selectedEmployeeId != null) {
+        _ensureClustersLoaded();
+      }
     }
   }
 
@@ -1108,6 +1193,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                                 : null;
                                             _employeeError = null;
                                             // Clear clusters and customers when reporting staff changes
+                                            _resetClusterOptions();
                                             _selectedClusters.clear();
                                             _customerNameToId.clear();
                                             _customerIdToName.clear();
@@ -1118,7 +1204,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                                             _purposeOptions.clear();
                                             _typeOfWorkNameToId.clear();
                                             _typeOfWorkIdToName.clear();
-                                            _lastLoadedPurposeRepType = null;
+                                            _lastLoadedPurposeText = null;
                                             _productOptions.clear();
                                             _productNameToId.clear();
                                             _customerTypeOptions.clear();
@@ -1682,10 +1768,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           (_isManagerOrFieldManager && _selectedEmployeeId != null)
               ? _selectedEmployeeId!
               : (userStore.userDetail?.employeeId ?? 0);
-      final String employeeName =
-          (_isManagerOrFieldManager && _selectedReportingStaff != null)
-              ? _selectedReportingStaff!
-              : (userStore.userDetail?.employeeName ?? "");
+      final String employeeName = _isManagerOrFieldManager
+          ? (_selectedReportingStaff ??
+              _selectedEmployee ??
+              userStore.userDetail?.employeeName ??
+              '')
+          : (userStore.userDetail?.employeeName ?? '');
 
       print(
           'NewTourPlanScreen: [Submit] Using employeeId: $employeeId (Manager/Field Manager: $_isManagerOrFieldManager)');
@@ -2219,20 +2307,22 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       derivedClusters.removeAll(_removedAutoSelectedClusters);
     }
 
-    if (derivedClusters.isNotEmpty) {
-      final Set<String> combined = {..._clusters, ...derivedClusters};
-      if (combined.length != _clusters.length) {
-        _clusters = combined.toList();
-      }
+    Set<String> scopedDerivedClusters = derivedClusters;
+    if (scopedDerivedClusters.isNotEmpty) {
+      scopedDerivedClusters = scopedDerivedClusters
+          .map((c) => _canonicalClusterName(c) ?? c)
+          .where((c) => _canonicalClusterName(c) != null)
+          .toSet();
     }
 
     final Set<String> manualClusters =
         _selectedClusters.difference(_autoSelectedClusters);
-    final Set<String> updatedSelected = {...manualClusters, ...derivedClusters};
+    final Set<String> updatedSelected =
+        {...manualClusters, ...scopedDerivedClusters};
 
     final bool selectionChanged =
         !setEquals(_selectedClusters, updatedSelected);
-    _autoSelectedClusters = derivedClusters;
+    _autoSelectedClusters = scopedDerivedClusters;
 
     if (selectionChanged) {
       _selectedClusters = updatedSelected;
@@ -2256,11 +2346,19 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       (_) => _CallValidationState(),
     );
 
-    // Validate reporting staff selection for managers/field managers
+    // Validate reporting staff selection for managers/field managers.
+    // Self-planning managers (SE/AE/Field Coordinator) use own employeeId only.
     if (_isManagerOrFieldManager) {
-      if (_selectedReportingStaff == null ||
-          _selectedReportingStaff!.isEmpty ||
-          _selectedEmployeeId == null) {
+      final UserDetailStore? userStore =
+          getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+      final bool planningForSelf = PurposeVisitHelper.isPlanningForSelf(
+        loggedInUser: userStore?.userDetail,
+        selectedEmployeeId: _selectedEmployeeId,
+      );
+      if (!planningForSelf &&
+          (_selectedReportingStaff == null ||
+              _selectedReportingStaff!.isEmpty ||
+              _selectedEmployeeId == null)) {
         employeeError = 'Please select Reporting Staff';
         firstMessage ??= 'Select Reporting Staff';
         isValid = false;
@@ -2387,7 +2485,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
     if (_isLoadingClusters) return;
     if (_clusters.isNotEmpty && !force) return;
 
+    _tryPreselectSelfPlanningManager();
+
     // Manager/Field Manager must select Reporting Staff first
+    if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+      final UserDetail? user =
+          await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
+      _checkUserRole();
+      _tryPreselectSelfPlanningManager(user);
+    }
+
     if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
       print(
           'NewTourPlanScreen: [Clusters] Manager role without selected reporting staff - skipping cluster load');
@@ -2451,15 +2558,14 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           .toSet();
 
       if (clusters.isNotEmpty) {
+        final bool allowApiPreselect = widget.tourPlanToEdit == null &&
+            !_isPopulatingFromEdit;
         if (mounted) {
           setState(() {
             if (force) {
-              _clusters = clusters.toList();
-            } else {
-              _clusters = {..._clusters, ...clusters}.toList();
+              _resetClusterOptions();
             }
-            _selectedClusters = {..._selectedClusters, ...preselectedClusters};
-            _clusterError = null;
+            _clusters = clusters.toList();
             for (final item in items) {
               final String key =
                   (item.text.isNotEmpty ? item.text : item.cityName).trim();
@@ -2467,20 +2573,31 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
                 _clusterNameToId[key] = item.id;
               }
             }
+            if (allowApiPreselect && preselectedClusters.isNotEmpty) {
+              _selectedClusters = {
+                ..._selectedClusters,
+                ...preselectedClusters.intersection(clusters),
+              };
+            }
+            _clusterError = null;
           });
         } else {
           if (force) {
-            _clusters = clusters.toList();
-          } else {
-            _clusters = {..._clusters, ...clusters}.toList();
+            _resetClusterOptions();
           }
-          _selectedClusters = {..._selectedClusters, ...preselectedClusters};
+          _clusters = clusters.toList();
           for (final item in items) {
             final String key =
                 (item.text.isNotEmpty ? item.text : item.cityName).trim();
             if (key.isNotEmpty) {
               _clusterNameToId[key] = item.id;
             }
+          }
+          if (allowApiPreselect && preselectedClusters.isNotEmpty) {
+            _selectedClusters = {
+              ..._selectedClusters,
+              ...preselectedClusters.intersection(clusters),
+            };
           }
         }
       }
@@ -2513,6 +2630,10 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           _isLoadingPurpose = true;
         });
       }
+      final UserDetail? loggedInUser =
+          await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
+      _checkUserRole();
+      _tryPreselectSelfPlanningManager(loggedInUser);
       // Manager/Field Manager must select Reporting Staff first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
@@ -2526,24 +2647,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
       if (getIt.isRegistered<CommonRepository>()) {
         final repo = getIt<CommonRepository>();
-        final UserDetail? loggedInUser =
-            await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
-
-        // SE manager planning own tour plan — ensure reporting staff employeeId is set.
-        if (_isManagerOrFieldManager &&
-            _selectedEmployeeId == null &&
-            PurposeVisitHelper.isServiceEngineerUser(loggedInUser)) {
-          _selectedEmployeeId = loggedInUser?.employeeId;
-          print(
-              'NewTourPlanScreen: [PurposeOfVisit] Late-bound SE manager employeeId: $_selectedEmployeeId');
-        }
 
         int? reportingStaffRepType;
+        String? reportingStaffRepTypeText;
         String? reportingStaffDesignation;
 
         if (_isManagerOrFieldManager && _selectedEmployeeId != null) {
           reportingStaffRepType =
               _reportingStaffRepTypeByEmployeeId[_selectedEmployeeId!];
+          reportingStaffRepTypeText =
+              _reportingStaffRepTypeTextByEmployeeId[_selectedEmployeeId!];
           reportingStaffDesignation =
               _reportingStaffDesignationByEmployeeId[_selectedEmployeeId!];
         }
@@ -2553,36 +2666,16 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
           selectedEmployeeId: _selectedEmployeeId,
         );
 
-        final int? effectiveRepType = PurposeVisitHelper.isPlanningForSelf(
-          loggedInUser: loggedInUser,
-          selectedEmployeeId: _selectedEmployeeId,
-        )
-            ? (loggedInUser?.repType ?? reportingStaffRepType)
-            : reportingStaffRepType;
-
-        String purposeText = PurposeVisitHelper.resolveTourPlanPurposeText(
+        final String purposeText = PurposeVisitHelper.resolveTourPlanPurposeText(
           loggedInUser: loggedInUser,
           selectedEmployeeId: _selectedEmployeeId,
           reportingStaffRepType: reportingStaffRepType,
+          reportingStaffRepTypeText: reportingStaffRepTypeText,
           reportingStaffDesignation: reportingStaffDesignation,
         );
 
-        // Hard guarantee for Service Engineer profiles (repType 5 / serviceArea).
-        if (PurposeVisitHelper.isServiceEngineer(
-          serviceArea: PurposeVisitHelper.isPlanningForSelf(
-            loggedInUser: loggedInUser,
-            selectedEmployeeId: _selectedEmployeeId,
-          )
-              ? loggedInUser?.serviceArea
-              : null,
-          repType: effectiveRepType,
-          designation: reportingStaffDesignation,
-        )) {
-          purposeText = PurposeVisitTexts.serviceEng;
-        }
-
         print(
-            'NewTourPlanScreen: [PurposeOfVisit] apiUserId: $userId, selectedEmployeeId: $_selectedEmployeeId, repType: ${loggedInUser?.repType}, staffRepType: $reportingStaffRepType, effectiveRepType: $effectiveRepType, text: "$purposeText"');
+            'NewTourPlanScreen: [PurposeOfVisit] apiUserId: $userId, selectedEmployeeId: $_selectedEmployeeId, repTypeText: ${loggedInUser?.repTypeText}, staffRepTypeText: $reportingStaffRepTypeText, text: "$purposeText"');
 
         if (userId <= 0) {
           print('NewTourPlanScreen: [PurposeOfVisit] userId invalid, skipping');
@@ -2620,7 +2713,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
         final Set<String> works = normalizedPurposeToDisplay.values.toSet();
         if (works.isNotEmpty) {
-          _lastLoadedPurposeRepType = effectiveRepType;
+          _lastLoadedPurposeText = purposeText;
           if (mounted) {
             setState(() {
               final List<String> dedupedPurposeOptions = works.toList()
@@ -2632,10 +2725,15 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               for (final item in items) {
                 final String key =
                     (item.text.isNotEmpty ? item.text : item.typeText).trim();
-                if (key.isNotEmpty) {
+                if (key.isEmpty) continue;
+                if (item.id > 0) {
                   _typeOfWorkNameToId[key] = item.id;
-                  _typeOfWorkIdToName[item.id] =
-                      key; // Reverse mapping for editing
+                  _typeOfWorkIdToName[item.id] = key;
+                }
+                for (final int altId in <int>[item.value, item.item]) {
+                  if (altId > 0) {
+                    _typeOfWorkIdToName[altId] = key;
+                  }
                 }
               }
 
@@ -2703,6 +2801,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
       // Manager/Field Manager must select Reporting Staff first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+        final UserDetail? user =
+            await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
+        _checkUserRole();
+        _tryPreselectSelfPlanningManager(user);
+      }
+      if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
             'NewTourPlanScreen: [Products] Manager role without selected reporting staff - skipping');
         if (mounted) {
@@ -2753,6 +2857,7 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         } else if (PurposeVisitHelper.isServiceEngineer(
           serviceArea: serviceArea,
           repType: userStore?.userDetail?.repType,
+          repTypeText: userStore?.userDetail?.repTypeText,
         )) {
           if (employeeId != null && employeeId > 0) {
             actualUserId = employeeId;
@@ -2839,6 +2944,12 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       }
       // Manager/Field Manager must select Reporting Staff first
       if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
+        final UserDetail? user =
+            await PurposeVisitHelper.ensureLoggedInUserProfile(_userDetailStore);
+        _checkUserRole();
+        _tryPreselectSelfPlanningManager(user);
+      }
+      if (_isManagerOrFieldManager && _selectedEmployeeId == null) {
         print(
             'NewTourPlanScreen: [CustomerType] Manager role without selected reporting staff - skipping');
         if (mounted) {
@@ -2881,8 +2992,8 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
 
         // Type for Customer Type API: use serviceArea when non-empty; otherwise derive from repType (1=Sales Rep, 2=Medical Rep, 5=Service Engineer) so empty serviceArea does not give wrong response
-        final String typeParam = _customerTypeApiTypeParam(
-            serviceArea: serviceArea, repType: repType);
+        final String typeParam = PurposeVisitHelper.customerTypeApiTypeParam(
+            userStore?.userDetail);
         print(
             'NewTourPlanScreen: [CustomerType] Loading customer types with userId: $userId, type: "$typeParam" (serviceArea: "$serviceArea", repType: $repType)');
         final List<CommonDropdownItem> items = await repo
@@ -3113,11 +3224,9 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
         }
         if (clusterName.isNotEmpty && mc.clusterId > 0) {
           clusterNamesFromApi.add(clusterName);
-          if (!_clusterNameToId.containsKey(clusterName)) {
-            _clusterNameToId[clusterName] = mc.clusterId;
-          }
-          if (!_clusters.contains(clusterName)) {
-            _clusters.add(clusterName);
+          final String? canonical = _canonicalClusterName(clusterName);
+          if (canonical != null) {
+            _clusterNameToId[canonical] = mc.clusterId;
           }
         }
       }
@@ -3125,7 +3234,6 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
       if (mounted) {
         setState(() {
           call.customerOptions = loadedOptions.toSet().toList();
-          _clusters = _clusters.toSet().toList();
 
           if (clusterNamesFromApi.isNotEmpty) {
             final Set<String> updatedSelectedClusters = {};
@@ -3134,12 +3242,13 @@ class _NewTourPlanScreenState extends State<NewTourPlanScreen> {
               for (final apiCluster in clusterNamesFromApi) {
                 if (apiCluster.toLowerCase().trim() ==
                     selectedCluster.toLowerCase().trim()) {
-                  matchedCluster = apiCluster;
+                  matchedCluster = _canonicalClusterName(apiCluster);
                   break;
                 }
               }
-              updatedSelectedClusters
-                  .add(matchedCluster ?? selectedCluster);
+              if (matchedCluster != null) {
+                updatedSelectedClusters.add(matchedCluster);
+              }
             }
             if (!setEquals(_selectedClusters, updatedSelectedClusters)) {
               _selectedClusters = updatedSelectedClusters;

@@ -12,6 +12,7 @@ import 'package:boilerplate/domain/repository/common/common_repository.dart';
 import 'package:boilerplate/domain/entity/common/common_api_models.dart';
 import 'package:boilerplate/domain/repository/tour_plan/tour_plan_repository.dart';
 import 'package:boilerplate/utils/purpose_visit_helper.dart';
+import 'package:boilerplate/utils/manager_review_helper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobx/mobx.dart';
 import 'package:boilerplate/presentation/crm/widgets/manager_comment_dialog.dart';
@@ -23,6 +24,7 @@ import 'package:boilerplate/data/network/apis/user/lib/domain/entity/tour_plan/t
 import 'dart:async';
 
 const String kFilterClearToken = '__CLEAR__';
+const String kAllStaffFilterOption = 'All Staff';
 
 class TourPlanManagerReviewScreen extends StatefulWidget {
   const TourPlanManagerReviewScreen({super.key});
@@ -33,13 +35,10 @@ class TourPlanManagerReviewScreen extends StatefulWidget {
 
 class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   /// Load all variants when resolving manager detail — IDs may belong to any list.
-  static const List<String> _allPurposeVisitApiTexts = <String>[
-    'Salesrep PurposeVisit',
-    'ServiceEng PurposeVisit',
-    'PocRep-PurposeofVisit',
-  ];
+  static const List<String> _allPurposeVisitApiTexts =
+      PurposeVisitTexts.allPurposeVisitApiTexts;
   String? _customer;
-  String? _employee;
+  String? _employee = kAllStaffFilterOption;
   String? _status; // Draft/Pending/Approved/Rejected
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime? _selectedDay; // No initial selection - shows all items
@@ -62,6 +61,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   final Map<String, int> _employeeNameToId = {};
   final Map<String, String> _employeeNameToDesignation = {};
   final Map<int, String> _employeeIdToDesignation = {};
+  final Map<String, String> _employeeNameToRepTypeText = {};
+  final Map<int, String> _employeeIdToRepTypeText = {};
   final Map<int, String> _typeOfWorkIdToName = {};
   /// Keys: `"userId::Salesrep PurposeVisit|..."` so we cache per API text set, not only user id.
   final Set<String> _purposeLookupLoadedKeys = <String>{};
@@ -108,14 +109,26 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       curve: Curves.easeOut,
     );
     
-    // Load initial data from API
-    _refreshAll();
-    _getTourPlanStatusList();
-    _loadMappedCustomersByEmployeeId(); // Load customer list using API
-    _getEmployeeList(); // Load employee list for filter (Manager's team)
-    _primePurposeLookupForLoggedInUser();
+    _initializeScreenData();
     // Auto-refresh disabled - removed periodic API calls
   }
+
+  Future<void> _initializeScreenData() async {
+    try {
+      await _getEmployeeList();
+      if (!mounted) return;
+      await _refreshAll();
+      if (!mounted) return;
+      _getTourPlanStatusList();
+      _loadMappedCustomersByEmployeeId();
+      _primePurposeLookupForLoggedInUser();
+    } catch (e) {
+      debugPrint('TourPlanManagerReviewScreen: initial load failed: $e');
+    }
+  }
+
+  bool _shouldLoadFilteredListData() =>
+      _hasActiveFilters() || _isAllStaffSelected();
 
   @override
   void dispose() {
@@ -126,12 +139,27 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     super.dispose();
   }
   
+  List<String> _employeeFilterDropdownOptions() {
+    return ManagerReviewHelper.filterOptionsForDisplay(
+      _employeeOptions,
+      _employeeNameToId,
+      _userDetailStore.userDetail,
+      allStaffOption: kAllStaffFilterOption,
+    );
+  }
+
   void _openFilterModal() {
     if (_filterModalController == null) return;
     setState(() {
       _modalTempCustomer = _customer;
       _modalTempStatus = _status;
-      _modalTempEmployee = _employee;
+      _modalTempEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+        selected: _employee,
+        options: _employeeOptions,
+        nameToId: _employeeNameToId,
+        loggedInUser: _userDetailStore.userDetail,
+        allStaffOption: kAllStaffFilterOption,
+      );
       _showFilterModal = true;
     });
     _filterModalController!.forward();
@@ -192,8 +220,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       await _loadTourPlanEmployeeListSummary();
       print('TourPlanManagerReviewScreen: Loading tour plan summary...');
       await _loadTourPlanSummary();
-      // Load data with current filters (if any) - local filtering will handle display
-      if (_hasActiveFilters()) {
+      // Load data with current filters (if any) - All Staff also loads full team data
+      if (_shouldLoadFilteredListData()) {
         print('TourPlanManagerReviewScreen: Loading calendar item list data with filters...');
         await _loadCalendarItemListData();
       } else {
@@ -577,8 +605,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                             
                                             // Call API when month changes - use filters if any are active
                                             await _loadCalendarViewData();
-                                            if (_hasActiveFilters()) {
-                                            await _loadCalendarItemListData();
+                                            if (_shouldLoadFilteredListData()) {
+                                              await _loadCalendarItemListData();
                                             } else {
                                               await _loadCalendarItemListDataWithoutFilters();
                                             }
@@ -658,7 +686,9 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                     
                     // Filter by employee
                     bool byEmployee = true;
-                    if (_employee != null && _employee!.isNotEmpty) {
+                    if (_employee != null &&
+                        _employee!.isNotEmpty &&
+                        !_isAllStaffSelected()) {
                       byEmployee = false;
                       // Try matching by name (case-insensitive)
                       if (item.employeeName != null && item.employeeName!.trim().isNotEmpty) {
@@ -855,6 +885,14 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   /// 3. Legacy “Rejected” status is treated like Sent Back — only Approve allowed
   /// 4. If Pending: Approve or Send Back allowed
   
+  bool _isOwnTourPlanForReview(TourPlanItem item) {
+    return ManagerReviewHelper.isOwnEmployeeRecord(
+      loggedInUser: _userDetailStore.userDetail,
+      recordEmployeeId: item.employeeId,
+      recordCreatedBy: item.createdBy,
+    );
+  }
+
   bool _canApproveSelected() {
     if (_selectedIds.isEmpty) return false;
     
@@ -864,6 +902,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnTourPlanForReview)) return false;
     
     // Check if all items are approved
     final allApproved = selectedItems.every((item) => item.status == 5);
@@ -885,6 +925,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnTourPlanForReview)) return false;
     
     // Check statuses: 5=Approved, 4=Sent Back, 3=Rejected, 1/2=Pending
     final allApproved = selectedItems.every((item) => item.status == 5);
@@ -899,9 +941,10 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   Widget _buildTourPlanItemCard(TourPlanItem item) {
     final isTablet = MediaQuery.of(context).size.width >= 600;
     final bool isSelected = _selectedIds.contains(item.id.toString());
-    // Disable selection for approved tour plans (status = 5)
+    // Disable selection for approved or own tour plans (read-only for manager)
     final bool isApproved = item.status == 5;
-    final bool isDisabled = isApproved;
+    final bool isOwnPlan = _isOwnTourPlanForReview(item);
+    final bool isDisabled = isApproved || isOwnPlan;
     
     // Get status text with fallbacks
     final statusText = _getStatusDisplayText(item);
@@ -1142,14 +1185,23 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     );
   }
 
-  /// Check if tour plan can be selected (not approved)
+  /// Check if tour plan can be selected for manager review actions.
   bool _canSelectTourPlan(TourPlanItem item) {
+    if (_isOwnTourPlanForReview(item)) return false;
     // Approved tour plans (status = 5) cannot be selected
     return item.status != 5;
   }
 
   /// Toggle selection of a tour plan item
   void _toggleSelection(TourPlanItem item) {
+    if (_isOwnTourPlanForReview(item)) {
+      ToastMessage.show(
+        context,
+        message: 'You cannot review your own tour plan',
+        type: ToastType.warning,
+      );
+      return;
+    }
     // Don't allow selection of approved tour plans
     if (!_canSelectTourPlan(item)) {
       ToastMessage.show(
@@ -1423,7 +1475,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                           ),
                         ),
                         IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => Navigator.of(ctx).pop(),
                           icon: const Icon(Icons.close),
                           tooltip: 'Close',
                           color: Colors.grey[700],
@@ -1482,7 +1534,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                       )) ...[
                         OutlinedButton.icon(
                           onPressed: () {
-                            Navigator.of(context).pop();
+                            Navigator.of(ctx).pop();
                             _deleteTourPlan(sheetItem);
                           },
                           icon: const Icon(Icons.delete_outlined, size: 18),
@@ -1895,11 +1947,32 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     );
   }
 
+  int _effectiveTourPlanDeleteId(TourPlanItem item) {
+    if (item.tourPlanId > 0) return item.tourPlanId;
+    return item.id;
+  }
+
+  String _deleteTourPlanErrorMessage(Object error) {
+    final text = error.toString();
+    if (text.contains('500')) {
+      return 'Cannot delete this tour plan. It may have been sent back or is in a state that cannot be deleted.';
+    }
+    if (text.contains('status code')) {
+      return 'Server error: Unable to delete tour plan. Please try again later.';
+    }
+    if (text.contains('Invalid tour plan ID')) {
+      return 'Cannot delete tour plan: invalid record id.';
+    }
+    return text.replaceFirst('Exception: ', '');
+  }
+
   /// Check if delete button should be shown for a tour plan item
   /// Delete button should only be visible when status is "Pending" (status == 1 or 2)
   /// Hide delete button if status is rejected (status == 3 or statusId == 3)
   /// If roleCategoryId === 3, only show delete for pending tour plans
   bool _shouldShowDeleteButton(TourPlanItem item, {TourPlanItem? fallbackItem}) {
+    if (_isOwnTourPlanForReview(item)) return false;
+
     final int actualStatus = _resolveStatusCode(item, fallbackItem: fallbackItem);
     
     // Hide delete button if status is rejected (status == 3)
@@ -1924,6 +1997,8 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   /// Show only for managers (roleCategory == 1) and on approved plans (status == 5)
   /// Hide modify button if status is rejected (status == 3 or statusId == 3)
   bool _shouldShowModifyButton(TourPlanItem item, {TourPlanItem? fallbackItem}) {
+    if (_isOwnTourPlanForReview(item)) return false;
+
     final int actualStatus = _resolveStatusCode(item, fallbackItem: fallbackItem);
     
     // Hide modify button if status is rejected (status == 3)
@@ -1938,11 +2013,16 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
 
   /// Delete tour plan
   Future<void> _deleteTourPlan(TourPlanItem item) async {
-    // Close the details dialog first
-    if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
+    final int deleteId = _effectiveTourPlanDeleteId(item);
+    if (deleteId <= 0) {
+      ToastMessage.show(
+        context,
+        message: 'Cannot delete tour plan: invalid record id.',
+        type: ToastType.error,
+      );
+      return;
     }
-    
+
     // Show confirmation dialog
     final bool? confirmed = await _showConfirmationDialog(
       'Delete Tour Plan',
@@ -1955,13 +2035,14 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       // Show loading indicator
       showDialog(
         context: context,
+        useRootNavigator: true,
         barrierDismissible: false,
         builder: (context) => const Center(
           child: CircularProgressIndicator(),
         ),
       );
       
-      final response = await _store.deleteTourPlan(item.id);
+      final response = await _store.deleteTourPlan(deleteId);
       
       // Close loading dialog
       if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
@@ -1995,7 +2076,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       if (mounted) {
         ToastMessage.show(
           context,
-          message: 'Error deleting tour plan: $e',
+          message: _deleteTourPlanErrorMessage(e),
           type: ToastType.error,
         );
       }
@@ -2391,6 +2472,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     
     return showDialog<bool>(
       context: context,
+      useRootNavigator: true,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
@@ -2669,14 +2751,14 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   void _clearAllFilters() async {
     setState(() {
       _customer = null;
-      _employee = null;
+      _employee = kAllStaffFilterOption;
       _status = null;
       _dataVersion++; // Force UI rebuild
     });
-    // Force hard refresh - reload calendar view and list data without filters
+    // Force hard refresh - reload calendar view and list data for all staff
     await Future.wait([
       _loadCalendarViewData(),
-      _loadCalendarItemListDataWithoutFilters(),
+      _loadCalendarItemListData(),
       _loadTourPlanEmployeeListSummary(),
     ]);
     // Apply filters after data is loaded
@@ -2689,6 +2771,11 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   
   /// Load calendar item list data without any filters applied
   Future<void> _loadCalendarItemListDataWithoutFilters() async {
+    if (_isAllStaffSelected()) {
+      await _loadCalendarItemListData();
+      return;
+    }
+
     try {
       final userId = _userDetailStore.userDetail?.id;
       final employeeId = _userDetailStore.userDetail?.employeeId;
@@ -2722,15 +2809,24 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     }
   }
 
+  bool _isAllStaffSelected() => _employee == kAllStaffFilterOption;
+
+  int? _filteredEmployeeId() {
+    if (_employee == null || _isAllStaffSelected()) return null;
+    return _employeeNameToId[_employee!];
+  }
+
   bool _hasActiveFilters() {
-    return _customer != null || _employee != null || _status != null;
+    final bool isEmployeeFiltered =
+        _employee != null && !_isAllStaffSelected();
+    return _customer != null || isEmployeeFiltered || _status != null;
   }
 
   int _getActiveFilterCount() {
     int count = 0;
     if (_customer != null) count++;
     if (_status != null) count++;
-    if (_employee != null) count++;
+    if (_employee != null && !_isAllStaffSelected()) count++;
     return count;
   }
 
@@ -2776,10 +2872,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       final managerId = _userDetailStore.userDetail?.id ?? 0;
       
       // Determine EmployeeId and SelectedEmployeeId based on filters
-      // If employee filter is selected, use filtered employeeId for both EmployeeId and SelectedEmployeeId
-      final int? filteredEmployeeId = (_employee != null && _employee!.isNotEmpty && _employeeNameToId.containsKey(_employee))
-          ? _employeeNameToId[_employee!]
-          : null;
+      final int? filteredEmployeeId = _filteredEmployeeId();
       
       // Get user's employeeId - ensure it's not null/0
       final int? userEmployeeId = _userDetailStore.userDetail?.employeeId;
@@ -2788,9 +2881,11 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
         return;
       }
       
-      // Use filtered employeeId if available, otherwise use user's employeeId
-      final int finalEmployeeId = filteredEmployeeId ?? userEmployeeId;
-      final int finalSelectedEmployeeId = filteredEmployeeId ?? userEmployeeId;
+      // All Staff uses EmployeeId 0; a specific employee uses their id; otherwise manager id
+      final int finalEmployeeId = filteredEmployeeId ??
+          (_isAllStaffSelected() ? 0 : userEmployeeId);
+      final int finalSelectedEmployeeId = filteredEmployeeId ??
+          (_isAllStaffSelected() ? 0 : userEmployeeId);
       
       print('TourPlanManagerReviewScreen: Calendar View - EmployeeId: $finalEmployeeId, SelectedEmployeeId: $finalSelectedEmployeeId (filtered: ${filteredEmployeeId != null})');
       
@@ -2875,20 +2970,13 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       }
       
       // Determine EmployeeId and SelectedEmployeeId based on filters
-      // If employee filter is selected, use filtered employeeId for both EmployeeId and SelectedEmployeeId
-      final int? filteredEmployeeId = (_employee != null && _employee!.isNotEmpty && _employeeNameToId.containsKey(_employee))
-          ? _employeeNameToId[_employee!]
-          : null;
+      final int? filteredEmployeeId = _filteredEmployeeId();
       
-      // Ensure employeeId is valid (not null/0)
-      if (employeeId == null || employeeId == 0) {
+      // Ensure employeeId is valid (not null/0) unless loading all staff
+      if ((employeeId == null || employeeId == 0) && !_isAllStaffSelected()) {
         print('TourPlanManagerReviewScreen: Invalid employeeId ($employeeId), cannot load calendar item list data');
         return;
       }
-      
-      // Use filtered employeeId if available, otherwise use user's employeeId
-      final int finalEmployeeId = filteredEmployeeId ?? employeeId;
-      final int finalSelectedEmployeeId = filteredEmployeeId ?? employeeId;
       
       // Get customerId and status from filters
       final int? customerId = (_customer != null && _customer!.isNotEmpty && _customerNameToId.containsKey(_customer))
@@ -2897,6 +2985,18 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
       final int? status = (_status != null && _statusNameToId.containsKey(_status))
           ? _statusNameToId[_status!]
           : null;
+
+      if (_isAllStaffSelected()) {
+        await _loadAllStaffCalendarItemListData(
+          userId: userId,
+          customerId: customerId,
+          status: status,
+        );
+        return;
+      }
+      
+      final int finalEmployeeId = filteredEmployeeId ?? employeeId!;
+      final int finalSelectedEmployeeId = filteredEmployeeId ?? employeeId;
       
       print('TourPlanManagerReviewScreen: Loading calendar item list data with filters - '
           'EmployeeId: $finalEmployeeId, SelectedEmployeeId: $finalSelectedEmployeeId, '
@@ -2983,45 +3083,63 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     try {
       if (getIt.isRegistered<CommonRepository>()) {
         final commonRepo = getIt<CommonRepository>();
-        // If employeeId is not provided, try to get it from user store
-        final int? finalEmployeeId = employeeId ?? _userDetailStore.userDetail?.employeeId;
-        final List<CommonDropdownItem> items = await commonRepo.getEmployeeList(employeeId: finalEmployeeId);
-        final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
-        
-        if (names.isNotEmpty && mounted) {
-          setState(() {
-            _employeeOptions = {..._employeeOptions, ...names}.toList();
-            // map names to ids for potential employee ID mapping
-            String? selectedEmployeeName;
-            for (final item in items) {
-              final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
-              if (key.isNotEmpty) {
-                _employeeNameToId[key] = item.id;
-                if (item.designation.trim().isNotEmpty) {
-                  final String des = item.designation.trim();
-                  _employeeNameToDesignation[key] = des;
-                  _employeeIdToDesignation[item.id] = des;
-                  if (item.value > 0) {
-                    _employeeIdToDesignation[item.value] = des;
-                  }
-                }
-                // If this employee's id matches the employeeId used in API call, auto-select it
-                if (finalEmployeeId != null && item.id == finalEmployeeId) {
-                  selectedEmployeeName = key;
-                }
+        final int? managerId =
+            employeeId ?? _userDetailStore.userDetail?.employeeId;
+        if (managerId == null) return;
+
+        final List<CommonDropdownItem> items =
+            ManagerReviewHelper.teamItemsExcludingLoggedInManager(
+          await commonRepo.getEmployeesReportingTo(managerId),
+          _userDetailStore.userDetail,
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          _employeeNameToId.clear();
+          _employeeNameToDesignation.clear();
+          _employeeIdToDesignation.clear();
+          _employeeNameToRepTypeText.clear();
+          _employeeIdToRepTypeText.clear();
+
+          _employeeOptions = ManagerReviewHelper.buildTeamFilterOptions(
+            items,
+            _userDetailStore.userDetail,
+            allStaffOption: kAllStaffFilterOption,
+          );
+
+          for (final item in items) {
+            final String key = ManagerReviewHelper.employeeFilterLabel(item);
+            if (key.isEmpty) continue;
+            _employeeNameToId[key] = item.id;
+            if (item.designation.trim().isNotEmpty) {
+              final String des = item.designation.trim();
+              _employeeNameToDesignation[key] = des;
+              _employeeIdToDesignation[item.id] = des;
+              if (item.value > 0) {
+                _employeeIdToDesignation[item.value] = des;
               }
             }
-            // Auto-select default employee only when there is no active valid selection.
-            // This keeps searched selections from being reset to the default user.
-            final bool hasValidCurrentSelection =
-                _employee != null && _employeeOptions.contains(_employee);
-            if (selectedEmployeeName != null && !hasValidCurrentSelection) {
-              _employee = selectedEmployeeName;
-              print('TourPlanManagerReviewScreen: Auto-selected employee: $selectedEmployeeName (ID: $finalEmployeeId)');
+            final String repTypeText = (item.repTypeText ?? '').trim();
+            if (repTypeText.isNotEmpty) {
+              _employeeNameToRepTypeText[key] = repTypeText;
+              _employeeIdToRepTypeText[item.id] = repTypeText;
+              if (item.value > 0) {
+                _employeeIdToRepTypeText[item.value] = repTypeText;
+              }
             }
-          });
-          print('TourPlanManagerReviewScreen: Loaded ${_employeeOptions.length} employees ${finalEmployeeId != null ? "for employeeId: $finalEmployeeId" : ""}');
-        }
+          }
+
+          _employee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+            selected: _employee,
+            options: _employeeOptions,
+            nameToId: _employeeNameToId,
+            loggedInUser: _userDetailStore.userDetail,
+            allStaffOption: kAllStaffFilterOption,
+          ) ?? kAllStaffFilterOption;
+        });
+        print(
+            'TourPlanManagerReviewScreen: Loaded ${_employeeOptions.length} team employees (manager excluded)');
       }
     } catch (e) {
       print('TourPlanManagerReviewScreen: Error getting employee list: $e');
@@ -3096,12 +3214,82 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   }
 
   int _getEmployeeIdForApi() {
-    if (_employee != null && _employeeNameToId.containsKey(_employee)) {
-      return _employeeNameToId[_employee!]!;
-    }
+    final int? filteredEmployeeId = _filteredEmployeeId();
+    if (filteredEmployeeId != null) return filteredEmployeeId;
     
     final userEmployeeId = _userDetailStore.userDetail?.employeeId;
     return userEmployeeId ?? 0;
+  }
+
+  Future<void> _loadAllStaffCalendarItemListData({
+    required int userId,
+    int? customerId,
+    int? status,
+  }) async {
+    if (!getIt.isRegistered<TourPlanRepository>()) return;
+
+    final int? managerEmployeeId = _userDetailStore.userDetail?.employeeId;
+    if (_employeeNameToId.isEmpty && managerEmployeeId != null) {
+      await _getEmployeeList(employeeId: managerEmployeeId);
+    }
+
+    final repo = getIt<TourPlanRepository>();
+    final Set<int> employeeIds = <int>{};
+    if (managerEmployeeId != null && managerEmployeeId > 0) {
+      employeeIds.add(managerEmployeeId);
+    }
+    for (final entry in _employeeNameToId.entries) {
+      if (entry.key == kAllStaffFilterOption) continue;
+      if (entry.value > 0) employeeIds.add(entry.value);
+    }
+
+    final Set<int> seenItemIds = <int>{};
+    final List<TourPlanItem> mergedItems = <TourPlanItem>[];
+
+    print(
+        'TourPlanManagerReviewScreen: Loading All Staff tour plans for ${employeeIds.length} employees');
+
+    for (final int empId in employeeIds) {
+      try {
+        final response = await repo.getTourPlanListData(
+          TourPlanGetRequest(
+            pageNumber: 1,
+            pageSize: 1000,
+            employeeId: empId,
+            month: _month.month,
+            userId: userId,
+            bizunit: 1,
+            year: _month.year,
+            selectedEmployeeId: empId,
+            customerId: customerId,
+            status: status,
+            sortOrder: 0,
+            sortDir: 0,
+          ),
+        );
+        for (final item in response.items) {
+          if (seenItemIds.add(item.id)) {
+            mergedItems.add(item);
+          }
+        }
+      } catch (e) {
+        print(
+            'TourPlanManagerReviewScreen: Error loading tour plans for employee $empId: $e');
+      }
+    }
+
+    runInAction(() {
+      _store.calendarItemListData = mergedItems;
+    });
+
+    print(
+        'TourPlanManagerReviewScreen: All Staff load complete - ${mergedItems.length} unique tour plan items');
+
+    if (mounted) {
+      setState(() {
+        _dataVersion++;
+      });
+    }
   }
 
   Future<void> _primePurposeLookupForLoggedInUser() async {
@@ -3142,13 +3330,13 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
   List<String> _purposeVisitTextsForLoggedInUser() {
     final ud = _userDetailStore.userDetail;
     if (ud == null) return [PurposeVisitTexts.salesRep];
-    return [
-      PurposeVisitHelper.tourPlanPurposeVisitText(
-        serviceArea: ud.serviceArea,
-        repType: ud.repType,
-        roleCategory: ud.roleCategory,
-      ),
-    ];
+    return PurposeVisitHelper.tourPlanPurposeVisitTexts(
+      serviceArea: ud.serviceArea,
+      repType: ud.repType,
+      roleCategory: ud.roleCategory,
+      repTypeText: ud.repTypeText,
+      designation: ud.repTypeText ?? ud.serviceArea,
+    );
   }
 
   /// Prefer team dropdown maps; ignore placeholder header designations ("Others New").
@@ -3172,16 +3360,52 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
     return '';
   }
 
+  String? _repTypeTextFromEmployeeDropdownMaps(TourPlanItem item) {
+    final String? employeeName = item.employeeName?.trim();
+    if (employeeName != null && employeeName.isNotEmpty) {
+      final String? direct = _employeeNameToRepTypeText[employeeName];
+      if (direct != null && direct.isNotEmpty) return direct;
+      final String want = _normalizeEmployeeNameKey(employeeName);
+      for (final MapEntry<String, String> e
+          in _employeeNameToRepTypeText.entries) {
+        if (_normalizeEmployeeNameKey(e.key) == want && e.value.isNotEmpty) {
+          return e.value;
+        }
+      }
+    }
+
+    final int idKey =
+        item.employeeId > 0 ? item.employeeId : (item.employee > 0 ? item.employee : 0);
+    if (idKey > 0) {
+      final String? mappedById = _employeeIdToRepTypeText[idKey];
+      if (mappedById != null && mappedById.isNotEmpty) return mappedById;
+    }
+    return null;
+  }
+
   /// Same routing as [NewTourPlanScreen] purpose dropdown (which API text to query first).
   List<String> _purposeVisitTextsForPlan(TourPlanItem item) {
+    final String? repTypeText = _repTypeTextFromEmployeeDropdownMaps(item);
+    if (repTypeText != null && repTypeText.trim().isNotEmpty) {
+      return PurposeVisitHelper.tourPlanPurposeVisitTexts(
+        repTypeText: repTypeText,
+      );
+    }
+
     final String des = _designationHintForPurposeRouting(item).toLowerCase();
     if (des.contains('service engineer') || des.contains('service eng')) {
-      return ['ServiceEng PurposeVisit'];
+      return [PurposeVisitTexts.serviceEng];
     }
     if (des.contains('poc')) {
-      return ['PocRep-PurposeofVisit'];
+      return [PurposeVisitTexts.pocRepTourPlan];
     }
-    return ['Salesrep PurposeVisit'];
+    if (des.contains('application')) {
+      return [PurposeVisitTexts.applicationEng];
+    }
+    if (des.contains('medical')) {
+      return [PurposeVisitTexts.salesRep];
+    }
+    return [PurposeVisitTexts.salesRep];
   }
 
   /// Primary purpose list(s) first, then remaining APIs so [typeOfWorkId] resolves regardless of role list.
@@ -3894,7 +4118,7 @@ class _TourPlanManagerReviewScreenState extends State<TourPlanManagerReviewScree
                                   title: 'Employee',
                                   icon: Icons.badge_outlined,
                                   selectedValue: _modalTempEmployee,
-                                  options: _employeeOptions,
+                                  options: _employeeFilterDropdownOptions(),
                                   onChanged: (value) {
                                     setModalState(() {
                                       _modalTempEmployee = value;

@@ -38,7 +38,7 @@ class PunchInOutUseCase {
         bizUnit: bizUnit,
         kilometerIn: isPunchIn ? kilometerIn : null,
         kilometerOut: isPunchIn ? null : kilometerOut,
-        privateKilometers: isPunchIn ? null : (privateKilometers ?? 0),
+        privateKilometers: isPunchIn ? 0 : (privateKilometers ?? 0),
         userName: userName,
         sbuName: sbuName,
         lastLoggedOutTime: lastLoggedOutTime,

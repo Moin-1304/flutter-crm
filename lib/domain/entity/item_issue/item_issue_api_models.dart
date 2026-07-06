@@ -771,7 +771,7 @@ class ItemIssueDetailSaveRequest {
       'UOMText': uomText,
       'PurchaseRequestHeaderId': purchaseRequestHeaderId,
       'No': no,
-      'Date': date,
+      if (date != null) 'Date': date,
       'Version': version,
       'Select': select,
       'SlNo': slNo,

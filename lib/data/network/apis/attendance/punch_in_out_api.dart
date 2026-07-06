@@ -13,9 +13,11 @@ class PunchInOutApi {
   /// URL: /api/PunchInOut/Save
   Future<PunchInOutResponse> savePunchInOut(PunchInOutSaveRequest request) async {
     try {
+      final payload = request.toJson();
+      print('PunchInOutApi save payload: $payload');
       final response = await _dioClient.dio.post(
         Endpoints.punchInOutSave,
-        data: request.toJson(),
+        data: payload,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -79,6 +81,8 @@ class PunchInOutApi {
         throw Exception('No response data received');
       }
     } on DioException catch (e) {
+      print('PunchInOutApi save error status: ${e.response?.statusCode}');
+      print('PunchInOutApi save error body: ${e.response?.data}');
       // Enhanced error handling for DioException
       String errorMessage = 'Failed to save punch in/out';
       

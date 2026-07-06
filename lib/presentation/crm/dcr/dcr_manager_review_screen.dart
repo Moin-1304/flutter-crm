@@ -17,8 +17,13 @@ import 'package:boilerplate/presentation/crm/dcr/dcr_map_view_screen.dart';
 import 'package:boilerplate/presentation/crm/dcr/medical_rep_map_date_range_dialog.dart';
 import 'package:boilerplate/presentation/crm/dcr/dcr_entry_screen.dart';
 import 'package:boilerplate/presentation/crm/expenses/expense_entry_screen.dart';
+import 'package:boilerplate/utils/manager_review_helper.dart';
+import 'package:boilerplate/utils/dcr_display_resolver.dart';
+import 'package:boilerplate/data/network/apis/dcr/dcr_api.dart';
+import 'package:boilerplate/data/sharedpref/shared_preference_helper.dart';
 
 const String kFilterClearToken = '__CLEAR__';
+const String kAllStaffFilterOption = 'All Staff';
 enum _DateFilterMode { day, range }
 
 /// DCR Manager Review screen for managers to review and approve/reject DCRs
@@ -36,7 +41,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
   DateTime _selectedDay = DateTime.now();
   DateTimeRange _selectedRange =
       DateTimeRange(start: DateTime.now(), end: DateTime.now());
-  String? _selectedEmployee;
+  String? _selectedEmployee = kAllStaffFilterOption;
   String? _status = 'Submitted';
   List<UnifiedDcrItem> _unifiedItems = const [];
   final Set<String> _selectedItems = <String>{};
@@ -169,7 +174,15 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       
       List<DcrApiItem> apiItems = [];
       
-      if (selectedEmployeeId != null) {
+      if (_isAllStaffSelected()) {
+        apiItems = await _loadAllStaffDcrs(
+          start: start,
+          end: end,
+          managerId: managerId,
+          statusId: selectedStatusId,
+          dcrRepo: dcrRepo,
+        );
+      } else if (selectedEmployeeId != null) {
         // Load DCRs for specific employee
         apiItems = await dcrRepo.getDcrListUnified(
           start: start,
@@ -179,36 +192,13 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
           transactionType: "DCR", // Filter for DCR items only
         );
       } else {
-        // Load DCRs for all team members
-        // First get the manager's own DCRs
-        apiItems = await dcrRepo.getDcrListUnified(
+        apiItems = await _loadAllStaffDcrs(
           start: start,
           end: end,
-          employeeId: managerId.toString(),
+          managerId: managerId,
           statusId: selectedStatusId,
-          transactionType: "DCR", // Filter for DCR items only
+          dcrRepo: dcrRepo,
         );
-        
-        // Then get DCRs for each team member
-        if (_employeeOptions.isNotEmpty) {
-          for (final employeeName in _employeeOptions) {
-            final int? employeeId = _employeeNameToId[employeeName];
-            if (employeeId != null && employeeId != managerId) {
-              try {
-                final List<DcrApiItem> teamMemberDcrs = await dcrRepo.getDcrListUnified(
-                  start: start,
-                  end: end,
-                  employeeId: employeeId.toString(),
-                  statusId: selectedStatusId,
-                  transactionType: "DCR", // Filter for DCR items only
-                );
-                apiItems.addAll(teamMemberDcrs);
-              } catch (e) {
-                print('Error loading DCRs for employee $employeeName (ID: $employeeId): $e');
-              }
-            }
-          }
-        }
       }
       
       // Filter for DCR items only (exclude Expense items) - client-side filter as API may return mixed results
@@ -218,9 +208,13 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       
       // Convert API items to unified items
       // Show ALL DCRs (Approved, Pending, Submitted, etc.) regardless of status filter
-      final List<UnifiedDcrItem> unifiedItems = dcrApiItems
-          .map<UnifiedDcrItem>((item) => UnifiedDcrItem.fromDcrApiItem(item))
-          .toList();
+      final List<UnifiedDcrItem> unifiedItems =
+          await DcrDisplayResolver.enrichItems(
+        dcrApiItems
+            .map<UnifiedDcrItem>((item) => UnifiedDcrItem.fromDcrApiItem(item))
+            .where((item) => !_isOwnDcrForReview(item))
+            .toList(),
+      );
       
       print('DcrManagerReviewScreen: Loaded ${apiItems.length} API items (${dcrApiItems.length} DCR items), ${unifiedItems.length} unified items after reviewable filter');
       print('DcrManagerReviewScreen: Status filter: $_status, TransactionType: DCR');
@@ -266,7 +260,17 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     return statusText.contains('rejected');
   }
 
+  bool _isOwnDcrForReview(UnifiedDcrItem item) {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    return ManagerReviewHelper.isOwnEmployeeRecord(
+      loggedInUser: userStore?.userDetail,
+      recordEmployeeId: item.employeeId,
+    );
+  }
+
   bool _isSelectableForBulkReview(UnifiedDcrItem item) {
+    if (_isOwnDcrForReview(item)) return false;
     // Manager bulk actions are only valid for "Submitted" items.
     // Hide the checkbox entirely for "Sent Back" and "Rejected" items.
     return _isSubmittedStatus(item) && !_isApproved(item) && !_isSentBack(item) && !_isRejected(item);
@@ -908,6 +912,8 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnDcrForReview)) return false;
     
     // Check if all items are approved (statusText contains "approved" or dcrStatusId == 5)
     final allApproved = selectedItems.every((item) {
@@ -943,6 +949,8 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         .toList();
     
     if (selectedItems.isEmpty) return false;
+
+    if (selectedItems.any(_isOwnDcrForReview)) return false;
     
     // Check if all items are approved
     final allApproved = selectedItems.every((item) {
@@ -975,23 +983,9 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
   bool _canRejectSelected() => _canSendBackSelected();
 
   Future<void> _clearAllFilters() async {
-    // Get logged-in employee (manager) to set as default
-    final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
-    final int? managerId = userStore?.userDetail?.employeeId;
-    
-    // Find the manager's employee name from the options
-    String? managerEmployeeName;
-    if (managerId != null && _employeeNameToId.isNotEmpty) {
-      _employeeNameToId.forEach((name, id) {
-        if (id == managerId) {
-          managerEmployeeName = name;
-        }
-      });
-    }
-    
     setState(() {
       _status = 'Submitted';
-      _selectedEmployee = managerEmployeeName; // Set to logged-in employee (manager) instead of null
+      _selectedEmployee = kAllStaffFilterOption;
       final DateTime now = _dayOnly(DateTime.now());
       _dateFilterMode = _DateFilterMode.day;
       _selectedDay = now;
@@ -1008,7 +1002,9 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
   // Check if any filters are active
   bool _hasActiveFilters() {
     final bool isDateFiltered = !_isDefaultDateFilter();
-    return _status != null || _selectedEmployee != null || isDateFiltered;
+    final bool isEmployeeFiltered =
+        _selectedEmployee != null && !_isAllStaffSelected();
+    return _status != null || isEmployeeFiltered || isDateFiltered;
   }
 
   // Get filter badge text showing filtered records count
@@ -1028,8 +1024,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       _selectedItems.clear();
       
       for (final item in _unifiedItems) {
-        // Only select items that are not approved
-        if (!_isApproved(item)) {
+        if (_isSelectableForBulkReview(item)) {
           _selectedItems.add(item.id.toString());
         }
       }
@@ -1050,30 +1045,35 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
         final int? managerId = userStore?.userDetail?.employeeId;
         
         if (managerId != null) {
-          final List<CommonDropdownItem> items = await commonRepo.getEmployeesReportingTo(managerId);
-          final names = items.map((e) => (e.employeeName.isNotEmpty ? e.employeeName : e.text).trim()).where((s) => s.isNotEmpty).toSet();
+          final List<CommonDropdownItem> items =
+              ManagerReviewHelper.teamItemsExcludingLoggedInManager(
+            await commonRepo.getEmployeesReportingTo(managerId),
+            userStore?.userDetail,
+          );
           
-          if (names.isNotEmpty && mounted) {
+          if (mounted) {
             setState(() {
-              _employeeOptions = names.toList();
-              String? selectedEmployeeName;
+              _employeeNameToId.clear();
+              _employeeOptions = ManagerReviewHelper.buildTeamFilterOptions(
+                items,
+                userStore?.userDetail,
+                allStaffOption: kAllStaffFilterOption,
+              );
               for (final item in items) {
-                final String key = (item.employeeName.isNotEmpty ? item.employeeName : item.text).trim();
+                final String key = ManagerReviewHelper.employeeFilterLabel(item);
                 if (key.isNotEmpty) {
                   _employeeNameToId[key] = item.id;
-                  // Auto-select the manager's own employee if found
-                  if (item.id == managerId) {
-                    selectedEmployeeName = key;
-                  }
                 }
               }
-              // Auto-select the manager's employee only if no employee is currently selected (first time initialization)
-              if (selectedEmployeeName != null && _selectedEmployee == null) {
-                _selectedEmployee = selectedEmployeeName;
-                print('DcrManagerReviewScreen: Auto-selected employee: $selectedEmployeeName (ID: $managerId)');
-              }
+              _selectedEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+                selected: _selectedEmployee,
+                options: _employeeOptions,
+                nameToId: _employeeNameToId,
+                loggedInUser: userStore?.userDetail,
+                allStaffOption: kAllStaffFilterOption,
+              ) ?? kAllStaffFilterOption;
             });
-            print('DcrManagerReviewScreen: Loaded ${_employeeOptions.length} team employees');
+            print('DcrManagerReviewScreen: Loaded ${_employeeOptions.length} team employees (including All Staff)');
           }
         }
       }
@@ -1106,9 +1106,102 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
     }
   }
 
+  bool _isAllStaffSelected() => _selectedEmployee == kAllStaffFilterOption;
+
   int? _selectedEmployeeId() {
-    if (_selectedEmployee == null) return null;
+    if (_selectedEmployee == null || _isAllStaffSelected()) return null;
     return _employeeNameToId[_selectedEmployee!];
+  }
+
+  Future<List<DcrApiItem>> _loadAllStaffDcrs({
+    required DateTime start,
+    required DateTime end,
+    required int managerId,
+    required int? statusId,
+    required DcrRepository dcrRepo,
+  }) async {
+    final String fromDateStr = DateTime(start.year, start.month, start.day, 0, 0, 0, 0)
+        .toIso8601String()
+        .replaceAll(RegExp(r'\.\d{6}'), '.000');
+    final String toDateStr = DateTime(end.year, end.month, end.day, 23, 59, 59, 999)
+        .toIso8601String()
+        .replaceAll(RegExp(r'\.\d{6}'), '.000');
+
+    final List<DcrApiItem> apiItems = [];
+    final Set<int> loadedItemIds = <int>{};
+
+    void mergeItems(List<DcrApiItem> items) {
+      for (final item in items) {
+        if (loadedItemIds.add(item.id)) {
+          apiItems.add(item);
+        }
+      }
+    }
+
+    try {
+      if (getIt.isRegistered<DcrApi>()) {
+        final dcrApi = getIt<DcrApi>();
+        final sharedPrefHelper = getIt<SharedPreferenceHelper>();
+        final user = await sharedPrefHelper.getUser();
+        if (user != null) {
+          final request = DcrListRequest(
+            pageNumber: 1,
+            pageSize: 1000,
+            sortOrder: 0,
+            sortDir: 0,
+            sortField: 'DCRDate',
+            fromDate: fromDateStr,
+            toDate: toDateStr,
+            userId: user.userId ?? user.id,
+            bizunit: user.sbuId,
+            status: statusId,
+            employeeId: 0,
+            managerId: managerId,
+            transactionType: 'DCR',
+            dcrDate: null,
+          );
+          final response = await dcrApi.getDcrList(request);
+          mergeItems(response.items);
+          print(
+              'DcrManagerReviewScreen: Bulk All Staff API returned ${response.items.length} DCRs (ManagerId: $managerId)');
+        }
+      }
+    } catch (e) {
+      print('DcrManagerReviewScreen: All Staff bulk API failed: $e');
+    }
+
+    if (_employeeNameToId.isEmpty) {
+      await _getManagerTeamEmployees();
+    }
+
+    final Set<int> loadedEmployeeIds = <int>{};
+
+    Future<void> loadForEmployee(int employeeId) async {
+      if (!loadedEmployeeIds.add(employeeId)) return;
+      try {
+        mergeItems(await dcrRepo.getDcrListUnified(
+          start: start,
+          end: end,
+          employeeId: employeeId.toString(),
+          statusId: statusId,
+          transactionType: 'DCR',
+        ));
+      } catch (e) {
+        print('Error loading DCRs for employee ID $employeeId: $e');
+      }
+    }
+
+    for (final employeeName in _employeeOptions) {
+      if (employeeName == kAllStaffFilterOption) continue;
+      final int? employeeId = _employeeNameToId[employeeName];
+      if (employeeId != null) {
+        await loadForEmployee(employeeId);
+      }
+    }
+
+    print(
+        'DcrManagerReviewScreen: All Staff load complete - ${apiItems.length} unique DCR items');
+    return apiItems;
   }
 
   int? _statusIdFromText(String? text) => text == null ? null : _statusNameToId[text];
@@ -1218,7 +1311,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
           const SizedBox(height: 20),
           Divider(height: 1, color: Colors.grey.shade300),
           const SizedBox(height: 20),
-          _DetailRow('Remarks', item.remarks, isMultiline: true),
+          _DetailRow('Key Points Discussed', item.remarks, isMultiline: true),
         ],
       ];
     }
@@ -1452,7 +1545,27 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
       final DcrRepository? dcrRepo = getIt.isRegistered<DcrRepository>() ? getIt<DcrRepository>() : null;
       if (dcrRepo == null) return;
 
-      final List<String> selectedIds = _selectedItems.toList();
+      final List<String> selectedIds = _selectedItems
+          .where((id) {
+            try {
+              final item = _unifiedItems.firstWhere(
+                (i) => i.id.toString() == id,
+              );
+              return !_isOwnDcrForReview(item);
+            } catch (_) {
+              return false;
+            }
+          })
+          .toList();
+
+      if (selectedIds.isEmpty) {
+        _showToast(
+          'You cannot review your own DCR records',
+          type: ToastType.warning,
+          icon: Icons.warning_amber_rounded,
+        );
+        return;
+      }
 
       switch (action) {
         case 'Approve':
@@ -1769,7 +1882,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
   int _getFilterCount() {
     int count = 0;
     if (_status != null) count++;
-    if (_selectedEmployee != null) count++;
+    if (_selectedEmployee != null && !_isAllStaffSelected()) count++;
     if (!_isDefaultDateFilter()) count++;
     return count;
   }
@@ -1840,10 +1953,29 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
   }
 
   // Open/close modal hooks (same pattern as My DCR)
+  List<String> _employeeFilterDropdownOptions() {
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
+    return ManagerReviewHelper.filterOptionsForDisplay(
+      _employeeOptions,
+      _employeeNameToId,
+      userStore?.userDetail,
+      allStaffOption: kAllStaffFilterOption,
+    );
+  }
+
   void _openFilterModal() {
     // Snapshot current filters once at modal-open time.
+    final UserDetailStore? userStore =
+        getIt.isRegistered<UserDetailStore>() ? getIt<UserDetailStore>() : null;
     _modalTempStatus = _status;
-    _modalTempEmployee = _selectedEmployee;
+    _modalTempEmployee = ManagerReviewHelper.normalizeTeamEmployeeSelection(
+      selected: _selectedEmployee,
+      options: _employeeOptions,
+      nameToId: _employeeNameToId,
+      loggedInUser: userStore?.userDetail,
+      allStaffOption: kAllStaffFilterOption,
+    );
     _modalTempMode = _dateFilterMode;
     _modalTempDay = _selectedDay;
     _modalTempRange = _selectedRange;
@@ -1960,6 +2092,7 @@ class DcrManagerReviewScreenState extends State<DcrManagerReviewScreen> with Sin
           if (selectedEmployeeId != null && unified.employeeId != selectedEmployeeId) continue;
           mapItems.add(unified);
         }
+        mapItems = await DcrDisplayResolver.enrichItems(mapItems);
       } catch (e) {
         print('DcrManagerReviewScreen: getDcrMapDetails fallback error: $e');
       }
@@ -2448,7 +2581,7 @@ extension _FilterModal on DcrManagerReviewScreenState {
                                   title: 'Employee',
                                   icon: Icons.badge_outlined,
                                   selectedValue: _modalTempEmployee,
-                                  options: _employeeOptions,
+                                  options: _employeeFilterDropdownOptions(),
                                   onChanged: (v) =>
                                       setModalState(() => _modalTempEmployee = v),
                                   isTablet: isTablet,

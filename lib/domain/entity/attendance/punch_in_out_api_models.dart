@@ -36,7 +36,7 @@ class PunchInOutSaveRequest {
   });
 
   Map<String, dynamic> toJson() {
-    final data = {
+    final data = <String, dynamic>{
       'Id': id,
       'CreatedBy': createdBy,
       'Status': status,
@@ -45,16 +45,16 @@ class PunchInOutSaveRequest {
       'UserId': userId,
       'CheckInStatus': checkInStatus,
       'BizUnit': bizUnit,
-      'KilometerIn': kilometerIn,
-      'KilometerOut': kilometerOut,
       'UserName': userName,
       'SbuName': sbuName,
-      'LastLoggedOutTime': lastLoggedOutTime,
       'LogDetails': logDetails.map((item) => item.toRequestJson()).toList(),
       'IsCheckout': isCheckout,
+      'PrivateKilometers': privateKilometers ?? 0,
     };
-    if (privateKilometers != null) {
-      data['PrivateKilometers'] = privateKilometers;
+    if (kilometerIn != null) data['KilometerIn'] = kilometerIn;
+    if (kilometerOut != null) data['KilometerOut'] = kilometerOut;
+    if (lastLoggedOutTime != null && lastLoggedOutTime!.trim().isNotEmpty) {
+      data['LastLoggedOutTime'] = lastLoggedOutTime;
     }
     return data;
   }

@@ -117,10 +117,25 @@ class Endpoints {
   static String get serviceReportUpdate =>
       "$baseUrl/PharmaCRM/ServiceReport/Update";
 
-  /// Service Report Get: pass DCR details Id to autofill service report when updating DCR.
-  /// Only used when editing existing DCR (not when creating new).
-  static String serviceReportGet(int dcrDetailId) =>
-      "$baseUrl/PharmaCRM/ServiceReport/Get?Id=$dcrDetailId";
+  static String get serviceReportGetEndpoint =>
+      "$baseUrl/PharmaCRM/ServiceReport/Get";
+
+  /// Service Report Get by Id (may be Service Report id or DCR detail id per API).
+  static String serviceReportGet(int id) =>
+      "$baseUrl/PharmaCRM/ServiceReport/Get?Id=$id";
+
+  /// Service Report Get with DCR parent id (same pattern as DCR/Get).
+  static String serviceReportGetWithDcr(int id, int dcrId) =>
+      "$baseUrl/PharmaCRM/ServiceReport/Get?Id=$id&DCRId=$dcrId";
+
+  /// Service Report Get by linked DCR detail row id.
+  static String serviceReportGetByDcrDetailId(int dcrDetailId) =>
+      "$baseUrl/PharmaCRM/ServiceReport/Get?DcrDetailId=$dcrDetailId";
+
+  /// Service Report Get by DCR detail + parent DCR id.
+  static String serviceReportGetByDcrDetailAndDcrId(
+          int dcrDetailId, int dcrId) =>
+      "$baseUrl/PharmaCRM/ServiceReport/Get?DcrDetailId=$dcrDetailId&DCRId=$dcrId";
 
 // Common endpoints for dropdowns
   static String get commonGetAuto => "$baseUrl/Common/GetAuto";
