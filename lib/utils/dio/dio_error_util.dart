@@ -23,6 +23,9 @@ class DioExceptionUtil {
       case DioExceptionType.sendTimeout:
         errorDescription = "Send timeout in connection with API server";
         break;
+      case DioExceptionType.transformTimeout:
+        errorDescription = "Transform timeout in connection with API server";
+        break;
       case DioExceptionType.badCertificate:
         errorDescription = "Incorrect certificate";
         break;
