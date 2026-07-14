@@ -221,6 +221,7 @@ class SalesRepositoryImpl implements SalesRepository {
       }
       throw Exception('SalesApi not registered');
     } catch (e) {
+      if (e is Exception) rethrow;
       throw Exception('Failed to save sales order: ${e.toString()}');
     }
   }

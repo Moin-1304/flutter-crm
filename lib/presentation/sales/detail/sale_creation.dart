@@ -484,6 +484,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           }
         });
         print('✅ Loaded ${_distributors.length} Distributors');
+        if (_selectedDistributor != null) {
+          _reloadWorkflowForCurrentContext();
+        }
       }
     } catch (e) {
       print('Error loading distributors: $e');
@@ -563,6 +566,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           }
         });
         print('✅ Loaded ${_distributors.length} Distributors');
+        if (_selectedDistributor != null) {
+          _reloadWorkflowForCurrentContext();
+        }
       }
     } catch (e) {
       print('Error loading distributors: $e');
@@ -1867,6 +1873,11 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     }
   }
 
+  void _reloadWorkflowForCurrentContext() {
+    _loadWorkflowActions();
+    _loadUserPagePrivileges();
+  }
+
   Future<void> _loadWorkflowActions() async {
     // Only skip if we're already loading (prevent duplicate calls)
     // But allow initial load even if flag is true from initialization
@@ -1882,39 +1893,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final user = await sharedPrefHelper.getUser();
       final userId = user?.id ?? 43; // Default fallback
 
-      // Get bizUnit from UserDetailStore or user prefs
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-          ? getIt<UserDetailStore>()
-          : null;
-
-      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-      int? bizUnitFromPrefs = user?.sbuId;
-      int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
-          ? bizUnitFromStore
-          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
-              ? bizUnitFromPrefs
-              : 1);
-
-      // For edit mode, use selected distributor ID as bizUnit
-      if (_isEditMode &&
-          _distributorItems.isNotEmpty &&
-          _selectedDistributor != null) {
-        // Find distributor ID from selected distributor name
-        try {
-          final distributorItem = _distributorItems.firstWhere(
-            (item) => item.text == _selectedDistributor,
-          );
-          // Use distributor ID (id field) as bizUnit, fallback to value if id is 0
-          bizUnit = (distributorItem.id > 0)
-              ? distributorItem.id
-              : (distributorItem.value > 0 ? distributorItem.value : bizUnit);
-          print(
-              '✅ Using Distributor ID as bizUnit: $bizUnit (Distributor: ${distributorItem.text})');
-        } catch (e) {
-          // If distributor not found, use default bizUnit
-          print(
-              '⚠️ Distributor not found in list, using default bizUnit: $bizUnit');
-        }
+      // Match save payload: workflow must use the same distributor bizUnit.
+      final int? resolvedDistributorId =
+          _resolveDistributorId(userSbuIdFromPrefs: user?.sbuId);
+      int bizUnit = resolvedDistributorId ?? 1;
+      if (resolvedDistributorId != null && resolvedDistributorId > 1) {
+        print(
+            '✅ Using Distributor ID as workflow bizUnit: $bizUnit (Distributor: $_selectedDistributor)');
+      } else {
+        print(
+            '⚠️ Distributor not resolved for workflow, using fallback bizUnit: $bizUnit');
       }
 
       final request = WorkflowGetAllActionsRequest(
@@ -1983,39 +1971,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       final user = await sharedPrefHelper.getUser();
       final userId = user?.id ?? 43; // Default fallback
 
-      // Get bizUnit from UserDetailStore or user prefs
-      final UserDetailStore? userStore = getIt.isRegistered<UserDetailStore>()
-          ? getIt<UserDetailStore>()
-          : null;
-
-      int? bizUnitFromStore = userStore?.userDetail?.sbuId;
-      int? bizUnitFromPrefs = user?.sbuId;
-      int bizUnit = (bizUnitFromStore != null && bizUnitFromStore > 0)
-          ? bizUnitFromStore
-          : ((bizUnitFromPrefs != null && bizUnitFromPrefs > 0)
-              ? bizUnitFromPrefs
-              : 1);
-
-      // For edit mode, use selected distributor ID as bizUnit
-      if (_isEditMode &&
-          _distributorItems.isNotEmpty &&
-          _selectedDistributor != null) {
-        // Find distributor ID from selected distributor name
-        try {
-          final distributorItem = _distributorItems.firstWhere(
-            (item) => item.text == _selectedDistributor,
-          );
-          // Use distributor ID (id field) as bizUnit, fallback to value if id is 0
-          bizUnit = (distributorItem.id > 0)
-              ? distributorItem.id
-              : (distributorItem.value > 0 ? distributorItem.value : bizUnit);
-          print(
-              '✅ Using Distributor ID as bizUnit for privileges: $bizUnit (Distributor: ${distributorItem.text})');
-        } catch (e) {
-          // If distributor not found, use default bizUnit
-          print(
-              '⚠️ Distributor not found in list for privileges, using default bizUnit: $bizUnit');
-        }
+      // Match save payload: privileges must use the same distributor bizUnit.
+      final int? resolvedDistributorId =
+          _resolveDistributorId(userSbuIdFromPrefs: user?.sbuId);
+      int bizUnit = resolvedDistributorId ?? 1;
+      if (resolvedDistributorId != null && resolvedDistributorId > 1) {
+        print(
+            '✅ Using Distributor ID as privileges bizUnit: $bizUnit (Distributor: $_selectedDistributor)');
+      } else {
+        print(
+            '⚠️ Distributor not resolved for privileges, using fallback bizUnit: $bizUnit');
       }
 
       final request = WorkflowGetUserPagePrivilegesRequest(
@@ -3019,11 +2984,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         ],
         onChanged: (v) {
           setState(() => _selectedDistributor = v);
-          // Reload workflow actions and privileges when distributor changes in edit mode
-          if (_isEditMode) {
-            _loadWorkflowActions();
-            _loadUserPagePrivileges();
-          }
+          _reloadWorkflowForCurrentContext();
         },
       ),
     );
@@ -5749,7 +5710,90 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     return false;
   }
 
-  Future<SalesOrderSaveRequest> _buildSaveRequest(int workflowFlag) async {
+  ProcessActionDetail? _findWorkflowActionByName(String name) {
+    try {
+      return _workflowActions.firstWhere(
+        (action) => action.name.toLowerCase() == name.toLowerCase(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _resolveProcessId(
+    int workflowFlag, {
+    ProcessActionDetail? action,
+  }) {
+    // Amend uses ActionValue as ProcessId (web client behaviour).
+    if (workflowFlag == 1 &&
+        action != null &&
+        action.name.toLowerCase() == 'amend' &&
+        action.actionValue > 0) {
+      return action.actionValue;
+    }
+
+    // Backend expects ProcessId on draft save too (from GetAllActions response).
+    final responseId = _workflowResponse?.id;
+    if (responseId != null && responseId > 0) return responseId;
+
+    if (workflowFlag == 1 &&
+        action != null &&
+        action.processID > 0) {
+      return action.processID;
+    }
+    return _loadedOrderData?.processId;
+  }
+
+  int? _resolveProcessActionId(
+    int workflowFlag, {
+    ProcessActionDetail? action,
+  }) {
+    if (workflowFlag == 1 &&
+        action != null &&
+        action.processActionId > 0) {
+      return action.processActionId;
+    }
+
+    // Backend expects ProcessActionId on draft save too (from GetAllActions).
+    final submitAction = _findWorkflowActionByName('submit');
+    if (submitAction != null && submitAction.processActionId > 0) {
+      return submitAction.processActionId;
+    }
+    if (_workflowActions.isNotEmpty &&
+        _workflowActions.first.processActionId > 0) {
+      return _workflowActions.first.processActionId;
+    }
+    return _loadedOrderData?.processActionId;
+  }
+
+  int? _extractSavedOrderId(SalesOrderSaveResponse response) {
+    final data = response.data;
+    if (data is Map) {
+      final dynamic id = data['id'] ?? data['Id'];
+      if (id is int) return id;
+      if (id is num) return id.toInt();
+      return int.tryParse(id?.toString() ?? '');
+    }
+    return null;
+  }
+
+  dynamic _extractFileUploadDetails(SalesOrderSaveResponse response) {
+    final data = response.data;
+    if (data is Map) {
+      return data['fileUploadDetails'] ??
+          data['FileUploadDetails'] ??
+          data['attachments'] ??
+          data['Attachments'];
+    }
+    return null;
+  }
+
+  Future<SalesOrderSaveRequest> _buildSaveRequest(
+    int workflowFlag, {
+    int? overrideId,
+    ProcessActionDetail? workflowAction,
+    dynamic fileUploadDetailsOverride,
+  }) async {
     // Get user info
     final sharedPrefHelper = getIt<SharedPreferenceHelper>();
     final user = await sharedPrefHelper.getUser();
@@ -6085,13 +6129,12 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     final totalAdjust = priceAdjustment;
     final netAmount = grandTotal;
 
-    // Workflow fields:
-    // Backend expects these even for Draft save in some environments.
-    // Prefer values from workflow-get; fallback to loaded order values (edit mode).
-    final int? processId = _workflowResponse?.id ?? _loadedOrderData?.processId;
-    final int? processActionId = _workflowActions.isNotEmpty
-        ? _workflowActions.first.processActionId
-        : _loadedOrderData?.processActionId;
+    // Workflow fields: backend expects ProcessId/ProcessActionId even for draft save.
+    // Values come from GetAllActions; submit/amend may override via workflowAction.
+    final int? processId =
+        _resolveProcessId(workflowFlag, action: workflowAction);
+    final int? processActionId =
+        _resolveProcessActionId(workflowFlag, action: workflowAction);
 
     // Set SaleOrderType based on role context to avoid null payloads.
     // Client rule:
@@ -6137,8 +6180,14 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     print('ProcessActionId: $processActionId');
     print('═══════════════════════════════════════════════════════════');
 
+    final dynamic resolvedFileUploadDetails = fileUploadDetailsOverride ??
+        (_isEditMode && _loadedOrderData?.fileUploadDetails != null
+            ? _loadedOrderData!.fileUploadDetails
+            : null);
+
     return SalesOrderSaveRequest(
-      id: _isEditMode && _loadedOrderData != null ? _loadedOrderData!.id : null,
+      id: overrideId ??
+          (_isEditMode && _loadedOrderData != null ? _loadedOrderData!.id : null),
       createdBy: dynamicUserId, // Dynamic userId from user
       status: 0,
       sbuId: finalSbuId, // Must be DistributorId per backend requirement
@@ -6170,16 +6219,19 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       salesRep: salesRepId,
       salesRepName: _selectedSalesRep,
       salesContractItems: contractItems,
-      fileUploadDetails:
-          _isEditMode && _loadedOrderData?.fileUploadDetails != null
-              ? _loadedOrderData!.fileUploadDetails
-              : null,
+      fileUploadDetails: resolvedFileUploadDetails,
       taxAndOtherChargesDetail: taxCharges,
       pageId: 3, // SalesOrder page ID
       processId: processId,
       processActionId: processActionId,
+      processName: workflowFlag == 1 ? workflowAction?.name : null,
       menuId: 1110, // Should be from navigation/routing
+      moduleId: 5,
+      module: 5,
       workflowStatus: 0,
+      actionValue: workflowFlag == 1 && workflowAction != null
+          ? workflowAction.actionValue.toString()
+          : null,
       soStatus: 0,
       doCounts: 0,
       doCount: 0,
@@ -6368,10 +6420,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         _isLoading = false;
       });
 
-      final errorString = e.toString();
-      final bool is500 = errorString.contains('500') ||
-          errorString.toLowerCase().contains('internal server error');
-      if (is500) {
+      final errorMessage = _userFacingErrorMessage(
+        e.toString(),
+      );
+      if (errorMessage.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Error while saving'),
@@ -6380,14 +6432,6 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           ),
         );
         return;
-      }
-
-      // Extract error message
-      String errorMessage = 'Failed to save draft';
-      if (errorString.startsWith('Exception: ')) {
-        errorMessage = errorString.replaceFirst('Exception: ', '');
-      } else {
-        errorMessage = errorString;
       }
 
       if (errorMessage == _sbuIdInvalidErrorMessage) {
@@ -6401,7 +6445,6 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return;
       }
 
-      // Show error dialog for better readability
       _showErrorDialog('Error Saving Draft', errorMessage);
     }
   }
@@ -6474,10 +6517,10 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         _isLoading = false;
       });
 
-      final errorString = e.toString();
-      final bool is500 = errorString.contains('500') ||
-          errorString.toLowerCase().contains('internal server error');
-      if (is500) {
+      final errorMessage = _userFacingErrorMessage(
+        e.toString(),
+      );
+      if (errorMessage.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Error while saving'),
@@ -6486,14 +6529,6 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           ),
         );
         return;
-      }
-
-      // Extract error message
-      String errorMessage = 'Failed to submit order';
-      if (errorString.startsWith('Exception: ')) {
-        errorMessage = errorString.replaceFirst('Exception: ', '');
-      } else {
-        errorMessage = errorString;
       }
 
       if (errorMessage == _sbuIdInvalidErrorMessage) {
@@ -6507,14 +6542,44 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return;
       }
 
-      // Show error dialog for better readability
       _showErrorDialog('Error Submitting Order', errorMessage);
     }
+  }
+
+  /// Strip nested Exception prefixes and HTTP status suffixes for user-facing dialogs.
+  String _userFacingErrorMessage(String raw) {
+    String msg = raw.trim();
+    const prefixes = [
+      'Failed to save sales order: ',
+      'Failed to save Sales Order: ',
+      'Exception: ',
+    ];
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final prefix in prefixes) {
+        if (msg.startsWith(prefix)) {
+          msg = msg.substring(prefix.length).trim();
+          changed = true;
+        }
+      }
+    }
+    msg = msg.replaceFirst(
+      RegExp(r'\s*status code:\s*\d+\s*$', caseSensitive: false),
+      '',
+    );
+    msg = msg.trim();
+    if (msg == '-900') {
+      return 'Customer PO number already exists. Please enter a different Customer PO number.';
+    }
+    return msg;
   }
 
   /// Show error dialog with title and message
   void _showErrorDialog(String title, String message) {
     if (!mounted) return;
+
+    final displayMessage = _userFacingErrorMessage(message);
 
     showDialog(
       context: context,
@@ -6541,7 +6606,7 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           ),
           content: SingleChildScrollView(
             child: Text(
-              message,
+              displayMessage,
               style: const TextStyle(fontSize: 14),
             ),
           ),
@@ -6632,16 +6697,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       });
 
       // Extract error message
-      String errorMessage = 'Failed to modify order';
-      final errorString = e.toString();
-      if (errorString.startsWith('Exception: ')) {
-        errorMessage = errorString.replaceFirst('Exception: ', '');
-      } else {
-        errorMessage = errorString;
-      }
-
-      // Show error dialog for better readability
-      _showErrorDialog('Error Modifying Order', errorMessage);
+      final errorMessage = _userFacingErrorMessage(
+        e.toString(),
+      );
+      _showErrorDialog(
+        'Error Modifying Order',
+        errorMessage.isNotEmpty ? errorMessage : 'Failed to modify order',
+      );
     }
   }
 
@@ -6858,139 +6920,87 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       return;
     }
 
-    // Backend requires WorkflowFlag = 1 for Save/Amend; actionValue identifies the action (e.g. 15 for Amend)
+    final int? processId = _resolveProcessId(1, action: action);
+    if (processId == null ||
+        processId <= 0 ||
+        action.processActionId <= 0) {
+      _showErrorDialog(
+        'Error ${action.name}',
+        'Workflow is not ready for the selected distributor. Please wait a moment or reselect the distributor and try again.',
+      );
+      return;
+    }
+
     const int workflowFlag = 1;
 
     print(
-        '📤 Executing workflow action: ${action.name} with WorkflowFlag: $workflowFlag, ActionValue: ${action.actionValue}');
+        '📤 Executing workflow action: ${action.name} with WorkflowFlag: $workflowFlag, ProcessId: $processId, ProcessActionId: ${action.processActionId}, ActionValue: ${action.actionValue}');
 
     try {
-      // Show loading indicator
       setState(() {
         _isLoading = true;
       });
 
-      // Build save request with WorkflowFlag = 1 (required for workflow/amendment processing)
-      final request = await _buildSaveRequest(workflowFlag);
+      final salesRepository = getIt<SalesRepository>();
+      int? orderId =
+          _isEditMode ? _loadedOrderData?.id : null;
+      dynamic fileUploadDetailsOverride;
 
-      // Update processId (use actionValue per client example, e.g. 15 for Amend), processActionId and actionValue
-      final updatedRequest = SalesOrderSaveRequest(
-        id: request.id,
-        createdBy: request.createdBy,
-        status: request.status,
-        sbuId: request.sbuId,
-        company: request.company,
-        bizunit: request.bizunit,
-        userId: request.userId,
-        workflowFlag: workflowFlag,
-        code: request.code,
-        department: request.department,
-        soNumber: request.soNumber,
-        customerName: request.customerName,
-        typeText: request.typeText,
-        currencyText: request.currencyText,
-        amount: request.amount,
-        date: request.date,
-        itemName: request.itemName,
-        bonusQuantity: request.bonusQuantity,
-        additionalBonusQuantity: request.additionalBonusQuantity,
-        customer: request.customer,
-        customerId: request.customerId,
-        cusAddress: request.cusAddress,
-        customerRef: request.customerRef,
-        type: request.type,
-        currency: request.currency,
-        currencyId: request.currencyId,
-        exchangeRate: request.exchangeRate,
-        deliveryDate: request.deliveryDate,
-        totalAmount: request.totalAmount,
-        refNo: request.refNo,
-        quotationHeaderId: request.quotationHeaderId,
-        statusText: request.statusText,
-        salesRep: request.salesRep,
-        salesRepName: request.salesRepName,
-        taxId: request.taxId,
-        salesContractItems: request.salesContractItems,
-        fileUploadDetails: request.fileUploadDetails,
-        taxAndOtherChargesDetail: request.taxAndOtherChargesDetail,
-        pageId: request.pageId,
-        refid: request.refid,
-        processId: action.processID,
-        processActionId: action.processActionId,
-        processName: action.name, // e.g. "Amend", "Submit" per client payload
-        menuId: request.menuId,
-        moduleId: request.moduleId,
-        module: request.module,
-        workflowStatus: request.workflowStatus,
-        workflowComment: request.workflowComment,
-        currencyBC: request.currencyBC,
-        totalQuantity: request.totalQuantity,
-        totalConvAmount: request.totalConvAmount,
-        totalDiscount: request.totalDiscount,
-        totalTax: request.totalTax,
-        totalShipCharge: request.totalShipCharge,
-        totalAdjust: request.totalAdjust,
-        netAmount: request.netAmount,
-        netAmountBC: request.netAmountBC,
-        division: request.division,
-        divisionGroup: request.divisionGroup,
-        divisionText: request.divisionText,
-        divisionGroupText: request.divisionGroupText,
-        divisionGroupName: request.divisionGroupName,
-        actionValue: action.actionValue.toString(), // e.g. 15 for Amend
-        saleOrderShortCloseReason: request.saleOrderShortCloseReason,
-        saleOrderShortCloseRefNo: request.saleOrderShortCloseRefNo,
-        checkFlag: request.checkFlag,
-        pageType: request.pageType,
-        poNo: request.poNo,
-        tenderNo: request.tenderNo,
-        reqNo: request.reqNo,
-        soStatus: request.soStatus,
-        isCancel: request.isCancel,
-        isFullyUsed: request.isFullyUsed ?? 0, // Default to 0 if null
-        doCounts: request.doCounts,
-        doCount: request.doCount,
-        isShortClosed: request.isShortClosed,
-        isCancelled: request.isCancelled,
-        isClosed: request.isClosed,
-        decimalFormat: request.decimalFormat,
-        rateFormat: request.rateFormat,
-        hasEdit: request.hasEdit,
-        despatchedQty: request.despatchedQty,
-        invoiceNo: request.invoiceNo,
-        despatchNo: request.despatchNo,
-        isFullyUsedText: request.isFullyUsedText,
-        deliveryAddress: request.deliveryAddress,
-        isCustomerPODuplicateAllowed: request.isCustomerPODuplicateAllowed,
-        distributerForId: request.distributerForId,
-        actualCreatedBy: request.actualCreatedBy,
-        saleOrderType: request.saleOrderType,
-        isBonusSO: request.isBonusSO,
-        soType: request.soType,
-        isSalesRepEdit: request.isSalesRepEdit,
-        isSalesRep: request.isSalesRep,
-        vatRegistered: request.vatRegistered,
-        taxInclusive: request.taxInclusive,
-        bonusEnabled: request.bonusEnabled,
+      // Brand-new orders must be drafted first so the backend has a header Id.
+      if (orderId == null || orderId <= 0) {
+        print('💾 Drafting new sales order before ${action.name}...');
+        final draftRequest = await _buildSaveRequest(0);
+        if (!_validateSbuIdBeforeSave(draftRequest)) {
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        final draftResponse = await salesRepository.saveSalesOrder(
+          draftRequest,
+          files: _attachments.isEmpty ? null : _attachments,
+        );
+
+        if (!draftResponse.success) {
+          throw Exception(
+              draftResponse.message ?? 'Failed to save draft before submit');
+        }
+
+        orderId = _extractSavedOrderId(draftResponse);
+        if (orderId == null || orderId <= 0) {
+          throw Exception(
+              'Draft saved but order ID was not returned. Please try again.');
+        }
+
+        fileUploadDetailsOverride = _extractFileUploadDetails(draftResponse) ??
+            draftRequest.fileUploadDetails;
+        print('✅ Draft saved with ID: $orderId');
+      }
+
+      final submitRequest = await _buildSaveRequest(
+        workflowFlag,
+        overrideId: orderId,
+        workflowAction: action,
+        fileUploadDetailsOverride: fileUploadDetailsOverride,
       );
 
-      if (!_validateSbuIdBeforeSave(updatedRequest)) {
+      if (!_validateSbuIdBeforeSave(submitRequest)) {
         setState(() => _isLoading = false);
         return;
       }
 
-      // Call save API (upload attachments if any)
-      final salesRepository = getIt<SalesRepository>();
+      final bool attachmentsAlreadyUploaded =
+          fileUploadDetailsOverride != null && _attachments.isNotEmpty;
       final response = await salesRepository.saveSalesOrder(
-        updatedRequest,
-        files: _attachments.isEmpty ? null : _attachments,
+        submitRequest,
+        files: (!attachmentsAlreadyUploaded && _attachments.isNotEmpty)
+            ? _attachments
+            : null,
       );
 
       if (!mounted) return;
 
       setState(() {
         _isLoading = false;
-        // Mark as submitted on success if action is Submit
         if (action.name.toLowerCase() == 'submit' || workflowFlag == 1) {
           _hasBeenSubmitted = true;
         }
@@ -7004,7 +7014,6 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
           icon: Icons.check_circle_outline,
           duration: const Duration(seconds: 2),
         );
-        // Navigate back to listing screen with success result
         Navigator.of(context).pop(true);
         return;
       } else {
@@ -7018,17 +7027,15 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         _isLoading = false;
       });
 
-      // Extract error message
-      String errorMessage = 'Failed to ${action.name.toLowerCase()} order';
-      final errorString = e.toString();
-      if (errorString.startsWith('Exception: ')) {
-        errorMessage = errorString.replaceFirst('Exception: ', '');
-      } else {
-        errorMessage = errorString;
-      }
-
-      // Show error dialog for better readability
-      _showErrorDialog('Error ${action.name}', errorMessage);
+      final errorMessage = _userFacingErrorMessage(
+        e.toString(),
+      );
+      _showErrorDialog(
+        'Error ${action.name}',
+        errorMessage.isNotEmpty
+            ? errorMessage
+            : 'Failed to ${action.name.toLowerCase()} order',
+      );
     }
   }
 }

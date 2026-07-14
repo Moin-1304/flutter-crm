@@ -72,6 +72,10 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _navigateToServerSetup() {
+    Navigator.of(context).pushNamed(Routes.serverSetup);
+  }
+
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
@@ -500,6 +504,31 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontSize: compact ? 15 : 17,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: compact ? 8 : 12),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _navigateToServerSetup,
+                          icon: Icon(
+                            Icons.dns_rounded,
+                            size: compact ? 18 : 20,
+                            color: tealGreen,
+                          ),
+                          label: Text(
+                            'Change Server',
+                            style: TextStyle(
+                              color: tealGreen,
+                              fontSize: compact ? 13 : 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: compact ? 8 : 12,
+                              vertical: compact ? 4 : 8,
                             ),
                           ),
                         ),

@@ -515,6 +515,15 @@ class SalesApi {
     return [];
   }
 
+  /// Map backend error codes to user-readable messages.
+  String _resolveSalesOrderUserMessage(String message) {
+    final trimmed = message.trim();
+    if (trimmed == '-900') {
+      return 'Customer PO number already exists. Please enter a different Customer PO number.';
+    }
+    return message;
+  }
+
   /// Upload file using File Upload API (same as DCR expense)
   /// POST /erpweb/api/FilesUpload/upload?relativePath=Uploads/Attachments/Sales/Orders
   Future<FileUploadResponse> uploadFile(
@@ -863,12 +872,9 @@ class SalesApi {
         errorMessage =
             'Request timeout. The server is taking too long to respond.';
       }
-      if (e.response!.statusCode == 500) {
-        errorMessage = '$errorMessage status code: ${e.response?.statusCode}';
-      }
 
       print('   Final Error Message: $errorMessage');
-      throw Exception(errorMessage);
+      throw Exception(_resolveSalesOrderUserMessage(errorMessage));
     } catch (e) {
       print('❌ Sales Order Save API Error: $e');
       if (e is Exception) {
