@@ -5766,28 +5766,6 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
     return _loadedOrderData?.processActionId;
   }
 
-  int? _extractSavedOrderId(SalesOrderSaveResponse response) {
-    final data = response.data;
-    if (data is Map) {
-      final dynamic id = data['id'] ?? data['Id'];
-      if (id is int) return id;
-      if (id is num) return id.toInt();
-      return int.tryParse(id?.toString() ?? '');
-    }
-    return null;
-  }
-
-  dynamic _extractFileUploadDetails(SalesOrderSaveResponse response) {
-    final data = response.data;
-    if (data is Map) {
-      return data['fileUploadDetails'] ??
-          data['FileUploadDetails'] ??
-          data['attachments'] ??
-          data['Attachments'];
-    }
-    return null;
-  }
-
   Future<SalesOrderSaveRequest> _buildSaveRequest(
     int workflowFlag, {
     int? overrideId,
@@ -5941,8 +5919,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         }
       }
 
-      // Existing line items: send their line item Id (detailId from API). New line items: must send null. Never use header/order id as line id (causes 500).
-      final int? lineId = _isEditMode ? item.detailId : null;
+      // Existing line items: send their line item Id (detailId from API).
+      // New Sales Order / new lines: Id must be null (sending an old detail Id
+      // makes backend treat it as update of a dispatched line → delete error).
+      final int? lineId =
+          (_isEditMode && item.detailId != null && item.detailId! > 0)
+              ? item.detailId
+              : null;
       contractItems.add(SalesContractItem(
         id: lineId,
         createdBy: user.userId,
@@ -6185,9 +6168,16 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
             ? _loadedOrderData!.fileUploadDetails
             : null);
 
+    // New Sales Order: Id must always be null on create (Save + Submit).
+    // Edit/Update: pass the existing Sales Order Id (overrideId or loaded order).
+    final int? resolvedOrderId = _isEditMode
+        ? (overrideId ?? _loadedOrderData?.id)
+        : null;
+    print(
+        '🆔 Save payload Id: $resolvedOrderId (${_isEditMode ? "EDIT/UPDATE" : "NEW → null"})');
+
     return SalesOrderSaveRequest(
-      id: overrideId ??
-          (_isEditMode && _loadedOrderData != null ? _loadedOrderData!.id : null),
+      id: resolvedOrderId,
       createdBy: dynamicUserId, // Dynamic userId from user
       status: 0,
       sbuId: finalSbuId, // Must be DistributorId per backend requirement
@@ -6942,45 +6932,13 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
       });
 
       final salesRepository = getIt<SalesRepository>();
-      int? orderId =
-          _isEditMode ? _loadedOrderData?.id : null;
-      dynamic fileUploadDetailsOverride;
 
-      // Brand-new orders must be drafted first so the backend has a header Id.
-      if (orderId == null || orderId <= 0) {
-        print('💾 Drafting new sales order before ${action.name}...');
-        final draftRequest = await _buildSaveRequest(0);
-        if (!_validateSbuIdBeforeSave(draftRequest)) {
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        final draftResponse = await salesRepository.saveSalesOrder(
-          draftRequest,
-          files: _attachments.isEmpty ? null : _attachments,
-        );
-
-        if (!draftResponse.success) {
-          throw Exception(
-              draftResponse.message ?? 'Failed to save draft before submit');
-        }
-
-        orderId = _extractSavedOrderId(draftResponse);
-        if (orderId == null || orderId <= 0) {
-          throw Exception(
-              'Draft saved but order ID was not returned. Please try again.');
-        }
-
-        fileUploadDetailsOverride = _extractFileUploadDetails(draftResponse) ??
-            draftRequest.fileUploadDetails;
-        print('✅ Draft saved with ID: $orderId');
-      }
-
+      // New SO: Id must be null on initial Submit (do not draft-then-reuse an Id).
+      // Edit/Update: pass the existing order Id.
       final submitRequest = await _buildSaveRequest(
         workflowFlag,
-        overrideId: orderId,
+        overrideId: _isEditMode ? _loadedOrderData?.id : null,
         workflowAction: action,
-        fileUploadDetailsOverride: fileUploadDetailsOverride,
       );
 
       if (!_validateSbuIdBeforeSave(submitRequest)) {
@@ -6988,13 +6946,9 @@ class _SaleCreationScreenState extends State<SaleCreationScreen> {
         return;
       }
 
-      final bool attachmentsAlreadyUploaded =
-          fileUploadDetailsOverride != null && _attachments.isNotEmpty;
       final response = await salesRepository.saveSalesOrder(
         submitRequest,
-        files: (!attachmentsAlreadyUploaded && _attachments.isNotEmpty)
-            ? _attachments
-            : null,
+        files: _attachments.isEmpty ? null : _attachments,
       );
 
       if (!mounted) return;

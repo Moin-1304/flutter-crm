@@ -577,6 +577,37 @@ class SalesApi {
     try {
       Map<String, dynamic> requestJson = request.toJson();
 
+      // Guard: new Sales Order must never send an existing header/line Id.
+      // Backend treats a non-null Id as update and can fail with
+      // "Once dispatched, Sales order detail cannot be deleted."
+      final dynamic rawId = requestJson['Id'];
+      final int? headerId = rawId is int
+          ? rawId
+          : rawId is num
+              ? rawId.toInt()
+              : int.tryParse(rawId?.toString() ?? '');
+      final bool isNewOrder = headerId == null || headerId <= 0;
+      if (isNewOrder) {
+        requestJson['Id'] = null;
+        final items = requestJson['SalesContractItems'];
+        if (items is List) {
+          for (final item in items) {
+            if (item is Map) {
+              item['Id'] = null;
+            }
+          }
+        }
+        final charges = requestJson['TaxAndOtherChargesDetail'];
+        if (charges is List) {
+          for (final charge in charges) {
+            if (charge is Map) {
+              charge['Id'] = null;
+            }
+          }
+        }
+      }
+      print('🆔 [SalesApi] Save Id=${requestJson['Id']} (newOrder=$isNewOrder)');
+
       if (files != null && files.isNotEmpty) {
         print('📎 [SalesApi] Uploading ${files.length} attachment(s) before save...');
         final existingDetails =

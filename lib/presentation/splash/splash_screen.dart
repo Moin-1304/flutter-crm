@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:boilerplate/constants/assets.dart';
 import 'package:boilerplate/data/secure_storage/secure_storage_helper.dart';
 import 'package:boilerplate/di/service_locator.dart';
 import 'package:boilerplate/presentation/login/store/login_store.dart';
@@ -264,22 +265,12 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _buildLogo() {
     final logoSize = _isTablet ? 140.0 : 110.0;
-    final plusSize = _isTablet ? 70.0 : 55.0;
-    final plusBarWidth = _isTablet ? 48.0 : 38.0;
-    final plusBarHeight = _isTablet ? 8.0 : 6.0;
-    
+
     return Container(
       width: logoSize,
       height: logoSize,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFFFFF), // #FFFFFF
-            Color(0xFFF0F7F5), // #F0F7F5
-          ],
-        ),
+        color: Colors.black,
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
@@ -289,33 +280,12 @@ class _SplashScreenState extends State<SplashScreen>
           ),
         ],
       ),
-      child: Center(
-        child: SizedBox(
-          width: plusSize,
-          height: plusSize,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Horizontal bar
-              Container(
-                width: plusBarWidth,
-                height: plusBarHeight,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF5A9C8E),
-                  borderRadius: BorderRadius.circular(_isTablet ? 4 : 3),
-                ),
-              ),
-              // Vertical bar
-              Container(
-                width: plusBarHeight,
-                height: plusBarWidth,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF5A9C8E),
-                  borderRadius: BorderRadius.circular(_isTablet ? 4 : 3),
-                ),
-              ),
-            ],
-          ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.all(_isTablet ? 12 : 10),
+        child: Image.asset(
+          Assets.appLogo,
+          fit: BoxFit.contain,
         ),
       ),
     );
